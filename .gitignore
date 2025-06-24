@@ -1,0 +1,17 @@
+# Compilados
+*.exe
+*.dll
+*.lib
+*.so
+
+# Pastas de build
+build/
+bin/
+.cache/
+
+# Arquivos temporários
+*.log
+*.obj
+
+# IDEs
+.vscode/
