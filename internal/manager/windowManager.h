@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SDL3/SDL_video.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
 
@@ -14,4 +15,5 @@ public:
   bool initialize(float screenWidth, float screenHeight);
 
   SDL_Window *getWindow() const;
+  SDL_GLContext getContext() const;
 };

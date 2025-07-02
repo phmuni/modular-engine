@@ -9,6 +9,9 @@ void RenderSystem::renderCall(ShaderManager &shaderManager, SystemManager &syste
   auto &lightSystem = systemManager.getSystem<LightSystem>();
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
 
+  if (!cameraManager.hasActiveCamera())
+    return;
+
   if (lightSystem.getLights().empty())
     return;
 
@@ -44,9 +47,6 @@ void RenderSystem::renderCall(ShaderManager &shaderManager, SystemManager &syste
   Shader &shader = shaderManager.getShader("base");
   shader.use();
 
-  if (!cameraManager.hasActiveCamera())
-    return;
-
   Entity cameraEntity = cameraManager.getActiveCamera();
   const auto &cameraComponent = componentManager.get<CameraComponent>(cameraEntity);
 
@@ -60,11 +60,7 @@ void RenderSystem::renderCall(ShaderManager &shaderManager, SystemManager &syste
   shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
   shader.setTex("shadowMap", renderer.getDepthMap(), 3);
 
-  if (!lightSystem.getLights().empty()) {
-    lightSystem.uploadLightsToShader(shader, componentManager);
-  } else {
-    shader.setInt("numLights", 0);
-  }
+  lightSystem.uploadLightsToShader(shader, componentManager);
 
   for (const auto &entry : m_entries) {
     const auto &transform = componentManager.get<TransformComponent>(entry.entity);
@@ -87,3 +83,4 @@ void RenderSystem::renderCall(ShaderManager &shaderManager, SystemManager &syste
 }
 
 Renderer &RenderSystem::getRenderer() { return m_renderer; }
+const std::vector<RenderSystem::RenderEntry> &RenderSystem::getRenderQueue() const { return m_entries; }

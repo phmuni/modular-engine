@@ -37,24 +37,32 @@ uniform mat4 lightSpaceMatrix;
 
 // Calcula sombra a partir da posição do fragmento no espaço da luz
 float calculateShadow(vec4 fragPosLightSpace) {
-    // Transformação para NDC [0,1]
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
-    // Se estiver fora do shadow map, não projeta sombra
     if (projCoords.z > 1.0)
         return 0.0;
 
-    float closestDepth = texture(shadowMap, projCoords.xy).r;
     float currentDepth = projCoords.z;
 
-    // Bias para evitar acne de sombra (self-shadowing)
+    // Bias com base na inclinação
     float bias = max(0.005 * (1.0 - dot(normalize(Normal), normalize(vec3(lightSpaceMatrix[0][2], lightSpaceMatrix[1][2], lightSpaceMatrix[2][2])))), 0.0005);
 
-    // Shadow: 1.0 = na sombra, 0.0 = iluminado
-    float shadow = currentDepth - bias > closestDepth ? 1.0 : 0.0;
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+
+    // PCF 3x3
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+
+    shadow /= 9.0;
     return shadow;
 }
+
 
 void main()
 {

@@ -35,3 +35,4 @@ bool WindowManager::initialize(float screenWidth, float screenHeight) {
 }
 
 SDL_Window *WindowManager::getWindow() const { return window; }
+SDL_GLContext WindowManager::getContext() const { return glContext; }

@@ -31,8 +31,8 @@ private:
   // Shadow map
   GLuint depthMap = 0;
   GLuint depthMapFBO = 0;
-  const int shadowWidth = 1024;
-  const int shadowHeight = 1024;
+  const int shadowWidth = 2048;
+  const int shadowHeight = 2048;
 
   const int screenWidth = 1280;
   const int screenHeight = 720;

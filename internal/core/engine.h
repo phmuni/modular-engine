@@ -25,6 +25,7 @@
 #include "system/renderSystem.h"    // IWYU pragma: keep
 #include "system/timeSystem.h"      // IWYU pragma: keep
 #include "system/transformSystem.h" // IWYU pragma: keep
+#include "system/uiSystem.h"        // IWYU pragma: keep
 
 #include "component/modelComponent.h" // IWYU pragma: keep
 #include "manager/windowManager.h"
@@ -46,6 +47,7 @@ private:
   void render();
   void mainLoop(bool &running);
   bool loadShaderOrLog(const std::string &name, const std::string &vertexPath, const std::string &fragmentPath);
+  bool loadResources();
 
 public:
   Engine() : m_screenWidth(1280.0f), m_screenHeight(720.0f) {}
@@ -53,13 +55,12 @@ public:
 
   bool initialize();
   void registerSystems();
-  bool loadResources();
   void run();
 
   void createCamera(glm::vec3 position, float yaw = 0.0f, float pitch = 0.0f, float fov = 90.0f);
 
-  void createEntityWithModel(const std::string &modelPath, const std::string &texturePath, glm::vec3 position,
-                             glm::vec3 rotation, glm::vec3 scale);
+  void createEntityWithModel(const std::string name, const std::string &modelPath, const std::string &texturePath,
+                             glm::vec3 position, glm::vec3 rotation, glm::vec3 scale);
 
   void createEntityWithLight(glm::vec3 position, glm::vec3 direction, glm::vec3 color, LightType type, float intensity,
                              float cutOff, float outerCutOff);

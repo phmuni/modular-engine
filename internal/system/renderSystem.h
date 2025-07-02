@@ -27,6 +27,7 @@ public:
                   ComponentManager &componentManager, ActiveCameraManager &cameraManager);
 
   Renderer &getRenderer();
+  const std::vector<RenderEntry> &getRenderQueue() const;
 
 private:
   std::vector<RenderEntry> m_entries;

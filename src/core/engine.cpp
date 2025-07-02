@@ -1,6 +1,8 @@
 #include "core/engine.h"
+#include "component/nameComponent.h"
 #include "system/cameraSystem.h"
 #include "system/inputSystem.h"
+#include "system/uiSystem.h"
 
 // ================================
 //  Destructor and Initialization
@@ -30,6 +32,7 @@ void Engine::registerSystems() {
   systemManager.registerSystem<LightSystem>();
   systemManager.registerSystem<TimeSystem>();
   systemManager.registerSystem<CameraSystem>(componentManager, systemManager.getSystem<InputSystem>());
+  systemManager.registerSystem<UISystem>(windowManager.getWindow(), windowManager.getContext());
 }
 
 bool Engine::loadShaderOrLog(const std::string &name, const std::string &vertexPath, const std::string &fragmentPath) {
@@ -76,9 +79,16 @@ void Engine::update(bool &running) {
 
 void Engine::render() {
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
+  auto &uiSystem = systemManager.getSystem<UISystem>();
+
   renderSystem.getRenderer().beginFrame();
 
+  uiSystem.beginFrame();
+
   renderSystem.renderCall(shaderManager, systemManager, entityManager, componentManager, cameraManager);
+
+  uiSystem.render(systemManager, componentManager);
+  uiSystem.endFrame();
 
   renderSystem.getRenderer().endFrame();
 }
@@ -103,8 +113,8 @@ void Engine::createCamera(glm::vec3 position, float yaw, float pitch, float fov)
   cameraManager.setActiveCamera(cameraEntity);
 }
 
-void Engine::createEntityWithModel(const std::string &modelPath, const std::string &texturePath, glm::vec3 position,
-                                   glm::vec3 rotation, glm::vec3 scale) {
+void Engine::createEntityWithModel(const std::string name, const std::string &modelPath, const std::string &texturePath,
+                                   glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
   Entity entity = entityManager.createEntity();
 
   auto material = MaterialLoader::loadMaterial(texturePath, 32.0f);
@@ -119,6 +129,7 @@ void Engine::createEntityWithModel(const std::string &modelPath, const std::stri
     return;
   }
 
+  componentManager.add<NameComponent>(entity, std::make_shared<NameComponent>(name));
   componentManager.add<TransformComponent>(entity, std::make_shared<TransformComponent>(position, rotation, scale));
   componentManager.add<ModelComponent>(entity, std::make_shared<ModelComponent>(mesh, material));
 
