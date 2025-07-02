@@ -74,7 +74,7 @@ void Engine::update(bool &running) {
 
   input.update(&running);
   time.update();
-  camera.update(cameraManager.getActiveCamera(), time.getDeltaTime());
+  camera.update(cameraManager.getActiveCamera(), time.getDeltaTime(), systemManager, windowManager);
 }
 
 void Engine::render() {

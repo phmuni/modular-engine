@@ -1,12 +1,19 @@
 #include "system/cameraSystem.h"
+#include "manager/windowManager.h"
+#include "system/inputSystem.h"
 
-void CameraSystem::update(Entity entity, float deltaTime) {
+void CameraSystem::update(Entity entity, float deltaTime, SystemManager &systemManager, WindowManager &windowManager) {
   if (!componentManager.has<CameraComponent>(entity))
     return;
 
   auto &cam = componentManager.get<CameraComponent>(entity);
-
-  rotateCamera(cam);
+  auto &inputSystem = systemManager.getSystem<InputSystem>();
+  if (inputSystem.getMouseMove()) {
+    rotateCamera(cam);
+    windowManager.setCursor(true);
+  } else {
+    windowManager.setCursor(false);
+  }
   moveCamera(cam, deltaTime);
   updateFront(cam);
 }

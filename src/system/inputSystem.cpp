@@ -1,4 +1,5 @@
 #include "system/inputSystem.h"
+#include "SDL3/SDL_scancode.h"
 
 InputSystem::InputSystem() { setDefaultKeyBinds(); }
 
@@ -34,6 +35,17 @@ bool InputSystem::update(bool *running) {
       break;
     }
   }
+
+  bool togglePressed = isKeyPressed(SDL_SCANCODE_RALT);
+
+  if (togglePressed && !toggleKeyLastState) {
+    // Mudança de estado: tecla foi pressionada agora
+    mouseControlEnabled = !mouseControlEnabled;
+  }
+
+  // Atualiza o estado da tecla para o próximo frame
+  toggleKeyLastState = togglePressed;
+
   return !quitRequested;
 }
 
@@ -53,6 +65,7 @@ void InputSystem::setKeyBind(Action action, SDL_Scancode keyCode) { keyBinds[act
 float InputSystem::getMouseXOffset() const { return mouseXOffset; }
 
 float InputSystem::getMouseYOffset() const { return mouseYOffset; }
+bool InputSystem::getMouseMove() const { return mouseControlEnabled; }
 
 bool InputSystem::isQuitRequested() const { return quitRequested; }
 

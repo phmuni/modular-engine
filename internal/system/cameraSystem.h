@@ -2,6 +2,8 @@
 
 #include "component/cameraComponent.h"
 #include "ecs/componentManager.h"
+#include "ecs/systemManager.h"
+#include "manager/windowManager.h"
 #include "system/inputSystem.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -14,7 +16,7 @@ private:
 public:
   CameraSystem(ComponentManager &cm, InputSystem &in) : componentManager(cm), input(in) {};
 
-  void update(Entity entity, float deltaTime);
+  void update(Entity entity, float deltaTime, SystemManager &systemManager, WindowManager &windowManager);
   void updateFront(CameraComponent &cam);
   void rotateCamera(CameraComponent &cam);
   void moveCamera(CameraComponent &cam, float deltaTime);

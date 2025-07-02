@@ -1,4 +1,5 @@
 #include "manager/windowManager.h"
+#include "SDL3/SDL_mouse.h"
 
 bool WindowManager::initialize(float screenWidth, float screenHeight) {
 
@@ -36,3 +37,5 @@ bool WindowManager::initialize(float screenWidth, float screenHeight) {
 
 SDL_Window *WindowManager::getWindow() const { return window; }
 SDL_GLContext WindowManager::getContext() const { return glContext; }
+
+void WindowManager::setCursor(bool boolean) { SDL_SetWindowRelativeMouseMode(window, boolean); }

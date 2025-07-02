@@ -3,13 +3,15 @@
 #include <SDL3/SDL.h>
 #include <unordered_map>
 
-enum class Action { MoveForward, MoveBackward, MoveLeft, MoveRight, MoveUp, MoveDown };
+enum class Action { MoveForward, MoveBackward, MoveLeft, MoveRight, MoveUp, MoveDown, MoveMouse };
 
 class InputSystem {
 private:
   float mouseXOffset = 0.0f;
   float mouseYOffset = 0.0f;
   bool quitRequested = false;
+  bool mouseControlEnabled = true;
+  bool toggleKeyLastState = false;
 
   bool keys[SDL_SCANCODE_COUNT]{false};
 
@@ -28,6 +30,7 @@ public:
   // Getters
   float getMouseXOffset() const;
   float getMouseYOffset() const;
+  bool getMouseMove() const;
   bool isQuitRequested() const;
   bool isKeyPressed(SDL_Scancode key) const;
 

@@ -16,4 +16,5 @@ public:
 
   SDL_Window *getWindow() const;
   SDL_GLContext getContext() const;
+  void setCursor(bool boolean);
 };
