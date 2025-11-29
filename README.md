@@ -51,8 +51,8 @@ This modular structure allows for easy expansion and maintenance as the engine e
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/phmuni/Modular-Engine.git
-cd Modular-Engine
+git clone https://github.com/phmuni/modular-engine.git
+cd modular-engine
 ```
 
 ### Dependencies
@@ -128,7 +128,7 @@ For detailed API documentation and examples, explore the header files in the `in
 
 ## 🎯 Future Enhancements
 
-This engine is actively developed with continuous improvements planned. Check the [Issues](https://github.com/phmuni/Modular-Engine/issues) and [Projects](https://github.com/phmuni/Modular-Engine/projects) pages for current development goals and planned features.
+This engine is actively developed with continuous improvements planned. Check the [Issues](https://github.com/phmuni/modular-engine/issues) and [Projects](https://github.com/phmuni/modular-engine/projects) pages for current development goals and planned features.
 
 ## 🤝 Contributing
 
@@ -150,4 +150,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-For issues and questions, please open an [issue](https://github.com/phmuni/Modular-Engine/issues) on GitHub.
+For issues and questions, please open an [issue](https://github.com/phmuni/modular-engine/issues) on GitHub.
