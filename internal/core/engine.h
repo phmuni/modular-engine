@@ -7,14 +7,17 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 // Internal Includes
-
 #include "component/lightComponent.h"
+#include "core/config.h"
 
 // ECS & Systems
 #include "ecs/componentManager.h"
 #include "ecs/entityManager.h"
 #include "ecs/systemManager.h"
 
+// Central engine coordinator using Entity-Component-System (ECS) architecture.
+// ECS provides data-driven design that separates data (components) from behavior (systems),
+// enabling better composition, cache locality, and system independence.
 class Engine {
 private:
   float m_defaultScreenWidth;
@@ -31,7 +34,9 @@ private:
   bool loadResources();
 
 public:
-  Engine() : m_defaultScreenWidth(1280.0f), m_defaultScreenHeight(720.0f) {}
+  Engine()
+      : m_defaultScreenWidth(EngineConfig::DEFAULT_SCREEN_WIDTH),
+        m_defaultScreenHeight(EngineConfig::DEFAULT_SCREEN_HEIGHT) {}
   ~Engine();
 
   bool initialize();

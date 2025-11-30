@@ -7,6 +7,9 @@
 
 #include <vector>
 
+// Manages rendering pipeline: shadow pass + main render pass.
+// Implements Percentage Closer Filtering (PCF) 5x5 for soft shadow edges.
+// Normal matrix computed on CPU (transpose(inverse(model))) to optimize vertex shader.
 class RenderSystem : public BaseSystem {
 public:
   struct RenderQueue {

@@ -14,6 +14,7 @@ struct CameraComponent : public BaseComponent {
   float mouseSensitivity = 1.0f;
   float smoothFactor = 9.0f;
   float fov = 90.0f;
+  float aspectRatio = 16.0f / 9.0f;
 
   CameraComponent() = default;
 };

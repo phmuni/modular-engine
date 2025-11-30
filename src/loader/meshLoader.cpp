@@ -23,7 +23,6 @@ std::unique_ptr<Mesh> MeshLoader::loadFromOBJ(const std::string &filename) {
     for (const auto &idx : shape.mesh.indices) {
       Vertex vertex{};
 
-      // Position
       vertex.position = {attrib.vertices[3 * idx.vertex_index + 0], attrib.vertices[3 * idx.vertex_index + 1],
                          attrib.vertices[3 * idx.vertex_index + 2]};
 
@@ -33,13 +32,11 @@ std::unique_ptr<Mesh> MeshLoader::loadFromOBJ(const std::string &filename) {
                          attrib.normals[3 * idx.normal_index + 2]};
       }
 
-      // Texcoord, If it exists
       if (idx.texcoord_index >= 0) {
         vertex.texCoord = {attrib.texcoords[2 * idx.texcoord_index + 0],
                            1.0f - attrib.texcoords[2 * idx.texcoord_index + 1]};
       }
 
-      // inserts the Vertex and then uses the newly added position
       vertices.emplace_back(vertex);
       indices.emplace_back(static_cast<unsigned int>(vertices.size() - 1));
     }

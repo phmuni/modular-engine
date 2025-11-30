@@ -19,7 +19,6 @@ std::unique_ptr<Material> MaterialLoader::loadMaterial(const std::string &textur
 GLuint MaterialLoader::loadTextureFromFile(const std::filesystem::path &filePath,
                                            const std::array<unsigned char, 3> &fallbackColor) {
   std::string foundPath;
-  // Tenta cada extensão até encontrar um arquivo existente
   for (auto const &ext : kSupportedExtensions) {
     auto candidate = filePath;
     candidate += ext;
@@ -50,7 +49,6 @@ GLuint MaterialLoader::loadTextureFromFile(const std::filesystem::path &filePath
     std::cerr << "[MaterialLoader] File not found in: " << filePath << ".[png|jpg|...]. Using fallback color.\n";
   }
 
-  // If loading failed (textureID is still 0), create a 1x1 texture with fallbackColor
   if (textureID == 0) {
     unsigned char fallbackData[3] = {fallbackColor[0], fallbackColor[1], fallbackColor[2]};
     glGenTextures(1, &textureID);
@@ -58,7 +56,6 @@ GLuint MaterialLoader::loadTextureFromFile(const std::filesystem::path &filePath
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, fallbackData);
   }
 
-  // Wrapping and filtering parameters (always applied)
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);

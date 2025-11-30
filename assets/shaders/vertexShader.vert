@@ -6,6 +6,8 @@ layout(location = 2) in vec2 aTex;  // Vertice Texture position
 
 uniform mat4 MVP;   // Matrix Model-View-Project
 uniform mat4 model; // Matrix model with obj transformations
+// Normal matrix: pre-computed transpose(inverse(model)) on CPU to reduce per-vertex overhead
+uniform mat3 normalMatrix;
 
 out vec3 FragPos;   // Frag position in world space
 out vec3 Normal;    // Interpolated normal
@@ -13,7 +15,7 @@ out vec2 TexCoords;    // Texture coordinates
 
 void main() {
     FragPos = vec3(model * vec4(aPos, 1.0));
-    Normal = normalize(mat3(transpose(inverse(model))) * aNormal);
+    Normal = normalize(normalMatrix * aNormal);
     TexCoords = aTex;
     gl_Position = MVP * vec4(aPos, 1.0);
 }

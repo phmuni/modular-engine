@@ -30,14 +30,12 @@ public:
 
   void setKeyBind(Action action, SDL_Scancode keyCode);
 
-  // Getters
   float getMouseXOffset() const;
   float getMouseYOffset() const;
   bool getMove() const;
   bool isQuitRequested() const;
   bool isKeyPressed(SDL_Scancode key) const;
 
-  // Setters
   void setMouseXOffset(float mouseXOffset);
   void setMouseYOffset(float mouseYOffset);
   void setQuitRequested(bool quitRequested);

@@ -1,4 +1,5 @@
 #include "core/engine.h"
+#include "core/config.h"
 
 #include "system/cameraSystem.h"
 #include "system/inputSystem.h"
@@ -11,9 +12,6 @@
 #include "system/uiSystem.h"
 #include "system/windowSystem.h"
 
-// ================================
-//  Destructor and Initialization
-// ================================
 Engine::~Engine() { SDL_Quit(); }
 
 bool Engine::initialize() {
@@ -56,14 +54,10 @@ bool Engine::loadResources() {
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
   renderer.initialize(windowSystem.getWindow());
 
-  return loadShaderOrLog("base", "../assets/shaders/vertexShader.vert", "../assets/shaders/fragmentShader.frag") &&
-         loadShaderOrLog("shadow", "../assets/shaders/vertexShadowShader.vert",
-                         "../assets/shaders/fragmentShadowShader.frag");
+  return loadShaderOrLog("base", EngineConfig::SHADER_VERTEX, EngineConfig::SHADER_FRAGMENT) &&
+         loadShaderOrLog("shadow", EngineConfig::SHADER_VERTEX_SHADOW, EngineConfig::SHADER_FRAGMENT_SHADOW);
 }
 
-// ================================
-//  Main Loop
-// ================================
 void Engine::run() {
   bool running = true;
   mainLoop(running);
@@ -103,10 +97,6 @@ void Engine::render() {
 
   renderer.endFrame();
 }
-
-// ================================
-//  Entity Creation
-// ================================
 
 void Engine::createEntityCamera(glm::vec3 position, float yaw, float pitch, float fov) {
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();

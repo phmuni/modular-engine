@@ -7,6 +7,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+// Manages camera transformations and matrix calculations.
+// Supports free camera with mouse look and keyboard movement.
+// Maintains separate view and projection matrices for flexibility.
 class CameraSystem : public BaseSystem {
 private:
   ComponentManager &componentManager;

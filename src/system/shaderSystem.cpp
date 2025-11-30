@@ -4,10 +4,9 @@
 
 bool ShaderSystem::loadShader(const std::string &name, const char *vertexPath, const char *fragmentPath) {
   if (shaders.count(name)) {
-    return false; // já existe
+    return false;
   }
-  shaders[name] = std::make_shared<Shader>(
-      vertexPath, fragmentPath); // Maintained shared for future per object implementation, maybe
+  shaders[name] = std::make_shared<Shader>(vertexPath, fragmentPath);
   return true;
 }
 

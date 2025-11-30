@@ -15,8 +15,6 @@ void Renderer::drawMesh(const Mesh &mesh) const {
   glBindVertexArray(0);
 }
 
-// ==================== Shadow Mapping ====================
-
 void Renderer::beginShadowPass() {
   glViewport(0, 0, shadowWidth, shadowHeight);
   glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
@@ -49,8 +47,6 @@ void Renderer::initShadowMapping() {
   glReadBuffer(GL_NONE);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
-
-// ==================== Getters ====================
 
 GLuint Renderer::getDepthMap() const { return depthMap; }
 

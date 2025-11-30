@@ -27,7 +27,7 @@ glm::mat4 CameraSystem::getViewMatrix(const CameraComponent &cam) const {
 }
 
 glm::mat4 CameraSystem::getProjMatrix(const CameraComponent &cam) const {
-  return glm::perspective(glm::radians(cam.fov), static_cast<float>(1280.0f) / 720.0f, 0.1f, 100.0f);
+  return glm::perspective(glm::radians(cam.fov), cam.aspectRatio, 0.1f, 100.0f);
 }
 
 void CameraSystem::updateFront(CameraComponent &cam) {

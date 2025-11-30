@@ -4,8 +4,17 @@ cmake_minimum_required(VERSION 3.10)
 project(modular-engine)
 set(CMAKE_CXX_STANDARD 17)
 
-# --- Debug ---
-set(CMAKE_BUILD_TYPE Debug)
+# --- Build Type ---
+# Allow user to specify build type via command line: cmake -DCMAKE_BUILD_TYPE=Release ..
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build." FORCE)
+endif()
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+
+# Set optimization flags for Release builds
+if(CMAKE_BUILD_TYPE STREQUAL Release)
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+endif()
 
 # --- Directories ---
 # Output directory for binaries
@@ -19,9 +28,12 @@ include_directories(
     ${EXTERNAL_DIR}
 )
 # --- Source files ---
-# Recursively find all .cpp files in src and external folders
-file(GLOB_RECURSE SOURCE_FILES "${CMAKE_SOURCE_DIR}/src/**/*.cpp" "${CMAKE_SOURCE_DIR}/external/**/*.cpp")
-add_executable(engine ${SOURCE_FILES})
+# Recursively find .cpp files only in src folder (external libraries linked separately)
+file(GLOB_RECURSE SOURCE_FILES "${CMAKE_SOURCE_DIR}/src/**/*.cpp")
+# Add only essential external implementations (GLAD is required for OpenGL initialization)
+file(GLOB GLAD_SOURCE "${CMAKE_SOURCE_DIR}/external/glad/*.cpp")
+file(GLOB IMGUI_SOURCE "${CMAKE_SOURCE_DIR}/external/imgui/*.cpp")
+add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE})
 
 # --- Libraries ---
 # Link external libraries manually

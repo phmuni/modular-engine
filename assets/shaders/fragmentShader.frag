@@ -1,6 +1,7 @@
 #version 330 core
 out vec4 FragColor;
 
+// Material properties for per-fragment shading
 struct Material {
   sampler2D diffuse;
   sampler2D specular;    
@@ -34,95 +35,88 @@ uniform Light lights[10];
 // Shadow mapping
 uniform sampler2D shadowMap;
 uniform mat4 lightSpaceMatrix;
+uniform int useShadows;
 
 float calculateShadow(vec4 fragPosLightSpace) {
+    if (useShadows == 0) return 0.0;
+    
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
-    if (projCoords.z > 1.0)
-        return 0.0;
+    if (projCoords.z > 1.0) return 0.0;
 
     float currentDepth = projCoords.z;
-
-    // Bias com base na inclinação
-    float bias = max(0.005 * (1.0 - dot(normalize(Normal), normalize(vec3(lightSpaceMatrix[0][2], lightSpaceMatrix[1][2], lightSpaceMatrix[2][2])))), 0.0005);
+    float bias = 0.005;
 
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
 
-    // PCF 3x3
-    for (int x = -1; x <= 1; ++x) {
-        for (int y = -1; y <= 1; ++y) {
+    // Percentage Closer Filtering (PCF) 5x5: 25 samples for smooth shadow edges
+    // Reduces shadow aliasing by averaging neighboring depth comparisons
+    for (int x = -2; x <= 2; ++x) {
+        for (int y = -2; y <= 2; ++y) {
             float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
             shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
         }
     }
 
-    shadow /= 9.0;
+    shadow /= 25.0;
     return shadow;
 }
 
 
-void main()
-{
-  vec3 result = vec3(0.0);
+void main() {
   vec3 norm = normalize(Normal);
   vec3 viewDir = normalize(viewPos - FragPos);
+
+  vec3 diffuseTex = texture(material.diffuse, TexCoords).rgb;
+  vec3 specularTex = texture(material.specular, TexCoords).rgb;
+  vec3 emissionTex = texture(material.emission, TexCoords).rgb;
 
   vec4 fragPosLightSpace = lightSpaceMatrix * vec4(FragPos, 1.0);
   float shadow = calculateShadow(fragPosLightSpace);
 
-  for (int i = 0; i < numLights; ++i) {
-    Light light = lights[i];
+  vec3 result = emissionTex;
 
-    // ambient
-    vec3 ambient = light.color * light.ambient * texture(material.diffuse, TexCoords).rgb;
+  if (numLights == 0) {
+    result += diffuseTex * 0.7;
+  } else {
+    for (int i = 0; i < numLights; ++i) {
+      Light light = lights[i];
 
-    // light direction
-    vec3 lightDir;
-    if (light.type == 0) {               // Directional
-      lightDir = normalize(-light.direction);
-    } else {                             // Point (1) ou Spot (2)
-      lightDir = normalize(light.position - FragPos);
+      vec3 lightDir;
+      if (light.type == 0) {
+        lightDir = normalize(-light.direction);
+      } else {
+        lightDir = normalize(light.position - FragPos);
+      }
+
+      vec3 ambient = light.color * light.ambient * diffuseTex;
+      float diff = max(dot(norm, lightDir), 0.0);
+      vec3 diffuse = light.color * light.intensity * diff * diffuseTex;
+
+      vec3 reflectDir = reflect(-lightDir, norm);
+      float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+      vec3 specular = light.color * light.intensity * spec * specularTex;
+
+      float attenuation = 1.0;
+      if (light.type == 1 || light.type == 2) {
+        float distance = length(light.position - FragPos);
+        attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+      }
+
+      float spotlightEffect = 1.0;
+      if (light.type == 2) {
+        float theta = dot(lightDir, normalize(-light.direction));
+        float epsilon = max(light.cutOff - light.outerCutOff, 0.001);
+        spotlightEffect = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
+      }
+
+      float shadowFactor = (light.type == 0) ? shadow : 0.0;
+      vec3 lightResult = (ambient + (1.0 - shadowFactor) * (diffuse + specular)) * attenuation * spotlightEffect;
+      result += lightResult;
     }
-
-    // diffuse
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = light.color * light.intensity * diff * texture(material.diffuse, TexCoords).rgb;
-
-    // specular
-    vec3 reflectDir = reflect(-lightDir, norm);  
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-    vec3 specularShine = light.color * light.intensity * spec * texture(material.specular, TexCoords).rgb;
-
-    // attenuation
-    float attenuation = 1.0;
-    if (light.type == 1 || light.type == 2) { // Point e Spot usam atenuação
-      float distance = length(light.position - FragPos);
-      attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
-    }
-
-    // spotlight cutoff
-    float spotlightEffect = 1.0;
-    if (light.type == 2) {
-      float theta = dot(lightDir, normalize(-light.direction));
-      float epsilon = light.cutOff - light.outerCutOff;
-      spotlightEffect = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
-    }
-
-    // sombra só para luz direcional (0)
-    float shadowFactor = (light.type == 0) ? shadow : 0.0;
-
-    // Resultado com sombra aplicada
-    vec3 lightResult = (ambient + (1.0 - shadowFactor) * (diffuse + specularShine)) * attenuation * spotlightEffect;
-    result += lightResult;
   }
-
-  // Emission
-  vec3 specularTexture = texture(material.specular, TexCoords).rgb;
-  float mask = float(all(equal(specularTexture, vec3(0.0))));
-  vec3 emissionTexture = texture(material.emission, TexCoords).rgb * mask;
-  result += emissionTexture;
 
   FragColor = vec4(result, 1.0);
 }

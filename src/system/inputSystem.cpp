@@ -17,7 +17,6 @@ bool InputSystem::update(bool *running, SystemManager &systemManager) {
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
   auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
 
-  // Reset offset
   mouseXOffset = 0.0f;
   mouseYOffset = 0.0f;
 
@@ -52,7 +51,6 @@ bool InputSystem::update(bool *running, SystemManager &systemManager) {
     }
   }
 
-  // Toggle para ativar/desativar controle do mouse (ex: para UI ou câmera)
   bool togglePressed = isKeyPressed(SDL_SCANCODE_RALT);
 
   if (togglePressed && !toggleKeyLastState) {
@@ -74,9 +72,6 @@ bool InputSystem::isActionPressed(Action action) const {
 
 void InputSystem::setKeyBind(Action action, SDL_Scancode keyCode) { keyBinds[action] = keyCode; }
 
-// ----------------------------------------------------------
-
-// Getters
 float InputSystem::getMouseXOffset() const { return mouseXOffset; }
 
 float InputSystem::getMouseYOffset() const { return mouseYOffset; }
@@ -86,7 +81,6 @@ bool InputSystem::isQuitRequested() const { return quitRequested; }
 
 bool InputSystem::isKeyPressed(SDL_Scancode key) const { return keys[key]; }
 
-// Setters
 void InputSystem::setMouseXOffset(float xOffset) { this->mouseXOffset = xOffset; }
 
 void InputSystem::setMouseYOffset(float yOffset) { this->mouseYOffset = yOffset; }

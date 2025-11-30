@@ -5,8 +5,6 @@ WindowSystem::WindowSystem(float screenWidth, float screenHeight) : window(nullp
 };
 
 bool WindowSystem::initialize(float screenWidth, float screenHeight) {
-
-  // OpenGL Initialization
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
     return false;
@@ -24,16 +22,14 @@ bool WindowSystem::initialize(float screenWidth, float screenHeight) {
     return false;
   }
 
-  // GLAD Initialization
   if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
     SDL_Log("Failed to initialize GLAD.");
     return false;
   }
 
-  // Flags
-  glEnable(GL_DEPTH_TEST);                      // Enables depth testing
-  SDL_GL_SetSwapInterval(1);                    // Enable or Disable V-Sync
-  SDL_SetWindowRelativeMouseMode(window, true); // Hides and confines the cursor
+  glEnable(GL_DEPTH_TEST);
+  SDL_GL_SetSwapInterval(1);
+  SDL_SetWindowRelativeMouseMode(window, true);
 
   return true;
 }

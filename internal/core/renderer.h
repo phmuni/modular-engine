@@ -11,10 +11,8 @@
 
 class Renderer {
 private:
-  // SDL window to swap buffers
   SDL_Window *m_window = nullptr;
 
-  // Shadow map
   GLuint depthMap = 0;
   GLuint depthMapFBO = 0;
   const int shadowWidth = 2048;

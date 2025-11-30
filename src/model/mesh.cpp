@@ -6,7 +6,6 @@ Mesh::Mesh(const std::vector<Vertex> &vertices, const std::vector<unsigned int> 
 }
 
 Mesh::~Mesh() {
-  // Free OpenGL resources
   glDeleteVertexArrays(1, &VAO);
   glDeleteBuffers(1, &VBO);
   glDeleteBuffers(1, &EBO);
@@ -18,7 +17,6 @@ void Mesh::setupBuffers() {
     return;
   }
 
-  // Create VAO, VBO and EBO
   glGenVertexArrays(1, &VAO);
   glBindVertexArray(VAO);
 
@@ -30,7 +28,6 @@ void Mesh::setupBuffers() {
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
 
-  // Vertex attribute configuration
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)offsetof(Vertex, position));
   glEnableVertexAttribArray(0);
 

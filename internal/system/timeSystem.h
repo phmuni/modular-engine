@@ -13,15 +13,13 @@ public:
   TimeSystem() = default;
   ~TimeSystem() = default;
 
-  void start();  // Start timer
-  void update(); // Updates deltaTime
+  void start();
+  void update();
 
-  // Getters
   float getDeltaTime() const;
   float getLastFrameTime() const;
-  float getTimeSinceStart() const; // Time since start
+  float getTimeSinceStart() const;
 
-  // Setters
   void setDeltaTime(float dt);
   void setLastFrameTime(float time);
 };

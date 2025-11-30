@@ -24,10 +24,8 @@ public:
   Mesh(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices);
   ~Mesh();
 
-  // Getters
   GLuint getVAO() const;
   size_t getIndexCount() const;
 
-  // Setters
   void setVerticesIndices(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices);
 };

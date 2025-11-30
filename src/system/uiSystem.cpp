@@ -97,25 +97,34 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
         auto &light = componentManager.get<LightComponent>(selectedEntity);
 
         ImGui::Text("Light Properties:");
-        ImGui::DragFloat3("Position", &light.position.x, 0.1f);
-        ImGui::DragFloat3("Direction", &light.direction.x, 0.1f);
-        ImGui::ColorEdit3("Color", &light.color.x);
-        ImGui::DragFloat("Intensity", &light.intensity, 0.1f);
+        ImGui::Separator();
+        ImGui::DragFloat3("Position##light", &light.position.x, 0.1f);
+        ImGui::DragFloat3("Direction##light", &light.direction.x, 0.1f);
+        ImGui::ColorEdit3("Color##light", &light.color.x);
+        ImGui::SliderFloat("Intensity##light", &light.intensity, 0.0f, 5.0f);
+        ImGui::SliderFloat("Ambient##light", &light.ambient, 0.0f, 1.0f);
 
         const char *types[] = {"Directional", "Point", "Spot"};
         int type = static_cast<int>(light.type);
-        if (ImGui::Combo("Type", &type, types, IM_ARRAYSIZE(types))) {
+        ImGui::Combo("Type##light", &type, types, IM_ARRAYSIZE(types));
+        if (type != static_cast<int>(light.type)) {
           light.type = static_cast<LightType>(type);
         }
 
         if (light.type == LightType::Spot) {
-          ImGui::InputFloat("CutOff", &light.cutOff);
-          ImGui::InputFloat("OuterCutOff", &light.outerCutOff);
+          ImGui::SliderFloat("Cutoff Angle##light", &light.cutOff, 0.0f, light.outerCutOff - 0.01f);
+          ImGui::SliderFloat("Outer Cutoff##light", &light.outerCutOff, light.cutOff + 0.01f, 1.0f);
+        }
+
+        if (light.type == LightType::Point || light.type == LightType::Spot) {
+          ImGui::SliderFloat("Constant##atten", &light.constant, 0.1f, 5.0f);
+          ImGui::SliderFloat("Linear##atten", &light.linear, 0.0f, 1.0f);
+          ImGui::SliderFloat("Quadratic##atten", &light.quadratic, 0.0f, 1.0f);
         }
 
         if (ImGui::Button("Delete")) {
           auto &sceneSystem = systemManager.getSystem<SceneSystem>();
-          sceneSystem.removeEntity(selectedEntity); // Adapt to light
+          sceneSystem.removeEntity(selectedEntity);
         }
       }
 
@@ -136,7 +145,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   if (ImGui::BeginPopup("AddEntityPopup")) {
     auto &sceneSystem = systemManager.getSystem<SceneSystem>();
 
-    static int formType = 0; // 0 = nenhum, 1 = modelo, 2 = luz
+    static int formType = 0;
 
     if (formType == 0) {
       if (ImGui::Button("Add Model")) {
@@ -145,7 +154,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       if (ImGui::Button("Add Light")) {
         formType = 2;
       }
-    } else if (formType == 1) { // Formulário de modelo
+    } else if (formType == 1) {
       static char modelName[64] = "";
       static char modelPath[128] = "";
       static char texturePath[128] = "";
@@ -169,31 +178,63 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       if (ImGui::Button("Back")) {
         formType = 0;
       }
-    } else if (formType == 2) { // Formulário de luz
+    } else if (formType == 2) {
       static char lightName[64] = "";
       static float pos[3] = {0.0f, 0.0f, 0.0f};
       static float dir[3] = {0.0f, -1.0f, 0.0f};
       static float color[3] = {1.0f, 1.0f, 1.0f};
       static int type = 0; // 0 = Directional, 1 = Point, 2 = Spot
       static float intensity = 1.0f;
-      static float cutOff = 12.5f;
-      static float outerCutOff = 15.0f;
+      static float ambient = 0.2f;
+      static float cutOff = 0.207911f;      // cos(radians(12.5))
+      static float outerCutOff = 0.139173f; // cos(radians(17.5))
+      static float constant = 1.0f;
+      static float linear = 0.09f;
+      static float quadratic = 0.032f;
 
-      ImGui::InputText("Name", lightName, 64);
-      ImGui::InputFloat3("Position", pos);
-      ImGui::InputFloat3("Direction", dir);
-      ImGui::InputFloat3("Color", color);
-      ImGui::Combo("Type", &type, "Directional\0Point\0Spot\0");
-      ImGui::InputFloat("Intensity", &intensity);
-      if (type == 2) { // Spot light
-        ImGui::InputFloat("CutOff", &cutOff);
-        ImGui::InputFloat("Outer CutOff", &outerCutOff);
+      ImGui::InputText("Name##light_form", lightName, 64);
+      ImGui::Text("Position:");
+      ImGui::InputFloat3("##pos_light_form", pos);
+      ImGui::Text("Direction:");
+      ImGui::InputFloat3("##dir_light_form", dir);
+      ImGui::Text("Color:");
+      ImGui::ColorEdit3("##color_light_form", color);
+      ImGui::Separator();
+      ImGui::Combo("Type##light_form", &type, "Directional\0Point\0Spot\0");
+      ImGui::SliderFloat("Intensity##light_form", &intensity, 0.0f, 5.0f);
+      ImGui::SliderFloat("Ambient##light_form", &ambient, 0.0f, 1.0f);
+
+      if (type == 1 || type == 2) { // Point or Spot
+        ImGui::Text("Attenuation:");
+        ImGui::SliderFloat("Constant##light_form", &constant, 0.1f, 5.0f);
+        ImGui::SliderFloat("Linear##light_form", &linear, 0.0f, 1.0f);
+        ImGui::SliderFloat("Quadratic##light_form", &quadratic, 0.0f, 1.0f);
       }
 
-      if (ImGui::Button("Create")) {
+      if (type == 2) { // Spot light
+        ImGui::Text("Spotlight Cutoff:");
+        ImGui::SliderFloat("Cutoff Angle##light_form", &cutOff, 0.0f, outerCutOff - 0.01f);
+        ImGui::SliderFloat("Outer Cutoff##light_form", &outerCutOff, cutOff + 0.01f, 1.0f);
+      }
+
+      if (ImGui::Button("Create##light_form")) {
         sceneSystem.createEntityLight(lightName, glm::vec3(pos[0], pos[1], pos[2]), glm::vec3(dir[0], dir[1], dir[2]),
                                       glm::vec3(color[0], color[1], color[2]), static_cast<LightType>(type), intensity,
                                       cutOff, outerCutOff);
+        memset(lightName, 0, sizeof(lightName));
+        pos[0] = pos[1] = pos[2] = 0.0f;
+        dir[0] = 0.0f;
+        dir[1] = -1.0f;
+        dir[2] = 0.0f;
+        color[0] = color[1] = color[2] = 1.0f;
+        type = 0;
+        intensity = 1.0f;
+        ambient = 0.2f;
+        cutOff = 0.207911f;
+        outerCutOff = 0.139173f;
+        constant = 1.0f;
+        linear = 0.09f;
+        quadratic = 0.032f;
         formType = 0;
         ImGui::CloseCurrentPopup();
       }

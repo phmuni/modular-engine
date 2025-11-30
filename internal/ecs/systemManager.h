@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <typeindex>
 #include <unordered_map>
 
@@ -33,5 +34,8 @@ template <typename T> T &SystemManager::getSystem() const {
   if (it != systems.end()) {
     return *static_cast<T *>(it->second.get());
   }
-  throw std::runtime_error("System not found");
+  std::string error = std::string("System ") + typeid(T).name() + " not found";
+  throw std::runtime_error(error);
 }
+
+template <typename T> void SystemManager::updateAll() const {}

@@ -1,8 +1,8 @@
+#include "core/config.h"
 #include "core/engine.h"
 
 // Forward declarations
-void createDefaultModel(const std::string &name, Engine &engine);
-void createDefaultModel2(const std::string &name, Engine &engine);
+void createDefaultModel(const std::string &name, Engine &engine, glm::vec3 position = glm::vec3(0.0f));
 void createSpotlight(const std::string &name, Engine &engine);
 void createDirectionalLight(const std::string &name, Engine &engine);
 void createCamera(Engine &engine);
@@ -15,10 +15,11 @@ int main() {
     return 1;
   }
 
-  glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
+  glClearColor(EngineConfig::DEFAULT_CLEAR_COLOR_R, EngineConfig::DEFAULT_CLEAR_COLOR_G,
+               EngineConfig::DEFAULT_CLEAR_COLOR_B, EngineConfig::DEFAULT_CLEAR_COLOR_A);
 
-  createDefaultModel("Backpack", engine);
-  createDefaultModel2("Backpack2", engine);
+  createDefaultModel("Backpack", engine, glm::vec3(0.0f));
+  createDefaultModel("Backpack2", engine, glm::vec3(1.0f));
   createDirectionalLight("Directional 1", engine);
   createCamera(engine);
 
@@ -26,25 +27,12 @@ int main() {
   return 0;
 }
 
-void createDefaultModel(const std::string &name, Engine &engine) {
-  const std::string modelPath = "../assets/models/backpack/backpack.obj";
-  const std::string texturePath = "../assets/models/backpack/";
-
-  glm::vec3 position(0.0f);
+void createDefaultModel(const std::string &name, Engine &engine, glm::vec3 position) {
   glm::vec3 rotation(0.0f);
   glm::vec3 scale(1.0f);
 
-  engine.createEntityModel(name, modelPath, texturePath, position, rotation, scale);
-}
-void createDefaultModel2(const std::string &name, Engine &engine) {
-  const std::string modelPath = "../assets/models/backpack/backpack.obj";
-  const std::string texturePath = "../assets/models/backpack/";
-
-  glm::vec3 position(1.0f);
-  glm::vec3 rotation(0.0f);
-  glm::vec3 scale(1.0f);
-
-  engine.createEntityModel(name, modelPath, texturePath, position, rotation, scale);
+  engine.createEntityModel(name, EngineConfig::MODEL_BACKPACK, EngineConfig::TEXTURE_BACKPACK, position, rotation,
+                           scale);
 }
 
 void createSpotlight(const std::string &name, Engine &engine) {
@@ -58,6 +46,7 @@ void createSpotlight(const std::string &name, Engine &engine) {
 
   engine.createEntityLight(name, position, direction, color, LightType::Spot, intensity, cutOff, outerCutOff);
 }
+
 void createDirectionalLight(const std::string &name, Engine &engine) {
   glm::vec3 position(3.0f, 3.0f, 0.0f);
   glm::vec3 direction(-1.0f, -1.0f, 0.0f);
@@ -71,7 +60,6 @@ void createDirectionalLight(const std::string &name, Engine &engine) {
 }
 
 void createCamera(Engine &engine) {
-
   glm::vec3 position(0.0f, 3.0f, 8.0f);
   float yaw = 0.0f;
   float pitch = -15.0f;

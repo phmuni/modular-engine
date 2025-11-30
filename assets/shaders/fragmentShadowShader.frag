@@ -1,4 +1,4 @@
 #version 330 core
 void main() {
-    // Apenas escreve profundidade
+    gl_FragDepth = gl_FragCoord.z;
 }
