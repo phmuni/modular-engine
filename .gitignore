@@ -3,6 +3,7 @@
 *.dll
 *.lib
 *.so
+!external/**/*.dll
 
 # Pastas de build
 build/
