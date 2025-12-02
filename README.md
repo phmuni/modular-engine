@@ -63,23 +63,20 @@ All dependencies are included in the `external/` directory. The project uses ind
 
 ```
 ├── src/                    # Implementation files
-│   ├── core/              # Engine core
-│   ├── ecs/               # Entity-Component-System managers
-│   ├── loader/            # Asset loading systems
-│   ├── model/             # Data structures
-│   └── system/            # Game logic systems
-├── internal/              # Header files and interfaces
-│   ├── component/         # Component definitions
-│   ├── core/              # Core interfaces
-│   ├── ecs/               # ECS interfaces
-│   ├── loader/            # Loader interfaces
-│   ├── model/             # Model definitions
-│   └── system/            # System interfaces
-├── external/              # Third-party dependencies
-├── assets/                # Game assets (models, shaders, textures)
-├── bin/                   # Compiled binaries
-├── build/                 # CMake build directory
-└── CMakeLists.txt         # Build configuration
+│   ├── foundation/         # Core engine functionality
+│   ├── rendering/          # Rendering backend implementation
+│   └── systems/            # ECS system logic
+├── internal/               # Header files and interfaces
+│   ├── components/         # Component definitions
+│   ├── foundation/         # Core structures and interfaces
+│   ├── rendering/          # Renderer interfaces and API
+│   └── systems/            # System interfaces
+├── external/               # Third-party dependencies
+├── assets/                 # Game assets (models, shaders, textures)
+├── bin/                    # Compiled binaries
+├── build/                  # CMake build directory
+└── CMakeLists.txt          # Build configuration
+
 ```
 
 ## 🔨 Building
