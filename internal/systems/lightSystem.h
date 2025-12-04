@@ -2,7 +2,7 @@
 
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
-#include "rendering/loaders/shaderLoader.h"
+#include "rendering/resources/shader.h"
 #include <vector>
 
 // Manages light entities and their properties.

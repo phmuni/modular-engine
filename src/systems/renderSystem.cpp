@@ -101,11 +101,11 @@ void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entit
     shader.setMat4("model", modelMatrix);
     shader.setMat3("normalMatrix", normalMatrix);
 
-    const auto &material = model.material;
-    shader.setTex("material.diffuse", material->getDiffuseMap(), 0);
-    shader.setTex("material.specular", material->getSpecularMap(), 1);
-    shader.setTex("material.emission", material->getEmissionMap(), 2);
-    shader.setFloat("material.shininess", material->getShininess());
+    const auto &material = *model.material;
+    shader.setTex("material.diffuse", material.getDiffuseMap(), 0);
+    shader.setTex("material.specular", material.getSpecularMap(), 1);
+    shader.setTex("material.emission", material.getEmissionMap(), 2);
+    shader.setFloat("material.shininess", material.getShininess());
 
     renderer.drawMesh(*model.mesh);
   }

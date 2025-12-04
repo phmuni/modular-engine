@@ -1,6 +1,6 @@
 #pragma once
 #include "foundation/ecs/systemManager.h"
-#include "rendering/loaders/shaderLoader.h"
+#include "rendering/resources/shader.h"
 #include <memory>
 #include <string>
 #include <unordered_map>

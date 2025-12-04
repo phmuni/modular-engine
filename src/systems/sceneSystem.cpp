@@ -4,11 +4,12 @@
 #include "components/modelComponent.h"
 #include "components/nameComponent.h"
 #include "components/transformComponent.h"
-#include "rendering/loaders/materialLoader.h"
-#include "rendering/loaders/meshLoader.h"
+#include "rendering/resources/material.h"
+#include "rendering/resources/mesh.h"
 #include "systems/cameraSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/renderSystem.h"
+#include <memory>
 #include <utility>
 
 void SceneSystem::removeEntity(Entity entity) {
@@ -49,13 +50,13 @@ void SceneSystem::createEntityModel(const std::string name, const std::string &m
                                     glm::vec3 scale) {
   Entity entity = entityManager.createEntity();
 
-  auto material = MaterialLoader::loadMaterial(texturePath, 32.0f);
+  auto material = std::make_unique<Material>(texturePath, 32.0f);
   if (!material) {
     SDL_Log("Failed to load material from: %s", texturePath.c_str());
     return;
   }
 
-  auto mesh = MeshLoader::loadFromOBJ(modelPath);
+  auto mesh = std::make_unique<Mesh>(modelPath);
   if (!mesh) {
     SDL_Log("Failed to load mesh from: %s", modelPath.c_str());
     return;

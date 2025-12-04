@@ -1,6 +1,4 @@
 #pragma once
-
-// External headers
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -15,6 +13,9 @@ private:
   GLuint createShaderProgram(const char *vertexShaderFile, const char *fragmentShaderFile);
 
 public:
+  Shader() : shaderID(0) {};
+
+  // Construtor que carrega e compila os shaders automaticamente
   Shader(const char *vertexShaderFile, const char *fragmentShaderFile);
 
   bool load(const char *vertexShaderFile, const char *fragmentShaderFile);
