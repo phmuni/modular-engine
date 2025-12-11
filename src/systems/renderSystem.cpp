@@ -51,11 +51,19 @@ void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entit
 
         glm::vec3 sceneCenter = glm::vec3(0.0f);
         float sceneRadius = 30.0f;
-        glm::vec3 lightPos = sceneCenter - glm::normalize(light.direction) * sceneRadius * 2.0f;
+
+        // Normalize direction and position light far from scene
+        glm::vec3 lightDir = glm::normalize(light.direction);
+        glm::vec3 lightPos = sceneCenter - lightDir * sceneRadius * 2.0f;
+
+        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+        if (abs(glm::dot(lightDir, up)) > 0.99f) {
+          up = glm::vec3(1.0f, 0.0f, 0.0f);
+        }
 
         float orthoSize = sceneRadius * 1.5f;
         glm::mat4 lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.1f, sceneRadius * 4.0f);
-        glm::mat4 lightView = glm::lookAt(lightPos, sceneCenter, glm::vec3(0, 1, 0));
+        glm::mat4 lightView = glm::lookAt(lightPos, sceneCenter, up);
         lightSpaceMatrix = lightProjection * lightView;
 
         depthShader.use();
