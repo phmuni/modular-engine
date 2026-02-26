@@ -10,7 +10,9 @@
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/sceneSystem.h"
+#include "systems/windowSystem.h"
 
+#include <cstring>
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_opengl3.h>
 #include <imgui/imgui_impl_sdl3.h>
@@ -22,6 +24,32 @@ UISystem::UISystem(SDL_Window *window, SDL_GLContext glContext) {
 
   ImGui_ImplSDL3_InitForOpenGL(window, glContext);
   ImGui_ImplOpenGL3_Init("#version 330");
+}
+
+void UISystem::fileDialogCallback(void *userdata, const char *const *filelist, int /*filter*/) {
+  if (!userdata)
+    return;
+  auto *buf = static_cast<char *>(userdata);
+  if (filelist && filelist[0]) {
+    std::strncpy(buf, filelist[0], 255);
+    buf[255] = '\0';
+
+    // Replace backslashes with forward slashes
+    for (int i = 0; buf[i] != '\0'; ++i) {
+      if (buf[i] == '\\')
+        buf[i] = '/';
+    }
+  }
+}
+
+void UISystem::pickFileButton(const char *id, char *buf, int bufSize,
+                              SDL_Window *window,
+                              const SDL_DialogFileFilter *filters, int nfilters) {
+  ImGui::SameLine();
+  std::string label = std::string("...") + "##" + id;
+  if (ImGui::Button(label.c_str())) {
+    SDL_ShowOpenFileDialog(fileDialogCallback, buf, window, filters, nfilters, nullptr, false);
+  }
 }
 
 void UISystem::beginFrame() {
@@ -40,6 +68,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   auto &lightSystem = systemManager.getSystem<LightSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();
+  auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
   // Left sidebar: Scene Explorer
@@ -173,6 +202,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
         // Global texture controls
         for (int t = 0; t < 4; t++) {
           ImGui::InputText((std::string("Set All ") + labels[t]).c_str(), globalPaths[t], 256);
+          pickFileButton((std::string("pick_global_") + labels[t]).c_str(), globalPaths[t], 256, window);
           ImGui::SameLine();
           if (ImGui::Button((std::string("Apply##all_") + labels[t]).c_str())) {
             applyAll((TexType)t, globalPaths[t]);
@@ -206,6 +236,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
 
             for (int t = 0; t < 4; t++) {
               ImGui::InputText(labels[t], paths[i][t], 256);
+              pickFileButton((std::string("pick_sub") + std::to_string(i) + "_" + labels[t]).c_str(), paths[i][t], 256, window);
               ImGui::SameLine();
 
               // Set texture
@@ -393,13 +424,14 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
     } else if (formType == 1) {
       // Model creation form
       static char modelName[64] = "";
-      static char modelPath[128] = "";
+      static char modelPath[256] = "";
       static float pos[3] = {0.0f, 0.0f, 0.0f};
       static float rot[3] = {0.0f, 0.0f, 0.0f};
       static float scale[3] = {1.0f, 1.0f, 1.0f};
 
       ImGui::InputText("Name", modelName, 64);
-      ImGui::InputText("Model Path", modelPath, 128);
+      ImGui::InputText("Model Path", modelPath, 256);
+      pickFileButton("pick_model_path", modelPath, 256, window);
       ImGui::InputFloat3("Position", pos);
       ImGui::InputFloat3("Rotation", rot);
       ImGui::InputFloat3("Scale", scale);

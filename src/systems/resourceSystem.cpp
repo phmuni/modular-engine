@@ -1,4 +1,5 @@
 #include "systems/resourceSystem.h"
+#include "foundation/core/config.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "rendering/resources/shader.h"
@@ -12,8 +13,9 @@ ResourceSystem::~ResourceSystem() = default;
 
 // Mesh management
 uint32_t ResourceSystem::loadMesh(const std::string &path) {
+  std::string normalized = PathUtils::normalize(path);
   uint32_t handle = m_nextMesh++;
-  m_meshes[handle] = std::make_unique<Mesh>(path);
+  m_meshes[handle] = std::make_unique<Mesh>(normalized);
   return handle;
 }
 
@@ -35,13 +37,15 @@ void ResourceSystem::unloadMesh(uint32_t handle) {
 
 // Texture management (cached)
 GLuint ResourceSystem::loadTexture(const std::string &path) {
-  auto it = m_textures.find(path);
+  std::string normalized = PathUtils::normalize(path);
+  std::string key = PathUtils::stripExtension(normalized);
+  auto it = m_textures.find(key);
   if (it != m_textures.end())
     return it->second;
 
-  GLuint texture = Material::loadTexture(path);
+  GLuint texture = Material::loadTexture(normalized);
   if (texture != 0)
-    m_textures[path] = texture;
+    m_textures[key] = texture;
 
   return texture;
 }

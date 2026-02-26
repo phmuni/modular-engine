@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <string>
+
 // ============================================================================
 //  ENGINE CONFIGURATION - Central place for all engine defaults and constants
 // ============================================================================
@@ -46,3 +49,38 @@ constexpr const char *MODEL_BOX = "../assets/models/box/box.obj";
 constexpr const char *TEXTURE_BOX = "../assets/models/box/";
 
 } // namespace EngineConfig
+
+// ============================================================================
+//  PATH UTILITIES
+// ============================================================================
+
+namespace PathUtils {
+
+// Replace all backslashes with forward slashes
+inline std::string normalizeSeparators(const std::string &path) {
+  std::string result = path;
+  std::replace(result.begin(), result.end(), '\\', '/');
+  return result;
+}
+
+// Remove file extension (everything after last '.' that comes after last '/')
+inline std::string stripExtension(const std::string &path) {
+  auto slash = path.find_last_of('/');
+  auto dot = path.find_last_of('.');
+  if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) {
+    return path.substr(0, dot);
+  }
+  return path;
+}
+
+// Check if path has a file extension
+inline bool hasExtension(const std::string &path) {
+  auto slash = path.find_last_of('/');
+  auto dot = path.find_last_of('.');
+  return dot != std::string::npos && (slash == std::string::npos || dot > slash);
+}
+
+// Normalize path: convert separators
+inline std::string normalize(const std::string &path) { return normalizeSeparators(path); }
+
+} // namespace PathUtils

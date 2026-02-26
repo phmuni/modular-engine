@@ -1,5 +1,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "rendering/resources/material.h"
+#include "foundation/core/config.h"
 #include <iostream>
 #include <stb_image/stb_image.h>
 #include <vector>
@@ -81,15 +82,16 @@ GLuint Material::createFallbackTexture(const std::array<unsigned char, 3> &color
 
 // Load texture from file (with extension fallback)
 GLuint Material::loadTexture(const std::filesystem::path &path) {
+  std::string normalized = PathUtils::normalize(path.string());
+  std::string basePath = PathUtils::stripExtension(normalized);
   std::string foundPath;
 
-  // Try supported extensions
-  if (!path.empty()) {
+  // Try supported extensions (works whether input has extension or not)
+  if (!basePath.empty()) {
     for (const auto &ext : kSupportedExtensions) {
-      auto candidate = path;
-      candidate += ext;
+      std::string candidate = basePath + ext;
       if (std::filesystem::exists(candidate)) {
-        foundPath = candidate.string();
+        foundPath = candidate;
         break;
       }
     }
@@ -114,8 +116,8 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
     } else {
       std::cerr << "[Material] Failed to load " << foundPath << ": " << stbi_failure_reason() << std::endl;
     }
-  } else if (!path.empty()) {
-    std::cerr << "[Material] File not found: " << path << std::endl;
+  } else if (!basePath.empty()) {
+    std::cerr << "[Material] File not found: " << normalized << std::endl;
   }
 
   // Fallback to magenta if loading failed

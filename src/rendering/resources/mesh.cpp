@@ -1,5 +1,7 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "rendering/resources/mesh.h"
+#include "foundation/core/config.h"
+#include <filesystem>
 #include <iostream>
 #include <tiny_obj_loader/tiny_obj_loader.h>
 
@@ -71,13 +73,23 @@ void Mesh::setVerticesIndices(const std::vector<Vertex> &vertices, const std::ve
 
 // Load OBJ using tinyobjloader
 bool Mesh::loadOBJ(const std::string &filename) {
+  std::string normalized = PathUtils::normalize(filename);
+
+  // If no extension or file doesn't exist, try appending .obj
+  if (!PathUtils::hasExtension(normalized) || !std::filesystem::exists(normalized)) {
+    std::string withObj = PathUtils::stripExtension(normalized) + ".obj";
+    if (std::filesystem::exists(withObj)) {
+      normalized = withObj;
+    }
+  }
+
   tinyobj::attrib_t attrib;
   std::vector<tinyobj::shape_t> shapes;
   std::vector<tinyobj::material_t> materials;
   std::string err;
-  std::string baseDir = filename.substr(0, filename.find_last_of("/\\") + 1);
+  std::string baseDir = normalized.substr(0, normalized.find_last_of('/') + 1);
 
-  bool success = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, filename.c_str(), baseDir.c_str());
+  bool success = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, normalized.c_str(), baseDir.c_str());
 
   if (!err.empty())
     std::cerr << "[Mesh] " << err << std::endl;
