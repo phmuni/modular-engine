@@ -7,7 +7,6 @@
 class Shader;
 class ComponentManager;
 
-// Manages all light entities and uploads light data to shaders
 class LightSystem : public BaseSystem {
 private:
   std::vector<Entity> m_lights;
@@ -15,9 +14,6 @@ private:
 public:
   void createLight(Entity entity);
   void destroyLight(Entity entity);
-
   const std::vector<Entity> &getLights() const;
-
-  // Upload all lights to shader uniform array
   void uploadLightsToShader(Shader &shader, ComponentManager &componentManager);
 };

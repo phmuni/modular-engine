@@ -7,16 +7,14 @@
 
 static const std::vector<std::string> kSupportedExtensions = {".png", ".jpg", ".jpeg", ".bmp", ".tga"};
 
-// Default constructor: auto-init with PBR fallbacks
 Material::Material() {
   std::array<unsigned char, 3> diffuseGray = {128, 128, 128};
   std::array<unsigned char, 3> specularGray = {64, 64, 64};
   std::array<unsigned char, 3> black = {0, 0, 0};
-  std::array<unsigned char, 3> normalBlue = {128, 128, 255};
 
   m_diffuse = createFallbackTexture(diffuseGray);
   m_specular = createFallbackTexture(specularGray);
-  m_normal = createFallbackTexture(normalBlue);
+  m_normal = 0; // disabled until TBN is implemented
   m_emission = createFallbackTexture(black);
   m_shininess = 16.0f;
   m_shaderHandle = 0;
@@ -25,7 +23,6 @@ Material::Material() {
 Material::Material(GLuint diffuse, GLuint specular, GLuint normal, GLuint emission, float shininess)
     : m_diffuse(diffuse), m_specular(specular), m_normal(normal), m_emission(emission), m_shininess(shininess) {}
 
-// Getters
 GLuint Material::getDiffuse() const { return m_diffuse; }
 GLuint Material::getSpecular() const { return m_specular; }
 GLuint Material::getNormal() const { return m_normal; }
@@ -33,13 +30,11 @@ GLuint Material::getEmission() const { return m_emission; }
 float Material::getShininess() const { return m_shininess; }
 uint32_t Material::getShaderHandle() const { return m_shaderHandle; }
 
-// Setters (direct texture ID)
 void Material::setDiffuseTexture(GLuint texture) { m_diffuse = texture; }
 void Material::setSpecularTexture(GLuint texture) { m_specular = texture; }
 void Material::setNormalTexture(GLuint texture) { m_normal = texture; }
 void Material::setEmissionTexture(GLuint texture) { m_emission = texture; }
 
-// Setters (load from path)
 void Material::setDiffuse(const std::string &path) {
   GLuint tex = loadTexture(path);
   if (tex != 0)
@@ -67,7 +62,6 @@ void Material::setEmission(const std::string &path) {
 void Material::setShininess(float shine) { m_shininess = shine; }
 void Material::setShaderHandle(uint32_t handle) { m_shaderHandle = handle; }
 
-// Create 1x1 fallback texture
 GLuint Material::createFallbackTexture(const std::array<unsigned char, 3> &color) {
   GLuint textureID;
   glGenTextures(1, &textureID);
@@ -80,13 +74,11 @@ GLuint Material::createFallbackTexture(const std::array<unsigned char, 3> &color
   return textureID;
 }
 
-// Load texture from file (with extension fallback)
 GLuint Material::loadTexture(const std::filesystem::path &path) {
   std::string normalized = PathUtils::normalize(path.string());
   std::string basePath = PathUtils::stripExtension(normalized);
   std::string foundPath;
 
-  // Try supported extensions (works whether input has extension or not)
   if (!basePath.empty()) {
     for (const auto &ext : kSupportedExtensions) {
       std::string candidate = basePath + ext;
@@ -101,7 +93,6 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
   bool hasMipmap = false;
   stbi_set_flip_vertically_on_load(true);
 
-  // Load image if found
   if (!foundPath.empty()) {
     int width, height, channels;
     unsigned char *data = stbi_load(foundPath.c_str(), &width, &height, &channels, 0);
@@ -120,7 +111,7 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
     std::cerr << "[Material] File not found: " << normalized << std::endl;
   }
 
-  // Fallback to magenta if loading failed
+  // Magenta fallback on failure
   if (textureID == 0) {
     unsigned char magenta[3] = {255, 0, 255};
     glGenTextures(1, &textureID);
@@ -129,7 +120,6 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
     hasMipmap = false;
   }
 
-  // Set texture parameters
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
   if (hasMipmap) {

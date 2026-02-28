@@ -5,13 +5,10 @@
 #include "rendering/resources/shader.h"
 #include <iostream>
 
-// Create default material (handle 0) with PBR fallbacks
 ResourceSystem::ResourceSystem() { m_materials[m_nextMaterial++] = std::make_unique<Material>(); }
 
-// Destructor definition
 ResourceSystem::~ResourceSystem() = default;
 
-// Mesh management
 uint32_t ResourceSystem::loadMesh(const std::string &path) {
   std::string normalized = PathUtils::normalize(path);
   uint32_t handle = m_nextMesh++;
@@ -35,7 +32,6 @@ void ResourceSystem::unloadMesh(uint32_t handle) {
   }
 }
 
-// Texture management (cached)
 GLuint ResourceSystem::loadTexture(const std::string &path) {
   std::string normalized = PathUtils::normalize(path);
   std::string key = PathUtils::stripExtension(normalized);
@@ -50,7 +46,6 @@ GLuint ResourceSystem::loadTexture(const std::string &path) {
   return texture;
 }
 
-// Material management
 uint32_t ResourceSystem::createMaterial() {
   uint32_t handle = m_nextMaterial++;
   m_materials[handle] = std::make_unique<Material>();
@@ -76,7 +71,6 @@ void ResourceSystem::unloadMaterial(uint32_t handle) {
   }
 }
 
-// Shader management
 uint32_t ResourceSystem::loadShader(const std::string &vertexPath, const std::string &fragmentPath) {
   uint32_t handle = m_nextShader++;
   m_shaders[handle] = std::make_unique<Shader>(vertexPath.c_str(), fragmentPath.c_str());

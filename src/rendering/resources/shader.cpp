@@ -20,7 +20,6 @@ bool Shader::load(const char *vertexFile, const char *fragmentFile) {
   return (m_shaderID != 0);
 }
 
-// Read shader source from file
 std::string Shader::readShaderFile(const char *filename) const {
   std::ifstream file(filename);
   if (!file.is_open()) {
@@ -33,7 +32,6 @@ std::string Shader::readShaderFile(const char *filename) const {
   return buffer.str();
 }
 
-// Compile single shader (vertex/fragment)
 GLuint Shader::compileShader(GLenum type, const char *filename) {
   std::string shaderSource = readShaderFile(filename);
   if (shaderSource.empty())
@@ -60,7 +58,6 @@ GLuint Shader::compileShader(GLenum type, const char *filename) {
   return shader;
 }
 
-// Link vertex + fragment into program
 GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentFile) {
   GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexFile);
   GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentFile);
@@ -101,7 +98,6 @@ GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentF
 
 void Shader::use() const { glUseProgram(m_shaderID); }
 
-// Bind texture to uniform
 void Shader::setTex(const char *name, GLuint textureID, int textureUnit) const {
   glActiveTexture(GL_TEXTURE0 + textureUnit);
   glBindTexture(GL_TEXTURE_2D, textureID);

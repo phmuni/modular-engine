@@ -6,7 +6,6 @@
 #include <glm/glm.hpp>
 #include <string>
 
-// Central engine coordinator using ECS architecture
 class Engine {
 private:
   float m_screenWidth;
@@ -30,7 +29,6 @@ public:
   bool init();
   void run();
 
-  // High-level entity creation (delegated to SceneSystem)
   void createCameraEntity(glm::vec3 position, float yaw = 0.0f, float pitch = 0.0f, float fov = 90.0f);
   void createModelEntity(const std::string &name, const std::string &modelPath, glm::vec3 position, glm::vec3 rotation,
                          glm::vec3 scale);

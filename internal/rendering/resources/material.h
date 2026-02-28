@@ -15,14 +15,12 @@ private:
   uint32_t m_shaderHandle = 0;
 
 public:
-  Material(); // Auto-init with default PBR fallbacks
+  Material();
   Material(GLuint diffuse, GLuint specular, GLuint normal, GLuint emission, float shininess = 16.0f);
 
-  // Static utilities
   static GLuint createFallbackTexture(const std::array<unsigned char, 3> &color);
   static GLuint loadTexture(const std::filesystem::path &path);
 
-  // Getters
   GLuint getDiffuse() const;
   GLuint getSpecular() const;
   GLuint getNormal() const;
@@ -30,13 +28,11 @@ public:
   float getShininess() const;
   uint32_t getShaderHandle() const;
 
-  // Setters (direct texture ID)
   void setDiffuseTexture(GLuint texture);
   void setSpecularTexture(GLuint texture);
   void setNormalTexture(GLuint texture);
   void setEmissionTexture(GLuint texture);
 
-  // Setters (load from path)
   void setDiffuse(const std::string &path);
   void setSpecular(const std::string &path);
   void setNormal(const std::string &path);

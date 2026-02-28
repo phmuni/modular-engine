@@ -4,7 +4,7 @@ out vec4 FragColor;
 struct Material {
     sampler2D diffuse;
     sampler2D specular;
-    sampler2D normal;    // normal map
+    // sampler2D normal; // TODO: re-enable when TBN is implemented
     sampler2D emission;
     float shininess;
 }; 
@@ -20,7 +20,7 @@ struct Light {
     float quadratic;
     float cutOff;
     float outerCutOff;
-    int type; // 0 = directional, 1 = point, 2 = spotlight
+    int type;
 };
 
 in vec3 FragPos;  
@@ -32,12 +32,9 @@ uniform Material material;
 uniform int numLights;
 uniform Light lights[10];
 
-// Shadow mapping
 uniform sampler2D shadowMap;
 uniform mat4 lightSpaceMatrix;
 uniform int useShadows;
-
-// direção da luz que gerou o shadow map
 uniform vec3 shadowLightDir;
 
 float calculateShadow(vec4 fragPosLightSpace)
@@ -51,7 +48,6 @@ float calculateShadow(vec4 fragPosLightSpace)
 
     float currentDepth = projCoords.z;
 
-    // aqui usa a normal geométrica para o bias (mais estável)
     vec3 nGeom   = normalize(Normal);
     vec3 lightDir = normalize(-shadowLightDir);
 
@@ -86,16 +82,7 @@ float calculateShadow(vec4 fragPosLightSpace)
 
 void main()
 {
-    // Normal da malha (geométrica)
-    vec3 nGeom = normalize(Normal);
-
-    // Normal do normal map (tangent-like, mas ainda sem TBN)
-    vec3 nMap = texture(material.normal, TexCoords).rgb;
-    nMap = normalize(nMap * 2.0 - 1.0); // [0,1] -> [-1,1]
-
-    // Mistura das duas para evitar reflexos quebrados quando o mapa é default
-    float normalStrength = 0.5; // ajuste fino aqui (0 = só geometria, 1 = só normal map)
-    vec3 normal = normalize(mix(nGeom, nMap, normalStrength));
+    vec3 normal = normalize(Normal);
 
     vec3 viewDir = normalize(viewPos - FragPos);
 
@@ -106,7 +93,6 @@ void main()
     vec4 fragPosLightSpace = lightSpaceMatrix * vec4(FragPos, 1.0);
     float shadow = calculateShadow(fragPosLightSpace);
 
-    // Emission
     vec3 result = emissionTex;
 
     if (numLights == 0) {
@@ -122,20 +108,16 @@ void main()
             else
                 lightDir = normalize(light.position - FragPos);
 
-            // Ambient
             vec3 ambient = light.color * light.ambient * diffuseTex;
 
-            // Diffuse
             float diff = max(dot(normal, lightDir), 0.0);
             vec3 diffuse = light.color * light.intensity * diff * diffuseTex;
 
-            // Specular
             float shininess = max(material.shininess, 1.0);
             vec3 reflectDir = reflect(-lightDir, normal);
             float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
             vec3 specular = light.color * light.intensity * spec * specularTex;
 
-            // Attenuation
             float attenuation = 1.0;
             if (light.type == 1 || light.type == 2) {
                 float dist = length(light.position - FragPos);
@@ -143,7 +125,6 @@ void main()
                     (light.constant + light.linear * dist + light.quadratic * (dist * dist));
             }
 
-            // Spotlight
             float spotFactor = 1.0;
             if (light.type == 2) {
                 float theta = dot(lightDir, normalize(-light.direction));
@@ -151,13 +132,11 @@ void main()
                 spotFactor = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
             }
 
-            // Sombras só em directional light
             float shadowFactor = (light.type == 0) ? shadow : 0.0;
 
             vec3 lightResult =
                 ambient +
-                (1.0 - shadowFactor) * diffuse +
-                (1.0 - shadowFactor * 0.5) * specular;
+                (1.0 - shadowFactor) * (diffuse + specular);
 
             lightResult *= attenuation * spotFactor;
 

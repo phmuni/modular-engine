@@ -1,6 +1,7 @@
 #include "systems/cameraSystem.h"
 #include "components/cameraComponent.h"
 #include "systems/inputSystem.h"
+#include "systems/stateSystem.h"
 #include "systems/windowSystem.h"
 
 void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
@@ -9,14 +10,15 @@ void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
     return;
 
   auto &cam = m_componentManager.get<CameraComponent>(entity);
-  auto &inputSystem = systemManager.getSystem<InputSystem>();
+  auto &state = systemManager.getSystem<StateSystem>();
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
-  if (inputSystem.getMove()) {
+
+  bool cursorLocked = state.isToggled(Toggle::CursorLock);
+  windowSystem.setCursor(cursorLocked);
+
+  if (state.isToggled(Toggle::CameraMovement) && cursorLocked) {
     rotateCamera(cam);
-    moveCamera(cam, deltaTime);
-    windowSystem.setCursor(true);
-  } else {
-    windowSystem.setCursor(false);
+    moveCamera(cam, deltaTime, state);
   }
 
   updateFront(cam);
@@ -31,9 +33,13 @@ glm::mat4 CameraSystem::getProjMatrix(const CameraComponent &cam) const {
 }
 
 void CameraSystem::updateFront(CameraComponent &cam) {
-  cam.front =
-      glm::normalize(glm::vec3(cos(glm::radians(cam.pitch)) * sin(glm::radians(cam.yaw)), sin(glm::radians(cam.pitch)),
-                               -cos(glm::radians(cam.pitch)) * cos(glm::radians(cam.yaw))));
+  float pitchRad = glm::radians(cam.pitch);
+  float yawRad = glm::radians(cam.yaw);
+
+  cam.front = glm::normalize(glm::vec3(
+      cos(pitchRad) * sin(yawRad),
+      sin(pitchRad),
+      -cos(pitchRad) * cos(yawRad)));
 }
 
 void CameraSystem::rotateCamera(CameraComponent &cam) {
@@ -51,38 +57,36 @@ void CameraSystem::rotateCamera(CameraComponent &cam) {
   cam.pitch = glm::clamp(cam.pitch, -89.9f, 89.9f);
 }
 
-void CameraSystem::moveCamera(CameraComponent &cam, float deltaTime) {
+void CameraSystem::moveCamera(CameraComponent &cam, float deltaTime, const StateSystem &state) {
   float velocity = cam.moveSpeed * deltaTime;
   float angleRad = glm::radians(-cam.yaw);
-  float cosAngle = cos(angleRad);
-  float sinAngle = sin(angleRad);
+  float cosA = cos(angleRad);
+  float sinA = sin(angleRad);
 
   if (m_input.isActionPressed(Action::MoveForward)) {
-    cam.position.z -= cosAngle * velocity;
-    cam.position.x -= sinAngle * velocity;
+    cam.position.z -= cosA * velocity;
+    cam.position.x -= sinA * velocity;
   }
   if (m_input.isActionPressed(Action::MoveBackward)) {
-    cam.position.z += cosAngle * velocity;
-    cam.position.x += sinAngle * velocity;
+    cam.position.z += cosA * velocity;
+    cam.position.x += sinA * velocity;
   }
   if (m_input.isActionPressed(Action::MoveLeft)) {
-    cam.position.z += sinAngle * velocity;
-    cam.position.x -= cosAngle * velocity;
+    cam.position.z += sinA * velocity;
+    cam.position.x -= cosA * velocity;
   }
   if (m_input.isActionPressed(Action::MoveRight)) {
-    cam.position.z -= sinAngle * velocity;
-    cam.position.x += cosAngle * velocity;
+    cam.position.z -= sinA * velocity;
+    cam.position.x += cosA * velocity;
   }
-  if (m_input.isActionPressed(Action::MoveUp)) {
-    cam.position.y += velocity;
-  }
-  if (m_input.isActionPressed(Action::MoveDown)) {
-    cam.position.y -= velocity;
+  if (state.isToggled(Toggle::CameraFly)) {
+    if (m_input.isActionPressed(Action::MoveUp))
+      cam.position.y += velocity;
+    if (m_input.isActionPressed(Action::MoveDown))
+      cam.position.y -= velocity;
   }
 }
 
 Entity CameraSystem::getActiveCamera() const { return m_activeCamera; }
-
 void CameraSystem::removeActiveCamera() { m_activeCamera = -1; }
-
 void CameraSystem::setActiveCamera(Entity newCamera) { m_activeCamera = newCamera; }

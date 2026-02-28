@@ -1,7 +1,6 @@
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
 
-// Scene setup helpers
 void createDefaultModel(const std::string &name, Engine &engine, glm::vec3 position = glm::vec3(0.0f),
                         glm::vec3 scale = glm::vec3(1.0f));
 void createDirectionalLight(const std::string &name, Engine &engine);
@@ -10,9 +9,8 @@ void createCamera(Engine &engine);
 int main() {
   Engine engine;
 
-  if (!engine.init()) {
+  if (!engine.init())
     return 1;
-  }
 
   // Setup default scene
   createDefaultModel("Object", engine, glm::vec3(0.0f), glm::vec3(1.0f));

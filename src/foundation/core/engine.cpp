@@ -7,6 +7,7 @@
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/sceneSystem.h"
+#include "systems/stateSystem.h"
 #include "systems/timeSystem.h"
 #include "systems/transformSystem.h"
 #include "systems/uiSystem.h"
@@ -17,7 +18,11 @@
 Engine::Engine()
     : m_screenWidth(EngineConfig::DEFAULT_SCREEN_WIDTH), m_screenHeight(EngineConfig::DEFAULT_SCREEN_HEIGHT) {}
 
-Engine::~Engine() { SDL_Quit(); }
+Engine::~Engine() {
+  auto &renderSystem = systemManager.getSystem<RenderSystem>();
+  renderSystem.getRenderer().shutdown();
+  SDL_Quit();
+}
 
 bool Engine::init() {
   registerSystems();
@@ -30,9 +35,9 @@ bool Engine::init() {
   return true;
 }
 
-// Register all systems in dependency order
 void Engine::registerSystems() {
   systemManager.insert<WindowSystem>(m_screenWidth, m_screenHeight);
+  systemManager.insert<StateSystem>();
   systemManager.insert<InputSystem>();
   systemManager.insert<TimeSystem>();
   systemManager.insert<ResourceSystem>();
@@ -45,7 +50,6 @@ void Engine::registerSystems() {
                                  systemManager.getSystem<WindowSystem>().getContext());
 }
 
-// Load shaders and initialize renderer
 bool Engine::loadResources() {
   auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
@@ -53,7 +57,6 @@ bool Engine::loadResources() {
 
   renderer.init(windowSystem.getWindow());
 
-  // Load base and shadow shaders
   uint32_t baseShader = resourceSystem.loadShader(EngineConfig::SHADER_VERTEX, EngineConfig::SHADER_FRAGMENT);
   uint32_t shadowShader =
       resourceSystem.loadShader(EngineConfig::SHADER_VERTEX_SHADOW, EngineConfig::SHADER_FRAGMENT_SHADOW);
@@ -78,22 +81,25 @@ void Engine::loop(bool &running) {
   }
 }
 
-// Update all game logic systems
 void Engine::update(bool &running) {
   auto &inputSystem = systemManager.getSystem<InputSystem>();
   auto &timeSystem = systemManager.getSystem<TimeSystem>();
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  auto &state = systemManager.getSystem<StateSystem>();
 
   inputSystem.update(&running, systemManager);
   timeSystem.update();
   cameraSystem.update(timeSystem.getDeltaTime(), systemManager);
+
+  // Apply wireframe toggle
+  glPolygonMode(GL_FRONT_AND_BACK, state.isToggled(Toggle::Wireframe) ? GL_LINE : GL_FILL);
 }
 
-// Render frame: scene + UI
 void Engine::render() {
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
   auto &renderer = renderSystem.getRenderer();
   auto &uiSystem = systemManager.getSystem<UISystem>();
+  auto &state = systemManager.getSystem<StateSystem>();
 
   renderer.beginFrame();
 
@@ -101,13 +107,13 @@ void Engine::render() {
 
   renderSystem.renderCall(systemManager, entityManager, componentManager);
 
-  uiSystem.render(entityManager, systemManager, componentManager);
+  if (state.isToggled(Toggle::ShowUI)) {
+    uiSystem.render(entityManager, systemManager, componentManager);
+  }
   uiSystem.endFrame();
 
   renderer.endFrame();
 }
-
-// High-level entity creation (delegates to SceneSystem)
 
 void Engine::createCameraEntity(glm::vec3 position, float yaw, float pitch, float fov) {
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();

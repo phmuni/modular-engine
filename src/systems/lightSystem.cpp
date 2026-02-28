@@ -14,7 +14,6 @@ void LightSystem::destroyLight(Entity entity) {
 
 const std::vector<Entity> &LightSystem::getLights() const { return m_lights; }
 
-// Upload all light properties to shader uniform array
 void LightSystem::uploadLightsToShader(Shader &shader, ComponentManager &componentManager) {
   int index = 0;
 

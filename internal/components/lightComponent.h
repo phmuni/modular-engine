@@ -7,20 +7,14 @@ enum class LightType { Directional, Point, Spot };
 
 struct LightComponent : public BaseComponent {
   LightType type = LightType::Point;
-
-  glm::vec3 position;  // used for point/spot lights
-  glm::vec3 direction; // used for directional/spot lights
-
+  glm::vec3 position;
+  glm::vec3 direction;
   glm::vec3 color;
   float intensity;
   float ambient;
-
-  // Attenuation (point/spot lights)
   float constant;
   float linear;
   float quadratic;
-
-  // Spotlight cutoff angles (stored as cosine values)
   float cutOff;
   float outerCutOff;
 

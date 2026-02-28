@@ -1,25 +1,38 @@
 #include "systems/inputSystem.h"
+#include "foundation/core/config.h"
 #include "imgui/imgui_impl_sdl3.h"
 #include "systems/renderSystem.h"
+#include "systems/stateSystem.h"
 #include "systems/windowSystem.h"
 
-InputSystem::InputSystem() { setDefaultKeyBinds(); }
-
-void InputSystem::setDefaultKeyBinds() {
-  m_keyBinds = {{Action::MoveForward, SDL_SCANCODE_W}, {Action::MoveBackward, SDL_SCANCODE_S},
-                {Action::MoveLeft, SDL_SCANCODE_A},    {Action::MoveRight, SDL_SCANCODE_D},
-                {Action::MoveUp, SDL_SCANCODE_SPACE},  {Action::MoveDown, SDL_SCANCODE_LSHIFT}};
+InputSystem::InputSystem() {
+  setDefaultKeyBinds();
+  setDefaultToggleKeyBinds();
 }
 
-bool InputSystem::update(bool *running, SystemManager &systemManager) {
-  SDL_Event event;
+void InputSystem::setDefaultKeyBinds() {
+  m_keyBinds = {
+      {Action::MoveForward, SDL_SCANCODE_W},  {Action::MoveBackward, SDL_SCANCODE_S},
+      {Action::MoveLeft, SDL_SCANCODE_A},      {Action::MoveRight, SDL_SCANCODE_D},
+      {Action::MoveUp, SDL_SCANCODE_SPACE},    {Action::MoveDown, SDL_SCANCODE_LSHIFT},
+  };
+}
 
+void InputSystem::setDefaultToggleKeyBinds() {
+  for (int i = 0; i < EngineConfig::DEFAULT_TOGGLE_KEYBINDS_COUNT; ++i) {
+    m_toggleKeyBinds[EngineConfig::DEFAULT_TOGGLE_KEYBINDS[i].first] = EngineConfig::DEFAULT_TOGGLE_KEYBINDS[i].second;
+    m_prevKeyState[EngineConfig::DEFAULT_TOGGLE_KEYBINDS[i].first] = false;
+  }
+}
+
+void InputSystem::update(bool *running, SystemManager &systemManager) {
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
   auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
 
   m_mouseXOffset = 0.0f;
   m_mouseYOffset = 0.0f;
 
+  SDL_Event event;
   while (SDL_PollEvent(&event)) {
     ImGui_ImplSDL3_ProcessEvent(&event);
 
@@ -51,40 +64,37 @@ bool InputSystem::update(bool *running, SystemManager &systemManager) {
     }
   }
 
-  bool togglePressed = isKeyPressed(SDL_SCANCODE_RALT);
-
-  if (togglePressed && !m_toggleKeyLastState) {
-    m_controlEnabled = !m_controlEnabled;
-  }
-
-  m_toggleKeyLastState = togglePressed;
-
-  return !m_quitRequested;
+  processToggleKeys(systemManager);
 }
+
+void InputSystem::processToggleKeys(SystemManager &systemManager) {
+  auto &state = systemManager.getSystem<StateSystem>();
+
+  for (auto &[key, toggle] : m_toggleKeyBinds) {
+    bool pressed = m_keys[key];
+    bool wasPrev = m_prevKeyState[key];
+
+    if (pressed && !wasPrev) {
+      state.flipToggle(toggle);
+    }
+
+    m_prevKeyState[key] = pressed;
+  }
+}
+
+void InputSystem::bindToggleKey(SDL_Scancode key, Toggle toggle) {
+  m_toggleKeyBinds[key] = toggle;
+  m_prevKeyState[key] = false;
+}
+
+bool InputSystem::isKeyPressed(SDL_Scancode key) const { return m_keys[key]; }
 
 bool InputSystem::isActionPressed(Action action) const {
   auto it = m_keyBinds.find(action);
-  if (it != m_keyBinds.end()) {
-    return m_keys[it->second];
-  }
-  return false;
+  return it != m_keyBinds.end() && m_keys[it->second];
 }
 
 void InputSystem::setKeyBind(Action action, SDL_Scancode keyCode) { m_keyBinds[action] = keyCode; }
 
 float InputSystem::getMouseXOffset() const { return m_mouseXOffset; }
-
 float InputSystem::getMouseYOffset() const { return m_mouseYOffset; }
-bool InputSystem::getMove() const { return m_controlEnabled; }
-
-bool InputSystem::isQuitRequested() const { return m_quitRequested; }
-
-bool InputSystem::isKeyPressed(SDL_Scancode key) const { return m_keys[key]; }
-
-void InputSystem::setMouseXOffset(float xOffset) { this->m_mouseXOffset = xOffset; }
-
-void InputSystem::setMouseYOffset(float yOffset) { this->m_mouseYOffset = yOffset; }
-
-void InputSystem::setQuitRequested(bool quit) { this->m_quitRequested = quit; }
-
-void InputSystem::setKeyPressed(SDL_Scancode key, bool pressed) { this->m_keys[key] = pressed; }

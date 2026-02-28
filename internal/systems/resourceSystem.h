@@ -24,22 +24,18 @@ private:
 
 public:
   ResourceSystem();
-  ~ResourceSystem(); // Explicit destructor needed for unique_ptr with forward declarations
+  ~ResourceSystem();
 
-  // Mesh management
   uint32_t loadMesh(const std::string &path);
   Mesh &getMesh(uint32_t handle);
   void unloadMesh(uint32_t handle);
 
-  // Texture management (cached by path)
   GLuint loadTexture(const std::string &path);
 
-  // Material management
   uint32_t createMaterial();
   Material &getMaterial(uint32_t handle);
   void unloadMaterial(uint32_t handle);
 
-  // Shader management
   uint32_t loadShader(const std::string &vertexPath, const std::string &fragmentPath);
   Shader &getShader(uint32_t handle);
   void unloadShader(uint32_t handle);

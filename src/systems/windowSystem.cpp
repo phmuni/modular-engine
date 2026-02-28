@@ -12,7 +12,7 @@ bool WindowSystem::initialize(float screenWidth, float screenHeight) {
 
   m_window = SDL_CreateWindow("Engine", screenWidth, screenHeight, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
   if (!m_window) {
-    SDL_Log("Failed to create the m_window: %s", SDL_GetError());
+    SDL_Log("Failed to create the window: %s", SDL_GetError());
     return false;
   }
 

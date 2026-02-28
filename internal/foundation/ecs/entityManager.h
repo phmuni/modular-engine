@@ -3,7 +3,6 @@
 
 using Entity = int;
 
-// Manages entity lifecycle (creation/destruction) in ECS
 class EntityManager {
 private:
   Entity m_nextEntityID = 0;

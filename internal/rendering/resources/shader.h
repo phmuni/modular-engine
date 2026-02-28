@@ -28,7 +28,6 @@ public:
   bool load(const char *vertexFile, const char *fragmentFile);
   void use() const;
 
-  // Uniforms
   void setTex(const char *name, GLuint textureID, int textureUnit) const;
   void setInt(const char *name, int value) const;
   void setFloat(const char *name, float value) const;

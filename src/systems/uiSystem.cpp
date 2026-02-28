@@ -34,7 +34,6 @@ void UISystem::fileDialogCallback(void *userdata, const char *const *filelist, i
     std::strncpy(buf, filelist[0], 255);
     buf[255] = '\0';
 
-    // Replace backslashes with forward slashes
     for (int i = 0; buf[i] != '\0'; ++i) {
       if (buf[i] == '\\')
         buf[i] = '/';
@@ -64,6 +63,7 @@ void UISystem::endFrame() {
 }
 
 void UISystem::render(EntityManager &entityManager, SystemManager &systemManager, ComponentManager &componentManager) {
+
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
   auto &lightSystem = systemManager.getSystem<LightSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
@@ -71,7 +71,6 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
-  // Left sidebar: Scene Explorer
   ImGui::SetNextWindowPos(ImVec2(0, 0));
   ImGui::SetNextWindowSize(ImVec2(300, io.DisplaySize.y));
   ImGui::Begin("Scene Explorer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
@@ -79,36 +78,31 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   ImVec2 avail = ImGui::GetContentRegionAvail();
   float buttonHeight = ImGui::GetFrameHeightWithSpacing();
 
-  // Scrollable entity list
   ImGui::BeginChild("RenderList", ImVec2(avail.x, avail.y - buttonHeight), true);
 
-  // Renderables
   for (Entity entity : renderSystem.getRenderQueue()) {
     std::string label = "- " + componentManager.get<NameComponent>(entity).name + "##" + std::to_string(entity);
-    bool isSelected = (m_selectedEntity == entity);
+    bool isSelected = (selectedEntity == entity);
 
     if (ImGui::Selectable(label.c_str(), isSelected)) {
-      m_selectedEntity = entity;
+      selectedEntity = entity;
     }
 
-    // Context menu for entity properties
     if (ImGui::BeginPopupContextItem(label.c_str())) {
-      m_selectedEntity = entity;
-      ImGui::Text("Entity ID: %d", m_selectedEntity);
+      selectedEntity = entity;
+      ImGui::Text("Entity ID: %d", selectedEntity);
       ImGui::Separator();
 
-      // Transform component
-      if (componentManager.has<TransformComponent>(m_selectedEntity)) {
-        auto &transform = componentManager.get<TransformComponent>(m_selectedEntity);
+      if (componentManager.has<TransformComponent>(selectedEntity)) {
+        auto &transform = componentManager.get<TransformComponent>(selectedEntity);
         ImGui::Text("Transform:");
         ImGui::DragFloat3("Position", &transform.position.x, 0.1f);
         ImGui::DragFloat3("Rotation", &transform.rotation.x, 0.1f);
         ImGui::DragFloat3("Scale", &transform.scale.x, 0.1f);
       }
 
-      // Model/Material component
-      if (componentManager.has<ModelComponent>(m_selectedEntity)) {
-        auto &model = componentManager.get<ModelComponent>(m_selectedEntity);
+      if (componentManager.has<ModelComponent>(selectedEntity)) {
+        auto &model = componentManager.get<ModelComponent>(selectedEntity);
         Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
         const auto &submeshes = mesh.getSubmeshes();
 
@@ -119,7 +113,6 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
         const char *labels[4] = {"Diffuse", "Specular", "Normal", "Emission"};
         enum TexType { DIFF = 0, SPEC = 1, NORM = 2, EMIS = 3 };
 
-        // Apply texture to all submeshes
         auto applyAll = [&](TexType type, const char *path) {
           GLuint tex = resourceSystem.loadTexture(path);
 
@@ -239,7 +232,6 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
               pickFileButton((std::string("pick_sub") + std::to_string(i) + "_" + labels[t]).c_str(), paths[i][t], 256, window);
               ImGui::SameLine();
 
-              // Set texture
               if (ImGui::Button((std::string("Set##") + labels[t]).c_str())) {
                 if (handle == 0) {
                   handle = resourceSystem.createMaterial();
@@ -276,7 +268,6 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
 
               ImGui::SameLine();
 
-              // Reset to default
               if (ImGui::Button((std::string("[X]##") + labels[t]).c_str())) {
                 if (handle != 0) {
                   int count = 0;
@@ -310,7 +301,6 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
               }
             }
 
-            // Shininess slider
             float shininess = matPtr ? matPtr->getShininess() : 16.0f;
             if (ImGui::SliderFloat("Shininess", &shininess, 1.0f, 256.0f)) {
               if (handle == 0) {
@@ -335,7 +325,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       }
 
       if (ImGui::Button("Delete")) {
-        sceneSystem.destroyEntity(m_selectedEntity);
+        sceneSystem.destroyEntity(selectedEntity);
       }
 
       if (ImGui::Button("Close")) {
@@ -350,23 +340,21 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   ImGui::Text("Lights:");
   ImGui::Separator();
 
-  // Lights list
   for (const auto &entity : lightSystem.getLights()) {
     std::string label = "- " + componentManager.get<NameComponent>(entity).name + "##" + std::to_string(entity);
-    bool isSelected = (m_selectedEntity == entity);
+    bool isSelected = (selectedEntity == entity);
 
     if (ImGui::Selectable(label.c_str(), isSelected)) {
-      m_selectedEntity = entity;
+      selectedEntity = entity;
     }
 
-    // Light properties context menu
     if (ImGui::BeginPopupContextItem(label.c_str())) {
-      m_selectedEntity = entity;
-      ImGui::Text("Light ID: %d", m_selectedEntity);
+      selectedEntity = entity;
+      ImGui::Text("Light ID: %d", selectedEntity);
       ImGui::Separator();
 
-      if (componentManager.has<LightComponent>(m_selectedEntity)) {
-        auto &light = componentManager.get<LightComponent>(m_selectedEntity);
+      if (componentManager.has<LightComponent>(selectedEntity)) {
+        auto &light = componentManager.get<LightComponent>(selectedEntity);
 
         ImGui::Text("Light Properties:");
         ImGui::Separator();
@@ -393,7 +381,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
         }
 
         if (ImGui::Button("Delete")) {
-          sceneSystem.destroyEntity(m_selectedEntity);
+          sceneSystem.destroyEntity(selectedEntity);
         }
       }
 
@@ -407,12 +395,10 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
 
   ImGui::EndChild();
 
-  // Add Entity button
   if (ImGui::Button("Add Entity", ImVec2(-1, 0))) {
     ImGui::OpenPopup("AddEntityPopup");
   }
 
-  // Add Entity popup (model or light)
   if (ImGui::BeginPopup("AddEntityPopup")) {
     static int formType = 0; // 0 = menu, 1 = model, 2 = light
 
@@ -422,7 +408,6 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       if (ImGui::Button("Add Light"))
         formType = 2;
     } else if (formType == 1) {
-      // Model creation form
       static char modelName[64] = "";
       static char modelPath[256] = "";
       static float pos[3] = {0.0f, 0.0f, 0.0f};
@@ -445,7 +430,6 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       if (ImGui::Button("Back"))
         formType = 0;
     } else if (formType == 2) {
-      // Light creation form
       static char lightName[64] = "";
       static float pos[3] = {0.0f, 0.0f, 0.0f};
       static float dir[3] = {0.0f, -1.0f, 0.0f};
@@ -475,7 +459,6 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
                                       glm::vec3(color[0], color[1], color[2]), static_cast<LightType>(type), intensity,
                                       cutOff, outerCutOff);
 
-        // Reset form
         memset(lightName, 0, sizeof(lightName));
         pos[0] = pos[1] = pos[2] = 0.0f;
         dir[0] = 0.0f;
