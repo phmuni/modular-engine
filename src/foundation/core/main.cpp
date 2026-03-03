@@ -2,7 +2,6 @@
 
 class TestApp : public App {
   Entity box;
-  float playerSpeed = 5.0f;
 
   void setup(Engine &engine) override {
     box = engine.createModelEntity("Box", EngineConfig::MODEL_BOX, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f),
