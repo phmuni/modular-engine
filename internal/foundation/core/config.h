@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SDL3/SDL_filesystem.h"
 #include "SDL3/SDL_scancode.h"
 #include "systems/stateSystem.h"
 #include <algorithm>
@@ -7,6 +8,24 @@
 #include <utility>
 
 namespace EngineConfig {
+
+// Returns the base path of the executable's directory (e.g. ".../bin/")
+// All asset paths are resolved relative to this.
+inline std::string getBasePath() {
+  static std::string basePath;
+  if (basePath.empty()) {
+    const char *sdlBase = SDL_GetBasePath();
+    if (sdlBase) {
+      basePath = sdlBase;
+    } else {
+      basePath = "./";
+    }
+  }
+  return basePath;
+}
+
+// Resolve a relative asset path to an absolute path based on the executable location
+inline std::string resolvePath(const char *relativePath) { return getBasePath() + relativePath; }
 
 // Window
 constexpr float DEFAULT_SCREEN_WIDTH = 1280.0f;
@@ -22,7 +41,7 @@ constexpr float DEFAULT_CLEAR_COLOR_A = 1.0f;
 constexpr int SHADOW_MAP_WIDTH = 2048;
 constexpr int SHADOW_MAP_HEIGHT = 2048;
 
-// Asset paths (relative to binary)
+// Asset paths (relative to binary directory)
 constexpr const char *ASSET_BASE_PATH = "../assets/";
 constexpr const char *MODEL_PATH = "../assets/models/";
 constexpr const char *SHADER_PATH = "../assets/shaders/";

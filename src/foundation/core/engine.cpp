@@ -54,9 +54,12 @@ bool Engine::loadResources() {
 
   renderer.init(windowSystem.getWindow());
 
-  uint32_t baseShader = resourceSystem.loadShader(EngineConfig::SHADER_VERTEX, EngineConfig::SHADER_FRAGMENT);
-  uint32_t shadowShader =
-      resourceSystem.loadShader(EngineConfig::SHADER_VERTEX_SHADOW, EngineConfig::SHADER_FRAGMENT_SHADOW);
+  uint32_t baseShader = resourceSystem.loadShader(
+      EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
+      EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT));
+  uint32_t shadowShader = resourceSystem.loadShader(
+      EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_SHADOW),
+      EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_SHADOW));
 
   if (baseShader == 0 && shadowShader == 1) {
     return true;
@@ -127,7 +130,7 @@ void Engine::createCameraEntity(glm::vec3 position, float yaw, float pitch, floa
 Entity Engine::createModelEntity(const std::string &name, const std::string &modelPath, glm::vec3 position,
                                  glm::vec3 rotation, glm::vec3 scale) {
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();
-  return sceneSystem.createModelEntity(name, modelPath, position, rotation, scale);
+  return sceneSystem.createModelEntity(name, EngineConfig::resolvePath(modelPath.c_str()), position, rotation, scale);
 }
 
 void Engine::createLightEntity(const std::string &name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,

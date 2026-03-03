@@ -73,8 +73,14 @@ elseif(APPLE)
     if(SDL3_FOUND)
         target_link_libraries(engine SDL3::SDL3)
     else()
-        target_link_libraries(engine 
-            ${EXTERNAL_DIR}/SDL3/lib/libSDL3.dylib
+        target_link_libraries(engine "${EXTERNAL_DIR}/SDL3/lib/libSDL3.dylib")
+
+        # Copy the dylib to the output directory so the executable can find it at runtime
+        add_custom_command(TARGET engine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${EXTERNAL_DIR}/SDL3/lib/libSDL3.dylib"
+                "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/libSDL3.dylib"
+            COMMENT "Copying SDL3 dylib to bin/"
         )
     endif()
     
