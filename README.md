@@ -18,6 +18,8 @@ A modular 3D graphics engine developed in modern C++. Built on a robust Entity-C
 ## ✨ Features
 
 - **Entity-Component-System (ECS)** - Flexible, decoupled architecture for scalable game logic
+- **App Base Class** - Simple `App` interface with `setup()` and `update()` for clean game logic
+- **Generic Components** - Any plain struct works as a component
 - **OpenGL Rendering** - Modern graphics API integration with shader support
 - **PBR Material System** - Per-submesh materials with diffuse, specular, normal, and emission maps
 - **Resource Caching** - Automatic texture caching and handle-based resource management
@@ -104,15 +106,57 @@ cmake --build build
 
 ## 💻 Usage
 
-See the `src/core/main.cpp` file for a complete example of engine initialization and usage. The engine can be extended by creating new components and systems following the ECS pattern.
+See `src/foundation/core/main.cpp` for a complete example. The engine uses an `App` base class — just override `setup()` and `update()`:
 
 ### Quick Start
 
-1. Initialize the engine
-2. Create entities and attach components
-3. Run the main loop to update systems and render
+```cpp
+#include "foundation/core/engine.h"
 
-For detailed API documentation and examples, explore the header files in the `internal/` directory.
+class MyApp : public App {
+  Entity player;
+
+  void setup(Engine &engine) override {
+    player = engine.createModelEntity("Player", EngineConfig::MODEL_BOX,
+                                      glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f));
+
+    engine.createLightEntity("Light", glm::vec3(2, 3, 2), glm::vec3(-1, -1, -1),
+                             glm::vec3(1.0f), LightType::Directional, 1.5f, 0, 0);
+
+    engine.createCameraEntity(glm::vec3(0, 0, 5));
+  }
+
+  void update(Engine &engine, float dt) override {
+    // Game logic here
+  }
+};
+
+int main() {
+  Engine engine;
+  if (!engine.init()) return 1;
+
+  MyApp app;
+  engine.run(app);
+  return 0;
+}
+```
+
+### Custom Components
+
+Any plain struct works as a component — no base class required:
+
+```cpp
+struct Health { int current = 3; int max = 3; };
+struct Velocity { glm::vec3 dir; float speed; };
+
+Entity e = engine.createEntity();
+engine.addComponent<Health>(e, 3, 3);
+engine.addComponent<Velocity>(e, glm::vec3(1, 0, 0), 2.0f);
+
+auto *hp = engine.tryGetComponent<Health>(e);
+```
+
+For detailed API documentation, explore the header files in the `internal/` directory.
 
 ## 🛠️ Technologies
 

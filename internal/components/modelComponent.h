@@ -1,9 +1,9 @@
 #pragma once
-#include "foundation/ecs/componentManager.h"
+
 #include <cstdint>
 #include <vector>
 
-struct ModelComponent : public BaseComponent {
+struct ModelComponent {
   uint32_t meshHandle;
   std::vector<uint32_t> materialHandles;
 

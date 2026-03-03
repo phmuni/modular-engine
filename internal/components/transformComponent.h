@@ -1,9 +1,8 @@
 #pragma once
 
-#include "foundation/ecs/componentManager.h"
 #include "glm/ext/vector_float3.hpp"
 
-struct TransformComponent : public BaseComponent {
+struct TransformComponent {
   glm::vec3 position;
   glm::vec3 rotation;
   glm::vec3 scale;

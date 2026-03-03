@@ -1,9 +1,8 @@
 #pragma once
 
-#include "foundation/ecs/componentManager.h"
 #include <string>
 
-struct NameComponent : public BaseComponent {
+struct NameComponent {
   std::string name;
 
   NameComponent(const std::string &n) : name(n) {}

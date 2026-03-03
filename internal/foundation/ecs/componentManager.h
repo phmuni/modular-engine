@@ -1,23 +1,36 @@
 #pragma once
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <typeindex>
 #include <unordered_map>
+#include <utility>
 
 using Entity = int;
 
-class BaseComponent {
-public:
-  virtual ~BaseComponent() = default;
-};
-
 class ComponentManager {
 private:
-  std::unordered_map<std::type_index, std::unordered_map<Entity, std::unique_ptr<BaseComponent>>> m_storage;
+  using ErasedPtr = std::unique_ptr<void, void (*)(void *)>;
+
+  template <typename T> static ErasedPtr makeErased(T *ptr) {
+    return ErasedPtr(ptr, [](void *p) { delete static_cast<T *>(p); });
+  }
+
+  std::unordered_map<std::type_index, std::unordered_map<Entity, ErasedPtr>> m_storage;
 
 public:
   template <typename T> void insert(Entity entity, std::unique_ptr<T> component) {
-    m_storage[std::type_index(typeid(T))][entity] = std::move(component);
+    T *raw = component.release();
+    auto &inner = m_storage[std::type_index(typeid(T))];
+    inner.insert_or_assign(entity, makeErased<T>(raw));
+  }
+
+  template <typename T, typename... Args> T &add(Entity entity, Args &&...args) {
+    T *raw = new T(std::forward<Args>(args)...);
+    T &ref = *raw;
+    auto &inner = m_storage[std::type_index(typeid(T))];
+    inner.insert_or_assign(entity, makeErased<T>(raw));
+    return ref;
   }
 
   template <typename T> T &get(Entity entity) {
@@ -61,4 +74,13 @@ public:
   }
 
   template <typename T> void remove(Entity entity) { m_storage[std::type_index(typeid(T))].erase(entity); }
+
+  template <typename T> void each(std::function<void(Entity, T &)> fn) {
+    auto it = m_storage.find(std::type_index(typeid(T)));
+    if (it == m_storage.end())
+      return;
+    for (auto &[entity, ptr] : it->second) {
+      fn(entity, *static_cast<T *>(ptr.get()));
+    }
+  }
 };

@@ -1,13 +1,10 @@
 #include "foundation/core/engine.h"
-#include "foundation/core/config.h"
 
 #include "systems/cameraSystem.h"
-#include "systems/inputSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/sceneSystem.h"
-#include "systems/stateSystem.h"
 #include "systems/timeSystem.h"
 #include "systems/transformSystem.h"
 #include "systems/uiSystem.h"
@@ -69,7 +66,10 @@ bool Engine::loadResources() {
   return false;
 }
 
-void Engine::run() {
+void Engine::run(App &app) {
+  m_app = &app;
+  m_app->setup(*this);
+
   bool running = true;
   loop(running);
 }
@@ -93,6 +93,10 @@ void Engine::update(bool &running) {
 
   // Apply wireframe toggle
   glPolygonMode(GL_FRONT_AND_BACK, state.isToggled(Toggle::Wireframe) ? GL_LINE : GL_FILL);
+
+  if (m_app) {
+    m_app->update(*this, timeSystem.getDeltaTime());
+  }
 }
 
 void Engine::render() {
@@ -120,10 +124,10 @@ void Engine::createCameraEntity(glm::vec3 position, float yaw, float pitch, floa
   sceneSystem.createCameraEntity(position, yaw, pitch, fov);
 }
 
-void Engine::createModelEntity(const std::string &name, const std::string &modelPath, glm::vec3 position,
-                               glm::vec3 rotation, glm::vec3 scale) {
+Entity Engine::createModelEntity(const std::string &name, const std::string &modelPath, glm::vec3 position,
+                                 glm::vec3 rotation, glm::vec3 scale) {
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();
-  sceneSystem.createModelEntity(name, modelPath, position, rotation, scale);
+  return sceneSystem.createModelEntity(name, modelPath, position, rotation, scale);
 }
 
 void Engine::createLightEntity(const std::string &name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,
@@ -131,3 +135,14 @@ void Engine::createLightEntity(const std::string &name, glm::vec3 position, glm:
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();
   sceneSystem.createLightEntity(name, position, direction, color, type, intensity, cutOff, outerCutOff);
 }
+
+void Engine::setState(Toggle toggle, bool value) {
+  auto &stateSystem = systemManager.getSystem<StateSystem>();
+  stateSystem.setToggle(toggle, value);
+}
+
+Entity Engine::createEntity() { return entityManager.createEntity(); }
+
+SystemManager &Engine::getSystemManager() { return systemManager; }
+ComponentManager &Engine::getComponentManager() { return componentManager; }
+EntityManager &Engine::getEntityManager() { return entityManager; }
