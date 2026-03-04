@@ -158,7 +158,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
 
   // Properties panel
   if (selectedEntity != -1) {
-    float propW = 320.0f;
+    float propW = 380.0f;
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - propW, 0));
     ImGui::SetNextWindowSize(ImVec2(propW, io.DisplaySize.y));
     bool propOpen = true;
@@ -168,6 +168,8 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       selectedEntity = -1;
       ImGui::End();
     } else {
+
+      ImGui::BeginChild("PropertiesScroll", ImVec2(0, 0), false, ImGuiWindowFlags_None);
 
       auto *nc = componentManager.tryGet<NameComponent>(selectedEntity);
       if (nc) {
@@ -210,7 +212,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
           if (ImGui::Combo("Type##light", &type, types, IM_ARRAYSIZE(types))) {
             light.type = static_cast<LightType>(type);
           }
-          ImGui::DragFloat3("Position##lp", &light.position.x, 0.1f);
+          ImGui::DragFloat3("Offset##lp", &light.position.x, 0.1f);
           ImGui::DragFloat3("Direction##ld", &light.direction.x, 0.01f);
           ImGui::ColorEdit3("Color##lc", &light.color.x);
           ImGui::SliderFloat("Intensity", &light.intensity, 0.0f, 10.0f);
@@ -236,6 +238,44 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
         renderParticleInspector(selectedEntity, componentManager);
       }
 
+      // Add Component section
+      ImGui::Separator();
+      if (ImGui::CollapsingHeader("Add Component", ImGuiTreeNodeFlags_None)) {
+        if (!componentManager.has<TransformComponent>(selectedEntity)) {
+          if (ImGui::Button("+ Transform", ImVec2(-1, 0))) {
+            componentManager.add<TransformComponent>(selectedEntity);
+          }
+        }
+        if (!componentManager.has<LightComponent>(selectedEntity)) {
+          if (ImGui::Button("+ Light", ImVec2(-1, 0))) {
+            componentManager.add<LightComponent>(selectedEntity, LightType::Point);
+            systemManager.getSystem<LightSystem>().createLight(selectedEntity);
+          }
+        }
+        if (!componentManager.has<ParticleComponent>(selectedEntity)) {
+          if (ImGui::Button("+ Particle Emitter", ImVec2(-1, 0))) {
+            componentManager.add<ParticleComponent>(selectedEntity);
+          }
+        }
+        if (!componentManager.has<ModelComponent>(selectedEntity)) {
+          static char addModelPath[256] = "";
+          ImGui::SetNextItemWidth(140.0f);
+          ImGui::InputText("##addModelPath", addModelPath, 256);
+          pickFileButton("pick_add_model", addModelPath, 256, window);
+          ImGui::SameLine();
+          if (ImGui::Button("+ Model", ImVec2(-1, 0)) && addModelPath[0] != '\0') {
+            auto &rs = resourceSystem;
+            uint32_t meshHandle = rs.loadMesh(addModelPath);
+            Mesh &mesh = rs.getMesh(meshHandle);
+            size_t subCount = mesh.getSubmeshes().size();
+            std::vector<uint32_t> mats(subCount, 0);
+            componentManager.add<ModelComponent>(selectedEntity, meshHandle, std::move(mats));
+            renderSystem.insertRenderable(selectedEntity);
+            addModelPath[0] = '\0';
+          }
+        }
+      }
+
       ImGui::Separator();
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.15f, 0.15f, 1.0f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.2f, 0.2f, 1.0f));
@@ -245,6 +285,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       }
       ImGui::PopStyleColor(2);
 
+      ImGui::EndChild(); // PropertiesScroll
       ImGui::End();
     } // else propOpen
   }
@@ -365,6 +406,8 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
   // Global texture apply
   if (ImGui::TreeNode("Apply to All Submeshes")) {
     for (int t = 0; t < 4; t++) {
+      ImGui::Text("%s", labels[t]);
+      ImGui::SetNextItemWidth(140.0f);
       ImGui::InputText((std::string("##global_") + labels[t]).c_str(), globalPaths[t], 256);
       pickFileButton((std::string("pick_g_") + labels[t]).c_str(), globalPaths[t], 256, window);
       ImGui::SameLine();
@@ -381,6 +424,23 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
         }
       }
     }
+
+    ImGui::Separator();
+    ImGui::Text("Emission (All Submeshes)");
+    static glm::vec3 globalEmCol{0.0f};
+    static float globalEmStr = 0.0f;
+    ImGui::ColorEdit3("Emission Color##global", &globalEmCol.x);
+    ImGui::SliderFloat("Emission Strength##global", &globalEmStr, 0.0f, 5.0f);
+    if (ImGui::Button("Apply Emission##global", ImVec2(-1, 0))) {
+      for (size_t i = 0; i < model.materialHandles.size(); ++i) {
+        uint32_t &h = model.materialHandles[i];
+        if (h == 0)
+          h = resourceSystem.createMaterial();
+        resourceSystem.getMaterial(h).setEmissionColor(globalEmCol);
+        resourceSystem.getMaterial(h).setEmissionStrength(globalEmStr);
+      }
+    }
+
     ImGui::TreePop();
   }
 
@@ -397,7 +457,9 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
       ImGui::Text("Material Handle: %u", handle);
 
       for (int t = 0; t < 4; t++) {
-        ImGui::InputText(labels[t], paths[i][t], 256);
+        ImGui::Text("%s", labels[t]);
+        ImGui::SetNextItemWidth(140.0f);
+        ImGui::InputText((std::string("##sub") + std::to_string(i) + "_" + labels[t]).c_str(), paths[i][t], 256);
         pickFileButton((std::string("pick_s") + std::to_string(i) + "_" + labels[t]).c_str(), paths[i][t], 256, window);
         ImGui::SameLine();
         if (ImGui::Button((std::string("Set##") + labels[t]).c_str())) {
@@ -416,6 +478,21 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
           handle = resourceSystem.createMaterial();
         }
         resourceSystem.getMaterial(handle).setShininess(shininess);
+      }
+
+      ImGui::Separator();
+      ImGui::Text("Manual Emission");
+      glm::vec3 emCol = matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f);
+      if (ImGui::ColorEdit3("Emission Color", &emCol.x)) {
+        if (handle == 0)
+          handle = resourceSystem.createMaterial();
+        resourceSystem.getMaterial(handle).setEmissionColor(emCol);
+      }
+      float emStr = matPtr ? matPtr->getEmissionStrength() : 0.0f;
+      if (ImGui::SliderFloat("Emission Strength", &emStr, 0.0f, 5.0f)) {
+        if (handle == 0)
+          handle = resourceSystem.createMaterial();
+        resourceSystem.getMaterial(handle).setEmissionStrength(emStr);
       }
 
       ImGui::TreePop();

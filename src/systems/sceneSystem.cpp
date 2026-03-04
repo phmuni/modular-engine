@@ -56,7 +56,7 @@ Entity SceneSystem::createModelEntity(const std::string name, const std::string 
   Mesh &mesh = resourceSystem.getMesh(meshHandle);
 
   size_t submeshCount = mesh.getSubmeshes().size();
-  std::vector<uint32_t> materialHandles(submeshCount, 0); // all start with default material
+  std::vector<uint32_t> materialHandles(submeshCount, 0);
 
   componentManager.insert<NameComponent>(entity, std::make_unique<NameComponent>(name));
   componentManager.insert<TransformComponent>(entity, std::make_unique<TransformComponent>(position, rotation, scale));
@@ -72,10 +72,11 @@ void SceneSystem::createLightEntity(const std::string &name, glm::vec3 position,
                                     LightType type, float intensity, float cutOff, float outerCutOff) {
   Entity entity = entityManager.createEntity();
 
-  auto light = std::make_unique<LightComponent>(type, position, direction, color, intensity, 0.2f, 1.0f, 0.09f, 0.032f,
-                                                cutOff, outerCutOff);
+  auto light = std::make_unique<LightComponent>(type, glm::vec3(0.0f), direction, color, intensity, 0.2f, 1.0f, 0.09f,
+                                                0.032f, cutOff, outerCutOff);
 
   componentManager.insert<NameComponent>(entity, std::make_unique<NameComponent>(name));
+  componentManager.insert<TransformComponent>(entity, std::make_unique<TransformComponent>(position));
   componentManager.insert<LightComponent>(entity, std::move(light));
 
   systemManager.getSystem<LightSystem>().createLight(entity);

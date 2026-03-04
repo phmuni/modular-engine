@@ -7,6 +7,8 @@ struct Material {
     // sampler2D normal; // TODO: re-enable when TBN is implemented
     sampler2D emission;
     float shininess;
+    vec3 emissionColor;
+    float emissionStrength;
 }; 
 
 struct Light {
@@ -89,11 +91,13 @@ void main()
     vec3 diffuseTex  = texture(material.diffuse,  TexCoords).rgb;
     vec3 specularTex = texture(material.specular, TexCoords).rgb;
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
+    vec3 emission = material.emissionColor * material.emissionStrength;
+    vec3 emissionResult = max(emission, emission * emissionTex);
 
     vec4 fragPosLightSpace = lightSpaceMatrix * vec4(FragPos, 1.0);
     float shadow = calculateShadow(fragPosLightSpace);
 
-    vec3 result = emissionTex;
+    vec3 result = emissionResult;
 
     if (numLights == 0) {
         result += diffuseTex * 0.7;

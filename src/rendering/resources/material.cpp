@@ -63,6 +63,11 @@ void Material::setEmission(const std::string &path) {
 void Material::setShininess(float shine) { m_shininess = shine; }
 void Material::setShaderHandle(uint32_t handle) { m_shaderHandle = handle; }
 
+glm::vec3 Material::getEmissionColor() const { return m_emissionColor; }
+float Material::getEmissionStrength() const { return m_emissionStrength; }
+void Material::setEmissionColor(const glm::vec3 &color) { m_emissionColor = color; }
+void Material::setEmissionStrength(float strength) { m_emissionStrength = strength; }
+
 GLuint Material::createFallbackTexture(const std::array<unsigned char, 3> &color) {
   GLuint textureID;
   glGenTextures(1, &textureID);

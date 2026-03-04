@@ -140,6 +140,8 @@ void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entit
       // material.normal disabled until TBN is implemented
       shader.setTex("material.emission", material.getEmission(), 2);
       shader.setFloat("material.shininess", material.getShininess());
+      shader.setVec3("material.emissionColor", material.getEmissionColor());
+      shader.setFloat("material.emissionStrength", material.getEmissionStrength());
 
       renderer.drawSubmesh(mesh, mesh.getSubmeshes()[submeshIndex]);
     }

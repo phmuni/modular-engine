@@ -1,5 +1,8 @@
 // Application entry point and demo scene setup.
+#include "components/modelComponent.h"
 #include "foundation/core/engine.h"
+#include "rendering/resources/material.h"
+#include "systems/resourceSystem.h"
 
 class TestApp : public App {
   Entity box;
@@ -12,6 +15,17 @@ class TestApp : public App {
                              glm::vec3(1.0f), LightType::Directional, 1.5f, 0.0f, 0.0f);
 
     engine.createCameraEntity(glm::vec3(0.0f, 0.0f, 5.0f), 0.0f, 0.0f, 90.0f);
+
+    // Manual emission on the box (orange glow)
+    auto &rs = engine.getSystemManager().getSystem<ResourceSystem>();
+    auto &model = engine.getComponent<ModelComponent>(box);
+    if (!model.materialHandles.empty()) {
+      uint32_t newMat = rs.createMaterial();
+      model.materialHandles[0] = newMat;
+      auto &mat = rs.getMaterial(newMat);
+      mat.setEmissionColor(glm::vec3(1.0f, 0.5f, 0.0f));
+      mat.setEmissionStrength(1.5f);
+    }
 
     // Particle effect attached to the box
     auto &particles = engine.addComponent<ParticleComponent>(box);

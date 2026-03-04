@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <glad/glad.h>
+#include <glm/glm.hpp>
 #include <string>
 
 class Material {
@@ -15,6 +16,8 @@ private:
   GLuint m_emission = 0;
   float m_shininess = 16.0f;
   uint32_t m_shaderHandle = 0;
+  glm::vec3 m_emissionColor{0.0f};
+  float m_emissionStrength = 0.0f;
 
 public:
   Material();
@@ -29,6 +32,8 @@ public:
   GLuint getEmission() const;
   float getShininess() const;
   uint32_t getShaderHandle() const;
+  glm::vec3 getEmissionColor() const;
+  float getEmissionStrength() const;
 
   void setDiffuseTexture(GLuint texture);
   void setSpecularTexture(GLuint texture);
@@ -42,4 +47,6 @@ public:
 
   void setShininess(float shine);
   void setShaderHandle(uint32_t handle);
+  void setEmissionColor(const glm::vec3 &color);
+  void setEmissionStrength(float strength);
 };
