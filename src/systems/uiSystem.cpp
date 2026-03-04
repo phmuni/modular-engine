@@ -338,68 +338,8 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
 
   static char globalPaths[4][256] = {};
   const char *labels[4] = {"Diffuse", "Specular", "Normal", "Emission"};
-  enum TexType { DIFF = 0, SPEC = 1, NORM = 2, EMIS = 3 };
-
-  auto applyTex = [&](uint32_t &handle, TexType type, GLuint tex) {
-    if (handle == 0) {
-      handle = resourceSystem.createMaterial();
-    } else {
-      int count = 0;
-      for (auto h : model.materialHandles)
-        if (h == handle)
-          count++;
-      if (count > 1) {
-        uint32_t newHandle = resourceSystem.createMaterial();
-        resourceSystem.getMaterial(newHandle) = resourceSystem.getMaterial(handle);
-        handle = newHandle;
-      }
-    }
-    Material &mat = resourceSystem.getMaterial(handle);
-    switch (type) {
-    case DIFF:
-      mat.setDiffuseTexture(tex);
-      break;
-    case SPEC:
-      mat.setSpecularTexture(tex);
-      break;
-    case NORM:
-      mat.setNormalTexture(tex);
-      break;
-    case EMIS:
-      mat.setEmissionTexture(tex);
-      break;
-    }
-  };
-
-  auto resetTex = [&](uint32_t &handle, TexType type) {
-    if (handle == 0)
-      return;
-    Material &defaultMat = resourceSystem.getMaterial(0);
-    int count = 0;
-    for (auto h : model.materialHandles)
-      if (h == handle)
-        count++;
-    if (count > 1) {
-      uint32_t newHandle = resourceSystem.createMaterial();
-      resourceSystem.getMaterial(newHandle) = resourceSystem.getMaterial(handle);
-      handle = newHandle;
-    }
-    Material &mat = resourceSystem.getMaterial(handle);
-    switch (type) {
-    case DIFF:
-      mat.setDiffuseTexture(defaultMat.getDiffuse());
-      break;
-    case SPEC:
-      mat.setSpecularTexture(defaultMat.getSpecular());
-      break;
-    case NORM:
-      mat.setNormalTexture(defaultMat.getNormal());
-      break;
-    case EMIS:
-      mat.setEmissionTexture(defaultMat.getEmission());
-      break;
-    }
-  };
+  const TextureSlot slots[4] = {TextureSlot::Diffuse, TextureSlot::Specular, TextureSlot::Normal,
+                                TextureSlot::Emission};
 
   ImGui::Text("%zu submeshes", submeshes.size());
 
@@ -413,15 +353,11 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
       ImGui::SameLine();
       if (ImGui::Button((std::string("Apply ") + labels[t]).c_str())) {
         GLuint tex = resourceSystem.loadTexture(globalPaths[t]);
-        for (size_t i = 0; i < model.materialHandles.size(); ++i) {
-          applyTex(model.materialHandles[i], (TexType)t, tex);
-        }
+        resourceSystem.setTexture(model, slots[t], tex);
       }
       ImGui::SameLine();
       if (ImGui::Button((std::string("X##g_") + labels[t]).c_str())) {
-        for (size_t i = 0; i < model.materialHandles.size(); ++i) {
-          resetTex(model.materialHandles[i], (TexType)t);
-        }
+        resourceSystem.resetTexture(model, slots[t]);
       }
     }
 
@@ -432,13 +368,7 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
     ImGui::ColorEdit3("Emission Color##global", &globalEmCol.x);
     ImGui::SliderFloat("Emission Strength##global", &globalEmStr, 0.0f, 5.0f);
     if (ImGui::Button("Apply Emission##global", ImVec2(-1, 0))) {
-      for (size_t i = 0; i < model.materialHandles.size(); ++i) {
-        uint32_t &h = model.materialHandles[i];
-        if (h == 0)
-          h = resourceSystem.createMaterial();
-        resourceSystem.getMaterial(h).setEmissionColor(globalEmCol);
-        resourceSystem.getMaterial(h).setEmissionStrength(globalEmStr);
-      }
+      resourceSystem.setEmission(model, globalEmCol, globalEmStr);
     }
 
     ImGui::TreePop();
@@ -464,35 +394,30 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
         ImGui::SameLine();
         if (ImGui::Button((std::string("Set##") + labels[t]).c_str())) {
           GLuint tex = resourceSystem.loadTexture(paths[i][t]);
-          applyTex(handle, (TexType)t, tex);
+          resourceSystem.setMaterialTexture(handle, model.materialHandles, slots[t], tex);
         }
         ImGui::SameLine();
         if (ImGui::Button((std::string("X##") + labels[t]).c_str())) {
-          resetTex(handle, (TexType)t);
+          resourceSystem.resetMaterialTexture(handle, model.materialHandles, slots[t]);
         }
       }
 
       float shininess = matPtr ? matPtr->getShininess() : 16.0f;
       if (ImGui::SliderFloat("Shininess", &shininess, 1.0f, 256.0f)) {
-        if (handle == 0) {
-          handle = resourceSystem.createMaterial();
-        }
-        resourceSystem.getMaterial(handle).setShininess(shininess);
+        resourceSystem.setMaterialShininess(handle, model.materialHandles, shininess);
       }
 
       ImGui::Separator();
       ImGui::Text("Manual Emission");
       glm::vec3 emCol = matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f);
       if (ImGui::ColorEdit3("Emission Color", &emCol.x)) {
-        if (handle == 0)
-          handle = resourceSystem.createMaterial();
-        resourceSystem.getMaterial(handle).setEmissionColor(emCol);
+        resourceSystem.setMaterialEmission(handle, model.materialHandles, emCol,
+                                           matPtr ? matPtr->getEmissionStrength() : 0.0f);
       }
       float emStr = matPtr ? matPtr->getEmissionStrength() : 0.0f;
       if (ImGui::SliderFloat("Emission Strength", &emStr, 0.0f, 5.0f)) {
-        if (handle == 0)
-          handle = resourceSystem.createMaterial();
-        resourceSystem.getMaterial(handle).setEmissionStrength(emStr);
+        resourceSystem.setMaterialEmission(handle, model.materialHandles,
+                                           matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f), emStr);
       }
 
       ImGui::TreePop();

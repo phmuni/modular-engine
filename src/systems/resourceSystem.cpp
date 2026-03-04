@@ -93,3 +93,96 @@ void ResourceSystem::unloadShader(uint32_t handle) {
     std::cerr << "[ResourceSystem] Failed to unload shader " << handle << "\n";
   }
 }
+
+// --- Material utilities ---
+
+void ResourceSystem::ensureOwnMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles) {
+  if (handle == 0) {
+    handle = createMaterial();
+  } else {
+    int count = 0;
+    for (auto h : allHandles)
+      if (h == handle)
+        count++;
+    if (count > 1) {
+      uint32_t newHandle = createMaterial();
+      getMaterial(newHandle) = getMaterial(handle);
+      handle = newHandle;
+    }
+  }
+}
+
+void ResourceSystem::setMaterialTexture(uint32_t &handle, const std::vector<uint32_t> &allHandles, TextureSlot slot,
+                                        GLuint tex) {
+  ensureOwnMaterial(handle, allHandles);
+  Material &mat = getMaterial(handle);
+  switch (slot) {
+  case TextureSlot::Diffuse:
+    mat.setDiffuseTexture(tex);
+    break;
+  case TextureSlot::Specular:
+    mat.setSpecularTexture(tex);
+    break;
+  case TextureSlot::Normal:
+    mat.setNormalTexture(tex);
+    break;
+  case TextureSlot::Emission:
+    mat.setEmissionTexture(tex);
+    break;
+  }
+}
+
+void ResourceSystem::resetMaterialTexture(uint32_t &handle, const std::vector<uint32_t> &allHandles, TextureSlot slot) {
+  if (handle == 0)
+    return;
+  ensureOwnMaterial(handle, allHandles);
+  Material &def = getMaterial(0);
+  Material &mat = getMaterial(handle);
+  switch (slot) {
+  case TextureSlot::Diffuse:
+    mat.setDiffuseTexture(def.getDiffuse());
+    break;
+  case TextureSlot::Specular:
+    mat.setSpecularTexture(def.getSpecular());
+    break;
+  case TextureSlot::Normal:
+    mat.setNormalTexture(def.getNormal());
+    break;
+  case TextureSlot::Emission:
+    mat.setEmissionTexture(def.getEmission());
+    break;
+  }
+}
+
+void ResourceSystem::setMaterialEmission(uint32_t &handle, const std::vector<uint32_t> &allHandles,
+                                         const glm::vec3 &color, float strength) {
+  ensureOwnMaterial(handle, allHandles);
+  Material &mat = getMaterial(handle);
+  mat.setEmissionColor(color);
+  mat.setEmissionStrength(strength);
+}
+
+void ResourceSystem::setMaterialShininess(uint32_t &handle, const std::vector<uint32_t> &allHandles, float shininess) {
+  ensureOwnMaterial(handle, allHandles);
+  getMaterial(handle).setShininess(shininess);
+}
+
+void ResourceSystem::setEmission(ModelComponent &model, const glm::vec3 &color, float strength) {
+  for (auto &h : model.materialHandles)
+    setMaterialEmission(h, model.materialHandles, color, strength);
+}
+
+void ResourceSystem::setTexture(ModelComponent &model, TextureSlot slot, GLuint tex) {
+  for (auto &h : model.materialHandles)
+    setMaterialTexture(h, model.materialHandles, slot, tex);
+}
+
+void ResourceSystem::resetTexture(ModelComponent &model, TextureSlot slot) {
+  for (auto &h : model.materialHandles)
+    resetMaterialTexture(h, model.materialHandles, slot);
+}
+
+void ResourceSystem::setShininess(ModelComponent &model, float shininess) {
+  for (auto &h : model.materialHandles)
+    setMaterialShininess(h, model.materialHandles, shininess);
+}

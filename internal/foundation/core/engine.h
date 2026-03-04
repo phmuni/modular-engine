@@ -2,6 +2,7 @@
 // Main engine class: initialization, game loop, and entity creation interface.
 
 #include "components/lightComponent.h"
+#include "components/modelComponent.h"
 #include "components/nameComponent.h"
 #include "components/particleComponent.h"
 #include "components/transformComponent.h"
@@ -11,6 +12,7 @@
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "systems/inputSystem.h"
+#include "systems/resourceSystem.h"
 
 class Engine {
 private:
@@ -65,4 +67,9 @@ public:
                          LightType type, float intensity, float cutOff, float outerCutOff);
 
   void setState(Toggle toggle, bool value);
+
+  // Material utilities
+  void setEmission(Entity entity, glm::vec3 color, float strength);
+  void setTexture(Entity entity, const std::string &path, TextureSlot slot, int submesh = -1);
+  void setShininess(Entity entity, float shininess, int submesh = -1);
 };

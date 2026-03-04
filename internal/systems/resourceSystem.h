@@ -1,8 +1,10 @@
 #pragma once
 // Handle-based resource manager for meshes, materials, and shaders.
 
+#include "components/modelComponent.h"
 #include "foundation/ecs/systemManager.h"
 #include <cstdint>
+#include <glm/glm.hpp>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -12,6 +14,8 @@ class Material;
 class Mesh;
 class Shader;
 using GLuint = unsigned int;
+
+enum class TextureSlot { Diffuse = 0, Specular = 1, Normal = 2, Emission = 3 };
 
 class ResourceSystem : public BaseSystem {
 private:
@@ -41,4 +45,18 @@ public:
   uint32_t loadShader(const std::string &vertexPath, const std::string &fragmentPath);
   Shader &getShader(uint32_t handle);
   void unloadShader(uint32_t handle);
+
+  // Material utilities (copy-on-write: creates own material if handle is 0 or shared)
+  void ensureOwnMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles);
+  void setMaterialTexture(uint32_t &handle, const std::vector<uint32_t> &allHandles, TextureSlot slot, GLuint tex);
+  void resetMaterialTexture(uint32_t &handle, const std::vector<uint32_t> &allHandles, TextureSlot slot);
+  void setMaterialEmission(uint32_t &handle, const std::vector<uint32_t> &allHandles, const glm::vec3 &color,
+                           float strength);
+  void setMaterialShininess(uint32_t &handle, const std::vector<uint32_t> &allHandles, float shininess);
+
+  // Convenience: apply to all submeshes of a model
+  void setEmission(ModelComponent &model, const glm::vec3 &color, float strength);
+  void setTexture(ModelComponent &model, TextureSlot slot, GLuint tex);
+  void resetTexture(ModelComponent &model, TextureSlot slot);
+  void setShininess(ModelComponent &model, float shininess);
 };

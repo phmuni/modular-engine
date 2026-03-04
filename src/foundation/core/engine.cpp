@@ -157,6 +157,38 @@ void Engine::setState(Toggle toggle, bool value) {
   stateSystem.setToggle(toggle, value);
 }
 
+void Engine::setEmission(Entity entity, glm::vec3 color, float strength) {
+  auto *model = componentManager.tryGet<ModelComponent>(entity);
+  if (!model)
+    return;
+  systemManager.getSystem<ResourceSystem>().setEmission(*model, color, strength);
+}
+
+void Engine::setTexture(Entity entity, const std::string &path, TextureSlot slot, int submesh) {
+  auto *model = componentManager.tryGet<ModelComponent>(entity);
+  if (!model)
+    return;
+  auto &rs = systemManager.getSystem<ResourceSystem>();
+  GLuint tex = rs.loadTexture(EngineConfig::resolvePath(path.c_str()));
+  if (submesh < 0) {
+    rs.setTexture(*model, slot, tex);
+  } else if (submesh < static_cast<int>(model->materialHandles.size())) {
+    rs.setMaterialTexture(model->materialHandles[submesh], model->materialHandles, slot, tex);
+  }
+}
+
+void Engine::setShininess(Entity entity, float shininess, int submesh) {
+  auto *model = componentManager.tryGet<ModelComponent>(entity);
+  if (!model)
+    return;
+  auto &rs = systemManager.getSystem<ResourceSystem>();
+  if (submesh < 0) {
+    rs.setShininess(*model, shininess);
+  } else if (submesh < static_cast<int>(model->materialHandles.size())) {
+    rs.setMaterialShininess(model->materialHandles[submesh], model->materialHandles, shininess);
+  }
+}
+
 Entity Engine::createEntity() { return entityManager.createEntity(); }
 
 SystemManager &Engine::getSystemManager() { return systemManager; }
