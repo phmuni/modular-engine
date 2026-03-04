@@ -1,3 +1,4 @@
+// Material implementation: texture loading with stb_image and fallback generation.
 #define STB_IMAGE_IMPLEMENTATION
 #include "rendering/resources/material.h"
 #include "foundation/core/config.h"

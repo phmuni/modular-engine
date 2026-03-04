@@ -1,4 +1,5 @@
 #pragma once
+// Render pipeline orchestrator: shadow, opaque, and transparent passes.
 
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"

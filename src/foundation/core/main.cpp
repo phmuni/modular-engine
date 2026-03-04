@@ -1,3 +1,4 @@
+// Application entry point and demo scene setup.
 #include "foundation/core/engine.h"
 
 class TestApp : public App {
@@ -11,6 +12,22 @@ class TestApp : public App {
                              glm::vec3(1.0f), LightType::Directional, 1.5f, 0.0f, 0.0f);
 
     engine.createCameraEntity(glm::vec3(0.0f, 0.0f, 5.0f), 0.0f, 0.0f, 90.0f);
+
+    // Particle effect attached to the box
+    auto &particles = engine.addComponent<ParticleComponent>(box);
+    particles.emitRate = 80.0f;
+    particles.particleLifetime = 2.0f;
+    particles.speed = 0.6f;
+    particles.speedVariance = 0.4f;
+    particles.size = 0.18f;
+    particles.sizeDecay = 0.3f;
+    particles.gravity = {0.0f, 0.3f, 0.0f};          // gentle float upward
+    particles.startColor = {0.4f, 0.2f, 1.0f, 1.0f}; // bright purple
+    particles.endColor = {0.0f, 0.8f, 1.0f, 0.0f};   // fade to cyan/transparent
+    particles.emitDirection = {0.0f, 0.5f, 0.0f};
+    particles.spread = 1.0f; // emit in all directions (sphere)
+    particles.maxParticles = 600;
+    particles.additiveBlending = true;
   }
 
   void update(Engine &engine, float deltaTime) override {}

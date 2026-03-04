@@ -1,4 +1,5 @@
 #pragma once
+// Frame timing: delta time and elapsed time tracking.
 
 #include "foundation/ecs/systemManager.h"
 #include <SDL3/SDL.h>

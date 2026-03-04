@@ -1,3 +1,4 @@
+// Resource system: handle-based loading and caching of meshes, materials, and shaders.
 #include "systems/resourceSystem.h"
 #include "foundation/core/config.h"
 #include "rendering/resources/material.h"

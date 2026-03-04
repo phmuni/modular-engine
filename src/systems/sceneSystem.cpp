@@ -1,3 +1,4 @@
+// Scene system: entity factory methods for cameras, models, and lights.
 #include "systems/sceneSystem.h"
 #include "components/cameraComponent.h"
 #include "components/lightComponent.h"

@@ -1,4 +1,6 @@
 #pragma once
+// Mesh class: VAO/VBO/EBO management and OBJ loading.
+
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <string>

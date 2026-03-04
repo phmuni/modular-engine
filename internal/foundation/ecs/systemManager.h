@@ -1,4 +1,6 @@
 #pragma once
+// Type-erased system container with insert/get interface.
+
 #include <memory>
 #include <stdexcept>
 #include <typeindex>
@@ -16,6 +18,7 @@ private:
 public:
   template <typename T, typename... Args> void insert(Args &&...args);
   template <typename T> T &getSystem() const;
+  template <typename T> bool hasSystem() const;
 };
 
 template <typename T, typename... Args> void SystemManager::insert(Args &&...args) {
@@ -30,4 +33,8 @@ template <typename T> T &SystemManager::getSystem() const {
     return *static_cast<T *>(it->second.get());
   }
   throw std::runtime_error("System not found");
+}
+
+template <typename T> bool SystemManager::hasSystem() const {
+  return m_systems.find(std::type_index(typeid(T))) != m_systems.end();
 }

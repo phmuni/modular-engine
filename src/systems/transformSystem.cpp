@@ -1,3 +1,4 @@
+// Transform system: model matrix from position, rotation, and scale.
 #include "systems/transformSystem.h"
 #include "components/transformComponent.h"
 #include "glm/ext/matrix_transform.hpp"

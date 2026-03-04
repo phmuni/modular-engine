@@ -1,4 +1,5 @@
 #pragma once
+// Transform component: position, rotation, scale.
 
 #include "glm/ext/vector_float3.hpp"
 

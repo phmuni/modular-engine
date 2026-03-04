@@ -1,3 +1,4 @@
+// Mesh implementation: OBJ loading with tinyobjloader and GPU buffer setup.
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "rendering/resources/mesh.h"
 #include "foundation/core/config.h"

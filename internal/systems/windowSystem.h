@@ -1,4 +1,5 @@
 #pragma once
+// SDL3 window and OpenGL context initialization.
 
 #include "SDL3/SDL_video.h"
 #include "foundation/ecs/systemManager.h"

@@ -1,4 +1,5 @@
 #pragma once
+// SDL event polling, key binds, and toggle key processing.
 
 #include "SDL3/SDL_scancode.h"
 #include "foundation/ecs/systemManager.h"

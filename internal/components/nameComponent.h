@@ -1,4 +1,5 @@
 #pragma once
+// Name component for entity display labels.
 
 #include <string>
 

@@ -1,4 +1,6 @@
 #pragma once
+// Type-erased component storage for the ECS.
+
 #include <functional>
 #include <memory>
 #include <stdexcept>

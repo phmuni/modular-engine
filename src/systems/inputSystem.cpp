@@ -1,3 +1,4 @@
+// Input system: SDL event handling and configurable key binds.
 #include "systems/inputSystem.h"
 #include "foundation/core/config.h"
 #include "imgui/imgui_impl_sdl3.h"
@@ -12,9 +13,9 @@ InputSystem::InputSystem() {
 
 void InputSystem::setDefaultKeyBinds() {
   m_keyBinds = {
-      {Action::MoveForward, SDL_SCANCODE_W},  {Action::MoveBackward, SDL_SCANCODE_S},
-      {Action::MoveLeft, SDL_SCANCODE_A},      {Action::MoveRight, SDL_SCANCODE_D},
-      {Action::MoveUp, SDL_SCANCODE_SPACE},    {Action::MoveDown, SDL_SCANCODE_LSHIFT},
+      {Action::MoveForward, SDL_SCANCODE_W}, {Action::MoveBackward, SDL_SCANCODE_S},
+      {Action::MoveLeft, SDL_SCANCODE_A},    {Action::MoveRight, SDL_SCANCODE_D},
+      {Action::MoveUp, SDL_SCANCODE_SPACE},  {Action::MoveDown, SDL_SCANCODE_LSHIFT},
   };
 }
 

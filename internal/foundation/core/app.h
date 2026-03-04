@@ -1,4 +1,5 @@
 #pragma once
+// Base class for user applications.
 
 class Engine;
 

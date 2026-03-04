@@ -1,3 +1,4 @@
+// Entity creation and destruction.
 #include "foundation/ecs/entityManager.h"
 
 Entity EntityManager::createEntity() {

@@ -1,4 +1,5 @@
 #pragma once
+// Model matrix computation from TransformComponent.
 
 #include "components/transformComponent.h"
 #include "foundation/ecs/systemManager.h"

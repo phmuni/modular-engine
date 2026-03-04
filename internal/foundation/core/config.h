@@ -1,4 +1,5 @@
 #pragma once
+// Engine-wide configuration constants and path utilities.
 
 #include "SDL3/SDL_filesystem.h"
 #include "SDL3/SDL_scancode.h"
@@ -9,8 +10,6 @@
 
 namespace EngineConfig {
 
-// Returns the base path of the executable's directory (e.g. ".../bin/")
-// All asset paths are resolved relative to this.
 inline std::string getBasePath() {
   static std::string basePath;
   if (basePath.empty()) {
@@ -24,7 +23,6 @@ inline std::string getBasePath() {
   return basePath;
 }
 
-// Resolve a relative asset path to an absolute path based on the executable location
 inline std::string resolvePath(const char *relativePath) { return getBasePath() + relativePath; }
 
 // Window
@@ -41,7 +39,7 @@ constexpr float DEFAULT_CLEAR_COLOR_A = 1.0f;
 constexpr int SHADOW_MAP_WIDTH = 2048;
 constexpr int SHADOW_MAP_HEIGHT = 2048;
 
-// Asset paths (relative to binary directory)
+// Asset paths
 constexpr const char *ASSET_BASE_PATH = "../assets/";
 constexpr const char *MODEL_PATH = "../assets/models/";
 constexpr const char *SHADER_PATH = "../assets/shaders/";
@@ -53,6 +51,8 @@ constexpr const char *SHADER_VERTEX = "../assets/shaders/vertexShader.vert";
 constexpr const char *SHADER_FRAGMENT = "../assets/shaders/fragmentShader.frag";
 constexpr const char *SHADER_VERTEX_SHADOW = "../assets/shaders/vertexShadowShader.vert";
 constexpr const char *SHADER_FRAGMENT_SHADOW = "../assets/shaders/fragmentShadowShader.frag";
+constexpr const char *SHADER_VERTEX_PARTICLE = "../assets/shaders/vertexParticle.vert";
+constexpr const char *SHADER_FRAGMENT_PARTICLE = "../assets/shaders/fragmentParticle.frag";
 
 // Models
 constexpr const char *MODEL_BACKPACK = "../assets/models/backpack/backpack.obj";
@@ -63,22 +63,15 @@ constexpr const char *TEXTURE_BOX = "../assets/models/box/";
 
 // Default toggle states
 inline const std::pair<Toggle, bool> DEFAULT_TOGGLES[] = {
-    {Toggle::CameraMovement, true},
-    {Toggle::CameraFly, true},
-    {Toggle::CursorLock, true},
-    {Toggle::Wireframe, false},
-    {Toggle::ShowUI, false},
-    {Toggle::Shadows, true},
+    {Toggle::CameraMovement, true}, {Toggle::CameraFly, true}, {Toggle::CursorLock, true},
+    {Toggle::Wireframe, false},     {Toggle::ShowUI, false},   {Toggle::Shadows, true},
 };
 constexpr int DEFAULT_TOGGLES_COUNT = sizeof(DEFAULT_TOGGLES) / sizeof(DEFAULT_TOGGLES[0]);
 
 // Default toggle keybinds
 inline const std::pair<SDL_Scancode, Toggle> DEFAULT_TOGGLE_KEYBINDS[] = {
-    {SDL_SCANCODE_RALT, Toggle::CursorLock},
-    {SDL_SCANCODE_F1, Toggle::Wireframe},
-    {SDL_SCANCODE_F2, Toggle::ShowUI},
-    {SDL_SCANCODE_F3, Toggle::Shadows},
-    {SDL_SCANCODE_F4, Toggle::CameraFly},
+    {SDL_SCANCODE_RALT, Toggle::CursorLock}, {SDL_SCANCODE_F1, Toggle::Wireframe}, {SDL_SCANCODE_F2, Toggle::ShowUI},
+    {SDL_SCANCODE_F3, Toggle::Shadows},      {SDL_SCANCODE_F4, Toggle::CameraFly},
 };
 constexpr int DEFAULT_TOGGLE_KEYBINDS_COUNT = sizeof(DEFAULT_TOGGLE_KEYBINDS) / sizeof(DEFAULT_TOGGLE_KEYBINDS[0]);
 

@@ -1,4 +1,6 @@
 #pragma once
+// PBR material with diffuse, specular, normal, and emission textures.
+
 #include <array>
 #include <cstdint>
 #include <filesystem>

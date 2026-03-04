@@ -1,3 +1,4 @@
+// Camera system: FPS-style movement and mouse look.
 #include "systems/cameraSystem.h"
 #include "components/cameraComponent.h"
 #include "systems/inputSystem.h"
@@ -36,10 +37,7 @@ void CameraSystem::updateFront(CameraComponent &cam) {
   float pitchRad = glm::radians(cam.pitch);
   float yawRad = glm::radians(cam.yaw);
 
-  cam.front = glm::normalize(glm::vec3(
-      cos(pitchRad) * sin(yawRad),
-      sin(pitchRad),
-      -cos(pitchRad) * cos(yawRad)));
+  cam.front = glm::normalize(glm::vec3(cos(pitchRad) * sin(yawRad), sin(pitchRad), -cos(pitchRad) * cos(yawRad)));
 }
 
 void CameraSystem::rotateCamera(CameraComponent &cam) {

@@ -1,4 +1,5 @@
 #pragma once
+// Global toggle state management (wireframe, shadows, UI, etc.).
 
 #include "foundation/ecs/systemManager.h"
 #include <unordered_map>

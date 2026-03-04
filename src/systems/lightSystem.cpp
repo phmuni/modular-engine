@@ -1,9 +1,9 @@
+// Light system: entity tracking and per-light shader uniform upload.
 #include "systems/lightSystem.h"
 #include "components/lightComponent.h"
 #include "foundation/ecs/componentManager.h"
 #include "rendering/resources/shader.h"
 #include <algorithm>
-
 
 void LightSystem::createLight(Entity entity) { m_lights.push_back(entity); }
 

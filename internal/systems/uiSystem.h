@@ -1,12 +1,15 @@
 #pragma once
+// ImGui-based editor UI: scene explorer, properties panel, and entity creation.
+
 #include "foundation/ecs/systemManager.h"
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_video.h>
 
-// Forward declarations
 class EntityManager;
 class SystemManager;
 class ComponentManager;
+class SceneSystem;
+class ResourceSystem;
 using Entity = int;
 
 class UISystem : public BaseSystem {
@@ -21,10 +24,12 @@ public:
 
 private:
   static void fileDialogCallback(void *userdata, const char *const *filelist, int filter);
-  void pickFileButton(const char *id, char *buf, int bufSize,
-                      SDL_Window *window,
-                      const SDL_DialogFileFilter *filters = nullptr,
-                      int nfilters = 0);
+  void pickFileButton(const char *id, char *buf, int bufSize, SDL_Window *window,
+                      const SDL_DialogFileFilter *filters = nullptr, int nfilters = 0);
 
-  
+  void renderParticleInspector(Entity entity, ComponentManager &componentManager);
+  void renderMaterialInspector(Entity entity, ComponentManager &componentManager, ResourceSystem &resourceSystem,
+                               SDL_Window *window);
+  void renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &entityManager, ComponentManager &componentManager,
+                            SDL_Window *window);
 };

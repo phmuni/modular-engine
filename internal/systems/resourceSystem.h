@@ -1,4 +1,6 @@
 #pragma once
+// Handle-based resource manager for meshes, materials, and shaders.
+
 #include "foundation/ecs/systemManager.h"
 #include <cstdint>
 #include <memory>

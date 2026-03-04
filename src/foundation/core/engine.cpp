@@ -1,7 +1,9 @@
+// Engine implementation: system registration, resource loading, and game loop.
 #include "foundation/core/engine.h"
 
 #include "systems/cameraSystem.h"
 #include "systems/lightSystem.h"
+#include "systems/particleSystem.h"
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/sceneSystem.h"
@@ -43,6 +45,7 @@ void Engine::registerSystems() {
   systemManager.insert<CameraSystem>(componentManager, systemManager.getSystem<InputSystem>());
   systemManager.insert<LightSystem>();
   systemManager.insert<SceneSystem>(entityManager, componentManager, systemManager);
+  systemManager.insert<ParticleSystem>();
   systemManager.insert<UISystem>(systemManager.getSystem<WindowSystem>().getWindow(),
                                  systemManager.getSystem<WindowSystem>().getContext());
 }
@@ -54,19 +57,24 @@ bool Engine::loadResources() {
 
   renderer.init(windowSystem.getWindow());
 
-  uint32_t baseShader = resourceSystem.loadShader(
-      EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
-      EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT));
-  uint32_t shadowShader = resourceSystem.loadShader(
-      EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_SHADOW),
-      EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_SHADOW));
+  uint32_t baseShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
+                                                  EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT));
+  uint32_t shadowShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_SHADOW),
+                                                    EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_SHADOW));
 
-  if (baseShader == 0 && shadowShader == 1) {
-    return true;
+  if (baseShader != 0 || shadowShader != 1) {
+    SDL_Log("Failed to load shaders");
+    return false;
   }
 
-  SDL_Log("Failed to load shaders");
-  return false;
+  uint32_t particleShader =
+      resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_PARTICLE),
+                                EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_PARTICLE));
+
+  auto &particleSystem = systemManager.getSystem<ParticleSystem>();
+  particleSystem.setShaderHandle(particleShader);
+
+  return true;
 }
 
 void Engine::run(App &app) {
@@ -95,7 +103,12 @@ void Engine::update(bool &running) {
   cameraSystem.update(timeSystem.getDeltaTime(), systemManager);
 
   // Apply wireframe toggle
-  glPolygonMode(GL_FRONT_AND_BACK, state.isToggled(Toggle::Wireframe) ? GL_LINE : GL_FILL);
+  auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
+  renderer.setWireframe(state.isToggled(Toggle::Wireframe));
+
+  // Particle simulation (update phase, not render)
+  auto &particleSystem = systemManager.getSystem<ParticleSystem>();
+  particleSystem.update(timeSystem.getDeltaTime(), componentManager);
 
   if (m_app) {
     m_app->update(*this, timeSystem.getDeltaTime());

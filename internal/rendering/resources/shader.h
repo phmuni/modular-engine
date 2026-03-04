@@ -1,4 +1,6 @@
 #pragma once
+// OpenGL shader program wrapper with uniform setters.
+
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <string>

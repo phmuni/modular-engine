@@ -1,3 +1,4 @@
+// Render pipeline: shadow pass, shader-batched opaque pass, and particle pass.
 #include "systems/renderSystem.h"
 #include "components/lightComponent.h"
 #include "components/modelComponent.h"
@@ -7,6 +8,7 @@
 #include "rendering/resources/shader.h"
 #include "systems/cameraSystem.h"
 #include "systems/lightSystem.h"
+#include "systems/particleSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/stateSystem.h"
 #include "systems/transformSystem.h"
@@ -141,6 +143,11 @@ void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entit
 
       renderer.drawSubmesh(mesh, mesh.getSubmeshes()[submeshIndex]);
     }
+  }
+
+  // Transparent / Particles pass
+  if (systemManager.hasSystem<ParticleSystem>()) {
+    systemManager.getSystem<ParticleSystem>().render(systemManager, componentManager);
   }
 }
 

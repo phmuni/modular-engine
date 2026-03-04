@@ -1,4 +1,5 @@
 #pragma once
+// Model component holding mesh and material handles.
 
 #include <cstdint>
 #include <vector>

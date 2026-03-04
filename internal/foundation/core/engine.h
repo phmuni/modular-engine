@@ -1,5 +1,9 @@
 #pragma once
+// Main engine class: initialization, game loop, and entity creation interface.
+
 #include "components/lightComponent.h"
+#include "components/nameComponent.h"
+#include "components/particleComponent.h"
 #include "components/transformComponent.h"
 #include "foundation/core/app.h"
 #include "foundation/core/config.h"
@@ -7,7 +11,6 @@
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "systems/inputSystem.h"
-
 
 class Engine {
 private:
@@ -38,10 +41,10 @@ public:
   ComponentManager &getComponentManager();
   EntityManager &getEntityManager();
 
-  // --- Entity creation ---
+  // Entity creation
   Entity createEntity();
 
-  // --- Generic component access (for user-defined components) ---
+  // Component access
   template <typename T, typename... Args> T &addComponent(Entity entity, Args &&...args) {
     return componentManager.add<T>(entity, std::forward<Args>(args)...);
   }
@@ -54,7 +57,7 @@ public:
 
   template <typename T> void removeComponent(Entity entity) { componentManager.remove<T>(entity); }
 
-  // --- High-level helpers ---
+  // High-level entity creation helpers
   void createCameraEntity(glm::vec3 position, float yaw = 0.0f, float pitch = 0.0f, float fov = 90.0f);
   Entity createModelEntity(const std::string &name, const std::string &modelPath, glm::vec3 position,
                            glm::vec3 rotation, glm::vec3 scale);

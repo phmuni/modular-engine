@@ -1,4 +1,6 @@
 #pragma once
+// Entity ID creation and lifetime management.
+
 #include <unordered_set>
 
 using Entity = int;

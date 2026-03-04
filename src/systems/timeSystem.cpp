@@ -1,3 +1,4 @@
+// Time system: delta time calculation using SDL ticks.
 #include "systems/timeSystem.h"
 
 void TimeSystem::begin() {

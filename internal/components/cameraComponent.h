@@ -1,4 +1,5 @@
 #pragma once
+// Camera component data for view and projection.
 
 #include <glm/glm.hpp>
 

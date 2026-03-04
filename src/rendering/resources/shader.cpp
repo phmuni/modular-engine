@@ -1,10 +1,10 @@
+// Shader implementation: compilation, linking, and uniform upload.
 #include "rendering/resources/shader.h"
 #include <fstream>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <sstream>
 #include <vector>
-
 
 Shader::Shader(const char *vertexFile, const char *fragmentFile) {
   m_shaderID = createShaderProgram(vertexFile, fragmentFile);

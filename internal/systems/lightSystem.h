@@ -1,9 +1,10 @@
 #pragma once
+// Light entity management and shader uniform upload.
+
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
 #include <vector>
 
-// Forward declarations
 class Shader;
 class ComponentManager;
 

@@ -1,3 +1,4 @@
+// State system: toggle initialization and query.
 #include "systems/stateSystem.h"
 #include "foundation/core/config.h"
 

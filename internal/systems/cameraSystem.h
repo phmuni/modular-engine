@@ -1,4 +1,5 @@
 #pragma once
+// Camera movement, rotation, and matrix computation.
 
 #include "components/cameraComponent.h"
 #include "foundation/ecs/componentManager.h"

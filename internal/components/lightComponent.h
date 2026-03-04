@@ -1,4 +1,5 @@
 #pragma once
+// Light component data (directional, point, spot).
 
 #include <glm/glm.hpp>
 
