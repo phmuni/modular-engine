@@ -193,6 +193,8 @@ void ResourceSystem::resetMaterialTexture(uint32_t &handle, const std::vector<ui
     break;
   case TextureSlot::Emission:
     mat.setEmissionTexture(def.getEmission());
+    mat.setEmissionColor(def.getEmissionColor());
+    mat.setEmissionStrength(def.getEmissionStrength());
     break;
   }
 }
