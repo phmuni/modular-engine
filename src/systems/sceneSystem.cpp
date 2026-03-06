@@ -52,11 +52,9 @@ Entity SceneSystem::createModelEntity(const std::string name, const std::string 
 
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
 
-  uint32_t meshHandle = resourceSystem.loadMesh(modelPath);
-  Mesh &mesh = resourceSystem.getMesh(meshHandle);
-
-  size_t submeshCount = mesh.getSubmeshes().size();
-  std::vector<uint32_t> materialHandles(submeshCount, 0);
+  auto modelData = resourceSystem.loadModel(modelPath);
+  uint32_t meshHandle = modelData.meshHandle;
+  std::vector<uint32_t> materialHandles = std::move(modelData.materialHandles);
 
   componentManager.insert<NameComponent>(entity, std::make_unique<NameComponent>(name));
   componentManager.insert<TransformComponent>(entity, std::make_unique<TransformComponent>(position, rotation, scale));

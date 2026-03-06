@@ -265,11 +265,9 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
           ImGui::SameLine();
           if (ImGui::Button("+ Model", ImVec2(-1, 0)) && addModelPath[0] != '\0') {
             auto &rs = resourceSystem;
-            uint32_t meshHandle = rs.loadMesh(addModelPath);
-            Mesh &mesh = rs.getMesh(meshHandle);
-            size_t subCount = mesh.getSubmeshes().size();
-            std::vector<uint32_t> mats(subCount, 0);
-            componentManager.add<ModelComponent>(selectedEntity, meshHandle, std::move(mats));
+            auto modelData = rs.loadModel(addModelPath);
+            componentManager.add<ModelComponent>(selectedEntity, modelData.meshHandle,
+                                                 std::move(modelData.materialHandles));
             renderSystem.insertRenderable(selectedEntity);
             addModelPath[0] = '\0';
           }

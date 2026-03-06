@@ -13,9 +13,15 @@
 class Material;
 class Mesh;
 class Shader;
+struct MtlMaterialData;
 using GLuint = unsigned int;
 
 enum class TextureSlot { Diffuse = 0, Specular = 1, Normal = 2, Emission = 3 };
+
+struct ModelLoadResult {
+  uint32_t meshHandle;
+  std::vector<uint32_t> materialHandles;
+};
 
 class ResourceSystem : public BaseSystem {
 private:
@@ -33,6 +39,7 @@ public:
   ~ResourceSystem();
 
   uint32_t loadMesh(const std::string &path);
+  ModelLoadResult loadModel(const std::string &path);
   Mesh &getMesh(uint32_t handle);
   void unloadMesh(uint32_t handle);
 

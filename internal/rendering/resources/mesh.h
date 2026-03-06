@@ -12,9 +12,22 @@ struct Vertex {
   glm::vec2 texCoord;
 };
 
+struct MtlMaterialData {
+  std::string name;
+  std::string diffuseTexPath;
+  std::string specularTexPath;
+  std::string normalTexPath;
+  std::string emissionTexPath;
+  glm::vec3 diffuseColor{0.8f};
+  glm::vec3 specularColor{0.0f};
+  glm::vec3 emissionColor{0.0f};
+  float shininess = 16.0f;
+};
+
 struct Submesh {
   uint32_t indexStart;
   uint32_t indexCount;
+  int materialIndex = -1;
 };
 
 class Mesh {
@@ -26,6 +39,8 @@ private:
   std::vector<Vertex> m_vertices;
   std::vector<uint32_t> m_indices;
   std::vector<Submesh> m_submeshes;
+  std::vector<MtlMaterialData> m_mtlMaterials;
+  std::string m_baseDir;
 
   void setupBuffers();
   bool loadOBJ(const std::string &filename);
@@ -45,6 +60,8 @@ public:
 
   GLuint getVAO() const;
   const std::vector<Submesh> &getSubmeshes() const;
+  const std::vector<MtlMaterialData> &getMtlMaterials() const;
+  const std::string &getBaseDir() const;
 
   void setVerticesIndices(const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices,
                           const std::vector<Submesh> &submeshes);
