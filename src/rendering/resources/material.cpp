@@ -11,12 +11,12 @@ static const std::vector<std::string> kSupportedExtensions = {".png", ".jpg", ".
 Material::Material() {
   std::array<unsigned char, 3> diffuseGray = {128, 128, 128};
   std::array<unsigned char, 3> specularGray = {64, 64, 64};
-  std::array<unsigned char, 3> black = {0, 0, 0};
+  std::array<unsigned char, 3> white = {255, 255, 255};
 
   m_diffuse = createFallbackTexture(diffuseGray);
   m_specular = createFallbackTexture(specularGray);
   m_normal = 0; // disabled until TBN is implemented
-  m_emission = createFallbackTexture(black);
+  m_emission = createFallbackTexture(white);
   m_shininess = 16.0f;
   m_shaderHandle = 0;
 }

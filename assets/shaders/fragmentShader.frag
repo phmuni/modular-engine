@@ -91,8 +91,7 @@ void main()
     vec3 diffuseTex  = texture(material.diffuse,  TexCoords).rgb;
     vec3 specularTex = texture(material.specular, TexCoords).rgb;
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
-    vec3 emission = material.emissionColor * material.emissionStrength;
-    vec3 emissionResult = max(emission, emission * emissionTex);
+    vec3 emissionResult = material.emissionColor * material.emissionStrength * emissionTex;
 
     vec4 fragPosLightSpace = lightSpaceMatrix * vec4(FragPos, 1.0);
     float shadow = calculateShadow(fragPosLightSpace);

@@ -167,6 +167,10 @@ void ResourceSystem::setMaterialTexture(uint32_t &handle, const std::vector<uint
     break;
   case TextureSlot::Emission:
     mat.setEmissionTexture(tex);
+    if (mat.getEmissionStrength() == 0.0f) {
+      mat.setEmissionColor(glm::vec3(1.0f));
+      mat.setEmissionStrength(1.0f);
+    }
     break;
   }
 }
