@@ -3,10 +3,27 @@
 
 class TestApp : public App {
   Entity box;
+  Entity box2;
 
   void setup(Engine &engine) override {
+
     box = engine.createModelEntity("Box", EngineConfig::MODEL_BOX, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f),
-                                   glm::vec3(1.0f));
+                     glm::vec3(1.0f));
+
+    // Second cube for collision test
+    box2 = engine.createModelEntity("Box2", EngineConfig::MODEL_BOX, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f),
+                    glm::vec3(1.0f));
+
+    // Add CollisionComponent to both cubes
+    auto &col1 = engine.addComponent<CollisionComponent>(box);
+    col1.min = glm::vec3(-0.5f);
+    col1.max = glm::vec3(0.5f);
+    col1.isStatic = false;
+
+    auto &col2 = engine.addComponent<CollisionComponent>(box2);
+    col2.min = glm::vec3(-0.5f);
+    col2.max = glm::vec3(0.5f);
+    col2.isStatic = false;
 
     engine.createLightEntity("Directional", glm::vec3(2.0f, 3.0f, 2.0f), glm::vec3(-1.0f, -1.0f, -1.0f),
                              glm::vec3(1.0f), LightType::Directional, 1.5f, 0.0f, 0.0f);
@@ -33,7 +50,22 @@ class TestApp : public App {
     particles.additiveBlending = true;
   }
 
-  void update(Engine &engine, float deltaTime) override {}
+  void update(Engine &engine, float deltaTime) override {
+    // Move box2 to the left every frame
+    auto &t2 = engine.getComponent<TransformComponent>(box2);
+    t2.position.x -= deltaTime * 0.5f;
+
+    // Check collision between box and box2, change emission color accordingly
+    auto &collisionSystem = engine.getSystemManager().getSystem<CollisionSystem>();
+    bool colliding = collisionSystem.checkEntitiesCollision(box, box2, engine.getComponentManager());
+    if (colliding) {
+      engine.setEmission(box, glm::vec3(1.0f, 0.0f, 0.0f), 2.0f); // red
+      engine.setEmission(box2, glm::vec3(1.0f, 0.0f, 0.0f), 2.0f);
+    } else {
+      engine.setEmission(box, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f); // green
+      engine.setEmission(box2, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f);
+    }
+  }
 };
 
 int main() {

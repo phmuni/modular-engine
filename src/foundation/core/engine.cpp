@@ -11,6 +11,7 @@
 #include "systems/transformSystem.h"
 #include "systems/uiSystem.h"
 #include "systems/windowSystem.h"
+#include "systems/collisionSystem.h"
 
 #include <SDL3/SDL.h>
 
@@ -46,6 +47,7 @@ void Engine::registerSystems() {
   systemManager.insert<LightSystem>();
   systemManager.insert<SceneSystem>(entityManager, componentManager, systemManager);
   systemManager.insert<ParticleSystem>();
+  systemManager.insert<CollisionSystem>();
   systemManager.insert<UISystem>(systemManager.getSystem<WindowSystem>().getWindow(),
                                  systemManager.getSystem<WindowSystem>().getContext());
 }
@@ -93,22 +95,28 @@ void Engine::loop(bool &running) {
 }
 
 void Engine::update(bool &running) {
+  
   auto &inputSystem = systemManager.getSystem<InputSystem>();
-  auto &timeSystem = systemManager.getSystem<TimeSystem>();
-  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
-  auto &state = systemManager.getSystem<StateSystem>();
-
   inputSystem.update(&running, systemManager);
+  
+  auto &timeSystem = systemManager.getSystem<TimeSystem>();
   timeSystem.update();
-  cameraSystem.update(timeSystem.getDeltaTime(), systemManager);
 
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  cameraSystem.update(timeSystem.getDeltaTime(), systemManager);
+  
   // Apply wireframe toggle
   auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
+  auto &state = systemManager.getSystem<StateSystem>();
   renderer.setWireframe(state.isToggled(Toggle::Wireframe));
 
   // Particle simulation (update phase, not render)
   auto &particleSystem = systemManager.getSystem<ParticleSystem>();
   particleSystem.update(timeSystem.getDeltaTime(), componentManager);
+
+  // Collision detection
+  auto &collisionSystem = systemManager.getSystem<CollisionSystem>();
+  collisionSystem.update(componentManager);
 
   if (m_app) {
     m_app->update(*this, timeSystem.getDeltaTime());

@@ -5,6 +5,7 @@
 #include "components/modelComponent.h"
 #include "components/nameComponent.h"
 #include "components/particleComponent.h"
+#include "components/collisionComponent.h"
 #include "components/transformComponent.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
@@ -238,6 +239,15 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
         renderParticleInspector(selectedEntity, componentManager);
       }
 
+      if (componentManager.has<CollisionComponent>(selectedEntity)) {
+        if (ImGui::CollapsingHeader("Collision (AABB)", ImGuiTreeNodeFlags_DefaultOpen)) {
+          auto &col = componentManager.get<CollisionComponent>(selectedEntity);
+          ImGui::Checkbox("Static", &col.isStatic);
+          ImGui::DragFloat3("Min##col", &col.min.x, 0.05f);
+          ImGui::DragFloat3("Max##col", &col.max.x, 0.05f);
+        }
+      }
+
       // Add Component section
       ImGui::Separator();
       if (ImGui::CollapsingHeader("Add Component", ImGuiTreeNodeFlags_None)) {
@@ -255,6 +265,11 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
         if (!componentManager.has<ParticleComponent>(selectedEntity)) {
           if (ImGui::Button("+ Particle Emitter", ImVec2(-1, 0))) {
             componentManager.add<ParticleComponent>(selectedEntity);
+          }
+        }
+        if (!componentManager.has<CollisionComponent>(selectedEntity)) {
+          if (ImGui::Button("+ Collision (AABB)", ImVec2(-1, 0))) {
+            componentManager.add<CollisionComponent>(selectedEntity);
           }
         }
         if (!componentManager.has<ModelComponent>(selectedEntity)) {

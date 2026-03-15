@@ -6,6 +6,7 @@
 #include "components/nameComponent.h"
 #include "components/particleComponent.h"
 #include "components/transformComponent.h"
+#include "components/collisionComponent.h"
 #include "foundation/core/app.h"
 #include "foundation/core/config.h"
 #include "foundation/ecs/componentManager.h"
@@ -13,6 +14,7 @@
 #include "foundation/ecs/systemManager.h"
 #include "systems/inputSystem.h"
 #include "systems/resourceSystem.h"
+#include "systems/collisionSystem.h"
 
 class Engine {
 private:
