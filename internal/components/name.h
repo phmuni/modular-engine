@@ -3,8 +3,8 @@
 
 #include <string>
 
-struct NameComponent {
+struct Name {
   std::string name;
 
-  NameComponent(const std::string &n) : name(n) {}
+  Name(const std::string &n) : name(n) {}
 };

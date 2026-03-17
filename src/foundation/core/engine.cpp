@@ -24,7 +24,7 @@ Engine::~Engine() {
   SDL_Quit();
 }
 
-bool Engine::init() {
+bool Engine::initialize() {
   registerSystems();
 
   if (!loadResources()) {
@@ -133,7 +133,7 @@ void Engine::render() {
 
   uiSystem.beginFrame();
 
-  renderSystem.renderCall(systemManager, entityManager, componentManager);
+  renderSystem.renderPipeline(systemManager, entityManager, componentManager);
 
   if (state.isToggled(Toggle::ShowUI)) {
     uiSystem.render(entityManager, systemManager, componentManager);
@@ -166,14 +166,14 @@ void Engine::setState(Toggle toggle, bool value) {
 }
 
 void Engine::setEmission(Entity entity, glm::vec3 color, float strength) {
-  auto *model = componentManager.tryGet<ModelComponent>(entity);
+  auto *model = componentManager.tryGet<Model>(entity);
   if (!model)
     return;
   systemManager.getSystem<ResourceSystem>().setEmission(*model, color, strength);
 }
 
 void Engine::setTexture(Entity entity, const std::string &path, TextureSlot slot, int submesh) {
-  auto *model = componentManager.tryGet<ModelComponent>(entity);
+  auto *model = componentManager.tryGet<Model>(entity);
   if (!model)
     return;
   auto &rs = systemManager.getSystem<ResourceSystem>();
@@ -186,7 +186,7 @@ void Engine::setTexture(Entity entity, const std::string &path, TextureSlot slot
 }
 
 void Engine::setShininess(Entity entity, float shininess, int submesh) {
-  auto *model = componentManager.tryGet<ModelComponent>(entity);
+  auto *model = componentManager.tryGet<Model>(entity);
   if (!model)
     return;
   auto &rs = systemManager.getSystem<ResourceSystem>();

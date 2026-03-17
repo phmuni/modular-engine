@@ -1,8 +1,8 @@
-// Particle system: emission, physics simulation, and GPU render dispatch.
+// ParticleEmitter system: emission, physics simulation, and GPU render dispatch.
 #include "systems/particleSystem.h"
-#include "components/cameraComponent.h"
-#include "components/particleComponent.h"
-#include "components/transformComponent.h"
+#include "components/camera.h"
+#include "components/particleEmitter.h"
+#include "components/transform.h"
 #include "rendering/renderer.h"
 #include "rendering/resources/shader.h"
 #include "systems/cameraSystem.h"
@@ -19,7 +19,7 @@ std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
 std::uniform_real_distribution<float> distSym(-1.0f, 1.0f);
 } // namespace
 
-void ParticleSystem::emitParticles(ParticleComponent &emitter, const glm::vec3 &origin, float deltaTime) {
+void ParticleSystem::emitParticles(ParticleEmitter &emitter, const glm::vec3 &origin, float deltaTime) {
   if (!emitter.active)
     return;
 
@@ -51,7 +51,7 @@ void ParticleSystem::emitParticles(ParticleComponent &emitter, const glm::vec3 &
   }
 }
 
-void ParticleSystem::updateParticles(ParticleComponent &emitter, float deltaTime) {
+void ParticleSystem::updateParticles(ParticleEmitter &emitter, float deltaTime) {
   for (auto &p : emitter.particles) {
     p.life -= deltaTime;
     p.velocity += emitter.gravity * deltaTime;
@@ -76,8 +76,8 @@ void ParticleSystem::updateParticles(ParticleComponent &emitter, float deltaTime
 }
 
 void ParticleSystem::update(float deltaTime, ComponentManager &componentManager) {
-  componentManager.each<ParticleComponent>([&](Entity entity, ParticleComponent &emitter) {
-    auto *transform = componentManager.tryGet<TransformComponent>(entity);
+  componentManager.each<ParticleEmitter>([&](Entity entity, ParticleEmitter &emitter) {
+    auto *transform = componentManager.tryGet<Transform>(entity);
     glm::vec3 origin = (transform ? transform->position : glm::vec3(0.0f)) + emitter.offset;
 
     emitParticles(emitter, origin, deltaTime);
@@ -94,15 +94,15 @@ void ParticleSystem::render(SystemManager &systemManager, ComponentManager &comp
   if (camEntity == -1)
     return;
 
-  const auto &cam = componentManager.get<CameraComponent>(camEntity);
+  const auto &cam = componentManager.get<Camera>(camEntity);
   glm::mat4 view = cameraSystem.getViewMatrix(cam);
-  glm::mat4 projection = cameraSystem.getProjMatrix(cam);
+  glm::mat4 projection = cameraSystem.getProjectionMatrix(cam);
 
   // Collect all alive particles into vertex data
   std::vector<ParticleVertex> vertices;
   bool useAdditive = true;
 
-  componentManager.each<ParticleComponent>([&](Entity entity, ParticleComponent &emitter) {
+  componentManager.each<ParticleEmitter>([&](Entity entity, ParticleEmitter &emitter) {
     useAdditive = emitter.additiveBlending;
     for (const auto &p : emitter.particles) {
       if (p.life > 0.0f) {

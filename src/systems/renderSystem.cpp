@@ -1,7 +1,7 @@
 // Render pipeline: shadow pass, shader-batched opaque pass, and particle pass.
 #include "systems/renderSystem.h"
-#include "components/lightComponent.h"
-#include "components/modelComponent.h"
+#include "components/light.h"
+#include "components/model.h"
 #include "foundation/ecs/systemManager.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
@@ -21,7 +21,7 @@ void RenderSystem::removeRenderable(Entity entity) {
   m_entries.erase(std::remove(m_entries.begin(), m_entries.end(), entity), m_entries.end());
 }
 
-void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entityManager,
+void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &entityManager,
                               ComponentManager &componentManager) {
   auto &renderer = getRenderer();
   auto &transformSystem = systemManager.getSystem<TransformSystem>();
@@ -33,10 +33,10 @@ void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entit
   if (cameraEntity == -1)
     return;
 
-  const auto &cameraComponent = componentManager.get<CameraComponent>(cameraEntity);
-  glm::mat4 view = cameraSystem.getViewMatrix(cameraComponent);
-  glm::mat4 projection = cameraSystem.getProjMatrix(cameraComponent);
-  glm::vec3 viewPos = cameraComponent.position;
+  const auto &camera = componentManager.get<Camera>(cameraEntity);
+  glm::mat4 view = cameraSystem.getViewMatrix(camera);
+  glm::mat4 projection = cameraSystem.getProjectionMatrix(camera);
+  glm::vec3 viewPos = camera.position;
 
   glm::mat4 lightSpaceMatrix = glm::mat4(1.0f);
   glm::vec3 shadowLightDir = glm::vec3(0.0f, -1.0f, 0.0f);
@@ -49,7 +49,7 @@ void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entit
   // Shadow pass
   if (shadowsEnabled && !lights.empty()) {
     for (const Entity &lightEntity : lights) {
-      const auto &light = componentManager.get<LightComponent>(lightEntity);
+      const auto &light = componentManager.get<Light>(lightEntity);
 
       if (light.type == LightType::Directional) {
         useShadows = true;
@@ -76,8 +76,8 @@ void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entit
 
         renderer.beginShadowPass();
         for (const Entity &entity : m_entries) {
-          const auto &transform = componentManager.get<TransformComponent>(entity);
-          const auto &model = componentManager.get<ModelComponent>(entity);
+          const auto &transform = componentManager.get<Transform>(entity);
+          const auto &model = componentManager.get<Model>(entity);
           const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
 
           glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
@@ -96,7 +96,7 @@ void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entit
   std::unordered_map<uint32_t, std::vector<std::pair<Entity, size_t>>> renderBatches;
 
   for (const Entity entity : m_entries) {
-    const auto &model = componentManager.get<ModelComponent>(entity);
+    const auto &model = componentManager.get<Model>(entity);
     const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
     const auto &submeshes = mesh.getSubmeshes();
 
@@ -122,8 +122,8 @@ void RenderSystem::renderCall(SystemManager &systemManager, EntityManager &entit
     lightSystem.uploadLightsToShader(shader, componentManager);
 
     for (const auto &[entity, submeshIndex] : batch) {
-      const auto &transform = componentManager.get<TransformComponent>(entity);
-      const auto &model = componentManager.get<ModelComponent>(entity);
+      const auto &transform = componentManager.get<Transform>(entity);
+      const auto &model = componentManager.get<Model>(entity);
       const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
       const Material &material = resourceSystem.getMaterial(model.materialHandles[submeshIndex]);
 

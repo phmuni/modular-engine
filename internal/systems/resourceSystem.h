@@ -1,7 +1,7 @@
 #pragma once
 // Handle-based resource manager for meshes, materials, and shaders.
 
-#include "components/modelComponent.h"
+#include "components/model.h"
 #include "foundation/ecs/systemManager.h"
 #include <cstdint>
 #include <glm/glm.hpp>
@@ -62,8 +62,8 @@ public:
   void setMaterialShininess(uint32_t &handle, const std::vector<uint32_t> &allHandles, float shininess);
 
   // Convenience: apply to all submeshes of a model
-  void setEmission(ModelComponent &model, const glm::vec3 &color, float strength);
-  void setTexture(ModelComponent &model, TextureSlot slot, GLuint tex);
-  void resetTexture(ModelComponent &model, TextureSlot slot);
-  void setShininess(ModelComponent &model, float shininess);
+  void setEmission(Model &model, const glm::vec3 &color, float strength);
+  void setTexture(Model &model, TextureSlot slot, GLuint tex);
+  void resetTexture(Model &model, TextureSlot slot);
+  void setShininess(Model &model, float shininess);
 };

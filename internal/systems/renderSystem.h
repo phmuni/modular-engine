@@ -12,7 +12,7 @@ class RenderSystem : public BaseSystem {
 public:
   void insertRenderable(Entity entity);
   void removeRenderable(Entity entity);
-  void renderCall(SystemManager &systemManager, EntityManager &entityManager, ComponentManager &componentManager);
+  void renderPipeline(SystemManager &systemManager, EntityManager &entityManager, ComponentManager &componentManager);
   Renderer &getRenderer();
   const std::vector<Entity> &getRenderQueue() const;
 

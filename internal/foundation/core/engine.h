@@ -1,12 +1,12 @@
 #pragma once
 // Main engine class: initialization, game loop, and entity creation interface.
 
-#include "components/lightComponent.h"
-#include "components/modelComponent.h"
-#include "components/nameComponent.h"
-#include "components/particleComponent.h"
-#include "components/transformComponent.h"
-#include "components/collisionComponent.h"
+#include "components/light.h"
+#include "components/model.h"
+#include "components/name.h"
+#include "components/particleEmitter.h"
+#include "components/transform.h"
+#include "components/collision.h"
 #include "foundation/core/app.h"
 #include "foundation/core/config.h"
 #include "foundation/ecs/componentManager.h"
@@ -38,7 +38,7 @@ public:
   Engine();
   ~Engine();
 
-  bool init();
+  bool initialize();
   void run(App &app);
 
   SystemManager &getSystemManager();

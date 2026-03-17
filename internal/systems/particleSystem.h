@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 
-struct ParticleComponent;
+struct ParticleEmitter;
 
 class ParticleSystem : public BaseSystem {
 public:
@@ -21,6 +21,6 @@ public:
 private:
   uint32_t m_shaderHandle = 0;
 
-  void emitParticles(ParticleComponent &emitter, const glm::vec3 &origin, float deltaTime);
-  void updateParticles(ParticleComponent &emitter, float deltaTime);
+  void emitParticles(ParticleEmitter &emitter, const glm::vec3 &origin, float deltaTime);
+  void updateParticles(ParticleEmitter &emitter, float deltaTime);
 };

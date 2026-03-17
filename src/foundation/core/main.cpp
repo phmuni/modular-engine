@@ -14,13 +14,13 @@ class TestApp : public App {
     box2 = engine.createModelEntity("Box2", EngineConfig::MODEL_BOX, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f),
                     glm::vec3(1.0f));
 
-    // Add CollisionComponent to both cubes
-    auto &col1 = engine.addComponent<CollisionComponent>(box);
+    // Add Collision to both cubes
+    auto &col1 = engine.addComponent<Collision>(box);
     col1.min = glm::vec3(-0.5f);
     col1.max = glm::vec3(0.5f);
     col1.isStatic = false;
 
-    auto &col2 = engine.addComponent<CollisionComponent>(box2);
+    auto &col2 = engine.addComponent<Collision>(box2);
     col2.min = glm::vec3(-0.5f);
     col2.max = glm::vec3(0.5f);
     col2.isStatic = false;
@@ -34,7 +34,7 @@ class TestApp : public App {
     engine.setEmission(box, glm::vec3(1.0f, 0.5f, 0.0f), 1.5f);
 
     // Particle effect attached to the box
-    auto &particles = engine.addComponent<ParticleComponent>(box);
+    auto &particles = engine.addComponent<ParticleEmitter>(box);
     particles.emitRate = 80.0f;
     particles.particleLifetime = 2.0f;
     particles.speed = 0.6f;
@@ -52,7 +52,7 @@ class TestApp : public App {
 
   void update(Engine &engine, float deltaTime) override {
     // Move box2 to the left every frame
-    auto &t2 = engine.getComponent<TransformComponent>(box2);
+    auto &t2 = engine.getComponent<Transform>(box2);
     t2.position.x -= deltaTime * 0.5f;
 
     // Check collision between box and box2, change emission color accordingly
@@ -71,7 +71,7 @@ class TestApp : public App {
 int main() {
   Engine engine;
 
-  if (!engine.init())
+  if (!engine.initialize())
     return 1;
 
   TestApp application;

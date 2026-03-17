@@ -212,22 +212,22 @@ void ResourceSystem::setMaterialShininess(uint32_t &handle, const std::vector<ui
   getMaterial(handle).setShininess(shininess);
 }
 
-void ResourceSystem::setEmission(ModelComponent &model, const glm::vec3 &color, float strength) {
+void ResourceSystem::setEmission(Model &model, const glm::vec3 &color, float strength) {
   for (auto &h : model.materialHandles)
     setMaterialEmission(h, model.materialHandles, color, strength);
 }
 
-void ResourceSystem::setTexture(ModelComponent &model, TextureSlot slot, GLuint tex) {
+void ResourceSystem::setTexture(Model &model, TextureSlot slot, GLuint tex) {
   for (auto &h : model.materialHandles)
     setMaterialTexture(h, model.materialHandles, slot, tex);
 }
 
-void ResourceSystem::resetTexture(ModelComponent &model, TextureSlot slot) {
+void ResourceSystem::resetTexture(Model &model, TextureSlot slot) {
   for (auto &h : model.materialHandles)
     resetMaterialTexture(h, model.materialHandles, slot);
 }
 
-void ResourceSystem::setShininess(ModelComponent &model, float shininess) {
+void ResourceSystem::setShininess(Model &model, float shininess) {
   for (auto &h : model.materialHandles)
     setMaterialShininess(h, model.materialHandles, shininess);
 }

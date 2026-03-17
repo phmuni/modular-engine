@@ -1,16 +1,16 @@
 // Camera system: FPS-style movement and mouse look.
 #include "systems/cameraSystem.h"
-#include "components/cameraComponent.h"
+#include "components/camera.h"
 #include "systems/inputSystem.h"
 #include "systems/stateSystem.h"
 #include "systems/windowSystem.h"
 
 void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
   Entity entity = getActiveCamera();
-  if (!m_componentManager.has<CameraComponent>(entity))
+  if (!m_componentManager.has<Camera>(entity))
     return;
 
-  auto &cam = m_componentManager.get<CameraComponent>(entity);
+  auto &cam = m_componentManager.get<Camera>(entity);
   auto &state = systemManager.getSystem<StateSystem>();
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
 
@@ -18,29 +18,29 @@ void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
   windowSystem.setCursor(cursorLocked);
 
   if (state.isToggled(Toggle::CameraMovement) && cursorLocked) {
-    rotateCamera(cam);
-    moveCamera(cam, deltaTime, state);
+    updateOrientation(cam);
+    updatePositionFromInput(cam, deltaTime, state);
   }
 
-  updateFront(cam);
+  updateFrontVector(cam);
 }
 
-glm::mat4 CameraSystem::getViewMatrix(const CameraComponent &cam) const {
+glm::mat4 CameraSystem::getViewMatrix(const Camera &cam) const {
   return glm::lookAt(cam.position, cam.position + cam.front, cam.up);
 }
 
-glm::mat4 CameraSystem::getProjMatrix(const CameraComponent &cam) const {
+glm::mat4 CameraSystem::getProjectionMatrix(const Camera &cam) const {
   return glm::perspective(glm::radians(cam.fov), cam.aspectRatio, 0.1f, 100.0f);
 }
 
-void CameraSystem::updateFront(CameraComponent &cam) {
+void CameraSystem::updateFrontVector(Camera &cam) {
   float pitchRad = glm::radians(cam.pitch);
   float yawRad = glm::radians(cam.yaw);
 
   cam.front = glm::normalize(glm::vec3(cos(pitchRad) * sin(yawRad), sin(pitchRad), -cos(pitchRad) * cos(yawRad)));
 }
 
-void CameraSystem::rotateCamera(CameraComponent &cam) {
+void CameraSystem::updateOrientation(Camera &cam) {
   float xoffset = m_input.getMouseXOffset() * cam.mouseSensitivity / cam.smoothFactor;
   float yoffset = m_input.getMouseYOffset() * cam.mouseSensitivity / cam.smoothFactor;
 
@@ -55,7 +55,7 @@ void CameraSystem::rotateCamera(CameraComponent &cam) {
   cam.pitch = glm::clamp(cam.pitch, -89.9f, 89.9f);
 }
 
-void CameraSystem::moveCamera(CameraComponent &cam, float deltaTime, const StateSystem &state) {
+void CameraSystem::updatePositionFromInput(Camera &cam, float deltaTime, const StateSystem &state) {
   float velocity = cam.moveSpeed * deltaTime;
   float angleRad = glm::radians(-cam.yaw);
   float cosA = cos(angleRad);

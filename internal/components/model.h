@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <vector>
 
-struct ModelComponent {
+struct Model {
   uint32_t meshHandle;
   std::vector<uint32_t> materialHandles;
 
-  ModelComponent(uint32_t mesh, std::vector<uint32_t> mats) : meshHandle(mesh), materialHandles(std::move(mats)) {}
+  Model(uint32_t mesh, std::vector<uint32_t> mats) : meshHandle(mesh), materialHandles(std::move(mats)) {}
 };

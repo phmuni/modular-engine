@@ -2,26 +2,26 @@
 
 #include "systems/collisionSystem.h"
 #include "systems/collisionSystem.h"
-#include "components/collisionComponent.h"
-#include "components/modelComponent.h"
-#include "components/transformComponent.h"
+#include "components/collision.h"
+#include "components/model.h"
+#include "components/transform.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/componentManager.h"
 #include <glm/glm.hpp>
 
 void CollisionSystem::update(ComponentManager &componentManager) {
     std::vector<CollisionEvent> collisions;
-    // Iterate all entities with CollisionComponent
-    std::vector<std::pair<Entity, CollisionComponent*>> colliders;
-    componentManager.each<CollisionComponent>([&](Entity entity, CollisionComponent &col) {
+    // Iterate all entities with Collision
+    std::vector<std::pair<Entity, Collision*>> colliders;
+    componentManager.each<Collision>([&](Entity entity, Collision &col) {
         colliders.emplace_back(entity, &col);
     });
 
     // Brute-force pairwise check (can optimize later)
     for (size_t i = 0; i < colliders.size(); ++i) {
         Entity a = colliders[i].first;
-        CollisionComponent *colA = colliders[i].second;
-        auto *transA = componentManager.tryGet<TransformComponent>(a);
+        Collision *colA = colliders[i].second;
+        auto *transA = componentManager.tryGet<Transform>(a);
         glm::vec3 minA = colA->min;
         glm::vec3 maxA = colA->max;
         if (transA) {
@@ -30,8 +30,8 @@ void CollisionSystem::update(ComponentManager &componentManager) {
         }
         for (size_t j = i + 1; j < colliders.size(); ++j) {
             Entity b = colliders[j].first;
-            CollisionComponent *colB = colliders[j].second;
-            auto *transB = componentManager.tryGet<TransformComponent>(b);
+            Collision *colB = colliders[j].second;
+            auto *transB = componentManager.tryGet<Transform>(b);
             glm::vec3 minB = colB->min;
             glm::vec3 maxB = colB->max;
             if (transB) {
@@ -56,15 +56,15 @@ bool CollisionSystem::checkAABB(const glm::vec3 &minA, const glm::vec3 &maxA, co
 }
 
 bool CollisionSystem::checkEntitiesCollision(Entity a, Entity b, ComponentManager &componentManager) {
-    // Both entities must have ModelComponent and CollisionComponent to be considered for collision
-    if (!componentManager.has<ModelComponent>(a) || !componentManager.has<ModelComponent>(b))
+    // Both entities must have Model and Collision to be considered for collision
+    if (!componentManager.has<Model>(a) || !componentManager.has<Model>(b))
         return false;
-    auto *colA = componentManager.tryGet<CollisionComponent>(a);
-    auto *colB = componentManager.tryGet<CollisionComponent>(b);
+    auto *colA = componentManager.tryGet<Collision>(a);
+    auto *colB = componentManager.tryGet<Collision>(b);
     if (!colA || !colB)
         return false;
-    auto *transA = componentManager.tryGet<TransformComponent>(a);
-    auto *transB = componentManager.tryGet<TransformComponent>(b);
+    auto *transA = componentManager.tryGet<Transform>(a);
+    auto *transB = componentManager.tryGet<Transform>(b);
     glm::vec3 minA = colA->min;
     glm::vec3 maxA = colA->max;
     glm::vec3 minB = colB->min;

@@ -70,7 +70,7 @@ public:
     return it->second.begin()->first;
   }
 
-  void removeAll(Entity entity) {
+  void removeAllComponents(Entity entity) {
     for (auto &[_, map] : m_storage)
       map.erase(entity);
   }

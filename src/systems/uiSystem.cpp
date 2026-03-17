@@ -1,12 +1,12 @@
 // ImGui editor UI: scene explorer, property inspectors, and entity creation forms.
 #include "systems/uiSystem.h"
-#include "components/cameraComponent.h"
-#include "components/lightComponent.h"
-#include "components/modelComponent.h"
-#include "components/nameComponent.h"
-#include "components/particleComponent.h"
-#include "components/collisionComponent.h"
-#include "components/transformComponent.h"
+#include "components/camera.h"
+#include "components/light.h"
+#include "components/model.h"
+#include "components/name.h"
+#include "components/particleEmitter.h"
+#include "components/collision.h"
+#include "components/transform.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "systems/cameraSystem.h"
@@ -86,7 +86,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   ImGui::BeginChild("SceneTree", ImVec2(avail.x, avail.y - buttonHeight), true);
 
   auto entityLabel = [&](Entity e, const char *icon) -> std::string {
-    auto *nc = componentManager.tryGet<NameComponent>(e);
+    auto *nc = componentManager.tryGet<Name>(e);
     std::string name = nc ? nc->name : ("Entity " + std::to_string(e));
     return std::string(icon) + " " + name + "##" + std::to_string(e);
   };
@@ -136,7 +136,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
 
   if (ImGui::CollapsingHeader("Particles", ImGuiTreeNodeFlags_DefaultOpen)) {
     int particleCount = 0;
-    componentManager.each<ParticleComponent>([&](Entity entity, ParticleComponent &) {
+    componentManager.each<ParticleEmitter>([&](Entity entity, ParticleEmitter &) {
       std::string label = entityLabel(entity, "[P]");
       if (ImGui::Selectable(label.c_str(), selectedEntity == entity)) {
         selectToggle(entity);
@@ -172,7 +172,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
 
       ImGui::BeginChild("PropertiesScroll", ImVec2(0, 0), false, ImGuiWindowFlags_None);
 
-      auto *nc = componentManager.tryGet<NameComponent>(selectedEntity);
+      auto *nc = componentManager.tryGet<Name>(selectedEntity);
       if (nc) {
         char buf[64];
         std::strncpy(buf, nc->name.c_str(), sizeof(buf) - 1);
@@ -184,18 +184,18 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       ImGui::Text("Entity ID: %d", selectedEntity);
       ImGui::Separator();
 
-      if (componentManager.has<TransformComponent>(selectedEntity)) {
+      if (componentManager.has<Transform>(selectedEntity)) {
         if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-          auto &t = componentManager.get<TransformComponent>(selectedEntity);
+          auto &t = componentManager.get<Transform>(selectedEntity);
           ImGui::DragFloat3("Position##t", &t.position.x, 0.1f);
           ImGui::DragFloat3("Rotation##t", &t.rotation.x, 0.1f);
           ImGui::DragFloat3("Scale##t", &t.scale.x, 0.01f);
         }
       }
 
-      if (componentManager.has<CameraComponent>(selectedEntity)) {
+      if (componentManager.has<Camera>(selectedEntity)) {
         if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-          auto &cam = componentManager.get<CameraComponent>(selectedEntity);
+          auto &cam = componentManager.get<Camera>(selectedEntity);
           ImGui::DragFloat3("Position##cam", &cam.position.x, 0.1f);
           ImGui::SliderFloat("FOV", &cam.fov, 30.0f, 120.0f);
           ImGui::SliderFloat("Move Speed", &cam.moveSpeed, 0.5f, 20.0f);
@@ -205,9 +205,9 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
         }
       }
 
-      if (componentManager.has<LightComponent>(selectedEntity)) {
+      if (componentManager.has<Light>(selectedEntity)) {
         if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-          auto &light = componentManager.get<LightComponent>(selectedEntity);
+          auto &light = componentManager.get<Light>(selectedEntity);
           const char *types[] = {"Directional", "Point", "Spot"};
           int type = static_cast<int>(light.type);
           if (ImGui::Combo("Type##light", &type, types, IM_ARRAYSIZE(types))) {
@@ -231,17 +231,17 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
         }
       }
 
-      if (componentManager.has<ModelComponent>(selectedEntity)) {
+      if (componentManager.has<Model>(selectedEntity)) {
         renderMaterialInspector(selectedEntity, componentManager, resourceSystem, window);
       }
 
-      if (componentManager.has<ParticleComponent>(selectedEntity)) {
+      if (componentManager.has<ParticleEmitter>(selectedEntity)) {
         renderParticleInspector(selectedEntity, componentManager);
       }
 
-      if (componentManager.has<CollisionComponent>(selectedEntity)) {
+      if (componentManager.has<Collision>(selectedEntity)) {
         if (ImGui::CollapsingHeader("Collision (AABB)", ImGuiTreeNodeFlags_DefaultOpen)) {
-          auto &col = componentManager.get<CollisionComponent>(selectedEntity);
+          auto &col = componentManager.get<Collision>(selectedEntity);
           ImGui::Checkbox("Static", &col.isStatic);
           ImGui::DragFloat3("Min##col", &col.min.x, 0.05f);
           ImGui::DragFloat3("Max##col", &col.max.x, 0.05f);
@@ -251,28 +251,28 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       // Add Component section
       ImGui::Separator();
       if (ImGui::CollapsingHeader("Add Component", ImGuiTreeNodeFlags_None)) {
-        if (!componentManager.has<TransformComponent>(selectedEntity)) {
+        if (!componentManager.has<Transform>(selectedEntity)) {
           if (ImGui::Button("+ Transform", ImVec2(-1, 0))) {
-            componentManager.add<TransformComponent>(selectedEntity);
+            componentManager.add<Transform>(selectedEntity);
           }
         }
-        if (!componentManager.has<LightComponent>(selectedEntity)) {
+        if (!componentManager.has<Light>(selectedEntity)) {
           if (ImGui::Button("+ Light", ImVec2(-1, 0))) {
-            componentManager.add<LightComponent>(selectedEntity, LightType::Point);
+            componentManager.add<Light>(selectedEntity, LightType::Point);
             systemManager.getSystem<LightSystem>().createLight(selectedEntity);
           }
         }
-        if (!componentManager.has<ParticleComponent>(selectedEntity)) {
-          if (ImGui::Button("+ Particle Emitter", ImVec2(-1, 0))) {
-            componentManager.add<ParticleComponent>(selectedEntity);
+        if (!componentManager.has<ParticleEmitter>(selectedEntity)) {
+          if (ImGui::Button("+ ParticleEmitter Emitter", ImVec2(-1, 0))) {
+            componentManager.add<ParticleEmitter>(selectedEntity);
           }
         }
-        if (!componentManager.has<CollisionComponent>(selectedEntity)) {
+        if (!componentManager.has<Collision>(selectedEntity)) {
           if (ImGui::Button("+ Collision (AABB)", ImVec2(-1, 0))) {
-            componentManager.add<CollisionComponent>(selectedEntity);
+            componentManager.add<Collision>(selectedEntity);
           }
         }
-        if (!componentManager.has<ModelComponent>(selectedEntity)) {
+        if (!componentManager.has<Model>(selectedEntity)) {
           static char addModelPath[256] = "";
           ImGui::SetNextItemWidth(140.0f);
           ImGui::InputText("##addModelPath", addModelPath, 256);
@@ -281,7 +281,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
           if (ImGui::Button("+ Model", ImVec2(-1, 0)) && addModelPath[0] != '\0') {
             auto &rs = resourceSystem;
             auto modelData = rs.loadModel(addModelPath);
-            componentManager.add<ModelComponent>(selectedEntity, modelData.meshHandle,
+            componentManager.add<Model>(selectedEntity, modelData.meshHandle,
                                                  std::move(modelData.materialHandles));
             renderSystem.insertRenderable(selectedEntity);
             addModelPath[0] = '\0';
@@ -305,10 +305,10 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
 }
 
 void UISystem::renderParticleInspector(Entity entity, ComponentManager &componentManager) {
-  if (!ImGui::CollapsingHeader("Particle Emitter", ImGuiTreeNodeFlags_DefaultOpen))
+  if (!ImGui::CollapsingHeader("ParticleEmitter Emitter", ImGuiTreeNodeFlags_DefaultOpen))
     return;
 
-  auto &p = componentManager.get<ParticleComponent>(entity);
+  auto &p = componentManager.get<ParticleEmitter>(entity);
 
   ImGui::Checkbox("Active##pe", &p.active);
   ImGui::SameLine();
@@ -345,7 +345,7 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
   if (!ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
     return;
 
-  auto &model = componentManager.get<ModelComponent>(entity);
+  auto &model = componentManager.get<Model>(entity);
   const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
   const auto &submeshes = mesh.getSubmeshes();
 
@@ -454,7 +454,7 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
       formType = 1;
     if (ImGui::Button("Add Light", ImVec2(-1, 0)))
       formType = 2;
-    if (ImGui::Button("Add Particle Emitter", ImVec2(-1, 0)))
+    if (ImGui::Button("Add ParticleEmitter Emitter", ImVec2(-1, 0)))
       formType = 3;
   } else if (formType == 1) {
     static char modelName[64] = "";
@@ -538,7 +538,7 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
     static float startCol[4] = {1, 0.8f, 0.2f, 1};
     static float endCol[4] = {1, 0, 0, 0};
 
-    ImGui::Text("New Particle Emitter");
+    ImGui::Text("New ParticleEmitter Emitter");
     ImGui::Separator();
     ImGui::InputText("Name##pf", emitterName, 64);
     ImGui::InputFloat3("Position##pf", pos);
@@ -551,9 +551,9 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
 
     if (ImGui::Button("Create##pf", ImVec2(120, 0))) {
       Entity e = entityManager.createEntity();
-      componentManager.add<NameComponent>(e, std::string(emitterName));
-      componentManager.add<TransformComponent>(e, glm::vec3(pos[0], pos[1], pos[2]));
-      auto &p = componentManager.add<ParticleComponent>(e);
+      componentManager.add<Name>(e, std::string(emitterName));
+      componentManager.add<Transform>(e, glm::vec3(pos[0], pos[1], pos[2]));
+      auto &p = componentManager.add<ParticleEmitter>(e);
       p.emitRate = emitRate;
       p.particleLifetime = lifetime;
       p.speed = speed;

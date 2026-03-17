@@ -3,9 +3,9 @@
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
-#include "components/collisionComponent.h"
-#include "components/transformComponent.h"
-#include "components/modelComponent.h"
+#include "components/collision.h"
+#include "components/transform.h"
+#include "components/model.h"
 #include <vector>
 #include <functional>
 
@@ -25,7 +25,7 @@ public:
     // Optional: register callback for collision events
     void setCollisionCallback(std::function<void(const CollisionEvent &)> cb) { m_callback = cb; }
 
-    // Check collision between two entities (both must have ModelComponent and CollisionComponent)
+    // Check collision between two entities (both must have Model and Collision)
     bool checkEntitiesCollision(Entity a, Entity b, ComponentManager &componentManager);
 
 private:

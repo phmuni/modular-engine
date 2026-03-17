@@ -1,7 +1,7 @@
 // Light system: entity tracking and per-light shader uniform upload.
 #include "systems/lightSystem.h"
-#include "components/lightComponent.h"
-#include "components/transformComponent.h"
+#include "components/light.h"
+#include "components/transform.h"
 #include "foundation/ecs/componentManager.h"
 #include "rendering/resources/shader.h"
 #include <algorithm>
@@ -19,10 +19,10 @@ void LightSystem::uploadLightsToShader(Shader &shader, ComponentManager &compone
   int index = 0;
 
   for (const Entity &lightEntity : m_lights) {
-    const auto &light = componentManager.get<LightComponent>(lightEntity);
+    const auto &light = componentManager.get<Light>(lightEntity);
 
     glm::vec3 worldPos = light.position;
-    auto *transform = componentManager.tryGet<TransformComponent>(lightEntity);
+    auto *transform = componentManager.tryGet<Transform>(lightEntity);
     if (transform)
       worldPos += transform->position;
 

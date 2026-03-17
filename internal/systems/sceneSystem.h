@@ -1,7 +1,7 @@
 #pragma once
 // High-level scene operations: create/destroy camera, model, and light entities.
 
-#include "components/lightComponent.h"
+#include "components/light.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"

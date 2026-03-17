@@ -1,7 +1,7 @@
 #pragma once
 // Camera movement, rotation, and matrix computation.
 
-#include "components/cameraComponent.h"
+#include "components/camera.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "systems/inputSystem.h"
@@ -16,17 +16,17 @@ private:
   InputSystem &m_input;
   Entity m_activeCamera;
 
-  void rotateCamera(CameraComponent &cam);
-  void moveCamera(CameraComponent &cam, float deltaTime, const StateSystem &state);
+  void updateOrientation(Camera &cam);
+  void updatePositionFromInput(Camera &cam, float deltaTime, const StateSystem &state);
 
 public:
   CameraSystem(ComponentManager &cm, InputSystem &in) : m_componentManager(cm), m_input(in), m_activeCamera(-1) {}
 
   void update(float deltaTime, SystemManager &systemManager);
-  void updateFront(CameraComponent &cam);
+  void updateFrontVector(Camera &cam);
 
-  glm::mat4 getViewMatrix(const CameraComponent &cam) const;
-  glm::mat4 getProjMatrix(const CameraComponent &cam) const;
+  glm::mat4 getViewMatrix(const Camera &cam) const;
+  glm::mat4 getProjectionMatrix(const Camera &cam) const;
 
   Entity getActiveCamera() const;
   void removeActiveCamera();
