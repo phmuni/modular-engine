@@ -24,6 +24,10 @@ endif()
 
 # --- Directories ---
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
+foreach(OUTPUT_CONFIG Debug Release RelWithDebInfo MinSizeRel)
+    string(TOUPPER "${OUTPUT_CONFIG}" OUTPUT_CONFIG_UPPER)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUT_CONFIG_UPPER} "${CMAKE_SOURCE_DIR}/bin")
+endforeach()
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
 # Include directories
@@ -43,10 +47,25 @@ add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE})
 # --- Platform-specific Libraries ---
 if(WIN32)
     # Windows
-    if(EXISTS "${EXTERNAL_DIR}/SDL3/lib/libSDL3.dll.a")
-        target_link_libraries(engine "${EXTERNAL_DIR}/SDL3/lib/libSDL3.dll.a")
-    elseif(EXISTS "${EXTERNAL_DIR}/SDL3/lib/SDL3.lib")
-        target_link_libraries(engine "${EXTERNAL_DIR}/SDL3/lib/SDL3.lib")
+    if(MSVC)
+        # Visual C++ toolchains must link against the VC import library.
+        if(EXISTS "${EXTERNAL_DIR}/SDL3/lib/SDL3.lib")
+            target_link_libraries(engine "${EXTERNAL_DIR}/SDL3/lib/SDL3.lib")
+            set(SDL3_RUNTIME_DLL "${EXTERNAL_DIR}/SDL3/bin/MSVC/SDL3.dll")
+        else()
+            message(FATAL_ERROR "MSVC build requires ${EXTERNAL_DIR}/SDL3/lib/SDL3.lib (VC SDL3 package).")
+        endif()
+    else()
+        # MinGW/clang-mingw toolchains use GNU import libraries.
+        if(EXISTS "${EXTERNAL_DIR}/SDL3/lib/libSDL3.dll.a")
+            target_link_libraries(engine "${EXTERNAL_DIR}/SDL3/lib/libSDL3.dll.a")
+            set(SDL3_RUNTIME_DLL "${EXTERNAL_DIR}/SDL3/bin/UCRT/SDL3.dll")
+        elseif(EXISTS "${EXTERNAL_DIR}/SDL3/lib/SDL3.lib")
+            target_link_libraries(engine "${EXTERNAL_DIR}/SDL3/lib/SDL3.lib")
+            set(SDL3_RUNTIME_DLL "${EXTERNAL_DIR}/SDL3/bin/UCRT/SDL3.dll")
+        else()
+            message(FATAL_ERROR "SDL3 import library not found in ${EXTERNAL_DIR}/SDL3/lib.")
+        endif()
     endif()
     
     # OpenGL libraries for Windows
@@ -91,13 +110,22 @@ endif()
 
 # --- Copy DLLs (Windows only) ---
 if(WIN32)
-    file(GLOB DLL_FILES "${EXTERNAL_DIR}/*/bin/*.dll")
-    foreach(DLL ${DLL_FILES})
+    if(NOT EXISTS "${SDL3_RUNTIME_DLL}")
+        if(EXISTS "${EXTERNAL_DIR}/SDL3/bin/SDL3.dll")
+            set(SDL3_RUNTIME_DLL "${EXTERNAL_DIR}/SDL3/bin/SDL3.dll")
+        elseif(EXISTS "${EXTERNAL_DIR}/SDL3/lib/SDL3.dll")
+            set(SDL3_RUNTIME_DLL "${EXTERNAL_DIR}/SDL3/lib/SDL3.dll")
+        endif()
+    endif()
+
+    if(EXISTS "${SDL3_RUNTIME_DLL}")
         add_custom_command(TARGET engine POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DLL}" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/"
-            COMMENT "Copying ${DLL}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SDL3_RUNTIME_DLL}" "$<TARGET_FILE_DIR:engine>/"
+            COMMENT "Copying SDL3 runtime: ${SDL3_RUNTIME_DLL}"
         )
-    endforeach()
+    else()
+        message(WARNING "SDL3 runtime DLL not found. Place SDL3.dll in external/SDL3/bin/MSVC or external/SDL3/bin/UCRT.")
+    endif()
 endif()
 
 # --- Post-build messages ---

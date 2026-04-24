@@ -7,6 +7,7 @@
 
 # Build directories
 /build/
+/build-ninja/
 /bin/
 exclude/
 .cache/
