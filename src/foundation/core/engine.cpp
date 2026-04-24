@@ -87,17 +87,17 @@ void Engine::run(App &app) {
   loop(running);
 }
 
-void Engine::loop(bool &running) {
-  while (running) {
-    update(running);
+void Engine::loop(bool &isRunning) {
+  while (isRunning) {
+    update(isRunning);
     render();
   }
 }
 
-void Engine::update(bool &running) {
+void Engine::update(bool &isRunning) {
   
   auto &inputSystem = systemManager.getSystem<InputSystem>();
-  inputSystem.update(&running, systemManager);
+  inputSystem.update(&isRunning, systemManager);
   
   auto &timeSystem = systemManager.getSystem<TimeSystem>();
   timeSystem.update();

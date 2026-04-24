@@ -30,8 +30,8 @@ private:
   void registerSystems();
   bool loadResources();
 
-  void loop(bool &running);
-  void update(bool &running);
+  void loop(bool &isRunning);
+  void update(bool &isRunning);
   void render();
 
 public:
