@@ -44,7 +44,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **PBR Material System** | Per-submesh materials with diffuse, specular, normal, and emission maps |
 | **Resource Caching** | Automatic texture caching with handle-based resource management |
 | **Shadow Mapping** | Real-time shadow rendering with configurable depth maps |
-| **Asset Loading** | OBJ/FBX support via Assimp with automated resource management |
+| **Asset Loading** | OBJ support via Tiny_Obj with automated resource management |
 | **Camera System** | Flexible camera control with quaternion-based rotations |
 | **Input System** | Keyboard and mouse handling via SDL3 |
 | **Lighting System** | Directional, point, and spotlight types with PBR shading |
@@ -69,7 +69,7 @@ The engine is built on the **Entity-Component-System (ECS)** pattern, which sepa
 │  └─────────────┘  └──────────────┘  └───────────────┘  │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
 │  │  Asset Mgr  │  │  Scene Mgr   │  │  UI (ImGui)   │  │
-│  │  (Assimp,   │  │  (Lifecycle, │  │  (Inspector,  │  │
+│  │  (Tiny_Obj, │  │  (Lifecycle, │  │  (Inspector,  │  │
 │  │  Caching)   │  │  Composition)│  │  Hierarchy)   │  │
 │  └─────────────┘  └──────────────┘  └───────────────┘  │
 └─────────────────────────────────────────────────────────┘
@@ -235,7 +235,7 @@ For the full API reference, explore the header files in [`internal/`](internal/)
 | Build System | CMake |
 | Window & Input | SDL3 |
 | Mathematics | GLM |
-| Asset Loading | Assimp |
+| Asset Loading | Tiny_Obj |
 | UI Framework | Dear ImGui |
 | Dependencies | See `external/` |
 
