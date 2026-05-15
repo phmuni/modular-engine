@@ -8,11 +8,11 @@ class TestApp : public App {
   void setup(Engine &engine) override {
 
     box = engine.createModelEntity("Box", EngineConfig::MODEL_BOX, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f),
-                     glm::vec3(1.0f));
+                                   glm::vec3(1.0f));
 
     // Second cube for collision test
     box2 = engine.createModelEntity("Box2", EngineConfig::MODEL_BOX, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f),
-                    glm::vec3(1.0f));
+                                    glm::vec3(1.0f));
 
     // Add Collision to both cubes
     auto &col1 = engine.addComponent<Collision>(box);
@@ -25,8 +25,8 @@ class TestApp : public App {
     col2.max = glm::vec3(0.5f);
     col2.isStatic = false;
 
-    engine.createLightEntity("Directional", glm::vec3(2.0f, 3.0f, 2.0f), glm::vec3(-1.0f, -1.0f, -1.0f),
-                             glm::vec3(1.0f), LightType::Directional, 1.5f, 0.0f, 0.0f);
+    engine.createLightEntity("Directional", glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, -1.0f), glm::vec3(1.0f),
+                             LightType::Directional, 1.5f, 0.0f, 0.0f);
 
     engine.createCameraEntity(glm::vec3(0.0f, 0.0f, 5.0f), 0.0f, 0.0f, 90.0f);
 
@@ -41,10 +41,10 @@ class TestApp : public App {
     particles.speedVariance = 0.4f;
     particles.size = 0.18f;
     particles.sizeDecay = 0.3f;
-    particles.gravity = {0.0f, 0.3f, 0.0f};          // gentle float upward
+    particles.gravity = {0.0f, 0.5f, 0.0f};          // gentle float upward
     particles.startColor = {0.4f, 0.2f, 1.0f, 1.0f}; // bright purple
     particles.endColor = {0.0f, 0.8f, 1.0f, 0.0f};   // fade to cyan/transparent
-    particles.emitDirection = {0.0f, 0.5f, 0.0f};
+    particles.emitDirection = {0.0f, 0.0f, 1.0f};
     particles.spread = 1.0f; // emit in all directions (sphere)
     particles.maxParticles = 600;
     particles.additiveBlending = true;
@@ -61,10 +61,10 @@ class TestApp : public App {
     if (colliding) {
       engine.setEmission(box, glm::vec3(1.0f, 0.0f, 0.0f), 2.0f); // red
       engine.setEmission(box2, glm::vec3(1.0f, 0.0f, 0.0f), 2.0f);
-    } else {
-      engine.setEmission(box, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f); // green
-      engine.setEmission(box2, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f);
+      return;
     }
+    engine.setEmission(box, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f); // green
+    engine.setEmission(box2, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f);
   }
 };
 

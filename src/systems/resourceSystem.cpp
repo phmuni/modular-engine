@@ -37,30 +37,30 @@ ModelLoadResult ResourceSystem::loadModel(const std::string &path) {
   const std::string &baseDir = mesh.getBaseDir();
 
   for (const auto &sub : submeshes) {
-    if (sub.materialIndex >= 0 && sub.materialIndex < static_cast<int>(mtlMats.size())) {
-      const auto &mtl = mtlMats[sub.materialIndex];
-      uint32_t matHandle = createMaterial();
-      Material &mat = getMaterial(matHandle);
-
-      if (!mtl.diffuseTexPath.empty())
-        mat.setDiffuse(baseDir + mtl.diffuseTexPath);
-      if (!mtl.specularTexPath.empty())
-        mat.setSpecular(baseDir + mtl.specularTexPath);
-      if (!mtl.normalTexPath.empty())
-        mat.setNormal(baseDir + mtl.normalTexPath);
-      if (!mtl.emissionTexPath.empty())
-        mat.setEmission(baseDir + mtl.emissionTexPath);
-
-      mat.setShininess(mtl.shininess);
-      mat.setEmissionColor(mtl.emissionColor);
-
-      if (glm::length(mtl.emissionColor) > 0.0f)
-        mat.setEmissionStrength(1.0f);
-
-      result.materialHandles.push_back(matHandle);
-    } else {
+    if (!(sub.materialIndex >= 0 && sub.materialIndex < static_cast<int>(mtlMats.size()))) {
       result.materialHandles.push_back(0);
+      continue;
     }
+    const auto &mtl = mtlMats[sub.materialIndex];
+    uint32_t matHandle = createMaterial();
+    Material &mat = getMaterial(matHandle);
+
+    if (!mtl.diffuseTexPath.empty())
+      mat.setDiffuse(baseDir + mtl.diffuseTexPath);
+    if (!mtl.specularTexPath.empty())
+      mat.setSpecular(baseDir + mtl.specularTexPath);
+    if (!mtl.normalTexPath.empty())
+      mat.setNormal(baseDir + mtl.normalTexPath);
+    if (!mtl.emissionTexPath.empty())
+      mat.setEmission(baseDir + mtl.emissionTexPath);
+
+    mat.setShininess(mtl.shininess);
+    mat.setEmissionColor(mtl.emissionColor);
+
+    if (glm::length(mtl.emissionColor) > 0.0f)
+      mat.setEmissionStrength(1.0f);
+
+    result.materialHandles.push_back(matHandle);
   }
 
   return result;

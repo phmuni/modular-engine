@@ -12,15 +12,12 @@ namespace EngineConfig {
 
 inline std::string getBasePath() {
   static std::string basePath;
-  if (basePath.empty()) {
-    const char *sdlBase = SDL_GetBasePath();
-    if (sdlBase) {
-      basePath = sdlBase;
-    } else {
-      basePath = "./";
-    }
+  const char *sdlBase = SDL_GetBasePath();
+  if (sdlBase) {
+    return sdlBase;
   }
-  return basePath;
+
+  return "./";
 }
 
 inline std::string resolvePath(const char *relativePath) { return getBasePath() + relativePath; }

@@ -115,9 +115,9 @@ void Renderer::beginParticlePass(bool additiveBlending) {
 
   if (additiveBlending) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-  } else {
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    return;
   }
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void Renderer::uploadParticles(const ParticleVertex *data, int count) {

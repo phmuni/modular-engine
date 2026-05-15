@@ -105,9 +105,9 @@ void Shader::setTex(const char *name, GLuint textureID, int textureUnit) const {
   GLint location = glGetUniformLocation(m_shaderID, name);
   if (location != -1) {
     glUniform1i(location, textureUnit);
-  } else {
-    std::cerr << "[Shader] Uniform not found: " << name << std::endl;
+    return;
   }
+  std::cerr << "[Shader] Uniform not found: " << name << std::endl;
 }
 
 void Shader::setInt(const char *name, int value) const {
