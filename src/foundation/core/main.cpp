@@ -1,81 +1,551 @@
-// Application entry point and demo scene setup.
 #include "foundation/core/engine.h"
+#include <cmath>
+#include <random>
+#include <unordered_set>
+#include <vector>
 
-class TestApp : public App {
-  Entity box;
-  Entity box2;
+#include "SDL3/SDL_scancode.h"
+#include "systems/sceneSystem.h"
+#include <glm/common.hpp>
+#include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
 
+struct InvaderSlot {
+  glm::vec3 color;
+  int scoreValue;
+};
+
+struct Bullet {
+  glm::vec3 velocity;
+  float ttl;
+  bool friendly;
+};
+
+struct Invader {
+  bool alive;
+  glm::vec3 color;
+  int scoreValue;
+  int pathIndex;
+};
+
+struct Explosion {
+  float emitTimer;
+  float ttl;
+};
+
+struct GameState {
+  int score = 0;
+  int lives = 3;
+  bool gameOver = false;
+  bool playerWon = false;
+  float restartTimer = 0.0f;
+};
+
+struct Player {
+  float velocityX = 0.0f;
+  float tilt = 0.0f;
+  float flashTimer = 0.0f;
+  float hitCooldown = 0.0f;
+  float shootTimer = 0.0f;
+
+  float acceleration = 80.0f;
+  float friction = 10.0f;
+  float maxSpeed = 18.0f;
+  float bounds = 12.0f;
+  float shootCooldown = 0.22f;
+  float bulletSpeed = 28.0f;
+  float hitInvincibility = 1.8f;
+};
+
+struct InvaderGroup {
+  std::vector<InvaderSlot> invaderSlots;
+  size_t nextInvaderIndex = 0;
+  float headPathDistance = 0.0f;
+  float enemyShootTimer = 1.0f;
+
+  int rows = 3;
+  int cols = 6;
+  float spacing = 1.8f;
+  glm::vec3 scale = {1.1f, 0.5f, 1.1f};
+  float baseSpeed = 2.5f;
+  float maxSpeed = 12.0f;
+  float stepDown = 1.5f;
+
+  float shootCooldownMin = 0.6f;
+  float shootCooldownMax = 2.0f;
+  float bulletSpeed = 10.0f;
+};
+
+class SpaceInvadersApp : public App {
+
+  Entity player = -1;
+  Entity starfield = -1;
+  Entity gameManager = -1;
+
+  std::mt19937 rng{std::random_device{}()};
+  float bulletTTL = 5.0f;
+
+  void addCollisionBox(Engine &engine, Entity entity, const glm::vec3 &scale, bool isStatic = false) {
+    auto &col = engine.addComponent<Collision>(entity);
+    glm::vec3 half = scale * 0.5f;
+    col.min = -half;
+    col.max = half;
+    col.isStatic = isStatic;
+  }
+
+  glm::vec3 rowColor(int row) const {
+    switch (row % 5) {
+    case 0:
+      return {1.00f, 0.28f, 0.28f};
+    case 1:
+      return {1.00f, 0.58f, 0.12f};
+    case 2:
+      return {0.98f, 0.90f, 0.18f};
+    case 3:
+      return {0.22f, 0.88f, 0.38f};
+    case 4:
+      return {0.22f, 0.55f, 1.00f};
+    }
+    return {1.0f, 1.0f, 1.0f};
+  }
+
+  int rowScore(int row, const InvaderGroup &ig) const { return (ig.rows - row) * 10; }
+
+  glm::vec3 pathPosition(float d, float stepDown) const {
+    if (d < 0.0f)
+      d = 0.0f;
+
+    const float startX = -8.0f;
+    const float W = 16.0f;
+    const float startZ = -10.0f;
+    const float segLen = W + stepDown;
+
+    int row = static_cast<int>(d / segLen);
+    float remainder = std::fmod(d, segLen);
+    bool goRight = (row % 2 == 0);
+
+    float z = startZ + row * stepDown;
+    float x;
+    float finalZ;
+
+    if (remainder <= W) {
+      x = goRight ? (startX + remainder) : (startX + W - remainder);
+      finalZ = z;
+    } else {
+      float t = (remainder - W) / stepDown;
+      float smooth = t * t * (3.0f - 2.0f * t);
+      x = goRight ? (startX + W) : startX;
+      finalZ = z + smooth * stepDown;
+    }
+
+    float y = glm::sin(x * 0.4f + d * 0.12f) * 0.3f;
+    return {x, y, finalZ};
+  }
+
+  void createPlayer(Engine &engine) {
+    const glm::vec3 scale{1.4f, 0.6f, 1.4f};
+    player = engine.createModelEntity("Player", EngineConfig::MODEL_BOX, glm::vec3(0.0f, 0.0f, 8.0f), glm::vec3(0.0f),
+                                      scale);
+    addCollisionBox(engine, player, scale);
+
+    engine.addComponent<Player>(player, Player{});
+  }
+
+  void createStarfield(Engine &engine) {
+    starfield = engine.createEntity();
+    engine.addComponent<Transform>(starfield, glm::vec3(0.0f, 7.0f, -40.0f));
+    auto &p = engine.addComponent<ParticleEmitter>(starfield);
+    p.emitRate = 100.0f;
+    p.particleLifetime = 9.0f;
+    p.speed = 12.0f;
+    p.speedVariance = 3.5f;
+    p.size = 0.09f;
+    p.sizeDecay = 0.0f;
+    p.gravity = {0.0f, 0.0f, 0.0f};
+    p.startColor = {0.85f, 0.85f, 1.0f, 0.9f};
+    p.endColor = {0.85f, 0.85f, 1.0f, 0.0f};
+    p.emitDirection = {0.0f, 0.0f, 1.0f};
+    p.spread = 0.28f;
+    p.maxParticles = 1000;
+    p.additiveBlending = true;
+  }
+
+  void createGameManager(Engine &engine) {
+    gameManager = engine.createEntity();
+    engine.addComponent<GameState>(gameManager, GameState{});
+    engine.addComponent<InvaderGroup>(gameManager, InvaderGroup{});
+  }
+
+  void createExplosion(Engine &engine, const glm::vec3 &position, const glm::vec3 &color, float scale = 1.0f) {
+    Entity expl = engine.createEntity();
+    engine.addComponent<Transform>(expl, position);
+    auto &p = engine.addComponent<ParticleEmitter>(expl);
+    p.emitRate = 350.0f;
+    p.particleLifetime = 0.55f * scale;
+    p.speed = 5.5f * scale;
+    p.speedVariance = 3.0f * scale;
+    p.size = 0.35f * scale;
+    p.sizeDecay = 0.9f;
+    p.gravity = {0.0f, 0.5f, 0.0f};
+    p.startColor = {color.r, color.g, color.b, 1.0f};
+    p.endColor = {color.r * 0.3f, color.g * 0.3f, color.b * 0.3f, 0.0f};
+    p.emitDirection = {0.0f, 0.0f, 1.0f};
+    p.spread = 1.0f;
+    p.maxParticles = 80;
+    p.additiveBlending = true;
+    engine.addComponent<Explosion>(expl, Explosion{0.1f, 0.55f * scale});
+  }
+
+  void spawnBullet(Engine &engine, const glm::vec3 &pos, const glm::vec3 &vel, bool friendly) {
+    const glm::vec3 scale = friendly ? glm::vec3(0.12f, 0.12f, 1.2f) : glm::vec3(0.22f, 0.22f, 0.70f);
+    Entity bullet = engine.createModelEntity(friendly ? "PlayerBullet" : "EnemyBullet", EngineConfig::MODEL_BOX, pos,
+                                             glm::vec3(0.0f), scale);
+    addCollisionBox(engine, bullet, scale);
+    engine.setEmission(bullet, friendly ? glm::vec3(0.15f, 1.0f, 0.75f) : glm::vec3(1.0f, 0.18f, 0.08f), 7.0f);
+    engine.addComponent<Bullet>(bullet, Bullet{vel, bulletTTL, friendly});
+  }
+
+  void initInvaderSlots(InvaderGroup &ig) {
+    ig.invaderSlots.clear();
+    ig.nextInvaderIndex = 0;
+    ig.invaderSlots.reserve(ig.rows * ig.cols);
+    for (int r = 0; r < ig.rows; ++r)
+      for (int c = 0; c < ig.cols; ++c)
+        ig.invaderSlots.push_back({rowColor(r), rowScore(r, ig)});
+  }
+
+  void resetGame(Engine &engine) {
+    auto &scene = engine.getSystemManager().getSystem<SceneSystem>();
+    auto &cm = engine.getComponentManager();
+
+    std::vector<Entity> toDestroy;
+    cm.each<Invader>([&](Entity e, Invader &) { toDestroy.push_back(e); });
+    cm.each<Bullet>([&](Entity e, Bullet &) { toDestroy.push_back(e); });
+    cm.each<Explosion>([&](Entity e, Explosion &) { toDestroy.push_back(e); });
+    for (Entity e : toDestroy)
+      scene.destroyEntity(e);
+
+    auto &state = engine.getComponent<GameState>(gameManager);
+    auto &ig = engine.getComponent<InvaderGroup>(gameManager);
+    auto &pData = engine.getComponent<Player>(player);
+
+    initInvaderSlots(ig);
+    ig.headPathDistance = 0.0f;
+    ig.enemyShootTimer = 1.0f;
+
+    pData.velocityX = 0.0f;
+    pData.tilt = 0.0f;
+    pData.hitCooldown = 0.0f;
+    pData.shootTimer = 0.0f;
+
+    auto &tf = engine.getComponent<Transform>(player);
+    tf.position = glm::vec3(0.0f, 0.0f, 8.0f);
+    tf.rotation = glm::vec3(0.0f);
+    engine.setEmission(player, glm::vec3(0.15f, 0.90f, 0.72f), 2.5f);
+
+    state.score = 0;
+    state.lives = 3;
+    state.gameOver = false;
+    state.playerWon = false;
+  }
+
+  void updatePlayer(Engine &engine, float deltaTime) {
+    auto &input = engine.getSystemManager().getSystem<InputSystem>();
+    auto &tf = engine.getComponent<Transform>(player);
+    auto &pData = engine.getComponent<Player>(player);
+
+    float axis = 0.0f;
+    if (input.isKeyPressed(SDL_SCANCODE_A) || input.isKeyPressed(SDL_SCANCODE_LEFT))
+      axis -= 1.0f;
+    if (input.isKeyPressed(SDL_SCANCODE_D) || input.isKeyPressed(SDL_SCANCODE_RIGHT))
+      axis += 1.0f;
+
+    if (axis != 0.0f) {
+      pData.velocityX += axis * pData.acceleration * deltaTime;
+    } else {
+
+      float fric = glm::min(pData.friction * deltaTime, 1.0f);
+      pData.velocityX = glm::mix(pData.velocityX, 0.0f, fric);
+    }
+
+    pData.velocityX = glm::clamp(pData.velocityX, -pData.maxSpeed, pData.maxSpeed);
+    tf.position.x += pData.velocityX * deltaTime;
+    tf.position.x = glm::clamp(tf.position.x, -pData.bounds, pData.bounds);
+
+    if (tf.position.x <= -pData.bounds || tf.position.x >= pData.bounds) {
+      pData.velocityX = 0.0f;
+    }
+
+    const float maxTiltAngle = 30.0f;
+
+    float targetRoll = -axis * maxTiltAngle;
+
+    float tiltSmoothness = 8.0f * deltaTime;
+    pData.tilt = glm::mix(pData.tilt, targetRoll, tiltSmoothness);
+
+    tf.rotation.z = pData.tilt;
+
+    pData.shootTimer -= deltaTime;
+    if (input.isKeyPressed(SDL_SCANCODE_SPACE) && pData.shootTimer <= 0.0f) {
+      glm::vec3 spawnPos = tf.position + glm::vec3(0.0f, 0.0f, -1.0f);
+      spawnBullet(engine, spawnPos, {0.0f, 0.0f, -pData.bulletSpeed}, true);
+      pData.shootTimer = pData.shootCooldown;
+      pData.flashTimer = 0.06f;
+    }
+
+    if (pData.hitCooldown > 0.0f)
+      pData.hitCooldown -= deltaTime;
+  }
+
+  void killPlayer(Engine &engine) {
+    auto &pData = engine.getComponent<Player>(player);
+    auto &state = engine.getComponent<GameState>(gameManager);
+
+    if (pData.hitCooldown > 0.0f)
+      return;
+    pData.hitCooldown = pData.hitInvincibility;
+
+    auto &tf = engine.getComponent<Transform>(player);
+    createExplosion(engine, tf.position, glm::vec3(0.2f, 1.0f, 0.8f), 2.5f);
+
+    --state.lives;
+    if (state.lives <= 0) {
+      state.gameOver = true;
+      state.playerWon = false;
+      engine.setEmission(player, glm::vec3(1.0f, 0.1f, 0.1f), 3.0f);
+      state.restartTimer = 3.5f;
+    } else {
+      engine.setEmission(player, glm::vec3(1.0f, 0.5f, 0.2f), 4.0f);
+    }
+  }
+
+  void updateInvaders(Engine &engine, float deltaTime) {
+    auto &cm = engine.getComponentManager();
+    auto &state = engine.getComponent<GameState>(gameManager);
+    auto &ig = engine.getComponent<InvaderGroup>(gameManager);
+
+    int totalAlive = 0;
+    cm.each<Invader>([&](Entity, Invader &inv) {
+      if (inv.alive)
+        ++totalAlive;
+    });
+
+    bool allSpawned = (ig.nextInvaderIndex >= ig.invaderSlots.size());
+
+    if (totalAlive == 0 && allSpawned) {
+      state.gameOver = true;
+      state.playerWon = true;
+      state.restartTimer = 4.0f;
+      return;
+    }
+
+    float fractionAlive = allSpawned ? static_cast<float>(totalAlive) / (ig.rows * ig.cols) : 1.0f;
+    float speedT = 1.0f - glm::clamp(fractionAlive, 0.0f, 1.0f);
+    float currentSpeed = glm::mix(ig.baseSpeed, ig.maxSpeed, speedT * speedT);
+    ig.headPathDistance += currentSpeed * deltaTime;
+
+    while (ig.nextInvaderIndex < ig.invaderSlots.size()) {
+      float needed = static_cast<float>(ig.nextInvaderIndex) * ig.spacing;
+      if (ig.headPathDistance < needed)
+        break;
+
+      const auto &slot = ig.invaderSlots[ig.nextInvaderIndex];
+      Entity invader =
+          engine.createModelEntity("Invader", EngineConfig::MODEL_BOX, glm::vec3(0.0f), glm::vec3(0.0f), ig.scale);
+      addCollisionBox(engine, invader, ig.scale);
+      engine.setEmission(invader, slot.color, 0.35f);
+      engine.addComponent<Invader>(invader,
+                                   Invader{true, slot.color, slot.scoreValue, static_cast<int>(ig.nextInvaderIndex)});
+      ++ig.nextInvaderIndex;
+    }
+
+    std::vector<Entity> aliveEntities;
+    cm.each<Invader>([&](Entity e, Invader &inv) {
+      if (!inv.alive)
+        return;
+      aliveEntities.push_back(e);
+
+      auto &tf = engine.getComponent<Transform>(e);
+      float d = ig.headPathDistance - inv.pathIndex * ig.spacing;
+      glm::vec3 prev = tf.position;
+      tf.position = pathPosition(d, ig.stepDown);
+
+      float dx = tf.position.x - prev.x;
+      tf.rotation.z = glm::mix(tf.rotation.z, -dx * 2.5f, 10.0f * deltaTime);
+      tf.rotation.x = glm::sin(d * 0.5f) * 0.08f;
+    });
+
+    ig.enemyShootTimer -= deltaTime;
+    if (ig.enemyShootTimer <= 0.0f && !aliveEntities.empty()) {
+      std::uniform_int_distribution<size_t> pick(0, aliveEntities.size() - 1);
+      Entity shooter = aliveEntities[pick(rng)];
+      auto &tf = engine.getComponent<Transform>(shooter);
+      spawnBullet(engine, tf.position + glm::vec3(0.0f, 0.0f, 1.0f), {0.0f, 0.0f, ig.bulletSpeed}, false);
+
+      std::uniform_real_distribution<float> cdt(ig.shootCooldownMin, ig.shootCooldownMax);
+      float aggressionScale = glm::mix(0.25f, 1.0f, fractionAlive);
+      ig.enemyShootTimer = cdt(rng) * aggressionScale;
+    }
+  }
+
+  void updateBullets(Engine &engine, float deltaTime) {
+    auto &scene = engine.getSystemManager().getSystem<SceneSystem>();
+    auto &collisionSystem = engine.getSystemManager().getSystem<CollisionSystem>();
+    auto &cm = engine.getComponentManager();
+    auto &state = engine.getComponent<GameState>(gameManager);
+
+    std::unordered_set<Entity> destroySet;
+
+    cm.each<Bullet>([&](Entity entity, Bullet &bullet) {
+      if (destroySet.count(entity))
+        return;
+
+      auto &tf = engine.getComponent<Transform>(entity);
+      tf.position += bullet.velocity * deltaTime;
+
+      if (!bullet.friendly)
+        tf.rotation.z += 8.0f * deltaTime;
+
+      bullet.ttl -= deltaTime;
+      if (bullet.ttl <= 0.0f) {
+        destroySet.insert(entity);
+        return;
+      }
+
+      if (bullet.friendly) {
+        cm.each<Invader>([&](Entity inv, Invader &invader) {
+          if (!invader.alive || destroySet.count(entity) || destroySet.count(inv))
+            return;
+
+          if (collisionSystem.checkEntitiesCollision(entity, inv, cm)) {
+            auto &invTf = engine.getComponent<Transform>(inv);
+            createExplosion(engine, invTf.position, invader.color, 1.2f);
+            invader.alive = false;
+            state.score += invader.scoreValue;
+            destroySet.insert(entity);
+            destroySet.insert(inv);
+          }
+        });
+      } else {
+        if (!state.gameOver && !destroySet.count(entity) &&
+            collisionSystem.checkEntitiesCollision(entity, player, cm)) {
+          destroySet.insert(entity);
+          killPlayer(engine);
+        }
+      }
+    });
+
+    for (Entity e : destroySet)
+      scene.destroyEntity(e);
+  }
+
+  void checkInvaderReach(Engine &engine) {
+    auto &state = engine.getComponent<GameState>(gameManager);
+    if (state.gameOver)
+      return;
+
+    auto &playerTf = engine.getComponent<Transform>(player);
+    auto &cm = engine.getComponentManager();
+
+    cm.each<Invader>([&](Entity e, Invader &inv) {
+      if (!inv.alive || state.gameOver)
+        return;
+      auto &tf = engine.getComponent<Transform>(e);
+      if (tf.position.z >= playerTf.position.z - 1.5f) {
+        killPlayer(engine);
+        state.gameOver = true;
+      }
+    });
+  }
+
+  void updateExplosions(Engine &engine, float deltaTime) {
+    auto &scene = engine.getSystemManager().getSystem<SceneSystem>();
+    auto &cm = engine.getComponentManager();
+    std::vector<Entity> toDestroy;
+
+    cm.each<Explosion>([&](Entity e, Explosion &exp) {
+      exp.emitTimer -= deltaTime;
+      if (exp.emitTimer <= 0.0f) {
+        if (auto *emitter = cm.tryGet<ParticleEmitter>(e))
+          emitter->active = false;
+      }
+      exp.ttl -= deltaTime;
+      if (exp.ttl <= 0.0f)
+        toDestroy.push_back(e);
+    });
+
+    for (Entity e : toDestroy)
+      scene.destroyEntity(e);
+  }
+
+  void updatePlayerEmission(Engine &engine, float deltaTime) {
+    auto &state = engine.getComponent<GameState>(gameManager);
+    auto &pData = engine.getComponent<Player>(player);
+
+    if (state.gameOver)
+      return;
+
+    if (pData.flashTimer > 0.0f) {
+      pData.flashTimer -= deltaTime;
+      engine.setEmission(player, glm::vec3(0.9f, 1.0f, 0.95f), 7.0f);
+    } else if (pData.hitCooldown > 0.0f) {
+      float blink = glm::sin(pData.hitCooldown * 20.0f) * 0.5f + 0.5f;
+      engine.setEmission(player, glm::vec3(1.0f, 0.45f, 0.18f), 1.5f + blink * 4.0f);
+    } else {
+      engine.setEmission(player, glm::vec3(0.15f, 0.90f, 0.72f), 2.2f);
+    }
+  }
+
+public:
   void setup(Engine &engine) override {
+    engine.setState(Toggle::CameraMovement, false);
+    engine.setState(Toggle::CursorLock, false);
 
-    box = engine.createModelEntity("Box", EngineConfig::MODEL_BOX, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f),
-                                   glm::vec3(1.0f));
+    engine.createLightEntity("Sun", glm::vec3(0.0f, 15.0f, 5.0f), glm::vec3(0.0f, -1.0f, -0.4f),
+                             glm::vec3(1.2f, 1.15f, 1.1f), LightType::Directional, 2.0f, 0.0f, 0.0f);
 
-    // Second cube for collision test
-    box2 = engine.createModelEntity("Box2", EngineConfig::MODEL_BOX, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f),
-                                    glm::vec3(1.0f));
+    engine.createLightEntity("Fill", glm::vec3(-10.0f, -5.0f, 10.0f), glm::vec3(1.0f, 0.5f, -1.0f),
+                             glm::vec3(0.2f, 0.3f, 0.7f), LightType::Directional, 0.8f, 0.0f, 0.0f);
 
-    // Add Collision to both cubes
-    auto &col1 = engine.addComponent<Collision>(box);
-    col1.min = glm::vec3(-0.5f);
-    col1.max = glm::vec3(0.5f);
-    col1.isStatic = false;
+    engine.createCameraEntity(glm::vec3(0.0f, 14.0f, 18.0f), 0.0f, -35.0f, 55.0f);
 
-    auto &col2 = engine.addComponent<Collision>(box2);
-    col2.min = glm::vec3(-0.5f);
-    col2.max = glm::vec3(0.5f);
-    col2.isStatic = false;
+    createGameManager(engine);
+    createStarfield(engine);
+    createPlayer(engine);
 
-    engine.createLightEntity("Directional", glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, -1.0f), glm::vec3(1.0f),
-                             LightType::Directional, 1.5f, 0.0f, 0.0f);
-
-    engine.createCameraEntity(glm::vec3(0.0f, 0.0f, 5.0f), 0.0f, 0.0f, 90.0f);
-
-    // Manual emission on the box (orange glow)
-    engine.setEmission(box, glm::vec3(1.0f, 0.5f, 0.0f), 1.5f);
-
-    // Particle effect attached to the box
-    auto &particles = engine.addComponent<ParticleEmitter>(box);
-    particles.emitRate = 80.0f;
-    particles.particleLifetime = 2.0f;
-    particles.speed = 0.6f;
-    particles.speedVariance = 0.4f;
-    particles.size = 0.18f;
-    particles.sizeDecay = 0.3f;
-    particles.gravity = {0.0f, 0.5f, 0.0f};          // gentle float upward
-    particles.startColor = {0.4f, 0.2f, 1.0f, 1.0f}; // bright purple
-    particles.endColor = {0.0f, 0.8f, 1.0f, 0.0f};   // fade to cyan/transparent
-    particles.emitDirection = {0.0f, 0.0f, 1.0f};
-    particles.spread = 1.0f; // emit in all directions (sphere)
-    particles.maxParticles = 600;
-    particles.additiveBlending = true;
+    auto &ig = engine.getComponent<InvaderGroup>(gameManager);
+    initInvaderSlots(ig);
   }
 
   void update(Engine &engine, float deltaTime) override {
-    // Move box2 to the left every frame
-    auto &t2 = engine.getComponent<Transform>(box2);
-    t2.position.x -= deltaTime * 0.5f;
+    updateExplosions(engine, deltaTime);
 
-    // Check collision between box and box2, change emission color accordingly
-    auto &collisionSystem = engine.getSystemManager().getSystem<CollisionSystem>();
-    bool colliding = collisionSystem.checkEntitiesCollision(box, box2, engine.getComponentManager());
-    if (colliding) {
-      engine.setEmission(box, glm::vec3(1.0f, 0.0f, 0.0f), 2.0f); // red
-      engine.setEmission(box2, glm::vec3(1.0f, 0.0f, 0.0f), 2.0f);
+    auto &state = engine.getComponent<GameState>(gameManager);
+
+    if (state.gameOver) {
+      state.restartTimer -= deltaTime;
+      if (state.playerWon) {
+        float pulse = 2.8f + glm::sin(state.restartTimer * 12.0f) * 1.5f;
+        engine.setEmission(player, glm::vec3(0.2f, 1.0f, 0.4f), pulse);
+      }
+      if (state.restartTimer <= 0.0f)
+        resetGame(engine);
       return;
     }
-    engine.setEmission(box, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f); // green
-    engine.setEmission(box2, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f);
+
+    updatePlayer(engine, deltaTime);
+    updateInvaders(engine, deltaTime);
+    updateBullets(engine, deltaTime);
+    checkInvaderReach(engine);
+    updatePlayerEmission(engine, deltaTime);
   }
 };
 
 int main() {
   Engine engine;
-
   if (!engine.initialize())
     return 1;
-
-  TestApp application;
+  SpaceInvadersApp application;
   engine.run(application);
-
   return 0;
 }

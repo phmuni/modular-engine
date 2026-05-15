@@ -5,7 +5,6 @@
 #include "components/model.h"
 #include "components/name.h"
 #include "components/transform.h"
-#include "rendering/resources/mesh.h"
 #include "systems/cameraSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/renderSystem.h"
@@ -58,8 +57,7 @@ Entity SceneSystem::createModelEntity(const std::string name, const std::string 
 
   componentManager.insert<Name>(entity, std::make_unique<Name>(name));
   componentManager.insert<Transform>(entity, std::make_unique<Transform>(position, rotation, scale));
-  componentManager.insert<Model>(entity,
-                                          std::make_unique<Model>(meshHandle, std::move(materialHandles)));
+  componentManager.insert<Model>(entity, std::make_unique<Model>(meshHandle, std::move(materialHandles)));
 
   systemManager.getSystem<RenderSystem>().insertRenderable(entity);
 
@@ -70,8 +68,8 @@ void SceneSystem::createLightEntity(const std::string &name, glm::vec3 position,
                                     LightType type, float intensity, float cutOff, float outerCutOff) {
   Entity entity = entityManager.createEntity();
 
-  auto light = std::make_unique<Light>(type, glm::vec3(0.0f), direction, color, intensity, 0.2f, 1.0f, 0.09f,
-                                                0.032f, cutOff, outerCutOff);
+  auto light = std::make_unique<Light>(type, glm::vec3(0.0f), direction, color, intensity, 0.2f, 1.0f, 0.09f, 0.032f,
+                                       cutOff, outerCutOff);
 
   componentManager.insert<Name>(entity, std::make_unique<Name>(name));
   componentManager.insert<Transform>(entity, std::make_unique<Transform>(position));
