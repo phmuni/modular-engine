@@ -197,7 +197,7 @@ class MyApp : public App {
 
 int main() {
     Engine engine;
-    if (!engine.init()) return 1;
+    if (!engine.initialize()) return 1;
 
     MyApp app;
     engine.run(app);
