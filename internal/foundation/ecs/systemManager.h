@@ -2,7 +2,6 @@
 // Type-erased system container with insert/get interface.
 
 #include <memory>
-#include <stdexcept>
 #include <typeindex>
 #include <unordered_map>
 

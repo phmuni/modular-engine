@@ -1,4 +1,7 @@
-// Resource system: handle-based loading and caching of meshes, materials, and shaders.
+
+// Resource system implementation for managing meshes, materials, shaders, and textures with caching and reference
+// counting.
+
 #include "systems/resourceSystem.h"
 #include "foundation/core/config.h"
 #include "rendering/resources/material.h"
@@ -10,34 +13,44 @@ ResourceSystem::ResourceSystem() { m_materials[m_nextMaterial++] = std::make_uni
 
 ResourceSystem::~ResourceSystem() = default;
 
-uint32_t ResourceSystem::loadMesh(const std::string &path) {
-  std::string normalized = PathUtils::normalize(path);
+uint32_t ResourceSystem::loadMesh(std::string_view path) {
+  std::string normalized = PathUtils::normalizeSeparators(std::string(path));
+  auto it = m_meshCache.find(normalized);
+  if (it != m_meshCache.end())
+    return it->second;
   uint32_t handle = m_nextMesh++;
   m_meshes[handle] = std::make_unique<Mesh>(normalized);
+  m_meshCache[std::move(normalized)] = handle;
   return handle;
 }
 
 Mesh &ResourceSystem::getMesh(uint32_t handle) {
   auto it = m_meshes.find(handle);
-  if (it == m_meshes.end()) {
-    std::cerr << "[ResourceSystem] Mesh handle " << handle << " not found\n";
-    static Mesh fallback;
-    return fallback;
-  }
+  assert(it != m_meshes.end() && "Invalid mesh handle");
   return *it->second;
 }
 
-ModelLoadResult ResourceSystem::loadModel(const std::string &path) {
+ModelLoadResult ResourceSystem::loadModel(std::string_view path) {
   ModelLoadResult result;
   result.meshHandle = loadMesh(path);
 
   Mesh &mesh = getMesh(result.meshHandle);
   const auto &mtlMats = mesh.getMtlMaterials();
   const auto &submeshes = mesh.getSubmeshes();
-  const std::string &baseDir = mesh.getBaseDir();
+  std::string_view baseDir = mesh.getBaseDir();
 
+  std::string texPath;
+  texPath.reserve(baseDir.size() + 64);
+
+  auto resolve = [&](const std::string &rel) -> std::string {
+    std::string result;
+    result.reserve(baseDir.size() + rel.size());
+    result.append(baseDir);
+    result.append(rel);
+    return result;
+  };
   for (const auto &sub : submeshes) {
-    if (!(sub.materialIndex >= 0 && sub.materialIndex < static_cast<int>(mtlMats.size()))) {
+    if (sub.materialIndex < 0 || sub.materialIndex >= static_cast<int>(mtlMats.size())) {
       result.materialHandles.push_back(0);
       continue;
     }
@@ -46,13 +59,13 @@ ModelLoadResult ResourceSystem::loadModel(const std::string &path) {
     Material &mat = getMaterial(matHandle);
 
     if (!mtl.diffuseTexPath.empty())
-      mat.setDiffuse(baseDir + mtl.diffuseTexPath);
+      mat.setDiffuse(resolve(mtl.diffuseTexPath));
     if (!mtl.specularTexPath.empty())
-      mat.setSpecular(baseDir + mtl.specularTexPath);
+      mat.setSpecular(resolve(mtl.specularTexPath));
     if (!mtl.normalTexPath.empty())
-      mat.setNormal(baseDir + mtl.normalTexPath);
+      mat.setNormal(resolve(mtl.normalTexPath));
     if (!mtl.emissionTexPath.empty())
-      mat.setEmission(baseDir + mtl.emissionTexPath);
+      mat.setEmission(resolve(mtl.emissionTexPath));
 
     mat.setShininess(mtl.shininess);
     mat.setEmissionColor(mtl.emissionColor);
@@ -67,23 +80,30 @@ ModelLoadResult ResourceSystem::loadModel(const std::string &path) {
 }
 
 void ResourceSystem::unloadMesh(uint32_t handle) {
-  if (m_meshes.erase(handle) == 0) {
+  auto it = m_meshes.find(handle);
+  if (it == m_meshes.end()) {
     std::cerr << "[ResourceSystem] Failed to unload mesh " << handle << "\n";
+    return;
   }
+  for (auto cit = m_meshCache.begin(); cit != m_meshCache.end(); ++cit) {
+    if (cit->second == handle) {
+      m_meshCache.erase(cit);
+      break;
+    }
+  }
+  m_meshes.erase(it);
 }
 
-GLuint ResourceSystem::loadTexture(const std::string &path) {
-  std::string normalized = PathUtils::normalize(path);
-  std::string key = PathUtils::stripExtension(normalized);
+GLuint ResourceSystem::loadTexture(std::string_view path) {
+  std::string normalized = PathUtils::normalizeSeparators(std::string(path));
+  std::string key = std::string(PathUtils::stripExtension(normalized));
   auto it = m_textures.find(key);
   if (it != m_textures.end())
     return it->second;
-
-  GLuint texture = Material::loadTexture(normalized);
-  if (texture != 0)
-    m_textures[key] = texture;
-
-  return texture;
+  GLuint tex = Material::loadTexture(normalized);
+  if (tex != 0)
+    m_textures[std::move(key)] = tex;
+  return tex;
 }
 
 uint32_t ResourceSystem::createMaterial() {
@@ -94,60 +114,43 @@ uint32_t ResourceSystem::createMaterial() {
 
 Material &ResourceSystem::getMaterial(uint32_t handle) {
   auto it = m_materials.find(handle);
-  if (it == m_materials.end()) {
-    std::cerr << "[ResourceSystem] Material handle " << handle << " not found, returning default\n";
-    return *m_materials[0];
-  }
+  assert(it != m_materials.end() && "Invalid material handle");
   return *it->second;
 }
 
 void ResourceSystem::unloadMaterial(uint32_t handle) {
   if (handle == 0) {
-    std::cerr << "[ResourceSystem] Cannot unload default material (handle 0)\n";
+    std::cerr << "[ResourceSystem] Cannot unload default material\n";
     return;
   }
-  if (m_materials.erase(handle) == 0) {
+  if (m_materials.erase(handle) == 0)
     std::cerr << "[ResourceSystem] Failed to unload material " << handle << "\n";
-  }
 }
 
-uint32_t ResourceSystem::loadShader(const std::string &vertexPath, const std::string &fragmentPath) {
+uint32_t ResourceSystem::loadShader(std::string_view vertexPath, std::string_view fragmentPath) {
   uint32_t handle = m_nextShader++;
-  m_shaders[handle] = std::make_unique<Shader>(vertexPath.c_str(), fragmentPath.c_str());
+  m_shaders[handle] = std::make_unique<Shader>(vertexPath, fragmentPath);
   return handle;
 }
 
 Shader &ResourceSystem::getShader(uint32_t handle) {
   auto it = m_shaders.find(handle);
-  if (it == m_shaders.end()) {
-    std::cerr << "[ResourceSystem] Shader handle " << handle << " not found\n";
-    static Shader fallback;
-    return fallback;
-  }
+  assert(it != m_shaders.end() && "Invalid shader handle");
   return *it->second;
 }
 
 void ResourceSystem::unloadShader(uint32_t handle) {
-  if (m_shaders.erase(handle) == 0) {
+  if (m_shaders.erase(handle) == 0)
     std::cerr << "[ResourceSystem] Failed to unload shader " << handle << "\n";
-  }
 }
-
-// --- Material utilities ---
 
 void ResourceSystem::ensureOwnMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles) {
   if (handle == 0) {
     handle = createMaterial();
-  } else {
-    int count = 0;
-    for (auto h : allHandles)
-      if (h == handle)
-        count++;
-    if (count > 1) {
-      uint32_t newHandle = createMaterial();
-      getMaterial(newHandle) = getMaterial(handle);
-      handle = newHandle;
-    }
+  } else if (std::count(allHandles.begin(), allHandles.end(), handle) > 1) {
+    uint32_t newHandle = createMaterial();
+    getMaterial(newHandle) = getMaterial(handle);
+    handle = newHandle;
   }
 }
 

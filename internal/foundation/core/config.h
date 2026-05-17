@@ -10,17 +10,19 @@
 
 namespace EngineConfig {
 
-inline std::string getBasePath() {
-  static std::string basePath;
-  const char *sdlBase = SDL_GetBasePath();
-  if (sdlBase) {
-    return sdlBase;
-  }
-
-  return "./";
+inline const std::string &getBasePath() {
+  static std::string basePath = [] {
+    const char *p = SDL_GetBasePath();
+    return p ? std::string(p) : "./";
+  }();
+  return basePath;
 }
 
-inline std::string resolvePath(const char *relativePath) { return getBasePath() + relativePath; }
+inline std::string resolvePath(std::string_view relativePath) {
+  std::string result = getBasePath();
+  result.append(relativePath);
+  return result;
+}
 
 // Window
 constexpr float DEFAULT_SCREEN_WIDTH = 1280.0f;
@@ -63,40 +65,35 @@ inline const std::pair<Toggle, bool> DEFAULT_TOGGLES[] = {
     {Toggle::CameraMovement, true}, {Toggle::CameraFly, true}, {Toggle::CursorLock, true},
     {Toggle::Wireframe, false},     {Toggle::ShowUI, false},   {Toggle::Shadows, true},
 };
-constexpr int DEFAULT_TOGGLES_COUNT = sizeof(DEFAULT_TOGGLES) / sizeof(DEFAULT_TOGGLES[0]);
+constexpr int DEFAULT_TOGGLES_COUNT = std::size(DEFAULT_TOGGLES);
 
 // Default toggle keybinds
 inline const std::pair<SDL_Scancode, Toggle> DEFAULT_TOGGLE_KEYBINDS[] = {
     {SDL_SCANCODE_RALT, Toggle::CursorLock}, {SDL_SCANCODE_F1, Toggle::Wireframe}, {SDL_SCANCODE_F2, Toggle::ShowUI},
     {SDL_SCANCODE_F3, Toggle::Shadows},      {SDL_SCANCODE_F4, Toggle::CameraFly},
 };
-constexpr int DEFAULT_TOGGLE_KEYBINDS_COUNT = sizeof(DEFAULT_TOGGLE_KEYBINDS) / sizeof(DEFAULT_TOGGLE_KEYBINDS[0]);
+
+constexpr int DEFAULT_TOGGLE_KEYBINDS_COUNT = std::size(DEFAULT_TOGGLE_KEYBINDS);
 
 } // namespace EngineConfig
 
 namespace PathUtils {
 
-inline std::string normalizeSeparators(const std::string &path) {
-  std::string result = path;
-  std::replace(result.begin(), result.end(), '\\', '/');
-  return result;
+inline std::string normalizeSeparators(std::string path) {
+  std::replace(path.begin(), path.end(), '\\', '/');
+  return path;
 }
 
-inline std::string stripExtension(const std::string &path) {
-  auto slash = path.find_last_of('/');
-  auto dot = path.find_last_of('.');
-  if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) {
-    return path.substr(0, dot);
+inline std::string_view stripExtension(std::string_view path) {
+  auto slash = path.rfind('/');
+  auto dot = path.rfind('.');
+
+  if (dot != std::string_view::npos && (slash == std::string_view::npos || dot > slash)) {
+    return path.substr(0, dot); // zero-copy
   }
   return path;
 }
 
-inline bool hasExtension(const std::string &path) {
-  auto slash = path.find_last_of('/');
-  auto dot = path.find_last_of('.');
-  return dot != std::string::npos && (slash == std::string::npos || dot > slash);
-}
-
-inline std::string normalize(const std::string &path) { return normalizeSeparators(path); }
+inline bool hasExtension(std::string_view path) { return stripExtension(path).size() < path.size(); }
 
 } // namespace PathUtils

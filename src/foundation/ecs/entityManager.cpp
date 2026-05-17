@@ -1,8 +1,10 @@
+
 // Entity creation and destruction.
+
 #include "foundation/ecs/entityManager.h"
 
 Entity EntityManager::createEntity() {
-  Entity entity = m_nextEntityID++;
+  Entity entity = m_nextEntity++;
   m_activeEntities.insert(entity);
   return entity;
 }

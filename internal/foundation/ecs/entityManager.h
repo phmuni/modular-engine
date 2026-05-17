@@ -1,5 +1,4 @@
 #pragma once
-// Entity ID creation and lifetime management.
 
 #include <unordered_set>
 
@@ -7,7 +6,7 @@ using Entity = int;
 
 class EntityManager {
 private:
-  Entity m_nextEntityID = 0;
+  Entity m_nextEntity = 0;
   std::unordered_set<Entity> m_activeEntities;
 
 public:

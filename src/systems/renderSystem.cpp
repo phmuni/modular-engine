@@ -1,19 +1,18 @@
-// Render pipeline: shadow pass, shader-batched opaque pass, and particle pass.
+
+// Render system implementation for managing renderable entities, performing shadow mapping, and executing the main
+// rendering pipeline.
+
 #include "systems/renderSystem.h"
 #include "components/light.h"
-#include "components/model.h"
-#include "foundation/ecs/systemManager.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
-#include "rendering/resources/shader.h"
 #include "systems/cameraSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/particleSystem.h"
 #include "systems/resourceSystem.h"
-#include "systems/stateSystem.h"
 #include "systems/transformSystem.h"
-#include <algorithm>
-#include <unordered_map>
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 
 void RenderSystem::insertRenderable(Entity entity) { m_entries.emplace_back(entity); }
 
@@ -22,7 +21,7 @@ void RenderSystem::removeRenderable(Entity entity) {
 }
 
 void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &entityManager,
-                              ComponentManager &componentManager) {
+                                  ComponentManager &componentManager) {
   auto &renderer = getRenderer();
   auto &transformSystem = systemManager.getSystem<TransformSystem>();
   auto &lightSystem = systemManager.getSystem<LightSystem>();
@@ -33,7 +32,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
   if (cameraEntity == -1)
     return;
 
-  const auto &camera = componentManager.get<Camera>(cameraEntity);
+  const auto &camera = componentManager.getOrThrow<Camera>(cameraEntity);
   glm::mat4 view = cameraSystem.getViewMatrix(camera);
   glm::mat4 projection = cameraSystem.getProjectionMatrix(camera);
   glm::vec3 viewPos = camera.position;
@@ -49,7 +48,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
   // Shadow pass
   if (shadowsEnabled && !lights.empty()) {
     for (const Entity &lightEntity : lights) {
-      const auto &light = componentManager.get<Light>(lightEntity);
+      const auto &light = componentManager.getOrThrow<Light>(lightEntity);
 
       if (light.type == LightType::Directional) {
         useShadows = true;
@@ -76,8 +75,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
 
         renderer.beginShadowPass();
         for (const Entity &entity : m_entries) {
-          const auto &transform = componentManager.get<Transform>(entity);
-          const auto &model = componentManager.get<Model>(entity);
+          const auto &transform = componentManager.getOrThrow<Transform>(entity);
+          const auto &model = componentManager.getOrThrow<Model>(entity);
           const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
 
           glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
@@ -96,7 +95,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
   std::unordered_map<uint32_t, std::vector<std::pair<Entity, size_t>>> renderBatches;
 
   for (const Entity entity : m_entries) {
-    const auto &model = componentManager.get<Model>(entity);
+    const auto &model = componentManager.getOrThrow<Model>(entity);
     const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
     const auto &submeshes = mesh.getSubmeshes();
 
@@ -122,8 +121,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
     lightSystem.uploadLightsToShader(shader, componentManager);
 
     for (const auto &[entity, submeshIndex] : batch) {
-      const auto &transform = componentManager.get<Transform>(entity);
-      const auto &model = componentManager.get<Model>(entity);
+      const auto &transform = componentManager.getOrThrow<Transform>(entity);
+      const auto &model = componentManager.getOrThrow<Model>(entity);
       const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
       const Material &material = resourceSystem.getMaterial(model.materialHandles[submeshIndex]);
 

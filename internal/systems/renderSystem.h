@@ -1,12 +1,10 @@
 #pragma once
-// Render pipeline orchestrator: shadow, opaque, and transparent passes.
+// Render system for managing renderable entities and issuing draw calls.
 
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "rendering/renderer.h"
-
-#include <vector>
 
 class RenderSystem : public BaseSystem {
 public:

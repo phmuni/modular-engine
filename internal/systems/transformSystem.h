@@ -3,7 +3,6 @@
 
 #include "components/transform.h"
 #include "foundation/ecs/systemManager.h"
-#include <glm/glm.hpp>
 
 class TransformSystem : public BaseSystem {
 public:

@@ -1,22 +1,39 @@
-// Mesh implementation: OBJ loading with tinyobjloader and GPU buffer setup.
+
+// Mesh class implementation with OBJ loading using tinyobjloader and vertex caching for optimization.
 #define TINYOBJLOADER_IMPLEMENTATION
+
 #include "rendering/resources/mesh.h"
 #include "foundation/core/config.h"
 #include <filesystem>
 #include <iostream>
-#include <map>
 #include <tiny_obj_loader/tiny_obj_loader.h>
 
-Mesh::Mesh(const std::string &filename) {
-  if (!loadOBJ(filename)) {
-    std::cerr << "[Mesh] Failed to load: " << filename << std::endl;
+namespace std {
+template <> struct hash<Vertex> {
+  size_t operator()(const Vertex &v) const {
+    size_t h = 0;
+    auto combine = [&](float f) { h ^= std::hash<float>{}(f) + 0x9e3779b9 + (h << 6) + (h >> 2); };
+    combine(v.position.x);
+    combine(v.position.y);
+    combine(v.position.z);
+    combine(v.normal.x);
+    combine(v.normal.y);
+    combine(v.normal.z);
+    combine(v.texCoord.x);
+    combine(v.texCoord.y);
+    return h;
   }
+};
+} // namespace std
+
+Mesh::Mesh(std::string filename) {
+  if (!loadOBJ(std::move(filename)))
+    std::cerr << "[Mesh] Failed to load: " << filename << '\n';
 }
 
-Mesh::Mesh(const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices,
-           const std::vector<Submesh> &submeshes)
-    : m_vertices(vertices), m_indices(indices), m_submeshes(submeshes) {
-  setupBuffers();
+Mesh::Mesh(std::vector<Vertex> vertices, std::vector<uint32_t> indices, std::vector<Submesh> submeshes)
+    : m_submeshes(std::move(submeshes)) {
+  setupBuffers(vertices, indices);
 }
 
 Mesh::~Mesh() {
@@ -25,8 +42,8 @@ Mesh::~Mesh() {
   glDeleteBuffers(1, &m_EBO);
 }
 
-void Mesh::setupBuffers() {
-  if (m_vertices.empty() || m_indices.empty()) {
+void Mesh::setupBuffers(std::vector<Vertex> &vertices, std::vector<uint32_t> &indices) {
+  if (vertices.empty() || indices.empty()) {
     std::cerr << "[Mesh] No vertices or indices to setup\n";
     return;
   }
@@ -36,11 +53,11 @@ void Mesh::setupBuffers() {
 
   glGenBuffers(1, &m_VBO);
   glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
-  glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), m_vertices.data(), GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
 
   glGenBuffers(1, &m_EBO);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof(uint32_t), m_indices.data(), GL_STATIC_DRAW);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_STATIC_DRAW);
 
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)offsetof(Vertex, position));
   glEnableVertexAttribArray(0);
@@ -52,49 +69,45 @@ void Mesh::setupBuffers() {
   glEnableVertexAttribArray(2);
 
   glBindVertexArray(0);
+
+  vertices.clear();
+  vertices.shrink_to_fit();
+  indices.clear();
+  indices.shrink_to_fit();
 }
 
-GLuint Mesh::getVAO() const { return m_VAO; }
-
-const std::vector<Submesh> &Mesh::getSubmeshes() const { return m_submeshes; }
-
-const std::vector<MtlMaterialData> &Mesh::getMtlMaterials() const { return m_mtlMaterials; }
-
-const std::string &Mesh::getBaseDir() const { return m_baseDir; }
-
-void Mesh::setVerticesIndices(const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices,
-                              const std::vector<Submesh> &submeshes) {
-  m_vertices = vertices;
-  m_indices = indices;
-  m_submeshes = submeshes;
-  setupBuffers();
+void Mesh::setVerticesIndices(std::vector<Vertex> vertices, std::vector<uint32_t> indices,
+                              std::vector<Submesh> submeshes) {
+  m_submeshes = std::move(submeshes);
+  setupBuffers(vertices, indices);
 }
 
-bool Mesh::loadOBJ(const std::string &filename) {
-  std::string normalized = PathUtils::normalize(filename);
+bool Mesh::loadOBJ(std::string filename) {
+  std::string normalized = PathUtils::normalizeSeparators(std::move(filename));
 
   if (!PathUtils::hasExtension(normalized) || !std::filesystem::exists(normalized)) {
-    std::string withObj = PathUtils::stripExtension(normalized) + ".obj";
-    if (std::filesystem::exists(withObj)) {
-      normalized = withObj;
-    }
+    std::string withObj = std::string(PathUtils::stripExtension(normalized)) + ".obj";
+    if (std::filesystem::exists(withObj))
+      normalized = std::move(withObj);
   }
+
+  auto slash = normalized.rfind('/');
+  m_baseDir = (slash != std::string::npos) ? normalized.substr(0, slash + 1) : "./";
 
   tinyobj::attrib_t attrib;
   std::vector<tinyobj::shape_t> shapes;
   std::vector<tinyobj::material_t> materials;
   std::string err;
-  m_baseDir = normalized.substr(0, normalized.find_last_of('/') + 1);
 
   bool success = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, normalized.c_str(), m_baseDir.c_str());
 
   if (!err.empty())
-    std::cerr << "[Mesh] " << err << std::endl;
+    std::cerr << "[Mesh] " << err << '\n';
 
   if (!success)
     return false;
 
-  // Convert tinyobj materials to MtlMaterialData
+  m_mtlMaterials.reserve(materials.size());
   for (const auto &mat : materials) {
     MtlMaterialData mtl;
     mtl.name = mat.name;
@@ -109,10 +122,13 @@ bool Mesh::loadOBJ(const std::string &filename) {
     m_mtlMaterials.push_back(std::move(mtl));
   }
 
+  std::vector<Vertex> vertices;
+  std::vector<uint32_t> indices;
+  std::unordered_map<Vertex, uint32_t> vertexCache;
+
   for (const auto &shape : shapes) {
     size_t numFaces = shape.mesh.material_ids.size();
 
-    // Precompute index offsets per face (prefix sum)
     std::vector<size_t> faceIndexOffset(numFaces);
     if (numFaces > 0) {
       faceIndexOffset[0] = 0;
@@ -120,14 +136,12 @@ bool Mesh::loadOBJ(const std::string &filename) {
         faceIndexOffset[f] = faceIndexOffset[f - 1] + shape.mesh.num_face_vertices[f - 1];
     }
 
-    // Group faces by material ID
-    std::map<int, std::vector<size_t>> matFaceGroups;
-    for (size_t f = 0; f < numFaces; f++) {
+    std::unordered_map<int, std::vector<size_t>> matFaceGroups;
+    for (size_t f = 0; f < numFaces; f++)
       matFaceGroups[shape.mesh.material_ids[f]].push_back(f);
-    }
 
     for (auto &[matId, faceIndices] : matFaceGroups) {
-      uint32_t submeshStart = static_cast<uint32_t>(m_indices.size());
+      uint32_t submeshStart = static_cast<uint32_t>(indices.size());
 
       for (size_t f : faceIndices) {
         size_t fv = shape.mesh.num_face_vertices[f];
@@ -150,16 +164,18 @@ bool Mesh::loadOBJ(const std::string &filename) {
                                attrib.texcoords[2 * idx.texcoord_index + 1]};
           }
 
-          m_vertices.push_back(vertex);
-          m_indices.push_back(static_cast<uint32_t>(m_vertices.size() - 1));
+          auto [it, inserted] = vertexCache.emplace(vertex, static_cast<uint32_t>(vertices.size()));
+          if (inserted)
+            vertices.push_back(vertex);
+          indices.push_back(it->second);
         }
       }
 
-      uint32_t submeshCount = static_cast<uint32_t>(m_indices.size()) - submeshStart;
+      uint32_t submeshCount = static_cast<uint32_t>(indices.size()) - submeshStart;
       m_submeshes.push_back({submeshStart, submeshCount, matId});
     }
   }
 
-  setupBuffers();
+  setupBuffers(vertices, indices);
   return true;
 }

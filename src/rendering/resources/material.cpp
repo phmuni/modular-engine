@@ -1,10 +1,11 @@
-// Material implementation: texture loading with stb_image and fallback generation.
+
+// Material class implementation with texture loading and fallback generation.
 #define STB_IMAGE_IMPLEMENTATION
+
 #include "rendering/resources/material.h"
 #include "foundation/core/config.h"
 #include <iostream>
 #include <stb_image/stb_image.h>
-#include <vector>
 
 static const std::vector<std::string> kSupportedExtensions = {".png", ".jpg", ".jpeg", ".bmp", ".tga"};
 
@@ -36,25 +37,25 @@ void Material::setSpecularTexture(GLuint texture) { m_specular = texture; }
 void Material::setNormalTexture(GLuint texture) { m_normal = texture; }
 void Material::setEmissionTexture(GLuint texture) { m_emission = texture; }
 
-void Material::setDiffuse(const std::string &path) {
+void Material::setDiffuse(const std::string path) {
   GLuint tex = loadTexture(path);
   if (tex != 0)
     m_diffuse = tex;
 }
 
-void Material::setSpecular(const std::string &path) {
+void Material::setSpecular(const std::string path) {
   GLuint tex = loadTexture(path);
   if (tex != 0)
     m_specular = tex;
 }
 
-void Material::setNormal(const std::string &path) {
+void Material::setNormal(const std::string path) {
   GLuint tex = loadTexture(path);
   if (tex != 0)
     m_normal = tex;
 }
 
-void Material::setEmission(const std::string &path) {
+void Material::setEmission(const std::string path) {
   GLuint tex = loadTexture(path);
   if (tex != 0)
     m_emission = tex;
@@ -81,8 +82,8 @@ GLuint Material::createFallbackTexture(const std::array<unsigned char, 3> &color
 }
 
 GLuint Material::loadTexture(const std::filesystem::path &path) {
-  std::string normalized = PathUtils::normalize(path.string());
-  std::string basePath = PathUtils::stripExtension(normalized);
+  std::string normalized = PathUtils::normalizeSeparators(path.string());
+  std::string basePath = std::string(PathUtils::stripExtension(normalized));
   std::string foundPath;
 
   if (!basePath.empty()) {

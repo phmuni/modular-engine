@@ -1,10 +1,11 @@
 #pragma once
-// Name component for entity display labels.
+// Name component for easy entity identification.
 
 #include <string>
 
 struct Name {
-  std::string name;
+  std::string name{};
 
-  Name(const std::string &n) : name(n) {}
+  Name() = default;
+  explicit Name(std::string name) : name(std::move(name)) {}
 };

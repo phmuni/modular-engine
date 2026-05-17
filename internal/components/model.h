@@ -1,12 +1,12 @@
 #pragma once
-// Model component holding mesh and material handles.
+// Model component referencing a mesh and its materials.
 
-#include <cstdint>
 #include <vector>
 
 struct Model {
-  uint32_t meshHandle;
-  std::vector<uint32_t> materialHandles;
+  uint32_t meshHandle{0};
+  std::vector<uint32_t> materialHandles{};
 
-  Model(uint32_t mesh, std::vector<uint32_t> mats) : meshHandle(mesh), materialHandles(std::move(mats)) {}
+  Model() = default;
+  Model(uint32_t mesh, std::vector<uint32_t> materials) : meshHandle(mesh), materialHandles(std::move(materials)) {}
 };

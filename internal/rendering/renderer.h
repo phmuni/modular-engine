@@ -1,5 +1,5 @@
 #pragma once
-// Low-level OpenGL renderer: draw calls, shadow maps, and particle buffers.
+// Renderer class for managing OpenGL context, drawing meshes, and handling shadow/particle passes.
 
 #include "foundation/core/config.h"
 #include <SDL3/SDL.h>

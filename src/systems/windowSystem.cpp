@@ -1,4 +1,6 @@
-// Window system: SDL3 window creation and OpenGL context setup.
+
+// Window system implementation for managing the SDL window, OpenGL context, and handling window-related events
+
 #include "systems/windowSystem.h"
 
 WindowSystem::WindowSystem(float screenWidth, float screenHeight) : m_window(nullptr), m_glContext(nullptr) {

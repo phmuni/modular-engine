@@ -1,13 +1,14 @@
 #pragma once
-// Transform component: position, rotation, scale.
+// Transform component for position, rotation, and scale.
 
-#include "glm/ext/vector_float3.hpp"
+#include <glm/glm.hpp>
 
 struct Transform {
-  glm::vec3 position;
-  glm::vec3 rotation;
-  glm::vec3 scale;
+  glm::vec3 position{0, 0, 0};
+  glm::vec3 rotation{0, 0, 0};
+  glm::vec3 scale{1, 1, 1};
 
-  Transform(glm::vec3 pos = {0, 0, 0}, glm::vec3 rot = {0, 0, 0}, glm::vec3 scl = {1, 1, 1})
-      : position(pos), rotation(rot), scale(scl) {}
+  Transform() = default;
+  Transform(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale)
+      : position(position), rotation(rotation), scale(scale) {}
 };

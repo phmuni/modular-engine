@@ -1,11 +1,8 @@
 #pragma once
 // SDL3 window and OpenGL context initialization.
 
-#include "SDL3/SDL_video.h"
 #include "foundation/ecs/systemManager.h"
 #include "rendering/renderer.h"
-#include <SDL3/SDL.h>
-#include <glad/glad.h>
 
 class WindowSystem : public BaseSystem {
 private:

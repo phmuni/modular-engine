@@ -1,4 +1,7 @@
-// State system: toggle initialization and query.
+
+// State system implementation for managing global states and toggles that affect various aspects of the engine's
+// behavior.
+
 #include "systems/stateSystem.h"
 #include "foundation/core/config.h"
 

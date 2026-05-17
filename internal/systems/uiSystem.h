@@ -2,8 +2,7 @@
 // ImGui-based editor UI: scene explorer, properties panel, and entity creation.
 
 #include "foundation/ecs/systemManager.h"
-#include <SDL3/SDL_dialog.h>
-#include <SDL3/SDL_video.h>
+#include <SDL3/SDL.h>
 
 class EntityManager;
 class SystemManager;
@@ -27,6 +26,8 @@ private:
   void pickFileButton(const char *id, char *buf, int bufSize, SDL_Window *window,
                       const SDL_DialogFileFilter *filters = nullptr, int nfilters = 0);
 
+  void renderCameraInspector(Entity entity, SystemManager &systemManager, ComponentManager &componentManager,
+                             ResourceSystem &resourceSystem, SDL_Window *window);
   void renderParticleInspector(Entity entity, ComponentManager &componentManager);
   void renderMaterialInspector(Entity entity, ComponentManager &componentManager, ResourceSystem &resourceSystem,
                                SDL_Window *window);

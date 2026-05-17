@@ -1,4 +1,6 @@
-// Input system: SDL event handling and configurable key binds.
+
+// Input system implementation for handling keyboard and mouse input, including action mapping and toggle states.
+
 #include "systems/inputSystem.h"
 #include "foundation/core/config.h"
 #include "imgui/imgui_impl_sdl3.h"

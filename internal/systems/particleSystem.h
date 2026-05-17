@@ -1,12 +1,9 @@
 #pragma once
-// Particle emission, simulation, and render dispatch.
+// Particle emitter system for creating and managing particle systems.
 
+#include "components/particleEmitter.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
-#include <cstdint>
-#include <glm/glm.hpp>
-
-struct ParticleEmitter;
 
 class ParticleSystem : public BaseSystem {
 public:

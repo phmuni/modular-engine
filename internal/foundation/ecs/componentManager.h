@@ -1,14 +1,11 @@
 #pragma once
 // Type-erased component storage for the ECS.
 
+#include "entityManager.h"
 #include <functional>
 #include <memory>
-#include <stdexcept>
 #include <typeindex>
 #include <unordered_map>
-#include <utility>
-
-using Entity = int;
 
 class ComponentManager {
 private:
@@ -27,15 +24,17 @@ public:
     inner.insert_or_assign(entity, makeErased<T>(raw));
   }
 
-  template <typename T, typename... Args> T &add(Entity entity, Args &&...args) {
-    T *raw = new T(std::forward<Args>(args)...);
-    T &ref = *raw;
+  template <typename T, typename... Args> T &addInPlace(Entity entity, Args &&...args) {
+    auto component = std::make_unique<T>(std::forward<Args>(args)...);
+    T &ref = *component;
+
     auto &inner = m_storage[std::type_index(typeid(T))];
-    inner.insert_or_assign(entity, makeErased<T>(raw));
+    inner.insert_or_assign(entity, makeErased<T>(component.release()));
+
     return ref;
   }
 
-  template <typename T> T &get(Entity entity) {
+  template <typename T> T &getOrThrow(Entity entity) {
     auto &map = m_storage.at(std::type_index(typeid(T)));
     auto it = map.find(entity);
     if (it == map.end()) {
@@ -44,7 +43,7 @@ public:
     return *static_cast<T *>(it->second.get());
   }
 
-  template <typename T> T *tryGet(Entity entity) {
+  template <typename T> T *getOrNil(Entity entity) {
     auto it = m_storage.find(std::type_index(typeid(T)));
     if (it == m_storage.end())
       return nullptr;
@@ -56,14 +55,14 @@ public:
     return static_cast<T *>(cit->second.get());
   }
 
-  template <typename T> bool has(Entity entity) {
+  template <typename T> bool containsComponent(Entity entity) {
     auto it = m_storage.find(std::type_index(typeid(T)));
     if (it == m_storage.end())
       return false;
     return it->second.find(entity) != it->second.end();
   }
 
-  template <typename T> Entity findEntityWith() {
+  template <typename T> Entity firstEntityWithComponent() {
     auto it = m_storage.find(std::type_index(typeid(T)));
     if (it == m_storage.end() || it->second.empty())
       return -1;
@@ -75,9 +74,9 @@ public:
       map.erase(entity);
   }
 
-  template <typename T> void remove(Entity entity) { m_storage[std::type_index(typeid(T))].erase(entity); }
+  template <typename T> void removeComponent(Entity entity) { m_storage[std::type_index(typeid(T))].erase(entity); }
 
-  template <typename T> void each(std::function<void(Entity, T &)> fn) {
+  template <typename T> void forEachComponent(std::function<void(Entity, T &)> fn) {
     auto it = m_storage.find(std::type_index(typeid(T)));
     if (it == m_storage.end())
       return;

@@ -2,7 +2,6 @@
 // Frame timing: delta time and elapsed time tracking.
 
 #include "foundation/ecs/systemManager.h"
-#include <SDL3/SDL.h>
 
 class TimeSystem : public BaseSystem {
 private:

@@ -1,4 +1,6 @@
+
 // Renderer implementation: frame management, shadow mapping, and particle rendering.
+
 #include "rendering/renderer.h"
 #include "rendering/resources/mesh.h"
 

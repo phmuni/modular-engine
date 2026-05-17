@@ -1,41 +1,53 @@
 #pragma once
-// OpenGL shader program wrapper with uniform setters.
+// Shader class for loading, compiling, and using GLSL shader programs.
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
-#include <string>
+#include <map>
 
 class Shader {
 private:
   GLuint m_shaderID = 0;
+  mutable std::map<std::string, GLint> m_uniformCache;
 
   std::string readShaderFile(const char *filename) const;
   GLuint compileShader(GLenum type, const char *filename);
   GLuint createShaderProgram(const char *vertexFile, const char *fragmentFile);
+  GLint getUniformLocation(const char *name) const;
 
 public:
   Shader() = default;
-  Shader(const char *vertexFile, const char *fragmentFile);
+  Shader(std::string_view vertexFile, std::string_view fragmentFile);
   ~Shader() {
     if (m_shaderID)
       glDeleteProgram(m_shaderID);
   }
 
-  // Prevent copy, allow move
   Shader(const Shader &) = delete;
   Shader &operator=(const Shader &) = delete;
-  Shader(Shader &&) = default;
-  Shader &operator=(Shader &&) = default;
 
-  bool load(const char *vertexFile, const char *fragmentFile);
+  Shader(Shader &&other) noexcept
+      : m_shaderID(std::exchange(other.m_shaderID, 0)), m_uniformCache(std::move(other.m_uniformCache)) {}
+
+  Shader &operator=(Shader &&other) noexcept {
+    if (this != &other) {
+      if (m_shaderID)
+        glDeleteProgram(m_shaderID);
+      m_shaderID = std::exchange(other.m_shaderID, 0);
+      m_uniformCache = std::move(other.m_uniformCache);
+    }
+    return *this;
+  }
+
+  bool load(std::string_view vertexFile, std::string_view fragmentFile);
   void use() const;
 
-  void setTex(const char *name, GLuint textureID, int textureUnit) const;
-  void setInt(const char *name, int value) const;
-  void setFloat(const char *name, float value) const;
-  void setVec3(const char *name, glm::vec3 value) const;
-  void setMat3(const char *name, glm::mat3 value) const;
-  void setMat4(const char *name, glm::mat4 value) const;
+  void setInt(std::string_view name, int value) const;
+  void setFloat(std::string_view name, float value) const;
+  void setVec3(std::string_view name, glm::vec3 value) const;
+  void setMat3(std::string_view name, glm::mat3 value) const;
+  void setMat4(std::string_view name, glm::mat4 value) const;
+  void setTex(std::string_view name, GLuint, int) const;
 
   GLuint getShaderID() const;
 };

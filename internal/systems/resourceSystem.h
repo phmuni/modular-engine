@@ -1,15 +1,11 @@
 #pragma once
-// Handle-based resource manager for meshes, materials, and shaders.
+// Resource system for loading and managing meshes, materials, shaders, and textures.
 
 #include "components/model.h"
 #include "foundation/ecs/systemManager.h"
-#include <cstdint>
 #include <glm/glm.hpp>
-#include <memory>
-#include <string>
-#include <unordered_map>
+#include <vector>
 
-// Forward declarations
 class Material;
 class Mesh;
 class Shader;
@@ -29,6 +25,7 @@ private:
   std::unordered_map<uint32_t, std::unique_ptr<Material>> m_materials;
   std::unordered_map<uint32_t, std::unique_ptr<Shader>> m_shaders;
   std::unordered_map<std::string, GLuint> m_textures;
+  std::unordered_map<std::string, uint32_t> m_meshCache;
 
   uint32_t m_nextMesh = 0;
   uint32_t m_nextMaterial = 0;
@@ -38,22 +35,21 @@ public:
   ResourceSystem();
   ~ResourceSystem();
 
-  uint32_t loadMesh(const std::string &path);
-  ModelLoadResult loadModel(const std::string &path);
+  uint32_t loadMesh(std::string_view path);
+  ModelLoadResult loadModel(std::string_view path);
   Mesh &getMesh(uint32_t handle);
   void unloadMesh(uint32_t handle);
 
-  GLuint loadTexture(const std::string &path);
+  GLuint loadTexture(std::string_view path);
 
   uint32_t createMaterial();
   Material &getMaterial(uint32_t handle);
   void unloadMaterial(uint32_t handle);
 
-  uint32_t loadShader(const std::string &vertexPath, const std::string &fragmentPath);
+  uint32_t loadShader(std::string_view vertexPath, std::string_view fragmentPath);
   Shader &getShader(uint32_t handle);
   void unloadShader(uint32_t handle);
 
-  // Material utilities (copy-on-write: creates own material if handle is 0 or shared)
   void ensureOwnMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles);
   void setMaterialTexture(uint32_t &handle, const std::vector<uint32_t> &allHandles, TextureSlot slot, GLuint tex);
   void resetMaterialTexture(uint32_t &handle, const std::vector<uint32_t> &allHandles, TextureSlot slot);
@@ -61,7 +57,6 @@ public:
                            float strength);
   void setMaterialShininess(uint32_t &handle, const std::vector<uint32_t> &allHandles, float shininess);
 
-  // Convenience: apply to all submeshes of a model
   void setEmission(Model &model, const glm::vec3 &color, float strength);
   void setTexture(Model &model, TextureSlot slot, GLuint tex);
   void resetTexture(Model &model, TextureSlot slot);

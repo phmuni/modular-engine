@@ -1,24 +1,11 @@
 #pragma once
 // PBR material with diffuse, specular, normal, and emission textures.
 
-#include <array>
-#include <cstdint>
 #include <filesystem>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
-#include <string>
 
 class Material {
-private:
-  GLuint m_diffuse = 0;
-  GLuint m_specular = 0;
-  GLuint m_normal = 0;
-  GLuint m_emission = 0;
-  float m_shininess = 16.0f;
-  uint32_t m_shaderHandle = 0;
-  glm::vec3 m_emissionColor{0.0f};
-  float m_emissionStrength = 0.0f;
-
 public:
   Material();
   Material(GLuint diffuse, GLuint specular, GLuint normal, GLuint emission, float shininess = 16.0f);
@@ -40,13 +27,23 @@ public:
   void setNormalTexture(GLuint texture);
   void setEmissionTexture(GLuint texture);
 
-  void setDiffuse(const std::string &path);
-  void setSpecular(const std::string &path);
-  void setNormal(const std::string &path);
-  void setEmission(const std::string &path);
+  void setDiffuse(std::string path);
+  void setSpecular(std::string path);
+  void setNormal(std::string path);
+  void setEmission(std::string path);
 
   void setShininess(float shine);
   void setShaderHandle(uint32_t handle);
   void setEmissionColor(const glm::vec3 &color);
   void setEmissionStrength(float strength);
+
+private:
+  GLuint m_diffuse = 0;
+  GLuint m_specular = 0;
+  GLuint m_normal = 0;
+  GLuint m_emission = 0;
+  float m_shininess = 16.0f;
+  uint32_t m_shaderHandle = 0;
+  glm::vec3 m_emissionColor{0.0f};
+  float m_emissionStrength = 0.0f;
 };

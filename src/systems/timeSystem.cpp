@@ -1,5 +1,9 @@
-// Time system: delta time calculation using SDL ticks.
+
+// Time system implementation for managing time-related functionality, including delta time calculation and time
+// tracking.
+
 #include "systems/timeSystem.h"
+#include <SDL3/SDL_timer.h>
 
 void TimeSystem::begin() {
   m_startTime = SDL_GetTicks() / 1000.0f;

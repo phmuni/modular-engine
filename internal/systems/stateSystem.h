@@ -1,8 +1,7 @@
 #pragma once
-// Global toggle state management (wireframe, shadows, UI, etc.).
+// State system for managing global toggles like wireframe mode, cursor lock, and camera movement.
 
 #include "foundation/ecs/systemManager.h"
-#include <unordered_map>
 
 enum class Toggle {
   CameraMovement,

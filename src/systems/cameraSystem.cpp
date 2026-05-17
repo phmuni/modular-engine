@@ -1,16 +1,18 @@
-// Camera system: FPS-style movement and mouse look.
+
+// Camera system implementation for handling camera movement, orientation, and view/projection matrix calculations.
+
 #include "systems/cameraSystem.h"
-#include "components/camera.h"
-#include "systems/inputSystem.h"
-#include "systems/stateSystem.h"
+#include "components/transform.h"
 #include "systems/windowSystem.h"
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 
 void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
   Entity entity = getActiveCamera();
-  if (!m_componentManager.has<Camera>(entity))
+  if (!m_componentManager.containsComponent<Camera>(entity))
     return;
 
-  auto &cam = m_componentManager.get<Camera>(entity);
+  auto &cam = m_componentManager.getOrThrow<Camera>(entity);
   auto &state = systemManager.getSystem<StateSystem>();
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
 
@@ -26,6 +28,12 @@ void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
 }
 
 glm::mat4 CameraSystem::getViewMatrix(const Camera &cam) const {
+  if (m_componentManager.containsComponent<Transform>(getActiveCamera()) && cam.isRelative) {
+    auto &transform = m_componentManager.getOrThrow<Transform>(getActiveCamera());
+    auto finalPosition = transform.position + cam.position;
+    return glm::lookAt(finalPosition, finalPosition + cam.front, cam.up);
+  }
+
   return glm::lookAt(cam.position, cam.position + cam.front, cam.up);
 }
 

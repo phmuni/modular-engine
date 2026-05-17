@@ -1,6 +1,7 @@
-// Transform system: model matrix from position, rotation, and scale.
+
+// Transform system implementation for calculating the model matrix from position, rotation, and scale.
+
 #include "systems/transformSystem.h"
-#include "components/transform.h"
 #include "glm/ext/matrix_transform.hpp"
 #include <glm/gtc/quaternion.hpp>
 

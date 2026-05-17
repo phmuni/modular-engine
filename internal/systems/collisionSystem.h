@@ -1,34 +1,27 @@
 #pragma once
-// Collision system: AABB detection and event dispatch.
+// AABB collision system for detecting collisions between entities with Collision components.
+
 #include "foundation/ecs/componentManager.h"
-#include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
-#include "components/collision.h"
-#include "components/transform.h"
-#include "components/model.h"
-#include <vector>
-#include <functional>
+#include <glm/glm.hpp>
 
 struct CollisionEvent {
-    Entity a;
-    Entity b;
+  Entity a;
+  Entity b;
 };
 
 class CollisionSystem : public BaseSystem {
 public:
-    CollisionSystem() = default;
-    ~CollisionSystem() = default;
+  CollisionSystem() = default;
+  ~CollisionSystem() = default;
 
-    // Called every frame
-    void update(ComponentManager &componentManager);
+  void update(ComponentManager &componentManager);
 
-    // Optional: register callback for collision events
-    void setCollisionCallback(std::function<void(const CollisionEvent &)> cb) { m_callback = cb; }
+  void setCollisionCallback(std::function<void(const CollisionEvent &)> cb) { m_callback = cb; }
 
-    // Check collision between two entities (both must have Model and Collision)
-    bool checkEntitiesCollision(Entity a, Entity b, ComponentManager &componentManager);
+  bool checkEntitiesCollision(Entity a, Entity b, ComponentManager &componentManager);
 
 private:
-    std::function<void(const CollisionEvent &)> m_callback;
-    bool checkAABB(const glm::vec3 &minA, const glm::vec3 &maxA, const glm::vec3 &minB, const glm::vec3 &maxB);
+  std::function<void(const CollisionEvent &)> m_callback;
+  bool checkAABB(const glm::vec3 &minA, const glm::vec3 &maxA, const glm::vec3 &minB, const glm::vec3 &maxB);
 };

@@ -1,10 +1,9 @@
-// Light system: entity tracking and per-light shader uniform upload.
+
+// Light system implementation for managing light entities and uploading their data to shaders.
+
 #include "systems/lightSystem.h"
 #include "components/light.h"
 #include "components/transform.h"
-#include "foundation/ecs/componentManager.h"
-#include "rendering/resources/shader.h"
-#include <algorithm>
 
 void LightSystem::createLight(Entity entity) { m_lights.push_back(entity); }
 
@@ -19,10 +18,10 @@ void LightSystem::uploadLightsToShader(Shader &shader, ComponentManager &compone
   int index = 0;
 
   for (const Entity &lightEntity : m_lights) {
-    const auto &light = componentManager.get<Light>(lightEntity);
+    const auto &light = componentManager.getOrThrow<Light>(lightEntity);
 
     glm::vec3 worldPos = light.position;
-    auto *transform = componentManager.tryGet<Transform>(lightEntity);
+    auto *transform = componentManager.getOrNil<Transform>(lightEntity);
     if (transform)
       worldPos += transform->position;
 

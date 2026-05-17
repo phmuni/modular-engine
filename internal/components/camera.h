@@ -9,6 +9,8 @@ struct Camera {
   glm::vec3 up{0.0f, 1.0f, 0.0f};
   glm::vec3 worldUp{0.0f, 1.0f, 0.0f};
 
+  bool isRelative = false;
+
   float yaw = 0.0f;
   float pitch = 0.0f;
   float moveSpeed = 3.0f;
