@@ -72,4 +72,5 @@ public:
   void setEmission(Entity entity, glm::vec3 color, float strength);
   void setTexture(Entity entity, std::string_view path, TextureSlot slot, int submesh = -1);
   void setShininess(Entity entity, float shininess, int submesh = -1);
+  void setSolidColor(Entity entity, glm::vec3 color);
 };

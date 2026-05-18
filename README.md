@@ -33,34 +33,39 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 ---
 
 <a id="features"></a>
+
 ## Features
 
-| Category | Description |
-|---|---|
-| **ECS Architecture** | Flexible, decoupled Entity-Component-System for scalable game logic |
-| **App Base Class** | Simple `App` interface with `setup()` and `update()` for clean game logic |
-| **Generic Components** | Any plain struct works as a component — no base class required |
-| **OpenGL Rendering** | Modern graphics API integration with full shader support |
-| **PBR Material System** | Per-submesh materials with diffuse, specular, normal, and emission maps |
-| **Resource Caching** | Automatic texture caching with handle-based resource management |
-| **Shadow Mapping** | Real-time shadow rendering with configurable depth maps |
-| **Asset Loading** | OBJ support via Tiny_Obj with automated resource management |
-| **Camera System** | Flexible camera control with quaternion-based rotations |
-| **Input System** | Keyboard and mouse handling via SDL3 |
-| **Lighting System** | Directional, point, and spotlight types with PBR shading |
-| **UI Integration** | ImGui-based editor with material inspector and entity hierarchy |
-| **Scene Management** | Entity lifecycle management and component composition |
+| Category                   | Description                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| **ECS Architecture**       | Flexible, decoupled Entity-Component-System for scalable game logic            |
+| **App Base Class**         | Simple `App` interface with `setup()` and `update()` for clean game logic      |
+| **Generic Components**     | Any plain struct works as a component — no base class required                 |
+| **OpenGL Rendering**       | Modern graphics API integration with full shader support                       |
+| **PBR Material System**    | Per-submesh materials with diffuse, specular, normal, and emission maps        |
+| **Solid Color Fallback**   | Centralized solid color texture generation and caching for simple rendering    |
+| **Resource Caching**       | Automatic texture caching with handle-based resource management                |
+| **Shadow Mapping**         | Real-time shadow rendering with configurable depth maps                        |
+| **Asset Loading**          | OBJ support via Tiny_Obj with automated resource management                    |
+| **Camera System**          | Flexible camera control with quaternion-based rotations                        |
+| **Input System**           | Keyboard and mouse handling via SDL3                                           |
+| **Lighting System**        | Directional, point, and spotlight types with intensity and cutoff controls     |
+| **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
+| **Particle System**        | Advanced emitter with cone/sphere/box shapes, attraction, and recycling        |
+| **UI Integration**         | ImGui-based editor with material inspector, light tweaks, and entity hierarchy |
+| **Scene Management**       | Entity lifecycle management and component composition                          |
 
 ---
 
 <a id="architecture"></a>
+
 ## Architecture
 
 The engine is built on the **Entity-Component-System (ECS)** pattern, which separates data (components) from logic (systems) for maximum flexibility and performance.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                        Engine                           │
+┌────────────────────────────────────────────────────────┐
+│                        Engine                          │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
 │  │  ECS Core   │  │   Renderer   │  │  Input/Window │  │
 │  │  (Entities, │  │  (OpenGL,    │  │  (SDL3)       │  │
@@ -72,21 +77,22 @@ The engine is built on the **Entity-Component-System (ECS)** pattern, which sepa
 │  │  (Tiny_Obj, │  │  (Lifecycle, │  │  (Inspector,  │  │
 │  │  Caching)   │  │  Composition)│  │  Hierarchy)   │  │
 │  └─────────────┘  └──────────────┘  └───────────────┘  │
-└─────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────┘
 ```
 
 ### Directory Organization
 
-| Directory | Purpose |
-|---|---|
-| `src/` | Implementation files for all systems and components |
-| `internal/` | Header files defining interfaces and structures |
-| `external/` | Third-party dependencies and libraries |
-| `assets/` | Game assets — models, shaders, textures, sounds |
+| Directory   | Purpose                                             |
+| ----------- | --------------------------------------------------- |
+| `src/`      | Implementation files for all systems and components |
+| `internal/` | Header files defining interfaces and structures     |
+| `external/` | Third-party dependencies and libraries              |
+| `assets/`   | Game assets — models, shaders, textures, sounds     |
 
 ---
 
 <a id="prerequisites"></a>
+
 ## Prerequisites
 
 - **CMake** 3.10+
@@ -97,6 +103,7 @@ The engine is built on the **Entity-Component-System (ECS)** pattern, which sepa
 ---
 
 <a id="installation"></a>
+
 ## Installation
 
 **Clone the repository:**
@@ -111,6 +118,7 @@ All dependencies are included in the `external/` directory. See `CMakeLists.txt`
 ---
 
 <a id="project-structure"></a>
+
 ## Project Structure
 
 ```
@@ -134,6 +142,7 @@ modular-engine/
 ---
 
 <a id="building"></a>
+
 ## Building
 
 **1. Generate build files:**
@@ -157,6 +166,7 @@ cmake --build build
 ---
 
 <a id="usage"></a>
+
 ## Usage
 
 The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. See [`src/foundation/core/main.cpp`](src/foundation/core/main.cpp) for a complete example.
@@ -170,6 +180,7 @@ class MyApp : public App {
     Entity player;
 
     void setup(Engine& engine) override {
+        // Create player entity
         player = engine.createModelEntity(
             "Player",
             EngineConfig::MODEL_BOX,
@@ -178,16 +189,34 @@ class MyApp : public App {
             glm::vec3(1.0f)    // scale
         );
 
+        // Apply solid color to player
+        engine.setSolidColor(player, glm::vec3(0.2f, 0.8f, 1.0f));
+        engine.setEmission(player, glm::vec3(0.2f, 0.8f, 1.0f), 1.5f);
+
+        // Create directional light (Sun)
         engine.createLightEntity(
             "Sun",
-            glm::vec3(2, 3, 2),
-            glm::vec3(-1, -1, -1),
-            glm::vec3(1.0f),
+            glm::vec3(0.0f),           // position
+            glm::vec3(-0.8f, -1.0f, 0.2f),  // direction
+            glm::vec3(1.0f, 0.0f, 0.0f),    // color (red)
             LightType::Directional,
-            1.5f, 0, 0
+            2.0f, 0, 0                 // intensity, cutOff, outerCutOff
         );
 
-        engine.createCameraEntity(glm::vec3(0, 0, 5));
+        // Create spot light overhead
+        engine.createLightEntity(
+            "Spotlight",
+            glm::vec3(0.0f, 10.0f, 0.0f),   // position
+            glm::vec3(0.0f, -1.0f, 0.0f),   // direction (down)
+            glm::vec3(1.0f),                // color (white)
+            LightType::Spot,
+            3.0f,                           // intensity
+            glm::cos(glm::radians(15.0f)),  // cutOff
+            glm::cos(glm::radians(25.0f))   // outerCutOff
+        );
+
+        // Create camera
+        engine.createCameraEntity("Camera", glm::vec3(0, 0, 5));
     }
 
     void update(Engine& engine, float dt) override {
@@ -210,38 +239,83 @@ int main() {
 Any plain struct works as a component — no base class or registration required:
 
 ```cpp
-struct Health   { int current = 3; int max = 3; };
-struct Velocity { glm::vec3 dir; float speed;   };
+struct Health {
+    int current = 3;
+    int max = 3;
+};
 
+struct Velocity {
+    glm::vec3 direction;
+    float speed;
+};
+
+// Create entity and add components
 Entity e = engine.createEntity();
 engine.addComponent<Health>(e, 3, 3);
 engine.addComponent<Velocity>(e, glm::vec3(1, 0, 0), 2.0f);
 
-auto* hp = engine.tryGetComponent<Health>(e);
-if (hp) hp->current -= 1;
+// Query and modify components
+auto& health = engine.getOrThrow<Health>(e);
+health.current -= 1;
+
+// Safe query (returns nullptr if component doesn't exist)
+if (auto* vel = engine.getOrNil<Velocity>(e)) {
+    vel->speed *= 1.5f;
+}
+
+// Check if component exists
+if (engine.containsComponent<Health>(e)) {
+    // Do something
+}
+
+// Remove component
+engine.removeComponent<Velocity>(e);
 ```
 
-For the full API reference, explore the header files in [`internal/`](internal/).
+### Material & Resource Management
+
+The Engine provides convenient helpers for applying colors, emission, and textures:
+
+```cpp
+// Apply solid color to an entity
+engine.setSolidColor(entity, glm::vec3(1.0f, 0.2f, 0.1f));  // Red
+
+// Set emission on an entity
+engine.setEmission(entity, glm::vec3(1.0f, 0.2f, 0.1f), 2.0f);
+
+// Apply texture to an entity
+engine.setTexture(entity, "path/to/texture.png", TextureSlot::Diffuse);
+
+// Apply texture to specific submesh
+engine.setTexture(entity, "path/to/texture.png", TextureSlot::Diffuse, 0);
+
+// Set shininess
+engine.setShininess(entity, 32.0f);
+```
+
+For direct ResourceSystem access and full API reference, explore [`internal/rendering/resources/resourceSystem.h`](internal/rendering/resources/resourceSystem.h).
 
 ---
 
 <a id="technologies"></a>
+
 ## Technologies
 
-| Category | Technology |
-|---|---|
-| Language | Modern C++ (C++17+) |
-| Graphics API | OpenGL |
-| Build System | CMake |
-| Window & Input | SDL3 |
-| Mathematics | GLM |
-| Asset Loading | Tiny_Obj |
-| UI Framework | Dear ImGui |
-| Dependencies | See `external/` |
+| Category       | Technology          |
+| -------------- | ------------------- |
+| Language       | Modern C++ (C++17+) |
+| Graphics API   | OpenGL              |
+| Build System   | CMake               |
+| Window & Input | SDL3                |
+| Mathematics    | GLM                 |
+| Asset Loading  | Tiny_Obj            |
+| UI Framework   | Dear ImGui          |
+| Dependencies   | See `external/`     |
 
 ---
 
 <a id="contributing"></a>
+
 ## Contributing
 
 Contributions are welcome! Please follow these steps:
@@ -266,6 +340,7 @@ Check the [Issues](https://github.com/phmuni/modular-engine/issues) and [Project
 ---
 
 <a id="license"></a>
+
 ## License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.

@@ -200,6 +200,13 @@ void Engine::setShininess(Entity entity, float shininess, int submesh) {
   }
 }
 
+void Engine::setSolidColor(Entity entity, glm::vec3 color) {
+  auto *model = m_componentManager.getOrNil<Model>(entity);
+  if (!model)
+    return;
+  m_systemManager.getSystem<ResourceSystem>().applySolidColorToModel(*model, color);
+}
+
 Entity Engine::createEntity() { return m_entityManager.createEntity(); }
 
 SystemManager &Engine::getSystemManager() { return m_systemManager; }

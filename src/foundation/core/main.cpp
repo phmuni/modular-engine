@@ -96,12 +96,6 @@ class SpaceInvadersApp : public App {
     col.isStatic = isStatic;
   }
 
-  void applySolidColor(Engine &engine, Entity entity, const glm::vec3 &color) {
-    auto &resourceSystem = engine.getSystemManager().getSystem<ResourceSystem>();
-    auto &model = engine.getOrThrow<Model>(entity);
-    resourceSystem.applySolidColorToModel(model, color);
-  }
-
   // Returns a color interpolated from purple (first row) to red (last row).
   // The gradient is stretched by `spread` so the transition to red happens later.
   glm::vec3 rowColor(int row, int totalRows) const {
@@ -342,7 +336,7 @@ class SpaceInvadersApp : public App {
       Entity invader =
           engine.createModelEntity("Invader", EngineConfig::MODEL_BOX, glm::vec3(0.0f), glm::vec3(0.0f), ig.scale);
       addCollisionBox(engine, invader, ig.scale);
-      applySolidColor(engine, invader, slot.color);
+      engine.setSolidColor(invader, slot.color);
       engine.addComponent<Invader>(
           invader, Invader{true, slot.color, slot.scoreValue, static_cast<int>(ig.nextInvaderIndex), -1});
       ++ig.nextInvaderIndex;
@@ -369,7 +363,7 @@ class SpaceInvadersApp : public App {
         inv.currentRow = newRow;
         glm::vec3 newColor = rowColor(newRow, ig.rows);
         inv.color = newColor;
-        applySolidColor(engine, e, newColor);
+        engine.setSolidColor(e, newColor);
       }
     });
 
