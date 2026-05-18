@@ -18,6 +18,7 @@
 #include "systems/sceneSystem.h"
 #include "systems/windowSystem.h"
 
+#include <array>
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_opengl3.h>
 #include <imgui/imgui_impl_sdl3.h>
@@ -157,7 +158,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   if (ImGui::Button("+ Add Entity", ImVec2(-1, 0))) {
     ImGui::OpenPopup("AddEntityPopup");
   }
-  renderAddEntityPopup(sceneSystem, entityManager, componentManager, window);
+  renderAddEntityPopup(sceneSystem, entityManager, componentManager, resourceSystem, renderSystem, window);
 
   ImGui::End();
 
@@ -228,7 +229,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       }
 
       if (componentManager.containsComponent<Model>(selectedEntity)) {
-        renderMaterialInspector(selectedEntity, componentManager, resourceSystem, window);
+        renderMaterialInspector(selectedEntity, componentManager, resourceSystem, renderSystem, window);
       }
 
       if (componentManager.containsComponent<ParticleEmitter>(selectedEntity)) {
@@ -278,7 +279,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
             auto &rs = resourceSystem;
             auto modelData = rs.loadModel(addModelPath);
             componentManager.addInPlace<Model>(selectedEntity, modelData.meshHandle,
-                                               std::move(modelData.materialHandles));
+                                               std::move(modelData.materialHandles), modelData.transparent);
             renderSystem.insertRenderable(selectedEntity);
             addModelPath[0] = '\0';
           }
@@ -316,6 +317,8 @@ void UISystem::renderCameraInspector(Entity entity, SystemManager &systemManager
   bool camToogle = (camSys.getActiveCamera() == selectedEntity);
 
   ImGui::Checkbox("Active##ce", &camToogle);
+  ImGui::SameLine();
+  ImGui::Checkbox("Relative to Transform##ce", &cam.isRelative);
   ImGui::DragFloat3("Position##ce", &cam.position.x, 0.1f);
   ImGui::SliderFloat("FOV##ce", &cam.fov, 30.0f, 120.0f);
   ImGui::SliderFloat("Move Speed##ce", &cam.moveSpeed, 0.5f, 20.0f);
@@ -346,10 +349,25 @@ void UISystem::renderParticleInspector(Entity entity, ComponentManager &componen
   ImGui::Separator();
 
   ImGui::Text("Motion");
+  int shape = static_cast<int>(p.emissionShape);
+  if (ImGui::Combo("Emitter Shape##pe", &shape, "Cone\0Sphere\0Box\0")) {
+    p.emissionShape = static_cast<EmissionShape>(shape);
+  }
+
+  if (p.emissionShape == EmissionShape::Sphere) {
+    ImGui::DragFloat("Sphere Radius##pe", &p.sphereRadius, 0.05f, 0.0f, 100.0f);
+  } else if (p.emissionShape == EmissionShape::Box) {
+    ImGui::DragFloat3("Box Half Extents##pe", &p.boxHalfExtents.x, 0.05f, 0.0f, 100.0f);
+  }
+
   ImGui::DragFloat("Speed", &p.speed, 0.1f, 0.0f, 100.0f);
   ImGui::DragFloat("Speed Variance", &p.speedVariance, 0.1f, 0.0f, 50.0f);
-  ImGui::DragFloat3("Direction##pe", &p.emitDirection.x, 0.01f);
-  ImGui::DragFloat("Spread", &p.spread, 0.01f, 0.0f, 10.0f);
+
+  if (p.emissionShape != EmissionShape::Sphere) {
+    ImGui::DragFloat3("Direction##pe", &p.emitDirection.x, 0.01f);
+    ImGui::DragFloat("Spread", &p.spread, 0.01f, 0.0f, 10.0f);
+  }
+
   ImGui::DragFloat3("Offset##pe", &p.offset.x, 0.05f);
   ImGui::DragFloat3("Gravity##pe", &p.gravity.x, 0.05f);
   ImGui::Checkbox("Emit Tangentially##pe", &p.emitTangentially);
@@ -368,6 +386,8 @@ void UISystem::renderParticleInspector(Entity entity, ComponentManager &componen
 
   ImGui::Text("Attraction");
   ImGui::Checkbox("Attract Mode##pe", &p.attractMode);
+  ImGui::SameLine();
+  ImGui::Checkbox("Attract Point Relative##pe", &p.attractPointRelative);
   ImGui::Checkbox("Enable Recycling##pe", &p.enableRecycling);
   ImGui::DragFloat3("Attract Point##pe", &p.attractPoint.x, 0.1f);
   ImGui::DragFloat("Attract Strength##pe", &p.attractStrength, 0.05f, 0.0f, 100.0f);
@@ -381,7 +401,7 @@ void UISystem::renderParticleInspector(Entity entity, ComponentManager &componen
 }
 
 void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componentManager,
-                                       ResourceSystem &resourceSystem, SDL_Window *window) {
+                                       ResourceSystem &resourceSystem, RenderSystem &renderSystem, SDL_Window *window) {
   if (!ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
     return;
 
@@ -398,19 +418,31 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
 
   // Global texture apply
   if (ImGui::TreeNode("Apply to All Submeshes")) {
+    static std::array<std::string, 4> lastAppliedPaths{};
+
+    if (ImGui::DragFloat("Opacity", &model.opacity, 0.01f, 0.0f, 1.0f, "%.2f")) {
+      renderSystem.markBatchesDirty();
+    }
+
     for (int t = 0; t < 4; t++) {
       ImGui::Text("%s", labels[t]);
       ImGui::SetNextItemWidth(140.0f);
       ImGui::InputText((std::string("##global_") + labels[t]).c_str(), globalPaths[t], 256);
       pickFileButton((std::string("pick_g_") + labels[t]).c_str(), globalPaths[t], 256, window);
       ImGui::SameLine();
-      if (ImGui::Button((std::string("Apply ") + labels[t]).c_str())) {
+
+      // Auto-apply if path changed after picking
+      std::string currentPath(globalPaths[t]);
+      if (!currentPath.empty() && currentPath != lastAppliedPaths[t]) {
         GLuint tex = resourceSystem.loadTexture(globalPaths[t]);
         resourceSystem.setTexture(model, slots[t], tex);
+        lastAppliedPaths[t] = currentPath;
       }
-      ImGui::SameLine();
+
       if (ImGui::Button((std::string("X##g_") + labels[t]).c_str())) {
         resourceSystem.resetTexture(model, slots[t]);
+        globalPaths[t][0] = '\0';
+        lastAppliedPaths[t] = "";
       }
     }
 
@@ -422,6 +454,14 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
     ImGui::SliderFloat("Emission Strength##global", &globalEmStr, 0.0f, 5.0f);
     if (ImGui::Button("Apply Emission##global", ImVec2(-1, 0))) {
       resourceSystem.setEmission(model, globalEmCol, globalEmStr);
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Solid Color (All Submeshes)");
+    static glm::vec3 globalFallbackColor{1.0f, 1.0f, 1.0f};
+    ImGui::ColorEdit3("##global_fallback_color", &globalFallbackColor.x);
+    if (ImGui::Button("Apply Solid Color to All##global", ImVec2(-1, 0))) {
+      resourceSystem.applySolidColorToModel(model, globalFallbackColor);
     }
 
     ImGui::TreePop();
@@ -448,6 +488,9 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
         if (ImGui::Button((std::string("Set##") + labels[t]).c_str())) {
           GLuint tex = resourceSystem.loadTexture(paths[i][t]);
           resourceSystem.setMaterialTexture(handle, model.materialHandles, slots[t], tex);
+          if (t == 0 && Material::hasAlphaTexture(paths[i][t])) {
+            // Do not auto-mark model transparent; user can toggle opacity manually.
+          }
         }
         ImGui::SameLine();
         if (ImGui::Button((std::string("X##") + labels[t]).c_str())) {
@@ -480,7 +523,8 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
 }
 
 void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &entityManager,
-                                    ComponentManager &componentManager, SDL_Window *window) {
+                                    ComponentManager &componentManager, ResourceSystem &resourceSystem,
+                                    RenderSystem &renderSystem, SDL_Window *window) {
   if (!ImGui::BeginPopup("AddEntityPopup"))
     return;
 
@@ -504,6 +548,8 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
     static float pos[3] = {0, 0, 0};
     static float rot[3] = {0, 0, 0};
     static float scale[3] = {1, 1, 1};
+    static float modelOpacity = 1.0f;
+    static float modelSolidColor[3] = {1.0f, 1.0f, 1.0f};
 
     ImGui::Text("New Model");
     ImGui::Separator();
@@ -513,10 +559,26 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
     ImGui::InputFloat3("Position", pos);
     ImGui::InputFloat3("Rotation", rot);
     ImGui::InputFloat3("Scale", scale);
+    ImGui::Separator();
+    ImGui::SliderFloat("Opacity##create", &modelOpacity, 0.0f, 1.0f, "%.2f");
+    ImGui::ColorEdit3("Solid Color##create", modelSolidColor);
 
     if (ImGui::Button("Create", ImVec2(120, 0))) {
-      sceneSystem.createModelEntity(modelName, modelPath, glm::vec3(pos[0], pos[1], pos[2]),
-                                    glm::vec3(rot[0], rot[1], rot[2]), glm::vec3(scale[0], scale[1], scale[2]));
+      Entity e =
+          sceneSystem.createModelEntity(modelName, modelPath, glm::vec3(pos[0], pos[1], pos[2]),
+                                        glm::vec3(rot[0], rot[1], rot[2]), glm::vec3(scale[0], scale[1], scale[2]));
+      // Apply opacity and solid color
+      auto *modelComp = componentManager.getOrNil<Model>(e);
+      if (modelComp) {
+        modelComp->opacity = modelOpacity;
+        if (modelComp->materialHandles.size() > 0) {
+          auto &firstMat = resourceSystem.getMaterial(modelComp->materialHandles[0]);
+          if (!firstMat.hasDiffuseTexture()) {
+            resourceSystem.applySolidColorToModel(
+                *modelComp, glm::vec3(modelSolidColor[0], modelSolidColor[1], modelSolidColor[2]));
+          }
+        }
+      }
       formType = 0;
       ImGui::CloseCurrentPopup();
     }

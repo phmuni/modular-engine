@@ -17,6 +17,7 @@ enum class TextureSlot { Diffuse = 0, Specular = 1, Normal = 2, Emission = 3 };
 struct ModelLoadResult {
   uint32_t meshHandle;
   std::vector<uint32_t> materialHandles;
+  bool transparent = false;
 };
 
 class ResourceSystem : public BaseSystem {
@@ -61,4 +62,9 @@ public:
   void setTexture(Model &model, TextureSlot slot, GLuint tex);
   void resetTexture(Model &model, TextureSlot slot);
   void setShininess(Model &model, float shininess);
+
+  // Solid color helpers
+  GLuint getOrCreateSolidColorTexture(const glm::vec3 &color);
+  void applySolidColorToMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles, const glm::vec3 &color);
+  void applySolidColorToModel(Model &model, const glm::vec3 &color);
 };

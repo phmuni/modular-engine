@@ -58,8 +58,13 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path) {
     uint32_t matHandle = createMaterial();
     Material &mat = getMaterial(matHandle);
 
-    if (!mtl.diffuseTexPath.empty())
+    if (!mtl.diffuseTexPath.empty()) {
       mat.setDiffuse(resolve(mtl.diffuseTexPath));
+      mat.setDiffuseColor(mtl.diffuseColor);
+    } else {
+      mat.setDiffuseColor(mtl.diffuseColor);
+      mat.setHasDiffuseTexture(false);
+    }
     if (!mtl.specularTexPath.empty())
       mat.setSpecular(resolve(mtl.specularTexPath));
     if (!mtl.normalTexPath.empty())
@@ -187,6 +192,7 @@ void ResourceSystem::resetMaterialTexture(uint32_t &handle, const std::vector<ui
   switch (slot) {
   case TextureSlot::Diffuse:
     mat.setDiffuseTexture(def.getDiffuse());
+    mat.setHasDiffuseTexture(false);
     break;
   case TextureSlot::Specular:
     mat.setSpecularTexture(def.getSpecular());
@@ -233,4 +239,42 @@ void ResourceSystem::resetTexture(Model &model, TextureSlot slot) {
 void ResourceSystem::setShininess(Model &model, float shininess) {
   for (auto &h : model.materialHandles)
     setMaterialShininess(h, model.materialHandles, shininess);
+}
+
+GLuint ResourceSystem::getOrCreateSolidColorTexture(const glm::vec3 &color) {
+  auto clampToU8 = [](float v) -> unsigned int {
+    return static_cast<unsigned int>(glm::clamp(v, 0.0f, 1.0f) * 255.0f);
+  };
+  unsigned int r = clampToU8(color.r);
+  unsigned int g = clampToU8(color.g);
+  unsigned int b = clampToU8(color.b);
+  std::string key = "solid_" + std::to_string(r) + "_" + std::to_string(g) + "_" + std::to_string(b);
+  auto it = m_textures.find(key);
+  if (it != m_textures.end())
+    return it->second;
+
+  std::array<unsigned char, 3> rgb = {static_cast<unsigned char>(r), static_cast<unsigned char>(g),
+                                      static_cast<unsigned char>(b)};
+  GLuint tex = Material::createSolidColorTexture(rgb);
+  if (tex != 0)
+    m_textures[std::move(key)] = tex;
+  return tex;
+}
+
+void ResourceSystem::applySolidColorToMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles,
+                                               const glm::vec3 &color) {
+  ensureOwnMaterial(handle, allHandles);
+  Material &mat = getMaterial(handle);
+  GLuint tex = getOrCreateSolidColorTexture(color);
+  mat.setDiffuseTexture(tex);
+  mat.setHasDiffuseTexture(true);
+  mat.setDiffuseColor(color);
+  mat.setEmissionColor(glm::vec3(0.0f));
+  mat.setEmissionStrength(0.0f);
+}
+
+void ResourceSystem::applySolidColorToModel(Model &model, const glm::vec3 &color) {
+  for (auto &h : model.materialHandles) {
+    applySolidColorToMaterial(h, model.materialHandles, color);
+  }
 }

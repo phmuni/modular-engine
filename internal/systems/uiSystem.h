@@ -9,6 +9,7 @@ class SystemManager;
 class ComponentManager;
 class SceneSystem;
 class ResourceSystem;
+class RenderSystem;
 using Entity = int;
 
 class UISystem : public BaseSystem {
@@ -30,7 +31,7 @@ private:
                              ResourceSystem &resourceSystem, SDL_Window *window);
   void renderParticleInspector(Entity entity, ComponentManager &componentManager);
   void renderMaterialInspector(Entity entity, ComponentManager &componentManager, ResourceSystem &resourceSystem,
-                               SDL_Window *window);
+                               RenderSystem &renderSystem, SDL_Window *window);
   void renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &entityManager, ComponentManager &componentManager,
-                            SDL_Window *window);
+                            ResourceSystem &resourceSystem, RenderSystem &renderSystem, SDL_Window *window);
 };

@@ -60,7 +60,8 @@ Entity SceneSystem::createModelEntity(std::string name, std::string modelPath, g
 
   m_componentManager.insert<Name>(entity, std::make_unique<Name>(std::move(name)));
   m_componentManager.insert<Transform>(entity, std::make_unique<Transform>(position, rotation, scale));
-  m_componentManager.insert<Model>(entity, std::make_unique<Model>(modelData.meshHandle, std::move(materialHandles)));
+  m_componentManager.insert<Model>(
+      entity, std::make_unique<Model>(modelData.meshHandle, std::move(materialHandles), modelData.transparent));
 
   m_systemManager.getSystem<RenderSystem>().insertRenderable(entity);
   return entity;

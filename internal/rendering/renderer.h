@@ -51,6 +51,8 @@ public:
   void endShadowPass();
 
   // Particle / transparent pass
+  void beginTransparentPass();
+  void endTransparentPass();
   void beginParticlePass(bool additiveBlending);
   void uploadParticles(const ParticleVertex *data, int count);
   void drawParticles(int count);

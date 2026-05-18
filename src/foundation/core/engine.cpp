@@ -47,7 +47,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<CameraSystem>(m_componentManager, m_systemManager.getSystem<InputSystem>());
   m_systemManager.insert<LightSystem>();
   m_systemManager.insert<SceneSystem>(m_entityManager, m_componentManager, m_systemManager);
-  m_systemManager.insert<ParticleSystem>();
+  m_systemManager.insert<ParticleSystem>(m_componentManager);
   m_systemManager.insert<CollisionSystem>();
   m_systemManager.insert<UISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
                                    m_systemManager.getSystem<WindowSystem>().getContext());
@@ -69,6 +69,8 @@ bool Engine::loadResources() {
     SDL_Log("Failed to load shaders");
     return false;
   }
+
+  m_systemManager.getSystem<RenderSystem>().setShadowShaderHandle(shadowShader);
 
   uint32_t particleShader =
       resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_PARTICLE),
@@ -113,7 +115,7 @@ void Engine::update(bool &isRunning) {
 
   // Particle simulation (update phase, not render)
   auto &particleSystem = m_systemManager.getSystem<ParticleSystem>();
-  particleSystem.update(timeSystem.getDeltaTime(), m_componentManager);
+  particleSystem.update(timeSystem.getDeltaTime());
 
   // Collision detection
   auto &collisionSystem = m_systemManager.getSystem<CollisionSystem>();

@@ -7,6 +7,7 @@
 #include "systems/cameraSystem.h"
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
+#include <cmath>
 #include <glm/gtc/constants.hpp>
 #include <random>
 
@@ -14,9 +15,28 @@ namespace {
 std::mt19937 rng{std::random_device{}()};
 std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
 std::uniform_real_distribution<float> distSym(-1.0f, 1.0f);
+
+glm::vec3 safeNormalize(const glm::vec3 &v, const glm::vec3 &fallback = glm::vec3(0.0f, 1.0f, 0.0f)) {
+  float len = glm::length(v);
+  if (len < 0.0001f)
+    return fallback;
+  return v / len;
+}
+
+glm::vec3 randomUnitVector() {
+  float z = distSym(rng);
+  float a = dist01(rng) * glm::two_pi<float>();
+  float r = std::sqrt(glm::max(0.0f, 1.0f - z * z));
+  return glm::vec3(r * std::cos(a), z, r * std::sin(a));
+}
+
+glm::vec3 randomSpreadDirection(const glm::vec3 &baseDir, float spread) {
+  glm::vec3 randomOffset(distSym(rng), distSym(rng), distSym(rng));
+  return safeNormalize(baseDir + randomOffset * spread, baseDir);
+}
 } // namespace
 
-void ParticleSystem::emitParticles(ParticleEmitter &emitter, const glm::vec3 &origin, float deltaTime) {
+void ParticleSystem::emitParticles(ParticleEmitter &emitter, Entity entity, const glm::vec3 &origin, float deltaTime) {
   if (!emitter.active)
     return;
 
@@ -27,12 +47,46 @@ void ParticleSystem::emitParticles(ParticleEmitter &emitter, const glm::vec3 &or
   int available = emitter.maxParticles - static_cast<int>(emitter.particles.size());
   toEmit = std::min(toEmit, available);
 
+  glm::vec3 worldAttractPoint = emitter.attractPoint;
+  if (emitter.attractPointRelative) {
+    auto *transform = m_componentManager.getOrNil<Transform>(entity);
+    if (transform) {
+      worldAttractPoint += transform->position;
+    }
+  }
+
   for (int i = 0; i < toEmit; ++i) {
     Particle p;
-    p.position = origin;
+
+    glm::vec3 spawnPos = origin;
+    glm::vec3 emitDir = safeNormalize(emitter.emitDirection);
+
+    switch (emitter.emissionShape) {
+    case EmissionShape::Cone: {
+      emitDir = randomSpreadDirection(emitDir, emitter.spread);
+      break;
+    }
+    case EmissionShape::Sphere: {
+      glm::vec3 unit = randomUnitVector();
+      float radius = glm::max(emitter.sphereRadius, 0.0f);
+      float radial = radius * std::cbrt(dist01(rng));
+      spawnPos = origin + unit * radial;
+      emitDir = unit;
+      break;
+    }
+    case EmissionShape::Box: {
+      glm::vec3 e(glm::max(emitter.boxHalfExtents.x, 0.0f), glm::max(emitter.boxHalfExtents.y, 0.0f),
+                  glm::max(emitter.boxHalfExtents.z, 0.0f));
+      spawnPos += glm::vec3(distSym(rng) * e.x, distSym(rng) * e.y, distSym(rng) * e.z);
+      emitDir = randomSpreadDirection(emitDir, emitter.spread);
+      break;
+    }
+    }
+
+    p.position = spawnPos;
 
     if (emitter.emitTangentially && emitter.attractMode) {
-      glm::vec3 toCenter = emitter.attractPoint - p.position;
+      glm::vec3 toCenter = worldAttractPoint - p.position;
       float d = glm::length(toCenter);
 
       glm::vec3 inward = toCenter / (d + 0.0001f);
@@ -44,12 +98,8 @@ void ParticleSystem::emitParticles(ParticleEmitter &emitter, const glm::vec3 &or
       p.velocity = tangDir * (orbSpeed * emitter.tangentStrength * variance);
 
     } else {
-      glm::vec3 dir = glm::normalize(emitter.emitDirection);
-      glm::vec3 randomOffset(distSym(rng), distSym(rng), distSym(rng));
-      dir = glm::normalize(dir + randomOffset * emitter.spread);
-
       float speed = emitter.speed + distSym(rng) * emitter.speedVariance;
-      p.velocity = dir * speed;
+      p.velocity = emitDir * speed;
     }
 
     p.maxLife = emitter.particleLifetime + distSym(rng) * emitter.particleLifetime * 0.2f;
@@ -61,11 +111,19 @@ void ParticleSystem::emitParticles(ParticleEmitter &emitter, const glm::vec3 &or
   }
 }
 
-void ParticleSystem::updateParticles(ParticleEmitter &emitter, float deltaTime) {
+void ParticleSystem::updateParticles(ParticleEmitter &emitter, Entity entity, float deltaTime) {
+  glm::vec3 worldAttractPoint = emitter.attractPoint;
+  if (emitter.attractPointRelative) {
+    auto *transform = m_componentManager.getOrNil<Transform>(entity);
+    if (transform) {
+      worldAttractPoint += transform->position;
+    }
+  }
+
   for (auto &p : emitter.particles) {
     p.life -= deltaTime;
 
-    glm::vec3 toCenter = emitter.attractPoint - p.position;
+    glm::vec3 toCenter = worldAttractPoint - p.position;
     float distSq = glm::dot(toCenter, toCenter);
     float dist = glm::sqrt(distSq);
 
@@ -89,7 +147,7 @@ void ParticleSystem::updateParticles(ParticleEmitter &emitter, float deltaTime) 
 
           glm::vec3 relPos =
               glm::vec3(std::cos(angle) * spawnRadius, distSym(rng) * 0.1f, std::sin(angle) * spawnRadius);
-          p.position = emitter.attractPoint + relPos;
+          p.position = worldAttractPoint + relPos;
 
           glm::vec3 inwardRecycle = glm::normalize(relPos);
           glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -114,7 +172,7 @@ void ParticleSystem::updateParticles(ParticleEmitter &emitter, float deltaTime) 
     p.position += p.velocity * deltaTime;
 
     if (emitter.distBasedColor) {
-      float distUpdated = glm::length(emitter.attractPoint - p.position);
+      float distUpdated = glm::length(worldAttractPoint - p.position);
       float t = glm::clamp(distUpdated / emitter.colorRadius, 0.0f, 1.0f);
       p.color = glm::mix(emitter.endColor, emitter.startColor, t);
     } else {
@@ -133,17 +191,17 @@ void ParticleSystem::updateParticles(ParticleEmitter &emitter, float deltaTime) 
                           emitter.particles.end());
 }
 
-void ParticleSystem::update(float deltaTime, ComponentManager &componentManager) {
-  componentManager.forEachComponent<ParticleEmitter>([&](Entity entity, ParticleEmitter &emitter) {
-    auto *transform = componentManager.getOrNil<Transform>(entity);
+void ParticleSystem::update(float deltaTime) {
+  m_componentManager.forEachComponent<ParticleEmitter>([&](Entity entity, ParticleEmitter &emitter) {
+    auto *transform = m_componentManager.getOrNil<Transform>(entity);
     glm::vec3 origin = (transform ? transform->position : glm::vec3(0.0f)) + emitter.offset;
 
-    emitParticles(emitter, origin, deltaTime);
-    updateParticles(emitter, deltaTime);
+    emitParticles(emitter, entity, origin, deltaTime);
+    updateParticles(emitter, entity, deltaTime);
   });
 }
 
-void ParticleSystem::render(SystemManager &systemManager, ComponentManager &componentManager) {
+void ParticleSystem::render(SystemManager &systemManager) {
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
@@ -152,14 +210,14 @@ void ParticleSystem::render(SystemManager &systemManager, ComponentManager &comp
   if (camEntity == -1)
     return;
 
-  const auto &cam = componentManager.getOrThrow<Camera>(camEntity);
+  const auto &cam = m_componentManager.getOrThrow<Camera>(camEntity);
   glm::mat4 view = cameraSystem.getViewMatrix(cam);
   glm::mat4 projection = cameraSystem.getProjectionMatrix(cam);
 
   std::vector<ParticleVertex> additiveVertices;
   std::vector<ParticleVertex> alphaVertices;
 
-  componentManager.forEachComponent<ParticleEmitter>([&](Entity entity, ParticleEmitter &emitter) {
+  m_componentManager.forEachComponent<ParticleEmitter>([&](Entity entity, ParticleEmitter &emitter) {
     auto &target = emitter.additiveBlending ? additiveVertices : alphaVertices;
     for (const auto &p : emitter.particles) {
       if (p.life > 0.0f) {

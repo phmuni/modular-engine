@@ -1,5 +1,5 @@
 
-// Material class implementation with texture loading and fallback generation.
+// Material class implementation with texture loading and solid-color texture generation.
 #define STB_IMAGE_IMPLEMENTATION
 
 #include "rendering/resources/material.h"
@@ -14,12 +14,14 @@ Material::Material() {
   std::array<unsigned char, 3> specularGray = {64, 64, 64};
   std::array<unsigned char, 3> white = {255, 255, 255};
 
-  m_diffuse = createFallbackTexture(diffuseGray);
-  m_specular = createFallbackTexture(specularGray);
+  m_diffuse = createSolidColorTexture(diffuseGray);
+  m_specular = createSolidColorTexture(specularGray);
   m_normal = 0; // disabled until TBN is implemented
-  m_emission = createFallbackTexture(white);
+  m_emission = createSolidColorTexture(white);
   m_shininess = 16.0f;
   m_shaderHandle = 0;
+  m_hasDiffuseTexture = false;
+  m_diffuseColor = glm::vec3(0.8f);
 }
 
 Material::Material(GLuint diffuse, GLuint specular, GLuint normal, GLuint emission, float shininess)
@@ -31,8 +33,13 @@ GLuint Material::getNormal() const { return m_normal; }
 GLuint Material::getEmission() const { return m_emission; }
 float Material::getShininess() const { return m_shininess; }
 uint32_t Material::getShaderHandle() const { return m_shaderHandle; }
+bool Material::hasDiffuseTexture() const { return m_hasDiffuseTexture; }
+glm::vec3 Material::getDiffuseColor() const { return m_diffuseColor; }
 
-void Material::setDiffuseTexture(GLuint texture) { m_diffuse = texture; }
+void Material::setDiffuseTexture(GLuint texture) {
+  m_diffuse = texture;
+  m_hasDiffuseTexture = true;
+}
 void Material::setSpecularTexture(GLuint texture) { m_specular = texture; }
 void Material::setNormalTexture(GLuint texture) { m_normal = texture; }
 void Material::setEmissionTexture(GLuint texture) { m_emission = texture; }
@@ -41,6 +48,7 @@ void Material::setDiffuse(const std::string path) {
   GLuint tex = loadTexture(path);
   if (tex != 0)
     m_diffuse = tex;
+  m_hasDiffuseTexture = (tex != 0);
 }
 
 void Material::setSpecular(const std::string path) {
@@ -63,13 +71,15 @@ void Material::setEmission(const std::string path) {
 
 void Material::setShininess(float shine) { m_shininess = shine; }
 void Material::setShaderHandle(uint32_t handle) { m_shaderHandle = handle; }
+void Material::setDiffuseColor(const glm::vec3 &color) { m_diffuseColor = color; }
+void Material::setHasDiffuseTexture(bool value) { m_hasDiffuseTexture = value; }
 
 glm::vec3 Material::getEmissionColor() const { return m_emissionColor; }
 float Material::getEmissionStrength() const { return m_emissionStrength; }
 void Material::setEmissionColor(const glm::vec3 &color) { m_emissionColor = color; }
 void Material::setEmissionStrength(float strength) { m_emissionStrength = strength; }
 
-GLuint Material::createFallbackTexture(const std::array<unsigned char, 3> &color) {
+GLuint Material::createSolidColorTexture(const std::array<unsigned char, 3> &color) {
   GLuint textureID;
   glGenTextures(1, &textureID);
   glBindTexture(GL_TEXTURE_2D, textureID);
@@ -118,12 +128,12 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
     std::cerr << "[Material] File not found: " << normalized << std::endl;
   }
 
-  // Magenta fallback on failure
+  // Fallback texture on failure
   if (textureID == 0) {
-    unsigned char magenta[3] = {255, 0, 255};
+    unsigned char fallbackColor[3] = {255, 0, 255};
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, magenta);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, fallbackColor);
     hasMipmap = false;
   }
 
@@ -138,4 +148,27 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
   }
 
   return textureID;
+}
+
+bool Material::hasAlphaTexture(const std::filesystem::path &path) {
+  std::string normalized = PathUtils::normalizeSeparators(path.string());
+  std::string basePath = std::string(PathUtils::stripExtension(normalized));
+
+  if (basePath.empty())
+    return false;
+
+  for (const auto &ext : kSupportedExtensions) {
+    std::string candidate = basePath + ext;
+    if (!std::filesystem::exists(candidate))
+      continue;
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    if (stbi_info(candidate.c_str(), &width, &height, &channels))
+      return channels == 4;
+    return false;
+  }
+
+  return false;
 }

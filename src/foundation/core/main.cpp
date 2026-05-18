@@ -1,12 +1,15 @@
+
 // Main entry point for the application. Sets up the engine and runs the main loop with the provided application logic.
 
 #include "components/collision.h"
+#include "components/model.h"
 #include "components/particleEmitter.h"
 #include "components/transform.h"
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
 #include "systems/collisionSystem.h"
 #include "systems/inputSystem.h"
+#include "systems/resourceSystem.h"
 #include "systems/sceneSystem.h"
 #include <random>
 #include <unordered_set>
@@ -27,6 +30,7 @@ struct Invader {
   glm::vec3 color;
   int scoreValue;
   int pathIndex;
+  int currentRow = -1;
 };
 
 struct Explosion {
@@ -92,20 +96,23 @@ class SpaceInvadersApp : public App {
     col.isStatic = isStatic;
   }
 
-  glm::vec3 rowColor(int row) const {
-    switch (row % 5) {
-    case 0:
-      return {1.00f, 0.28f, 0.28f};
-    case 1:
-      return {1.00f, 0.58f, 0.12f};
-    case 2:
-      return {0.98f, 0.90f, 0.18f};
-    case 3:
-      return {0.22f, 0.88f, 0.38f};
-    case 4:
-      return {0.22f, 0.55f, 1.00f};
-    }
-    return {1.0f, 1.0f, 1.0f};
+  void applySolidColor(Engine &engine, Entity entity, const glm::vec3 &color) {
+    auto &resourceSystem = engine.getSystemManager().getSystem<ResourceSystem>();
+    auto &model = engine.getOrThrow<Model>(entity);
+    resourceSystem.applySolidColorToModel(model, color);
+  }
+
+  // Returns a color interpolated from purple (first row) to red (last row).
+  // The gradient is stretched by `spread` so the transition to red happens later.
+  glm::vec3 rowColor(int row, int totalRows) const {
+    glm::vec3 purple = {0.55f, 0.10f, 0.75f};
+    glm::vec3 red = {1.00f, 0.08f, 0.08f};
+    if (totalRows <= 1)
+      return purple;
+    const float spread = 4.0f; // increase to make gradient larger (slower transition)
+    int denom = glm::max(1, static_cast<int>((totalRows - 1) * spread));
+    float t = static_cast<float>(row) / static_cast<float>(denom);
+    return glm::mix(purple, red, glm::clamp(t, 0.0f, 1.0f));
   }
 
   int rowScore(int row, const InvaderGroup &ig) const { return (ig.rows - row) * 10; }
@@ -144,6 +151,10 @@ class SpaceInvadersApp : public App {
                                       scale);
     addCollisionBox(engine, player, scale);
     engine.addComponent<Player>(player);
+
+    auto &resourceSystem = engine.getSystemManager().getSystem<ResourceSystem>();
+    auto &model = engine.getOrThrow<Model>(player);
+    resourceSystem.applySolidColorToModel(model, glm::vec3(0.15f, 0.90f, 0.72f));
   }
 
   void createStarfield(Engine &engine) {
@@ -206,7 +217,7 @@ class SpaceInvadersApp : public App {
     ig.invaderSlots.reserve(ig.rows * ig.cols);
     for (int r = 0; r < ig.rows; ++r)
       for (int c = 0; c < ig.cols; ++c)
-        ig.invaderSlots.push_back({rowColor(r), rowScore(r, ig)});
+        ig.invaderSlots.push_back({rowColor(r, ig.rows), rowScore(r, ig)});
   }
 
   void resetGame(Engine &engine) {
@@ -328,9 +339,9 @@ class SpaceInvadersApp : public App {
       Entity invader =
           engine.createModelEntity("Invader", EngineConfig::MODEL_BOX, glm::vec3(0.0f), glm::vec3(0.0f), ig.scale);
       addCollisionBox(engine, invader, ig.scale);
-      engine.setEmission(invader, slot.color, 0.35f);
-      engine.addComponent<Invader>(invader,
-                                   Invader{true, slot.color, slot.scoreValue, static_cast<int>(ig.nextInvaderIndex)});
+      applySolidColor(engine, invader, slot.color);
+      engine.addComponent<Invader>(
+          invader, Invader{true, slot.color, slot.scoreValue, static_cast<int>(ig.nextInvaderIndex), -1});
       ++ig.nextInvaderIndex;
     }
 
@@ -341,10 +352,22 @@ class SpaceInvadersApp : public App {
       aliveEntities.push_back(e);
       auto &tf = engine.getOrThrow<Transform>(e);
       glm::vec3 prev = tf.position;
-      tf.position = pathPosition(ig.headPathDistance - inv.pathIndex * ig.spacing, ig.stepDown);
+      float travelD = ig.headPathDistance - inv.pathIndex * ig.spacing;
+      tf.position = pathPosition(travelD, ig.stepDown);
       float dx = tf.position.x - prev.x;
       tf.rotation.z = glm::mix(tf.rotation.z, -dx * 2.5f, 10.0f * deltaTime);
-      tf.rotation.x = glm::sin((ig.headPathDistance - inv.pathIndex * ig.spacing) * 0.5f) * 0.08f;
+      tf.rotation.x = glm::sin(travelD * 0.5f) * 0.08f;
+
+      const float W = 16.0f;
+      const float segLen = W + ig.stepDown;
+      float dClamped = glm::max(travelD, 0.0f);
+      int newRow = static_cast<int>(dClamped / segLen);
+      if (newRow != inv.currentRow) {
+        inv.currentRow = newRow;
+        glm::vec3 newColor = rowColor(newRow, ig.rows);
+        inv.color = newColor;
+        applySolidColor(engine, e, newColor);
+      }
     });
 
     ig.enemyShootTimer -= deltaTime;
@@ -447,14 +470,11 @@ class SpaceInvadersApp : public App {
     if (state.gameOver)
       return;
 
-    if (pData.flashTimer > 0.0f) {
-      pData.flashTimer -= deltaTime;
-      engine.setEmission(player, glm::vec3(0.9f, 1.0f, 0.95f), 7.0f);
-    } else if (pData.hitCooldown > 0.0f) {
-      float blink = glm::sin(pData.hitCooldown * 20.0f) * 0.5f + 0.5f;
-      engine.setEmission(player, glm::vec3(1.0f, 0.45f, 0.18f), 1.5f + blink * 4.0f);
+    if (pData.hitCooldown > 0.0f) {
+      float blink = glm::sin(pData.hitCooldown * 24.0f) * 0.5f + 0.5f;
+      engine.setEmission(player, glm::vec3(1.0f, 0.08f, 0.08f), 0.8f + blink * 5.0f);
     } else {
-      engine.setEmission(player, glm::vec3(0.15f, 0.90f, 0.72f), 2.2f);
+      engine.setEmission(player, glm::vec3(0.0f), 0.0f);
     }
   }
 
@@ -483,8 +503,8 @@ public:
     if (state.gameOver) {
       state.restartTimer -= deltaTime;
       if (state.playerWon) {
-        float pulse = 2.8f + glm::sin(state.restartTimer * 12.0f) * 1.5f;
-        engine.setEmission(player, glm::vec3(0.2f, 1.0f, 0.4f), pulse);
+        float blink = glm::sin(state.restartTimer * 12.0f) * 0.5f + 0.5f;
+        engine.setEmission(player, glm::vec3(0.15f, 1.0f, 0.2f), 1.2f + blink * 5.0f);
       }
       if (state.restartTimer <= 0.0f)
         resetGame(engine);

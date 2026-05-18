@@ -15,8 +15,15 @@ struct Particle {
   Particle() = default;
 };
 
+enum class EmissionShape {
+  Cone = 0,
+  Sphere = 1,
+  Box = 2,
+};
+
 struct ParticleEmitter {
   float emitRate = 10.0f;
+  EmissionShape emissionShape = EmissionShape::Cone;
   bool emitTangentially = false;
   float tangentVariance = 0.0f;
   float particleLifetime = 2.0f;
@@ -30,11 +37,14 @@ struct ParticleEmitter {
   glm::vec3 emitDirection = glm::vec3(0.0f, 1.0f, 0.0f);
   glm::vec3 offset = glm::vec3(0.0f);
   float spread = 0.5f;
+  float sphereRadius = 1.0f;
+  glm::vec3 boxHalfExtents = glm::vec3(1.0f);
   int maxParticles = 500;
   bool active = true;
   bool additiveBlending = true;
 
   bool attractMode = false;
+  bool attractPointRelative = false;
   glm::vec3 attractPoint = glm::vec3(0.0f);
   float attractStrength = 0.0f;
   float tangentStrength = 0.0f;

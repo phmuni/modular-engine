@@ -38,6 +38,9 @@ uniform sampler2D shadowMap;
 uniform mat4 lightSpaceMatrix;
 uniform int useShadows;
 uniform vec3 shadowLightDir;
+uniform float opacity;
+uniform int useSolidDiffuseColor;
+uniform vec3 solidDiffuseColor;
 
 float calculateShadow(vec4 fragPosLightSpace)
 {
@@ -88,7 +91,8 @@ void main()
 
     vec3 viewDir = normalize(viewPos - FragPos);
 
-    vec3 diffuseTex  = texture(material.diffuse,  TexCoords).rgb;
+    vec4 diffuseSample = useSolidDiffuseColor == 1 ? vec4(solidDiffuseColor, 1.0) : texture(material.diffuse, TexCoords);
+    vec3 diffuseTex  = diffuseSample.rgb;
     vec3 specularTex = texture(material.specular, TexCoords).rgb;
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
     vec3 emissionResult = material.emissionColor * material.emissionStrength * emissionTex;
@@ -147,5 +151,5 @@ void main()
         }
     }
 
-    FragColor = vec4(result, 1.0);
+    FragColor = vec4(result, opacity);
 }

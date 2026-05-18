@@ -175,7 +175,6 @@ bool Mesh::loadOBJ(std::string filename) {
       m_submeshes.push_back({submeshStart, submeshCount, matId});
     }
   }
-
   setupBuffers(vertices, indices);
   return true;
 }

@@ -39,6 +39,9 @@ bool WindowSystem::initialize(float screenWidth, float screenHeight) {
   }
 
   glEnable(GL_DEPTH_TEST);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  glFrontFace(GL_CCW);
   SDL_GL_SetSwapInterval(1);
   SDL_SetWindowRelativeMouseMode(m_window, true);
 
