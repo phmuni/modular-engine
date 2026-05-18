@@ -3,7 +3,6 @@
 
 #include "components/collision.h"
 #include "components/model.h"
-#include "components/name.h"
 #include "components/particleEmitter.h"
 #include "components/transform.h"
 #include "foundation/core/config.h"
