@@ -3,6 +3,7 @@
 
 #include "components/collision.h"
 #include "components/model.h"
+#include "components/name.h"
 #include "components/particleEmitter.h"
 #include "components/transform.h"
 #include "foundation/core/config.h"
@@ -147,14 +148,16 @@ class SpaceInvadersApp : public App {
 
   void createPlayer(Engine &engine) {
     constexpr glm::vec3 scale{1.4f, 0.6f, 1.4f};
-    player = engine.createModelEntity("Player", EngineConfig::MODEL_BOX, glm::vec3(0.0f, 0.0f, 8.0f), glm::vec3(0.0f),
-                                      scale);
+    player = engine.createModelEntity("Player", "../assets/models/spaceship/spaceship.obj", glm::vec3(0.0f, 0.0f, 8.0f),
+                                      glm::vec3(0.0f), scale);
     addCollisionBox(engine, player, scale);
     engine.addComponent<Player>(player);
 
     auto &resourceSystem = engine.getSystemManager().getSystem<ResourceSystem>();
     auto &model = engine.getOrThrow<Model>(player);
-    resourceSystem.applySolidColorToModel(model, glm::vec3(0.15f, 0.90f, 0.72f));
+
+    glm::vec3 playerColor = glm::vec3(0.8f, 0.8f, 0.8f);
+    resourceSystem.applySolidColorToModel(model, playerColor);
   }
 
   void createStarfield(Engine &engine) {
@@ -244,7 +247,8 @@ class SpaceInvadersApp : public App {
 
     tf.position = glm::vec3(0.0f, 0.0f, 8.0f);
     tf.rotation = glm::vec3(0.0f);
-    engine.setEmission(player, glm::vec3(0.15f, 0.90f, 0.72f), 2.5f);
+
+    engine.setEmission(player, glm::vec3(1.0f, 0.90f, 0.20f), 0.0f);
 
     state = GameState{};
   }
@@ -472,7 +476,7 @@ class SpaceInvadersApp : public App {
 
     if (pData.hitCooldown > 0.0f) {
       float blink = glm::sin(pData.hitCooldown * 24.0f) * 0.5f + 0.5f;
-      engine.setEmission(player, glm::vec3(1.0f, 0.08f, 0.08f), 0.8f + blink * 5.0f);
+      engine.setEmission(player, glm::vec3(0.2f, 0.2f, 0.2f), 0.8f + blink * 5.0f);
     } else {
       engine.setEmission(player, glm::vec3(0.0f), 0.0f);
     }
@@ -483,10 +487,15 @@ public:
     engine.setState(Toggle::CameraMovement, false);
     engine.setState(Toggle::CursorLock, false);
 
-    engine.createLightEntity("Sun", glm::vec3(0.0f, 15.0f, 5.0f), glm::vec3(0.0f, -1.0f, -0.4f),
-                             glm::vec3(1.2f, 1.15f, 1.1f), LightType::Directional, 2.0f, 0.0f, 0.0f);
-    engine.createLightEntity("Fill", glm::vec3(-10.0f, -5.0f, 10.0f), glm::vec3(1.0f, 0.5f, -1.0f),
-                             glm::vec3(0.2f, 0.3f, 0.7f), LightType::Directional, 0.8f, 0.0f, 0.0f);
+    engine.createLightEntity("Sun", glm::vec3(0.0f), glm::vec3(-0.8f, -0.25f, 0.1f), glm::vec3(1.0f, 0.0f, 0.0f),
+                             LightType::Directional, 1.4f, 0.0f, 0.0f);
+
+    engine.createLightEntity("Fill", glm::vec3(0.0f), glm::vec3(0.8f, -0.22f, 0.15f), glm::vec3(0.0f, 0.0f, 1.0f),
+                             LightType::Directional, 0.95f, 0.0f, 0.0f);
+
+    engine.createLightEntity("Overhead", glm::vec3(0.0f, 12.0f, -15.0f), glm::vec3(0.0f, -1.0f, 0.5f),
+                             glm::vec3(1.0f, 1.0f, 1.0f), LightType::Spot, 10.0f, glm::cos(glm::radians(80.0f)),
+                             glm::cos(glm::radians(85.0f)));
     engine.createCameraEntity("Camera", glm::vec3(0.0f, 14.0f, 18.0f), 0.0f, -35.0f, 55.0f);
 
     createGameManager(engine);

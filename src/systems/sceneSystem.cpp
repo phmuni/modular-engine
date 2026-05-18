@@ -73,7 +73,8 @@ void SceneSystem::createLightEntity(std::string name, glm::vec3 position, glm::v
 
   m_componentManager.insert<Name>(entity, std::make_unique<Name>(std::move(name)));
   m_componentManager.insert<Transform>(entity, std::make_unique<Transform>(position, glm::vec3(0.0f), glm::vec3(1.0f)));
-  m_componentManager.insert<Light>(entity, std::make_unique<Light>(type, glm::vec3(0.0f), direction, color));
+  m_componentManager.insert<Light>(
+      entity, std::make_unique<Light>(type, glm::vec3(0.0f), direction, color, intensity, cutOff, outerCutOff));
 
   m_systemManager.getSystem<LightSystem>().createLight(entity);
 }

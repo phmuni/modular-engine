@@ -19,6 +19,7 @@
 #include "systems/windowSystem.h"
 
 #include <array>
+#include <glm/glm.hpp>
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_opengl3.h>
 #include <imgui/imgui_impl_sdl3.h>
@@ -213,17 +214,17 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
           ImGui::DragFloat3("Offset##lp", &light.position.x, 0.1f);
           ImGui::DragFloat3("Direction##ld", &light.direction.x, 0.01f);
           ImGui::ColorEdit3("Color##lc", &light.color.x);
-          ImGui::SliderFloat("Intensity", &light.intensity, 0.0f, 10.0f);
-          ImGui::SliderFloat("Ambient", &light.ambient, 0.0f, 1.0f);
+          ImGui::DragFloat("Intensity", &light.intensity, 0.1f, 0.0f, 50.0f);
+          ImGui::DragFloat("Ambient", &light.ambient, 0.01f, 0.0f, 1.0f);
 
           if (light.type == LightType::Spot) {
-            ImGui::SliderFloat("Cutoff", &light.cutOff, 0.0f, light.outerCutOff - 0.01f);
-            ImGui::SliderFloat("Outer Cutoff", &light.outerCutOff, light.cutOff + 0.01f, 1.0f);
+            ImGui::DragFloat("Cutoff", &light.cutOff, 0.01f, 0.0f, glm::min(light.outerCutOff - 0.01f, 0.98f));
+            ImGui::DragFloat("Outer Cutoff", &light.outerCutOff, 0.01f, light.cutOff + 0.01f, 0.98f);
           }
           if (light.type == LightType::Point || light.type == LightType::Spot) {
-            ImGui::SliderFloat("Constant", &light.constant, 0.01f, 5.0f);
-            ImGui::SliderFloat("Linear", &light.linear, 0.0f, 1.0f);
-            ImGui::SliderFloat("Quadratic", &light.quadratic, 0.0f, 1.0f);
+            ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.01f, 5.0f);
+            ImGui::DragFloat("Linear", &light.linear, 0.01f, 0.0f, 1.0f);
+            ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
           }
         }
       }
@@ -320,9 +321,9 @@ void UISystem::renderCameraInspector(Entity entity, SystemManager &systemManager
   ImGui::SameLine();
   ImGui::Checkbox("Relative to Transform##ce", &cam.isRelative);
   ImGui::DragFloat3("Position##ce", &cam.position.x, 0.1f);
-  ImGui::SliderFloat("FOV##ce", &cam.fov, 30.0f, 120.0f);
-  ImGui::SliderFloat("Move Speed##ce", &cam.moveSpeed, 0.5f, 20.0f);
-  ImGui::SliderFloat("Sensitivity##ce", &cam.mouseSensitivity, 0.1f, 5.0f);
+  ImGui::DragFloat("FOV##ce", &cam.fov, 0.5f, 30.0f, 120.0f);
+  ImGui::DragFloat("Move Speed##ce", &cam.moveSpeed, 0.1f, 0.5f, 20.0f);
+  ImGui::DragFloat("Sensitivity##ce", &cam.mouseSensitivity, 0.05f, 0.1f, 5.0f);
   ImGui::DragFloat("Yaw##ce", &cam.yaw, 0.5f);
   ImGui::DragFloat("Pitch##ce", &cam.pitch, 0.5f, -89.0f, 89.0f);
 
@@ -451,7 +452,7 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
     static glm::vec3 globalEmCol{0.0f};
     static float globalEmStr = 0.0f;
     ImGui::ColorEdit3("Emission Color##global", &globalEmCol.x);
-    ImGui::SliderFloat("Emission Strength##global", &globalEmStr, 0.0f, 5.0f);
+    ImGui::DragFloat("Emission Strength##global", &globalEmStr, 0.1f, 0.0f, 50.0f);
     if (ImGui::Button("Apply Emission##global", ImVec2(-1, 0))) {
       resourceSystem.setEmission(model, globalEmCol, globalEmStr);
     }
@@ -499,7 +500,7 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
       }
 
       float shininess = matPtr ? matPtr->getShininess() : 16.0f;
-      if (ImGui::SliderFloat("Shininess", &shininess, 1.0f, 256.0f)) {
+      if (ImGui::DragFloat("Shininess", &shininess, 1.0f, 1.0f, 256.0f)) {
         resourceSystem.setMaterialShininess(handle, model.materialHandles, shininess);
       }
 
@@ -511,7 +512,7 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
                                            matPtr ? matPtr->getEmissionStrength() : 0.0f);
       }
       float emStr = matPtr ? matPtr->getEmissionStrength() : 0.0f;
-      if (ImGui::SliderFloat("Emission Strength", &emStr, 0.0f, 5.0f)) {
+      if (ImGui::DragFloat("Emission Strength", &emStr, 0.1f, 0.0f, 50.0f)) {
         resourceSystem.setMaterialEmission(handle, model.materialHandles,
                                            matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f), emStr);
       }
@@ -560,7 +561,7 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
     ImGui::InputFloat3("Rotation", rot);
     ImGui::InputFloat3("Scale", scale);
     ImGui::Separator();
-    ImGui::SliderFloat("Opacity##create", &modelOpacity, 0.0f, 1.0f, "%.2f");
+    ImGui::DragFloat("Opacity##create", &modelOpacity, 0.01f, 0.0f, 1.0f, "%.2f");
     ImGui::ColorEdit3("Solid Color##create", modelSolidColor);
 
     if (ImGui::Button("Create", ImVec2(120, 0))) {
@@ -603,12 +604,12 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
     ImGui::InputFloat3("Direction##lf", dir);
     ImGui::ColorEdit3("Color##lf", color);
     ImGui::Combo("Type##lf", &type, "Directional\0Point\0Spot\0");
-    ImGui::SliderFloat("Intensity##lf", &intensity, 0.0f, 5.0f);
-    ImGui::SliderFloat("Ambient##lf", &ambient, 0.0f, 1.0f);
+    ImGui::DragFloat("Intensity##lf", &intensity, 0.1f, 0.0f, 50.0f);
+    ImGui::DragFloat("Ambient##lf", &ambient, 0.01f, 0.0f, 1.0f);
 
     if (type == 2) {
-      ImGui::SliderFloat("Cutoff##lf", &cutOff, 0.0f, outerCutOff - 0.01f);
-      ImGui::SliderFloat("Outer Cutoff##lf", &outerCutOff, cutOff + 0.01f, 1.0f);
+      ImGui::DragFloat("Cutoff##lf", &cutOff, 0.01f, 0.0f, glm::min(outerCutOff - 0.01f, 0.98f));
+      ImGui::DragFloat("Outer Cutoff##lf", &outerCutOff, 0.01f, cutOff + 0.01f, 0.98f);
     }
 
     if (ImGui::Button("Create##lf", ImVec2(120, 0))) {
@@ -646,10 +647,10 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
     ImGui::Separator();
     ImGui::InputText("Name##pf", emitterName, 64);
     ImGui::InputFloat3("Position##pf", pos);
-    ImGui::SliderFloat("Emit Rate##pf", &emitRate, 1, 500);
-    ImGui::SliderFloat("Lifetime##pf", &lifetime, 0.1f, 10);
-    ImGui::SliderFloat("Speed##pf", &speed, 0, 20);
-    ImGui::SliderFloat("Spread##pf", &spread, 0, 1);
+    ImGui::DragFloat("Emit Rate##pf", &emitRate, 1.0f, 1, 10000);
+    ImGui::DragFloat("Lifetime##pf", &lifetime, 0.1f, 0.1f, 100);
+    ImGui::DragFloat("Speed##pf", &speed, 0.1f, 0, 100);
+    ImGui::DragFloat("Spread##pf", &spread, 0.01f, 0, 10);
     ImGui::ColorEdit4("Start Color##pf", startCol);
     ImGui::ColorEdit4("End Color##pf", endCol);
 

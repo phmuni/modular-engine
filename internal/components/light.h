@@ -19,6 +19,8 @@ struct Light {
   float outerCutOff = glm::cos(glm::radians(17.5f));
 
   Light() = default;
-  Light(LightType type, glm::vec3 position, glm::vec3 direction, glm::vec3 color)
-      : type(type), position(position), direction(direction), color(color) {}
+  Light(LightType type, glm::vec3 position, glm::vec3 direction, glm::vec3 color, float intensity = 1.0f,
+        float cutOff = glm::cos(glm::radians(12.5f)), float outerCutOff = glm::cos(glm::radians(17.5f)))
+      : type(type), position(position), direction(direction), color(color), intensity(intensity), cutOff(cutOff),
+        outerCutOff(outerCutOff) {}
 };
