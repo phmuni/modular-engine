@@ -16,11 +16,13 @@ exclude/
 # Assets: include only box model
 assets/models/*
 !assets/models/box/
+!assets/models/spaceship/
 
 # Temporary files
 *.log
 *.obj
 !assets/models/box/*.obj
+!assets/models/spaceship/*.obj
 
 # IDEs
 .vscode/
