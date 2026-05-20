@@ -150,7 +150,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       cameraCount++;
     });
     if (cameraCount == 0) {
-      ImGui::TextDisabled("  (no cameras)");
+      ImGui::TextDisabled("  (empty)");
     }
   }
 
