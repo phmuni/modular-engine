@@ -15,10 +15,12 @@ using Entity = int;
 class UISystem : public BaseSystem {
 public:
   Entity selectedEntity = -1;
+  bool m_renderUI = false;
 
   UISystem(SDL_Window *window, SDL_GLContext glContext);
 
   void beginFrame();
+  void update(SystemManager &systemManager);
   void render(EntityManager &entityManager, SystemManager &systemManager, ComponentManager &componentManager);
   void endFrame();
 

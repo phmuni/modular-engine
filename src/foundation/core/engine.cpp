@@ -121,6 +121,10 @@ void Engine::update(bool &isRunning) {
   auto &collisionSystem = m_systemManager.getSystem<CollisionSystem>();
   collisionSystem.update(m_componentManager);
 
+  // UI/Cursor show detection
+  auto &uiSystem = m_systemManager.getSystem<UISystem>();
+  uiSystem.update(m_systemManager);
+
   if (m_app) {
     m_app->update(*this, timeSystem.getDeltaTime());
   }
@@ -138,9 +142,8 @@ void Engine::render() {
 
   renderSystem.renderPipeline(m_systemManager, m_entityManager, m_componentManager);
 
-  if (state.isToggled(Toggle::ShowUI)) {
-    uiSystem.render(m_entityManager, m_systemManager, m_componentManager);
-  }
+  uiSystem.render(m_entityManager, m_systemManager, m_componentManager);
+
   uiSystem.endFrame();
 
   renderer.endFrame();

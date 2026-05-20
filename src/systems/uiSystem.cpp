@@ -69,7 +69,21 @@ void UISystem::endFrame() {
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
+void UISystem::update(SystemManager &systemManager) {
+  auto &state = systemManager.getSystem<StateSystem>();
+  auto &windowSystem = systemManager.getSystem<WindowSystem>();
+
+  bool cursorLocked = state.isToggled(Toggle::CursorLock);
+  windowSystem.setCursor(cursorLocked);
+
+  m_renderUI = state.isToggled(Toggle::ShowUI);
+}
+
 void UISystem::render(EntityManager &entityManager, SystemManager &systemManager, ComponentManager &componentManager) {
+
+  if (!m_renderUI) {
+    return;
+  }
 
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
   auto &lightSystem = systemManager.getSystem<LightSystem>();

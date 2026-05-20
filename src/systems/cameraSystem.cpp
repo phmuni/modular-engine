@@ -8,9 +8,11 @@
 #include <glm/ext/matrix_transform.hpp>
 
 void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
+
   Entity entity = getActiveCamera();
-  if (!m_componentManager.containsComponent<Camera>(entity))
+  if (entity == -1 || !m_componentManager.containsComponent<Camera>(entity)) {
     return;
+  }
 
   auto &cam = m_componentManager.getOrThrow<Camera>(entity);
   auto &state = systemManager.getSystem<StateSystem>();
