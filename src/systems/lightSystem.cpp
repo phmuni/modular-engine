@@ -4,6 +4,7 @@
 #include "systems/lightSystem.h"
 #include "components/light.h"
 #include "components/transform.h"
+#include <iostream>
 
 void LightSystem::createLight(Entity entity) { m_lights.push_back(entity); }
 
@@ -16,8 +17,14 @@ const std::vector<Entity> &LightSystem::getLights() const { return m_lights; }
 
 void LightSystem::uploadLightsToShader(Shader &shader, ComponentManager &componentManager) {
   int index = 0;
+  constexpr int kMaxLights = 10;
 
   for (const Entity &lightEntity : m_lights) {
+    if (index >= kMaxLights) {
+      std::cerr << "[LightSystem] Too many lights; max supported is " << kMaxLights << " - skipping remaining.\n";
+      break;
+    }
+
     const auto &light = componentManager.getOrThrow<Light>(lightEntity);
 
     glm::vec3 worldPos = light.position;

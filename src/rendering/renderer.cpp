@@ -82,6 +82,7 @@ void Renderer::setWireframe(bool enabled) { glPolygonMode(GL_FRONT_AND_BACK, ena
 void Renderer::setViewportSize(int width, int height) {
   m_screenWidth = width;
   m_screenHeight = height;
+  glViewport(0, 0, m_screenWidth, m_screenHeight);
 }
 
 void Renderer::beginTransparentPass() {
