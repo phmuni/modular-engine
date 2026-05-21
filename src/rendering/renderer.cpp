@@ -37,7 +37,6 @@ void Renderer::beginShadowPass() {
   glViewport(0, 0, m_shadowWidth, m_shadowHeight);
   glBindFramebuffer(GL_FRAMEBUFFER, m_depthMapFBO);
   glClear(GL_DEPTH_BUFFER_BIT);
-  // Default shadow pass: bind shadow FBO and clear depth.
 }
 
 void Renderer::endShadowPass() {
