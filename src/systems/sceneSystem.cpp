@@ -55,11 +55,11 @@ void SceneSystem::createCameraEntity(std::string name, glm::vec3 position, float
     cameraSystem.setActiveCamera(newCamera);
 }
 
-Entity SceneSystem::createModelEntity(std::string name, std::string modelPath, glm::vec3 position, glm::vec3 rotation,
-                                      glm::vec3 scale) {
+Entity SceneSystem::createModelEntity(std::string name, std::string modelPath, uint32_t shaderHandle,
+                                      glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
   auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
   Entity entity = m_entityManager.createEntity();
-  auto modelData = resourceSystem.loadModel(modelPath);
+  auto modelData = resourceSystem.loadModel(modelPath, shaderHandle);
   auto materialHandles = std::move(modelData.materialHandles);
 
   m_componentManager.insert<Name>(entity, std::make_unique<Name>(std::move(name)));

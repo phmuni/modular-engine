@@ -2,6 +2,7 @@
 // Window system implementation for managing the SDL window, OpenGL context, and handling window-related events
 
 #include "systems/windowSystem.h"
+#include "foundation/core/logger.h"
 
 WindowSystem::WindowSystem(float screenWidth, float screenHeight) : m_window(nullptr), m_glContext(nullptr) {
   initialize(screenWidth, screenHeight);
@@ -9,7 +10,7 @@ WindowSystem::WindowSystem(float screenWidth, float screenHeight) : m_window(nul
 
 bool WindowSystem::initialize(float screenWidth, float screenHeight) {
   if (!SDL_Init(SDL_INIT_VIDEO)) {
-    SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
+    LOG_E("[Window System] Failed to initialize SDL: %s", SDL_GetError());
     return false;
   }
 
@@ -23,18 +24,18 @@ bool WindowSystem::initialize(float screenWidth, float screenHeight) {
 
   m_window = SDL_CreateWindow("Engine", screenWidth, screenHeight, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
   if (!m_window) {
-    SDL_Log("Failed to create the window: %s", SDL_GetError());
+    LOG_E("[Window System] Failed to create the window: %s", SDL_GetError());
     return false;
   }
 
   m_glContext = SDL_GL_CreateContext(m_window);
   if (!m_glContext) {
-    SDL_Log("Failed to create the OpenGL context: %s", SDL_GetError());
+    LOG_E("[Window System] Failed to create the OpenGL context: %s", SDL_GetError());
     return false;
   }
 
   if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
-    SDL_Log("Failed to initialize GLAD.");
+    LOG_E("[Window System] Failed to initialize GLAD.");
     return false;
   }
 

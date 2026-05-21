@@ -4,7 +4,7 @@
 
 #include "rendering/resources/material.h"
 #include "foundation/core/config.h"
-#include <iostream>
+#include "foundation/core/logger.h"
 #include <stb_image/stb_image.h>
 
 static const std::vector<std::string> kSupportedExtensions = {".png", ".jpg", ".jpeg", ".bmp", ".tga"};
@@ -122,10 +122,10 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
       hasMipmap = true;
       stbi_image_free(data);
     } else {
-      std::cerr << "[Material] Failed to load " << foundPath << ": " << stbi_failure_reason() << std::endl;
+      LOG_E("[Material] Failed to load %s: %s", foundPath.c_str(), stbi_failure_reason());
     }
   } else if (!basePath.empty()) {
-    std::cerr << "[Material] File not found: " << normalized << std::endl;
+    LOG_W("[Material] File not found: %s", normalized.c_str());
   }
 
   // Fallback texture on failure

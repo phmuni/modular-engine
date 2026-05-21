@@ -301,7 +301,8 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
               componentManager.addInPlace<Transform>(selectedEntity);
             }
             auto &rs = resourceSystem;
-            auto modelData = rs.loadModel(addModelPath);
+            uint32_t shaderHandle = rs.getMaterial(0).getShaderHandle();
+            auto modelData = rs.loadModel(addModelPath, shaderHandle);
             componentManager.addInPlace<Model>(selectedEntity, modelData.meshHandle,
                                                std::move(modelData.materialHandles), 1.0f);
             systemManager.getSystem<RenderSystem>().markBatchesDirty();
@@ -582,8 +583,9 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
     ImGui::ColorEdit3("Solid Color##create", modelSolidColor);
 
     if (ImGui::Button("Create", ImVec2(120, 0))) {
+      uint32_t shaderHandle = resourceSystem.getMaterial(0).getShaderHandle();
       Entity e =
-          sceneSystem.createModelEntity(modelName, modelPath, glm::vec3(pos[0], pos[1], pos[2]),
+          sceneSystem.createModelEntity(modelName, modelPath, shaderHandle, glm::vec3(pos[0], pos[1], pos[2]),
                                         glm::vec3(rot[0], rot[1], rot[2]), glm::vec3(scale[0], scale[1], scale[2]));
       // Apply opacity and solid color
       auto *modelComp = componentManager.getOrNil<Model>(e);

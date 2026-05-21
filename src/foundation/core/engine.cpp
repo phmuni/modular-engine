@@ -4,6 +4,8 @@
 #include "foundation/core/engine.h"
 
 #include "foundation/core/config.h"
+#include "foundation/core/logger.h"
+#include "rendering/resources/material.h"
 #include "systems/cameraSystem.h"
 #include "systems/collisionSystem.h"
 #include "systems/inputSystem.h"
@@ -20,19 +22,14 @@
 Engine::Engine()
     : m_screenWidth(EngineConfig::DEFAULT_SCREEN_WIDTH), m_screenHeight(EngineConfig::DEFAULT_SCREEN_HEIGHT) {}
 
-Engine::~Engine() {
-  auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
-  renderSystem.getRenderer().shutdown();
-  SDL_Quit();
-}
+Engine::~Engine() { shutdown(); }
 
 bool Engine::initialize() {
   registerSystems();
 
-  if (!loadResources()) {
-    SDL_Log("Failed to load resources");
-    return false;
-  }
+  Logger::setLevel(Logger::Level::Info);
+
+  loadResources();
 
   return true;
 }
@@ -58,24 +55,23 @@ bool Engine::loadResources() {
   auto &renderer = m_systemManager.getSystem<RenderSystem>().getRenderer();
   auto &windowSystem = m_systemManager.getSystem<WindowSystem>();
   auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
-
   renderer.init(windowSystem.getWindow());
 
   uint32_t baseShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
                                                   EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT));
   uint32_t shadowShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_SHADOW),
                                                     EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_SHADOW));
-
-  if (baseShader != 0 || shadowShader != 1) {
-    SDL_Log("Failed to load shaders");
-    return false;
-  }
-
-  m_systemManager.getSystem<RenderSystem>().setShadowShaderHandle(shadowShader);
-
   uint32_t particleShader =
       resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_PARTICLE),
                                 EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_PARTICLE));
+  if (!baseShader || !shadowShader || !particleShader) {
+    LOG_F("[Engine] Failed to load shaders.");
+    return false;
+  }
+
+  m_baseShaderHandle = baseShader;
+  resourceSystem.getMaterial(0).setShaderHandle(baseShader);
+  m_systemManager.getSystem<RenderSystem>().setShadowShaderHandle(shadowShader);
 
   auto &particleSystem = m_systemManager.getSystem<ParticleSystem>();
   particleSystem.setShaderHandle(particleShader);
@@ -85,10 +81,30 @@ bool Engine::loadResources() {
 
 void Engine::run(App &app) {
   m_app = &app;
-  m_app->setup(*this);
+  try {
+    m_app->setup(*this);
+    bool running = true;
+    loop(running);
+  } catch (const std::exception &ex) {
+    LOG_F("[Engine] Uncaught exception in Engine::run: %s", ex.what());
+    shutdown();
+    return;
+  } catch (...) {
+    LOG_F("[Engine] Uncaught unknown exception in Engine::run");
+    shutdown();
+    return;
+  }
+}
 
-  bool running = true;
-  loop(running);
+void Engine::shutdown() {
+  if (m_shutdown)
+    return;
+  m_shutdown = true;
+
+  // Attempt to clean up renderer and SDL
+  auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
+  renderSystem.getRenderer().shutdown();
+  SDL_Quit();
 }
 
 void Engine::loop(bool &isRunning) {
@@ -156,8 +172,9 @@ void Engine::createCameraEntity(std::string_view name, glm::vec3 position, float
 
 Entity Engine::createModelEntity(std::string_view name, std::string_view modelPath, glm::vec3 position,
                                  glm::vec3 rotation, glm::vec3 scale) {
-  return m_systemManager.getSystem<SceneSystem>().createModelEntity(
-      std::string(name), EngineConfig::resolvePath(std::string(modelPath)), position, rotation, scale);
+  return m_systemManager.getSystem<SceneSystem>().createModelEntity(std::string(name),
+                                                                    EngineConfig::resolvePath(std::string(modelPath)),
+                                                                    m_baseShaderHandle, position, rotation, scale);
 }
 
 void Engine::createLightEntity(std::string_view name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,

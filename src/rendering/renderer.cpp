@@ -2,6 +2,7 @@
 // Renderer implementation: frame management, shadow mapping, and particle rendering.
 
 #include "rendering/renderer.h"
+#include "foundation/core/logger.h"
 #include "rendering/resources/mesh.h"
 
 void Renderer::init(SDL_Window *window) {
@@ -66,7 +67,7 @@ void Renderer::initShadowMapping() {
 
   GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   if (status != GL_FRAMEBUFFER_COMPLETE) {
-    SDL_Log("Shadow map FBO incomplete! Status: 0x%x", status);
+    LOG_E("Shadow map FBO incomplete! Status: 0x%x", status);
   }
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);

@@ -4,8 +4,8 @@
 
 #include "rendering/resources/mesh.h"
 #include "foundation/core/config.h"
+#include "foundation/core/logger.h"
 #include <filesystem>
-#include <iostream>
 #include <tiny_obj_loader/tiny_obj_loader.h>
 
 namespace std {
@@ -29,7 +29,7 @@ template <> struct hash<Vertex> {
 Mesh::Mesh(std::string filename) {
   const std::string originalFilename = filename;
   if (!loadOBJ(std::move(filename)))
-    std::cerr << "[Mesh] Failed to load: " << originalFilename << '\n';
+    LOG_E("[Mesh] Failed to load: %s", originalFilename.c_str());
 }
 
 Mesh::~Mesh() {
@@ -40,7 +40,7 @@ Mesh::~Mesh() {
 
 void Mesh::setupBuffers(std::vector<Vertex> &vertices, std::vector<uint32_t> &indices) {
   if (vertices.empty() || indices.empty()) {
-    std::cerr << "[Mesh] No vertices or indices to setup\n";
+    LOG_W("[Mesh] No vertices or indices to setup");
     return;
   }
 
@@ -87,7 +87,7 @@ bool Mesh::loadOBJ(std::string filename) {
   bool success = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, normalized.c_str(), m_baseDir.c_str());
 
   if (!err.empty())
-    std::cerr << "[Mesh] " << err << '\n';
+    LOG_W("[Mesh] %s", err.c_str());
 
   if (!success)
     return false;

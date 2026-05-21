@@ -32,7 +32,7 @@ private:
 
   uint32_t m_nextMesh = 0;
   uint32_t m_nextMaterial = 0;
-  uint32_t m_nextShader = 0;
+  uint32_t m_nextShader = 1;
 
   ComponentManager &m_componentManager;
 
@@ -42,7 +42,7 @@ public:
 
   // Mesh / Model
   uint32_t loadMesh(std::string_view path);
-  ModelLoadResult loadModel(std::string_view path);
+  ModelLoadResult loadModel(std::string_view path, uint32_t shaderHandle);
   Mesh &getMesh(uint32_t handle);
   void unloadMesh(uint32_t handle);
 
@@ -52,7 +52,7 @@ public:
   void unloadShader(uint32_t handle);
 
   // Material
-  uint32_t createMaterial();
+  uint32_t createMaterial(uint32_t shaderHandle);
   Material &getMaterial(uint32_t handle);
   void unloadMaterial(uint32_t handle);
 

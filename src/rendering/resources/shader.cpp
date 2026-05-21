@@ -2,9 +2,9 @@
 // Shader management class for OpenGL. Handles loading, compiling, and using vertex and fragment shaders.
 
 #include "rendering/resources/shader.h"
+#include "foundation/core/logger.h"
 #include <fstream>
 #include <glm/gtc/type_ptr.hpp>
-#include <iostream>
 #include <sstream>
 
 Shader::Shader(std::string_view vertexFile, std::string_view fragmentFile) {
@@ -33,7 +33,7 @@ GLint Shader::getUniformLocation(const char *name) const {
 std::string Shader::readShaderFile(const char *filename) const {
   std::ifstream file(filename);
   if (!file.is_open()) {
-    std::cerr << "[Shader] Cannot open: " << filename << '\n';
+    LOG_E("[Shader] Cannot open: %s", filename);
     return {};
   }
   std::ostringstream buffer;
@@ -58,7 +58,7 @@ GLuint Shader::compileShader(GLenum type, const char *filename) {
     glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
     std::vector<char> log(logLength);
     glGetShaderInfoLog(shader, logLength, nullptr, log.data());
-    std::cerr << "[Shader] Compilation error in " << filename << ":\n" << log.data() << '\n';
+    LOG_E("[Shader] Compilation error in %s:\n%s", filename, log.data());
     glDeleteShader(shader);
     return 0;
   }
@@ -89,7 +89,7 @@ GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentF
     glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
     std::vector<char> log(logLength);
     glGetProgramInfoLog(program, logLength, nullptr, log.data());
-    std::cerr << "[Shader] Linking error:\n" << log.data() << '\n';
+    LOG_E("[Shader] Linking error:\n%s", log.data());
     glDeleteShader(vert);
     glDeleteShader(frag);
     glDeleteProgram(program);
@@ -112,7 +112,7 @@ void Shader::setTex(std::string_view name, GLuint textureID, int textureUnit) co
   if (loc != -1)
     glUniform1i(loc, textureUnit);
   else
-    std::cerr << "[Shader] Uniform not found: " << name << '\n';
+    LOG_W("[Shader] Uniform not found: %s", name);
 }
 
 void Shader::setInt(std::string_view name, int value) const {

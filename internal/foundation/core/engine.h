@@ -14,12 +14,14 @@ class Engine {
 private:
   float m_screenWidth;
   float m_screenHeight;
+  uint32_t m_baseShaderHandle = 0;
 
   EntityManager m_entityManager;
   ComponentManager m_componentManager;
   SystemManager m_systemManager;
 
   App *m_app = nullptr;
+  bool m_shutdown = false;
 
   void registerSystems();
   bool loadResources();
@@ -31,6 +33,8 @@ private:
 public:
   Engine();
   ~Engine();
+
+  void shutdown();
 
   bool initialize();
   void run(App &app);

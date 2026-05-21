@@ -19,8 +19,8 @@ public:
   void destroyEntity(Entity entity);
   void createCameraEntity(const std::string name, glm::vec3 position, float yaw, float pitch, float fov,
                           bool isActive = false, bool isRelative = false);
-  Entity createModelEntity(const std::string name, const std::string modelPath, glm::vec3 position, glm::vec3 rotation,
-                           glm::vec3 scale);
+  Entity createModelEntity(const std::string name, const std::string modelPath, uint32_t shaderHandle,
+                           glm::vec3 position, glm::vec3 rotation, glm::vec3 scale);
   void createLightEntity(const std::string name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,
                          LightType type, float intensity, float cutOff, float outerCutOff);
 };

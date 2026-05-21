@@ -4,7 +4,7 @@
 #include "systems/lightSystem.h"
 #include "components/light.h"
 #include "components/transform.h"
-#include <iostream>
+#include "foundation/core/logger.h"
 
 void LightSystem::createLight(Entity entity) { m_lights.push_back(entity); }
 
@@ -21,7 +21,7 @@ void LightSystem::uploadLightsToShader(Shader &shader, ComponentManager &compone
 
   for (const Entity &lightEntity : m_lights) {
     if (index >= kMaxLights) {
-      std::cerr << "[LightSystem] Too many lights; max supported is " << kMaxLights << " - skipping remaining.\n";
+      LOG_W("[LightSystem] Too many lights; max supported is %d - skipping remaining.", kMaxLights);
       break;
     }
 
