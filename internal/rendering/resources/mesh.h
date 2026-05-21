@@ -49,7 +49,6 @@ private:
 public:
   Mesh() = default;
   explicit Mesh(const std::string filename);
-  Mesh(std::vector<Vertex> vertices, std::vector<uint32_t> indices, std::vector<Submesh> submeshes);
   ~Mesh();
 
   Mesh(const Mesh &) = delete;
@@ -79,6 +78,4 @@ public:
   const std::vector<Submesh> &getSubmeshes() const { return m_submeshes; }
   const std::vector<MtlMaterialData> &getMtlMaterials() const { return m_mtlMaterials; }
   std::string_view getBaseDir() const { return m_baseDir; }
-
-  void setVerticesIndices(std::vector<Vertex> vertices, std::vector<uint32_t> indices, std::vector<Submesh> submeshes);
 };

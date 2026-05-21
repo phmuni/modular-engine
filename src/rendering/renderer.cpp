@@ -37,6 +37,7 @@ void Renderer::beginShadowPass() {
   glViewport(0, 0, m_shadowWidth, m_shadowHeight);
   glBindFramebuffer(GL_FRAMEBUFFER, m_depthMapFBO);
   glClear(GL_DEPTH_BUFFER_BIT);
+  // Default shadow pass: bind shadow FBO and clear depth.
 }
 
 void Renderer::endShadowPass() {
@@ -64,7 +65,6 @@ void Renderer::initShadowMapping() {
   glDrawBuffer(GL_NONE);
   glReadBuffer(GL_NONE);
 
-  // Verify FBO
   GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   if (status != GL_FRAMEBUFFER_COMPLETE) {
     SDL_Log("Shadow map FBO incomplete! Status: 0x%x", status);
@@ -94,6 +94,14 @@ void Renderer::endTransparentPass() {
   glDepthMask(GL_TRUE);
   glDisable(GL_BLEND);
 }
+
+void Renderer::beginSoftTransparentPass() {
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDepthMask(GL_TRUE);
+}
+
+void Renderer::endSoftTransparentPass() { glDisable(GL_BLEND); }
 
 // Particle buffers
 

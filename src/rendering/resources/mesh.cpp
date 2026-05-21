@@ -27,13 +27,9 @@ template <> struct hash<Vertex> {
 } // namespace std
 
 Mesh::Mesh(std::string filename) {
+  const std::string originalFilename = filename;
   if (!loadOBJ(std::move(filename)))
-    std::cerr << "[Mesh] Failed to load: " << filename << '\n';
-}
-
-Mesh::Mesh(std::vector<Vertex> vertices, std::vector<uint32_t> indices, std::vector<Submesh> submeshes)
-    : m_submeshes(std::move(submeshes)) {
-  setupBuffers(vertices, indices);
+    std::cerr << "[Mesh] Failed to load: " << originalFilename << '\n';
 }
 
 Mesh::~Mesh() {
@@ -69,17 +65,6 @@ void Mesh::setupBuffers(std::vector<Vertex> &vertices, std::vector<uint32_t> &in
   glEnableVertexAttribArray(2);
 
   glBindVertexArray(0);
-
-  vertices.clear();
-  vertices.shrink_to_fit();
-  indices.clear();
-  indices.shrink_to_fit();
-}
-
-void Mesh::setVerticesIndices(std::vector<Vertex> vertices, std::vector<uint32_t> indices,
-                              std::vector<Submesh> submeshes) {
-  m_submeshes = std::move(submeshes);
-  setupBuffers(vertices, indices);
 }
 
 bool Mesh::loadOBJ(std::string filename) {
@@ -125,9 +110,10 @@ bool Mesh::loadOBJ(std::string filename) {
   std::vector<Vertex> vertices;
   std::vector<uint32_t> indices;
   std::unordered_map<Vertex, uint32_t> vertexCache;
+  const bool generateNormals = attrib.normals.empty();
 
   for (const auto &shape : shapes) {
-    size_t numFaces = shape.mesh.material_ids.size();
+    const size_t numFaces = shape.mesh.num_face_vertices.size();
 
     std::vector<size_t> faceIndexOffset(numFaces);
     if (numFaces > 0) {
@@ -137,8 +123,33 @@ bool Mesh::loadOBJ(std::string filename) {
     }
 
     std::unordered_map<int, std::vector<size_t>> matFaceGroups;
-    for (size_t f = 0; f < numFaces; f++)
-      matFaceGroups[shape.mesh.material_ids[f]].push_back(f);
+    for (size_t f = 0; f < numFaces; f++) {
+      int matId = (f < shape.mesh.material_ids.size()) ? shape.mesh.material_ids[f] : -1;
+      matFaceGroups[matId].push_back(f);
+    }
+
+    auto emitVertex = [&](const tinyobj::index_t &idx) {
+      Vertex vertex{};
+
+      if (idx.vertex_index >= 0) {
+        vertex.position = {attrib.vertices[3 * idx.vertex_index + 0], attrib.vertices[3 * idx.vertex_index + 1],
+                           attrib.vertices[3 * idx.vertex_index + 2]};
+      }
+
+      if (idx.normal_index >= 0) {
+        vertex.normal = {attrib.normals[3 * idx.normal_index + 0], attrib.normals[3 * idx.normal_index + 1],
+                         attrib.normals[3 * idx.normal_index + 2]};
+      }
+
+      if (idx.texcoord_index >= 0) {
+        vertex.texCoord = {attrib.texcoords[2 * idx.texcoord_index + 0], attrib.texcoords[2 * idx.texcoord_index + 1]};
+      }
+
+      auto [it, inserted] = vertexCache.emplace(vertex, static_cast<uint32_t>(vertices.size()));
+      if (inserted)
+        vertices.push_back(vertex);
+      indices.push_back(it->second);
+    };
 
     for (auto &[matId, faceIndices] : matFaceGroups) {
       uint32_t submeshStart = static_cast<uint32_t>(indices.size());
@@ -147,27 +158,14 @@ bool Mesh::loadOBJ(std::string filename) {
         size_t fv = shape.mesh.num_face_vertices[f];
         size_t offset = faceIndexOffset[f];
 
-        for (size_t v = 0; v < fv; v++) {
-          const auto &idx = shape.mesh.indices[offset + v];
-          Vertex vertex{};
+        if (fv < 3)
+          continue;
 
-          vertex.position = {attrib.vertices[3 * idx.vertex_index + 0], attrib.vertices[3 * idx.vertex_index + 1],
-                             attrib.vertices[3 * idx.vertex_index + 2]};
-
-          if (idx.normal_index >= 0) {
-            vertex.normal = {attrib.normals[3 * idx.normal_index + 0], attrib.normals[3 * idx.normal_index + 1],
-                             attrib.normals[3 * idx.normal_index + 2]};
-          }
-
-          if (idx.texcoord_index >= 0) {
-            vertex.texCoord = {attrib.texcoords[2 * idx.texcoord_index + 0],
-                               attrib.texcoords[2 * idx.texcoord_index + 1]};
-          }
-
-          auto [it, inserted] = vertexCache.emplace(vertex, static_cast<uint32_t>(vertices.size()));
-          if (inserted)
-            vertices.push_back(vertex);
-          indices.push_back(it->second);
+        const auto &first = shape.mesh.indices[offset + 0];
+        for (size_t v = 1; v + 1 < fv; ++v) {
+          emitVertex(first);
+          emitVertex(shape.mesh.indices[offset + v]);
+          emitVertex(shape.mesh.indices[offset + v + 1]);
         }
       }
 
@@ -175,6 +173,38 @@ bool Mesh::loadOBJ(std::string filename) {
       m_submeshes.push_back({submeshStart, submeshCount, matId});
     }
   }
+
+  if (generateNormals) {
+    for (auto &vertex : vertices) {
+      vertex.normal = glm::vec3(0.0f);
+    }
+
+    for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+      Vertex &a = vertices[indices[i]];
+      Vertex &b = vertices[indices[i + 1]];
+      Vertex &c = vertices[indices[i + 2]];
+
+      glm::vec3 faceNormal = glm::cross(b.position - a.position, c.position - a.position);
+      float normalLength = glm::length(faceNormal);
+      if (normalLength <= 0.0f)
+        continue;
+
+      faceNormal /= normalLength;
+      a.normal += faceNormal;
+      b.normal += faceNormal;
+      c.normal += faceNormal;
+    }
+
+    for (auto &vertex : vertices) {
+      float normalLength = glm::length(vertex.normal);
+      if (normalLength > 0.0f) {
+        vertex.normal /= normalLength;
+      } else {
+        vertex.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+      }
+    }
+  }
+
   setupBuffers(vertices, indices);
   return true;
 }

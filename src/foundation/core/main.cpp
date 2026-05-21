@@ -57,7 +57,7 @@ struct Player {
   float friction = 10.0f;
   float maxSpeed = 18.0f;
   float bounds = 12.0f;
-  float shootCooldown = 0.22f;
+  float shootCooldown = 0.5f;
   float bulletSpeed = 28.0f;
   float hitInvincibility = 1.8f;
 };
@@ -150,7 +150,7 @@ class SpaceInvadersApp : public App {
     auto &model = engine.getOrThrow<Model>(player);
 
     glm::vec3 playerColor = glm::vec3(0.8f, 0.8f, 0.8f);
-    resourceSystem.applySolidColorToModel(model, playerColor);
+    resourceSystem.setSolidColor(player, -1, playerColor);
   }
 
   void createStarfield(Engine &engine) {
@@ -203,7 +203,7 @@ class SpaceInvadersApp : public App {
     Entity bullet = engine.createModelEntity(friendly ? "PlayerBullet" : "EnemyBullet", EngineConfig::MODEL_BOX, pos,
                                              glm::vec3(0.0f), scale);
     addCollisionBox(engine, bullet, scale);
-    engine.setEmission(bullet, friendly ? glm::vec3(0.15f, 1.0f, 0.75f) : glm::vec3(1.0f, 0.18f, 0.08f), 7.0f);
+    engine.setEmission(bullet, -1, friendly ? glm::vec3(0.15f, 1.0f, 0.75f) : glm::vec3(1.0f, 0.18f, 0.08f), 7.0f);
     engine.addComponent<Bullet>(bullet, Bullet{vel, bulletTTL, friendly});
   }
 
@@ -241,7 +241,7 @@ class SpaceInvadersApp : public App {
     tf.position = glm::vec3(0.0f, 0.0f, 8.0f);
     tf.rotation = glm::vec3(0.0f);
 
-    engine.setEmission(player, glm::vec3(1.0f, 0.90f, 0.20f), 0.0f);
+    engine.setEmission(player, -1, glm::vec3(1.0f, 0.90f, 0.20f), 0.0f);
 
     state = GameState{};
   }
@@ -299,9 +299,9 @@ class SpaceInvadersApp : public App {
       state.gameOver = true;
       state.playerWon = false;
       state.restartTimer = 3.5f;
-      engine.setEmission(player, glm::vec3(1.0f, 0.1f, 0.1f), 3.0f);
+      engine.setEmission(player, -1, glm::vec3(1.0f, 0.1f, 0.1f), 3.0f);
     } else {
-      engine.setEmission(player, glm::vec3(1.0f, 0.5f, 0.2f), 4.0f);
+      engine.setEmission(player, -1, glm::vec3(1.0f, 0.5f, 0.2f), 4.0f);
     }
   }
 
@@ -336,7 +336,7 @@ class SpaceInvadersApp : public App {
       Entity invader =
           engine.createModelEntity("Invader", EngineConfig::MODEL_BOX, glm::vec3(0.0f), glm::vec3(0.0f), ig.scale);
       addCollisionBox(engine, invader, ig.scale);
-      engine.setSolidColor(invader, slot.color);
+      engine.setSolidColor(invader, -1, slot.color);
       engine.addComponent<Invader>(
           invader, Invader{true, slot.color, slot.scoreValue, static_cast<int>(ig.nextInvaderIndex), -1});
       ++ig.nextInvaderIndex;
@@ -363,7 +363,7 @@ class SpaceInvadersApp : public App {
         inv.currentRow = newRow;
         glm::vec3 newColor = rowColor(newRow, ig.rows);
         inv.color = newColor;
-        engine.setSolidColor(e, newColor);
+        engine.setSolidColor(e, -1, newColor);
       }
     });
 
@@ -469,9 +469,9 @@ class SpaceInvadersApp : public App {
 
     if (pData.hitCooldown > 0.0f) {
       float blink = glm::sin(pData.hitCooldown * 24.0f) * 0.5f + 0.5f;
-      engine.setEmission(player, glm::vec3(0.2f, 0.2f, 0.2f), 0.8f + blink * 5.0f);
+      engine.setEmission(player, -1, glm::vec3(0.2f, 0.2f, 0.2f), 0.8f + blink * 5.0f);
     } else {
-      engine.setEmission(player, glm::vec3(0.0f), 0.0f);
+      engine.setEmission(player, -1, glm::vec3(0.0f), 0.0f);
     }
   }
 
@@ -506,7 +506,7 @@ public:
       state.restartTimer -= deltaTime;
       if (state.playerWon) {
         float blink = glm::sin(state.restartTimer * 12.0f) * 0.5f + 0.5f;
-        engine.setEmission(player, glm::vec3(0.15f, 1.0f, 0.2f), 1.2f + blink * 5.0f);
+        engine.setEmission(player, -1, glm::vec3(0.15f, 1.0f, 0.2f), 1.2f + blink * 5.0f);
       }
       if (state.restartTimer <= 0.0f)
         resetGame(engine);

@@ -69,8 +69,8 @@ public:
   void setState(Toggle toggle, bool value);
 
   // Material utilities
-  void setEmission(Entity entity, glm::vec3 color, float strength);
-  void setTexture(Entity entity, std::string_view path, TextureSlot slot, int submesh = -1);
-  void setShininess(Entity entity, float shininess, int submesh = -1);
-  void setSolidColor(Entity entity, glm::vec3 color);
+  void setEmission(Entity entity, int submesh, glm::vec3 color, float strength);
+  void setTexture(Entity entity, int submesh, TextureSlot slot, std::string_view path);
+  void setShininess(Entity entity, int submesh, float shininess);
+  void setSolidColor(Entity entity, int submesh, glm::vec3 color);
 };

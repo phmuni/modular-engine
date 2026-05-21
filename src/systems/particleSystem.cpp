@@ -217,7 +217,7 @@ void ParticleSystem::render(SystemManager &systemManager) {
   std::vector<ParticleVertex> additiveVertices;
   std::vector<ParticleVertex> alphaVertices;
 
-  m_componentManager.forEachComponent<ParticleEmitter>([&](Entity entity, ParticleEmitter &emitter) {
+  m_componentManager.forEachComponent<ParticleEmitter>([&](Entity /*entity*/, ParticleEmitter &emitter) {
     auto &target = emitter.additiveBlending ? additiveVertices : alphaVertices;
     for (const auto &p : emitter.particles) {
       if (p.life > 0.0f) {

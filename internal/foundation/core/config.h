@@ -5,6 +5,7 @@
 #include "SDL3/SDL_scancode.h"
 #include "systems/stateSystem.h"
 #include <algorithm>
+#include <filesystem>
 #include <string>
 #include <utility>
 
@@ -19,9 +20,18 @@ inline const std::string &getBasePath() {
 }
 
 inline std::string resolvePath(std::string_view relativePath) {
+  auto normalize = [](std::string path) {
+    std::replace(path.begin(), path.end(), '\\', '/');
+    return path;
+  };
+
+  std::filesystem::path path(relativePath);
+  if (path.is_absolute())
+    return normalize(path.string());
+
   std::string result = getBasePath();
   result.append(relativePath);
-  return result;
+  return normalize(result);
 }
 
 // Window
@@ -35,8 +45,8 @@ constexpr float DEFAULT_CLEAR_COLOR_G = 0.4f;
 constexpr float DEFAULT_CLEAR_COLOR_B = 0.4f;
 constexpr float DEFAULT_CLEAR_COLOR_A = 1.0f;
 
-constexpr int SHADOW_MAP_WIDTH = 2048;
-constexpr int SHADOW_MAP_HEIGHT = 2048;
+constexpr int SHADOW_MAP_WIDTH = 4096;
+constexpr int SHADOW_MAP_HEIGHT = 4096;
 
 // Asset paths
 constexpr const char *ASSET_BASE_PATH = "../assets/";

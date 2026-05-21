@@ -55,33 +55,24 @@ float calculateShadow(vec4 fragPosLightSpace)
 
     vec3 nGeom   = normalize(Normal);
     vec3 lightDir = normalize(-shadowLightDir);
-
-    float bias = max(0.01 * (1.0 - dot(nGeom, lightDir)), 0.001);
+    
+    float bias = max(0.005 * (1.0 - dot(nGeom, lightDir)), 0.0005);
 
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
 
-    int kernelSize = 3;
-    int sampleCount = 0;
-
-    for (int x = -kernelSize; x <= kernelSize; ++x) {
-        for (int y = -kernelSize; y <= kernelSize; ++y) {
-            vec2 offset = projCoords.xy + vec2(x, y) * texelSize;
-
-            if (offset.x < 0.0 || offset.x > 1.0 ||
-                offset.y < 0.0 || offset.y > 1.0)
-                continue;
-
-            float pcfDepth = texture(shadowMap, offset).r;
-
-            shadow += (currentDepth - bias > pcfDepth) ? 1.0 : 0.0;
-            sampleCount++;
+    // Simple 3x3 PCF kernel
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            vec2 offset = vec2(float(x), float(y)) * texelSize * 1.5;
+            vec2 sampleUV = projCoords.xy + offset;
+            if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) continue;
+            float pcfDepth = texture(shadowMap, sampleUV).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
         }
     }
 
-    if (sampleCount > 0)
-        shadow /= float(sampleCount);
-
+    shadow /= 9.0;
     return shadow;
 }
 
@@ -151,5 +142,5 @@ void main()
         }
     }
 
-    FragColor = vec4(result, opacity);
+    FragColor = vec4(result, diffuseSample.a * opacity);
 }

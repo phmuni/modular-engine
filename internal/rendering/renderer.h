@@ -53,6 +53,8 @@ public:
   // Particle / transparent pass
   void beginTransparentPass();
   void endTransparentPass();
+  void beginSoftTransparentPass();
+  void endSoftTransparentPass();
   void beginParticlePass(bool additiveBlending);
   void uploadParticles(const ParticleVertex *data, int count);
   void drawParticles(int count);

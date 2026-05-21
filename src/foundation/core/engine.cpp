@@ -10,6 +10,7 @@
 #include "systems/lightSystem.h"
 #include "systems/particleSystem.h"
 #include "systems/renderSystem.h"
+#include "systems/resourceSystem.h"
 #include "systems/sceneSystem.h"
 #include "systems/timeSystem.h"
 #include "systems/transformSystem.h"
@@ -41,7 +42,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<StateSystem>();
   m_systemManager.insert<InputSystem>();
   m_systemManager.insert<TimeSystem>();
-  m_systemManager.insert<ResourceSystem>();
+  m_systemManager.insert<ResourceSystem>(m_componentManager);
   m_systemManager.insert<RenderSystem>();
   m_systemManager.insert<TransformSystem>();
   m_systemManager.insert<CameraSystem>(m_componentManager, m_systemManager.getSystem<InputSystem>());
@@ -134,7 +135,6 @@ void Engine::render() {
   auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
   auto &renderer = renderSystem.getRenderer();
   auto &uiSystem = m_systemManager.getSystem<UISystem>();
-  auto &state = m_systemManager.getSystem<StateSystem>();
 
   renderer.beginFrame();
 
@@ -171,43 +171,20 @@ void Engine::setState(Toggle toggle, bool value) {
   stateSystem.setToggle(toggle, value);
 }
 
-void Engine::setEmission(Entity entity, glm::vec3 color, float strength) {
-  auto *model = m_componentManager.getOrNil<Model>(entity);
-  if (!model)
-    return;
-  m_systemManager.getSystem<ResourceSystem>().setEmission(*model, color, strength);
+void Engine::setEmission(Entity entity, int submesh, glm::vec3 color, float strength) {
+  m_systemManager.getSystem<ResourceSystem>().setEmission(entity, submesh, color, strength);
 }
 
-void Engine::setTexture(Entity entity, std::string_view path, TextureSlot slot, int submesh) {
-  auto *model = m_componentManager.getOrNil<Model>(entity);
-  if (!model)
-    return;
-  auto &rs = m_systemManager.getSystem<ResourceSystem>();
-  GLuint tex = rs.loadTexture(EngineConfig::resolvePath(path));
-  if (submesh < 0) {
-    rs.setTexture(*model, slot, tex);
-  } else if (submesh < static_cast<int>(model->materialHandles.size())) {
-    rs.setMaterialTexture(model->materialHandles[submesh], model->materialHandles, slot, tex);
-  }
+void Engine::setTexture(Entity entity, int submesh, TextureSlot slot, std::string_view path) {
+  m_systemManager.getSystem<ResourceSystem>().setTexture(entity, submesh, slot, path);
 }
 
-void Engine::setShininess(Entity entity, float shininess, int submesh) {
-  auto *model = m_componentManager.getOrNil<Model>(entity);
-  if (!model)
-    return;
-  auto &rs = m_systemManager.getSystem<ResourceSystem>();
-  if (submesh < 0) {
-    rs.setShininess(*model, shininess);
-  } else if (submesh < static_cast<int>(model->materialHandles.size())) {
-    rs.setMaterialShininess(model->materialHandles[submesh], model->materialHandles, shininess);
-  }
+void Engine::setShininess(Entity entity, int submesh, float shininess) {
+  m_systemManager.getSystem<ResourceSystem>().setShininess(entity, submesh, shininess);
 }
 
-void Engine::setSolidColor(Entity entity, glm::vec3 color) {
-  auto *model = m_componentManager.getOrNil<Model>(entity);
-  if (!model)
-    return;
-  m_systemManager.getSystem<ResourceSystem>().applySolidColorToModel(*model, color);
+void Engine::setSolidColor(Entity entity, int submesh, glm::vec3 color) {
+  m_systemManager.getSystem<ResourceSystem>().setSolidColor(entity, submesh, color);
 }
 
 Entity Engine::createEntity() { return m_entityManager.createEntity(); }

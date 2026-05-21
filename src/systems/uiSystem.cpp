@@ -49,7 +49,7 @@ void UISystem::fileDialogCallback(void *userdata, const char *const *filelist, i
   }
 }
 
-void UISystem::pickFileButton(const char *id, char *buf, int bufSize, SDL_Window *window,
+void UISystem::pickFileButton(const char *id, char *buf, int /*bufSize*/, SDL_Window *window,
                               const SDL_DialogFileFilter *filters, int nfilters) {
   ImGui::SameLine();
   std::string label = std::string("...") + "##" + id;
@@ -89,7 +89,6 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   auto &lightSystem = systemManager.getSystem<LightSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();
-  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
@@ -105,7 +104,12 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
 
   auto entityLabel = [&](Entity e, const char *icon) -> std::string {
     auto *nc = componentManager.getOrNil<Name>(e);
-    std::string name = nc ? nc->name : ("Entity " + std::to_string(e));
+    std::string name;
+    if (nc && !nc->name.empty()) {
+      name = nc->name;
+    } else {
+      name = std::string("Entity ") + std::to_string(e);
+    }
     return std::string(icon) + " " + name + "##" + std::to_string(e);
   };
 
@@ -117,13 +121,15 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   };
 
   if (ImGui::CollapsingHeader("Models", ImGuiTreeNodeFlags_DefaultOpen)) {
-    for (Entity entity : renderSystem.getRenderQueue()) {
+    int modelCount = 0;
+    componentManager.forEachComponent<Model>([&](Entity entity, Model &) {
       std::string label = entityLabel(entity, "[M]");
       if (ImGui::Selectable(label.c_str(), selectedEntity == entity)) {
         selectToggle(entity);
       }
-    }
-    if (renderSystem.getRenderQueue().empty()) {
+      modelCount++;
+    });
+    if (modelCount == 0) {
       ImGui::TextDisabled("  (empty)");
     }
   }
@@ -291,11 +297,14 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
           pickFileButton("pick_add_model", addModelPath, 256, window);
           ImGui::SameLine();
           if (ImGui::Button("+ Model", ImVec2(-1, 0)) && addModelPath[0] != '\0') {
+            if (!componentManager.containsComponent<Transform>(selectedEntity)) {
+              componentManager.addInPlace<Transform>(selectedEntity);
+            }
             auto &rs = resourceSystem;
             auto modelData = rs.loadModel(addModelPath);
             componentManager.addInPlace<Model>(selectedEntity, modelData.meshHandle,
-                                               std::move(modelData.materialHandles), modelData.transparent);
-            renderSystem.insertRenderable(selectedEntity);
+                                               std::move(modelData.materialHandles), 1.0f);
+            systemManager.getSystem<RenderSystem>().markBatchesDirty();
             addModelPath[0] = '\0';
           }
         }
@@ -321,8 +330,9 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   }
 }
 
-void UISystem::renderCameraInspector(Entity entity, SystemManager &systemManager, ComponentManager &componentManager,
-                                     ResourceSystem &resourceSystem, SDL_Window *window) {
+void UISystem::renderCameraInspector(Entity /*entity*/, SystemManager &systemManager,
+                                     ComponentManager &componentManager, ResourceSystem & /*resourceSystem*/,
+                                     SDL_Window * /*window*/) {
 
   if (!ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
     return;
@@ -449,13 +459,12 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
       // Auto-apply if path changed after picking
       std::string currentPath(globalPaths[t]);
       if (!currentPath.empty() && currentPath != lastAppliedPaths[t]) {
-        GLuint tex = resourceSystem.loadTexture(globalPaths[t]);
-        resourceSystem.setTexture(model, slots[t], tex);
+        resourceSystem.setTexture(entity, -1, slots[t], globalPaths[t]);
         lastAppliedPaths[t] = currentPath;
       }
 
       if (ImGui::Button((std::string("X##g_") + labels[t]).c_str())) {
-        resourceSystem.resetTexture(model, slots[t]);
+        resourceSystem.removeTexture(entity, -1, slots[t]);
         globalPaths[t][0] = '\0';
         lastAppliedPaths[t] = "";
       }
@@ -468,7 +477,7 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
     ImGui::ColorEdit3("Emission Color##global", &globalEmCol.x);
     ImGui::DragFloat("Emission Strength##global", &globalEmStr, 0.1f, 0.0f, 50.0f);
     if (ImGui::Button("Apply Emission##global", ImVec2(-1, 0))) {
-      resourceSystem.setEmission(model, globalEmCol, globalEmStr);
+      resourceSystem.setEmission(entity, -1, globalEmCol, globalEmStr);
     }
 
     ImGui::Separator();
@@ -476,7 +485,7 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
     static glm::vec3 globalFallbackColor{1.0f, 1.0f, 1.0f};
     ImGui::ColorEdit3("##global_fallback_color", &globalFallbackColor.x);
     if (ImGui::Button("Apply Solid Color to All##global", ImVec2(-1, 0))) {
-      resourceSystem.applySolidColorToModel(model, globalFallbackColor);
+      resourceSystem.setSolidColor(entity, -1, globalFallbackColor);
     }
 
     ImGui::TreePop();
@@ -501,34 +510,28 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
         pickFileButton((std::string("pick_s") + std::to_string(i) + "_" + labels[t]).c_str(), paths[i][t], 256, window);
         ImGui::SameLine();
         if (ImGui::Button((std::string("Set##") + labels[t]).c_str())) {
-          GLuint tex = resourceSystem.loadTexture(paths[i][t]);
-          resourceSystem.setMaterialTexture(handle, model.materialHandles, slots[t], tex);
-          if (t == 0 && Material::hasAlphaTexture(paths[i][t])) {
-            // Do not auto-mark model transparent; user can toggle opacity manually.
-          }
+          resourceSystem.setTexture(entity, static_cast<int>(i), slots[t], paths[i][t]);
         }
         ImGui::SameLine();
         if (ImGui::Button((std::string("X##") + labels[t]).c_str())) {
-          resourceSystem.resetMaterialTexture(handle, model.materialHandles, slots[t]);
+          resourceSystem.removeTexture(entity, static_cast<int>(i), slots[t]);
         }
       }
 
       float shininess = matPtr ? matPtr->getShininess() : 16.0f;
       if (ImGui::DragFloat("Shininess", &shininess, 1.0f, 1.0f, 256.0f)) {
-        resourceSystem.setMaterialShininess(handle, model.materialHandles, shininess);
+        resourceSystem.setShininess(entity, static_cast<int>(i), shininess);
       }
 
       ImGui::Separator();
       ImGui::Text("Manual Emission");
       glm::vec3 emCol = matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f);
       if (ImGui::ColorEdit3("Emission Color", &emCol.x)) {
-        resourceSystem.setMaterialEmission(handle, model.materialHandles, emCol,
-                                           matPtr ? matPtr->getEmissionStrength() : 0.0f);
+        resourceSystem.setEmission(selectedEntity, i, emCol, matPtr ? matPtr->getEmissionStrength() : 0.0f);
       }
       float emStr = matPtr ? matPtr->getEmissionStrength() : 0.0f;
       if (ImGui::DragFloat("Emission Strength", &emStr, 0.1f, 0.0f, 50.0f)) {
-        resourceSystem.setMaterialEmission(handle, model.materialHandles,
-                                           matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f), emStr);
+        resourceSystem.setEmission(selectedEntity, i, matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f), emStr);
       }
 
       ImGui::TreePop();
@@ -586,11 +589,11 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
       auto *modelComp = componentManager.getOrNil<Model>(e);
       if (modelComp) {
         modelComp->opacity = modelOpacity;
+        renderSystem.markBatchesDirty();
         if (modelComp->materialHandles.size() > 0) {
           auto &firstMat = resourceSystem.getMaterial(modelComp->materialHandles[0]);
           if (!firstMat.hasDiffuseTexture()) {
-            resourceSystem.applySolidColorToModel(
-                *modelComp, glm::vec3(modelSolidColor[0], modelSolidColor[1], modelSolidColor[2]));
+            resourceSystem.setSolidColor(e, -1, glm::vec3(modelSolidColor[0], modelSolidColor[1], modelSolidColor[2]));
           }
         }
       }
@@ -607,7 +610,6 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
     static float color[3] = {1, 1, 1};
     static int type = 0;
     static float intensity = 1.0f;
-    static float ambient = 0.2f;
     static float cutOff = 0.207911f;
     static float outerCutOff = 0.139173f;
 
@@ -619,7 +621,6 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
     ImGui::ColorEdit3("Color##lf", color);
     ImGui::Combo("Type##lf", &type, "Directional\0Point\0Spot\0");
     ImGui::DragFloat("Intensity##lf", &intensity, 0.1f, 0.0f, 50.0f);
-    ImGui::DragFloat("Ambient##lf", &ambient, 0.01f, 0.0f, 1.0f);
 
     if (type == 2) {
       ImGui::DragFloat("Cutoff##lf", &cutOff, 0.01f, 0.0f, glm::min(outerCutOff - 0.01f, 0.98f));
@@ -638,7 +639,6 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
       color[0] = color[1] = color[2] = 1;
       type = 0;
       intensity = 1.0f;
-      ambient = 0.2f;
       cutOff = 0.207911f;
       outerCutOff = 0.139173f;
       formType = 0;

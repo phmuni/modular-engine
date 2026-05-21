@@ -3,6 +3,7 @@
 // rendering and lighting.
 
 #include "systems/sceneSystem.h"
+#include "components/model.h"
 #include "components/name.h"
 #include "components/transform.h"
 #include "systems/cameraSystem.h"
@@ -11,8 +12,7 @@
 #include "systems/resourceSystem.h"
 
 void SceneSystem::destroyEntity(Entity entity) {
-  auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
-  renderSystem.removeRenderable(entity);
+  const bool hadModel = m_componentManager.containsComponent<Model>(entity);
 
   if (m_componentManager.containsComponent<Light>(entity)) {
     auto &lightSystem = m_systemManager.getSystem<LightSystem>();
@@ -27,6 +27,10 @@ void SceneSystem::destroyEntity(Entity entity) {
 
   m_componentManager.removeAllComponents(entity);
   m_entityManager.destroyEntity(entity);
+
+  if (hadModel) {
+    m_systemManager.getSystem<RenderSystem>().markBatchesDirty();
+  }
 };
 
 void SceneSystem::createCameraEntity(std::string name, glm::vec3 position, float yaw, float pitch, float fov,
@@ -60,10 +64,10 @@ Entity SceneSystem::createModelEntity(std::string name, std::string modelPath, g
 
   m_componentManager.insert<Name>(entity, std::make_unique<Name>(std::move(name)));
   m_componentManager.insert<Transform>(entity, std::make_unique<Transform>(position, rotation, scale));
-  m_componentManager.insert<Model>(
-      entity, std::make_unique<Model>(modelData.meshHandle, std::move(materialHandles), modelData.transparent));
+  m_componentManager.insert<Model>(entity,
+                                   std::make_unique<Model>(modelData.meshHandle, std::move(materialHandles), 1.0f));
+  m_systemManager.getSystem<RenderSystem>().markBatchesDirty();
 
-  m_systemManager.getSystem<RenderSystem>().insertRenderable(entity);
   return entity;
 }
 

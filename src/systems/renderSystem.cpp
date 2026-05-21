@@ -1,9 +1,8 @@
 
-// Render system implementation for managing renderable entities, performing shadow mapping, and executing the main
-// rendering pipeline.
-
 #include "systems/renderSystem.h"
+#include "components/hidden.h"
 #include "components/light.h"
+#include "components/model.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "systems/cameraSystem.h"
@@ -21,22 +20,10 @@ struct TransparentDraw {
   float distance;
   uint32_t shaderHandle;
 };
+
+constexpr float kSoftOpacityEnter = 0.95f;
+constexpr float kSoftOpacityExit = 0.90f;
 } // namespace
-
-void RenderSystem::insertRenderable(Entity entity) {
-  if (entity != -1 && m_entrySet.insert(entity).second) {
-    m_entries.emplace_back(entity);
-    m_batchesDirty = true;
-  }
-}
-
-void RenderSystem::removeRenderable(Entity entity) {
-  if (m_entrySet.erase(entity) == 0)
-    return;
-
-  m_entries.erase(std::remove(m_entries.begin(), m_entries.end(), entity), m_entries.end());
-  m_batchesDirty = true;
-}
 
 void RenderSystem::setShadowShaderHandle(uint32_t handle) { m_shadowShaderHandle = handle; }
 
@@ -44,12 +31,16 @@ void RenderSystem::markBatchesDirty() { m_batchesDirty = true; }
 
 void RenderSystem::rebuildRenderBatches(ComponentManager &componentManager, ResourceSystem &resourceSystem) {
   m_renderBatches.clear();
-  m_renderBatches.reserve(m_entries.size());
 
-  for (const Entity entity : m_entries) {
-    const auto &model = componentManager.getOrThrow<Model>(entity);
-    if (model.isTransparent())
-      continue;
+  componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
+    if (componentManager.containsComponent<Hidden>(entity))
+      return;
+
+    if (!componentManager.containsComponent<Transform>(entity))
+      return;
+
+    if (model.opacity < kSoftOpacityEnter)
+      return;
 
     const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
     const auto &submeshes = mesh.getSubmeshes();
@@ -58,12 +49,12 @@ void RenderSystem::rebuildRenderBatches(ComponentManager &componentManager, Reso
       const Material &material = resourceSystem.getMaterial(model.materialHandles[i]);
       m_renderBatches[material.getShaderHandle()].emplace_back(entity, i);
     }
-  }
+  });
 
   m_batchesDirty = false;
 }
 
-void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &entityManager,
+void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager & /*entityManager*/,
                                   ComponentManager &componentManager) {
   auto &renderer = getRenderer();
   auto &transformSystem = systemManager.getSystem<TransformSystem>();
@@ -120,18 +111,23 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
         depthShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
         renderer.beginShadowPass();
-        for (const Entity &entity : m_entries) {
+        int shadowCount = 0;
+        componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
+          if (componentManager.containsComponent<Hidden>(entity))
+            return;
+
+          if (!componentManager.containsComponent<Transform>(entity))
+            return;
+
           const auto &transform = componentManager.getOrThrow<Transform>(entity);
-          const auto &model = componentManager.getOrThrow<Model>(entity);
-          if (model.isTransparent())
-            continue;
 
           const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
 
           glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
           depthShader.setMat4("model", modelMatrix);
           renderer.drawMesh(mesh);
-        }
+          shadowCount++;
+        });
         renderer.endShadowPass();
         shadowLightDir = light.direction;
 
@@ -163,6 +159,9 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
     configureShader(shader);
 
     for (const auto &[entity, submeshIndex] : batch) {
+      if (!componentManager.containsComponent<Transform>(entity) || !componentManager.containsComponent<Model>(entity))
+        continue;
+
       const auto &transform = componentManager.getOrThrow<Transform>(entity);
       const auto &model = componentManager.getOrThrow<Model>(entity);
       const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
@@ -185,33 +184,89 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
       shader.setFloat("material.emissionStrength", material.getEmissionStrength());
       shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);
       shader.setVec3("solidDiffuseColor", material.getDiffuseColor());
-      shader.setFloat("opacity", 1.0f);
 
+      shader.setFloat("opacity", 1.0f);
       renderer.drawSubmesh(mesh, mesh.getSubmeshes()[submeshIndex]);
     }
   }
 
+  std::vector<TransparentDraw> softDraws;
   std::vector<TransparentDraw> transparentDraws;
-  transparentDraws.reserve(m_entries.size());
 
-  for (const Entity entity : m_entries) {
+  componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
+    if (componentManager.containsComponent<Hidden>(entity))
+      return;
+
+    if (!componentManager.containsComponent<Transform>(entity))
+      return;
+
     const auto &transform = componentManager.getOrThrow<Transform>(entity);
-    const auto &model = componentManager.getOrThrow<Model>(entity);
-    if (!model.isTransparent())
-      continue;
-
     const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
     const auto &submeshes = mesh.getSubmeshes();
     float distance = glm::length(camera.position - transform.position);
 
-    for (size_t i = 0; i < submeshes.size(); ++i) {
-      const Material &material = resourceSystem.getMaterial(model.materialHandles[i]);
-      transparentDraws.push_back({entity, i, distance, material.getShaderHandle()});
+    if (model.opacity < kSoftOpacityEnter && model.opacity >= kSoftOpacityExit) {
+      for (size_t i = 0; i < submeshes.size(); ++i) {
+        const Material &material = resourceSystem.getMaterial(model.materialHandles[i]);
+        softDraws.push_back({entity, i, distance, material.getShaderHandle()});
+      }
+      return;
     }
-  }
+
+    if (model.opacity < kSoftOpacityExit) {
+      for (size_t i = 0; i < submeshes.size(); ++i) {
+        const Material &material = resourceSystem.getMaterial(model.materialHandles[i]);
+        transparentDraws.push_back({entity, i, distance, material.getShaderHandle()});
+      }
+      return;
+    }
+  });
 
   std::sort(transparentDraws.begin(), transparentDraws.end(),
             [](const TransparentDraw &a, const TransparentDraw &b) { return a.distance > b.distance; });
+
+  if (!softDraws.empty()) {
+
+    std::sort(softDraws.begin(), softDraws.end(),
+              [](const TransparentDraw &a, const TransparentDraw &b) { return a.distance > b.distance; });
+
+    renderer.beginSoftTransparentPass();
+    for (const auto &draw : softDraws) {
+      Shader &shader = resourceSystem.getShader(draw.shaderHandle);
+      shader.use();
+      configureShader(shader);
+
+      if (!componentManager.containsComponent<Transform>(draw.entity) ||
+          !componentManager.containsComponent<Model>(draw.entity))
+        continue;
+
+      const auto &transform = componentManager.getOrThrow<Transform>(draw.entity);
+      const auto &model = componentManager.getOrThrow<Model>(draw.entity);
+      const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
+      const Material &material = resourceSystem.getMaterial(model.materialHandles[draw.submeshIndex]);
+
+      glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
+      glm::mat4 MVP = projection * view * modelMatrix;
+      glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
+
+      shader.setMat4("MVP", MVP);
+      shader.setMat4("model", modelMatrix);
+      shader.setMat3("normalMatrix", normalMatrix);
+
+      shader.setTex("material.diffuse", material.getDiffuse(), 0);
+      shader.setTex("material.specular", material.getSpecular(), 1);
+      shader.setTex("material.emission", material.getEmission(), 2);
+      shader.setFloat("material.shininess", material.getShininess());
+      shader.setVec3("material.emissionColor", material.getEmissionColor());
+      shader.setFloat("material.emissionStrength", material.getEmissionStrength());
+      shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);
+      shader.setVec3("solidDiffuseColor", material.getDiffuseColor());
+      shader.setFloat("opacity", model.opacity);
+
+      renderer.drawSubmesh(mesh, mesh.getSubmeshes()[draw.submeshIndex]);
+    }
+    renderer.endSoftTransparentPass();
+  }
 
   if (!transparentDraws.empty()) {
     renderer.beginTransparentPass();
@@ -220,6 +275,10 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
       Shader &shader = resourceSystem.getShader(draw.shaderHandle);
       shader.use();
       configureShader(shader);
+
+      if (!componentManager.containsComponent<Transform>(draw.entity) ||
+          !componentManager.containsComponent<Model>(draw.entity))
+        continue;
 
       const auto &transform = componentManager.getOrThrow<Transform>(draw.entity);
       const auto &model = componentManager.getOrThrow<Model>(draw.entity);
@@ -257,5 +316,3 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager &e
 }
 
 Renderer &RenderSystem::getRenderer() { return m_renderer; }
-
-const std::vector<Entity> &RenderSystem::getRenderQueue() const { return m_entries; }
