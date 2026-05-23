@@ -1,15 +1,12 @@
 
 // Main entry point for the application. Sets up the engine and runs the main loop with the provided application logic.
 
-#include "components/collision.h"
-#include "components/model.h"
 #include "components/particleEmitter.h"
 #include "components/transform.h"
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
 #include "systems/collisionSystem.h"
 #include "systems/inputSystem.h"
-#include "systems/resourceSystem.h"
 #include "systems/sceneSystem.h"
 #include <random>
 #include <unordered_set>
@@ -89,13 +86,6 @@ class SpaceInvadersApp : public App {
   std::mt19937 rng{std::random_device{}()};
   float bulletTTL = 5.0f;
 
-  void addCollisionBox(Engine &engine, Entity entity, const glm::vec3 &scale, bool isStatic = false) {
-    auto &col = engine.addComponent<Collision>(entity);
-    col.min = -scale * 0.5f;
-    col.max = scale * 0.5f;
-    col.isStatic = isStatic;
-  }
-
   // Returns a color interpolated from purple (first row) to red (last row).
   // The gradient is stretched by `spread` so the transition to red happens later.
   glm::vec3 rowColor(int row, int totalRows) const {
@@ -141,22 +131,23 @@ class SpaceInvadersApp : public App {
 
   void createPlayer(Engine &engine) {
     constexpr glm::vec3 scale{1.4f, 0.6f, 1.4f};
-    player = engine.createModelEntity("Player", "../assets/models/spaceship/spaceship.obj", glm::vec3(0.0f, 0.0f, 8.0f),
-                                      glm::vec3(0.0f), scale);
-    addCollisionBox(engine, player, scale);
-    engine.addComponent<Player>(player);
-
-    auto &resourceSystem = engine.getSystemManager().getSystem<ResourceSystem>();
-    auto &model = engine.getOrThrow<Model>(player);
-
-    glm::vec3 playerColor = glm::vec3(0.8f, 0.8f, 0.8f);
-    resourceSystem.setSolidColor(player, -1, playerColor);
+    player =
+        engine.entities()
+            .create("Player")
+            .withModel("../assets/models/spaceship/spaceship.obj", glm::vec3(0.0f, 0.0f, 8.0f), glm::vec3(0.0f), scale)
+            .withCollision(scale)
+            .withComponent<Player>()
+            .withSolidColor(glm::vec3(0.8f, 0.8f, 0.8f))
+            .build();
   }
 
   void createStarfield(Engine &engine) {
-    starfield = engine.createEntity();
-    engine.addComponent<Transform>(starfield, glm::vec3(0.0f, 7.0f, -40.0f), glm::vec3(0.0f), glm::vec3(1.0f));
-    auto &p = engine.addComponent<ParticleEmitter>(starfield);
+    starfield = engine.entities()
+                    .create("Starfield")
+                    .withTransform(glm::vec3(0.0f, 7.0f, -40.0f), glm::vec3(0.0f), glm::vec3(1.0f))
+                    .withComponent<ParticleEmitter>()
+                    .build();
+    auto &p = engine.getOrThrow<ParticleEmitter>(starfield);
     p.emitRate = 100.0f;
     p.particleLifetime = 9.0f;
     p.speed = 12.0f;
@@ -173,15 +164,18 @@ class SpaceInvadersApp : public App {
   }
 
   void createGameManager(Engine &engine) {
-    gameManager = engine.createEntity();
-    engine.addComponent<GameState>(gameManager, GameState{});
-    engine.addComponent<InvaderGroup>(gameManager, InvaderGroup{});
+    gameManager =
+        engine.entities().create("GameManager").withComponent<GameState>().withComponent<InvaderGroup>().build();
   }
 
   void createExplosion(Engine &engine, const glm::vec3 &position, const glm::vec3 &color, float scale = 1.0f) {
-    Entity expl = engine.createEntity();
-    engine.addComponent<Transform>(expl, position, glm::vec3(0.0f), glm::vec3(1.0f));
-    auto &p = engine.addComponent<ParticleEmitter>(expl);
+    Entity expl = engine.entities()
+                      .create("Explosion")
+                      .withTransform(position, glm::vec3(0.0f), glm::vec3(1.0f))
+                      .withComponent<ParticleEmitter>()
+                      .withComponent<Explosion>(0.1f, 0.55f * scale)
+                      .build();
+    auto &p = engine.getOrThrow<ParticleEmitter>(expl);
     p.emitRate = 350.0f;
     p.particleLifetime = 0.55f * scale;
     p.speed = 5.5f * scale;
@@ -195,16 +189,17 @@ class SpaceInvadersApp : public App {
     p.spread = 1.0f;
     p.maxParticles = 80;
     p.additiveBlending = true;
-    engine.addComponent<Explosion>(expl, Explosion{0.1f, 0.55f * scale});
   }
 
   void spawnBullet(Engine &engine, const glm::vec3 &pos, const glm::vec3 &vel, bool friendly) {
     const glm::vec3 scale = friendly ? glm::vec3(0.12f, 0.12f, 1.2f) : glm::vec3(0.22f, 0.22f, 0.70f);
-    Entity bullet = engine.createModelEntity(friendly ? "PlayerBullet" : "EnemyBullet", EngineConfig::MODEL_BOX, pos,
-                                             glm::vec3(0.0f), scale);
-    addCollisionBox(engine, bullet, scale);
-    engine.setEmission(bullet, -1, friendly ? glm::vec3(0.15f, 1.0f, 0.75f) : glm::vec3(1.0f, 0.18f, 0.08f), 7.0f);
-    engine.addComponent<Bullet>(bullet, Bullet{vel, bulletTTL, friendly});
+    Entity bullet = engine.entities()
+                        .create(friendly ? "PlayerBullet" : "EnemyBullet")
+                        .withModel(EngineConfig::MODEL_BOX, pos, glm::vec3(0.0f), scale)
+                        .withCollision(scale)
+                        .withEmission(friendly ? glm::vec3(0.15f, 1.0f, 0.75f) : glm::vec3(1.0f, 0.18f, 0.08f), 7.0f)
+                        .withComponent<Bullet>(vel, bulletTTL, friendly)
+                        .build();
   }
 
   void initInvaderSlots(InvaderGroup &ig) {
@@ -334,11 +329,13 @@ class SpaceInvadersApp : public App {
         break;
       const auto &slot = ig.invaderSlots[ig.nextInvaderIndex];
       Entity invader =
-          engine.createModelEntity("Invader", EngineConfig::MODEL_BOX, glm::vec3(0.0f), glm::vec3(0.0f), ig.scale);
-      addCollisionBox(engine, invader, ig.scale);
-      engine.setSolidColor(invader, -1, slot.color);
-      engine.addComponent<Invader>(
-          invader, Invader{true, slot.color, slot.scoreValue, static_cast<int>(ig.nextInvaderIndex), -1});
+          engine.entities()
+              .create("Invader")
+              .withModel(EngineConfig::MODEL_BOX, glm::vec3(0.0f), glm::vec3(0.0f), ig.scale)
+              .withCollision(ig.scale)
+              .withSolidColor(slot.color)
+              .withComponent<Invader>(true, slot.color, slot.scoreValue, static_cast<int>(ig.nextInvaderIndex), -1)
+              .build();
       ++ig.nextInvaderIndex;
     }
 
