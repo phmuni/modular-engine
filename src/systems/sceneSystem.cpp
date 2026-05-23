@@ -71,8 +71,8 @@ Entity SceneSystem::createModelEntity(std::string name, std::string modelPath, u
   return entity;
 }
 
-void SceneSystem::createLightEntity(std::string name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,
-                                    LightType type, float intensity, float cutOff, float outerCutOff) {
+Entity SceneSystem::createLightEntity(std::string name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,
+                                      LightType type, float intensity, float cutOff, float outerCutOff) {
   Entity entity = m_entityManager.createEntity();
 
   m_componentManager.insert<Name>(entity, std::make_unique<Name>(std::move(name)));
@@ -81,4 +81,5 @@ void SceneSystem::createLightEntity(std::string name, glm::vec3 position, glm::v
       entity, std::make_unique<Light>(type, glm::vec3(0.0f), direction, color, intensity, cutOff, outerCutOff));
 
   m_systemManager.getSystem<LightSystem>().createLight(entity);
+  return entity;
 }

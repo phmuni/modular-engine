@@ -3,6 +3,8 @@
 
 #include "foundation/core/engine.h"
 
+#include "components/collision.h"
+#include "components/name.h"
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "rendering/resources/material.h"
@@ -24,57 +26,68 @@ Engine::Engine()
 
 Engine::~Engine() { shutdown(); }
 
+Engine::EntityBuilder::EntityBuilder(Engine &engine, std::string_view name) : m_engine(engine), m_name(name) {}
+
+Engine::EntityBuilder &Engine::EntityBuilder::withModel(std::string_view modelPath, glm::vec3 position,
+                                                        glm::vec3 rotation, glm::vec3 scale, uint32_t shaderHandle) {
+  m_model = ModelConfig{std::string(modelPath), position, rotation, scale, shaderHandle};
+  return *this;
+}
+
+Engine::EntityBuilder &Engine::EntityBuilder::withCollision(const glm::vec3 &scale, bool isStatic) {
+  m_actions.emplace_back([&engine = m_engine, scale, isStatic](Entity entity) {
+    auto &col = engine.addComponent<Collision>(entity);
+    col.min = -scale * 0.5f;
+    col.max = scale * 0.5f;
+    col.isStatic = isStatic;
+  });
+  return *this;
+}
+
+Engine::EntityBuilder &Engine::EntityBuilder::withEmission(const glm::vec3 &color, float strength) {
+  m_actions.emplace_back(
+      [&engine = m_engine, color, strength](Entity entity) { engine.setEmission(entity, color, strength); });
+  return *this;
+}
+
+Engine::EntityBuilder &Engine::EntityBuilder::withSolidColor(const glm::vec3 &color) {
+  m_actions.emplace_back([&engine = m_engine, color](Entity entity) { engine.setSolidColor(entity, color); });
+  return *this;
+}
+
+Entity Engine::EntityBuilder::build() {
+  if (!m_entity) {
+    if (m_model) {
+      const auto &model = *m_model;
+      if (model.shaderHandle != 0) {
+        m_entity = m_engine.createModelEntity(m_name, model.path, model.position, model.rotation, model.scale,
+                                              model.shaderHandle);
+      } else {
+        m_entity = m_engine.createModelEntity(m_name, model.path, model.position, model.rotation, model.scale);
+      }
+    } else {
+      m_entity = m_engine.createEntity();
+      m_engine.addComponent<Name>(*m_entity, m_name);
+    }
+  }
+
+  for (auto &action : m_actions)
+    action(*m_entity);
+  m_actions.clear();
+
+  return *m_entity;
+}
+
+Engine::EntityFactory::EntityFactory(Engine &engine) : m_engine(engine) {}
+
+Engine::EntityBuilder Engine::EntityFactory::create(std::string_view name) { return EntityBuilder(m_engine, name); }
+
 bool Engine::initialize() {
   registerSystems();
 
   Logger::setLevel(Logger::Level::Info);
 
   loadResources();
-
-  return true;
-}
-
-void Engine::registerSystems() {
-  m_systemManager.insert<WindowSystem>(m_screenWidth, m_screenHeight);
-  m_systemManager.insert<StateSystem>();
-  m_systemManager.insert<InputSystem>();
-  m_systemManager.insert<TimeSystem>();
-  m_systemManager.insert<ResourceSystem>(m_componentManager);
-  m_systemManager.insert<RenderSystem>();
-  m_systemManager.insert<TransformSystem>();
-  m_systemManager.insert<CameraSystem>(m_componentManager, m_systemManager.getSystem<InputSystem>());
-  m_systemManager.insert<LightSystem>();
-  m_systemManager.insert<SceneSystem>(m_entityManager, m_componentManager, m_systemManager);
-  m_systemManager.insert<ParticleSystem>(m_componentManager);
-  m_systemManager.insert<CollisionSystem>();
-  m_systemManager.insert<UISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
-                                   m_systemManager.getSystem<WindowSystem>().getContext());
-}
-
-bool Engine::loadResources() {
-  auto &renderer = m_systemManager.getSystem<RenderSystem>().getRenderer();
-  auto &windowSystem = m_systemManager.getSystem<WindowSystem>();
-  auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
-  renderer.init(windowSystem.getWindow());
-
-  uint32_t baseShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
-                                                  EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT));
-  uint32_t shadowShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_SHADOW),
-                                                    EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_SHADOW));
-  uint32_t particleShader =
-      resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_PARTICLE),
-                                EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_PARTICLE));
-  if (!baseShader || !shadowShader || !particleShader) {
-    LOG_F("[Engine] Failed to load shaders.");
-    return false;
-  }
-
-  m_baseShaderHandle = baseShader;
-  resourceSystem.getMaterial(0).setShaderHandle(baseShader);
-  m_systemManager.getSystem<RenderSystem>().setShadowShaderHandle(shadowShader);
-
-  auto &particleSystem = m_systemManager.getSystem<ParticleSystem>();
-  particleSystem.setShaderHandle(particleShader);
 
   return true;
 }
@@ -86,11 +99,11 @@ void Engine::run(App &app) {
     bool running = true;
     loop(running);
   } catch (const std::exception &ex) {
-    LOG_F("[Engine] Uncaught exception in Engine::run: %s", ex.what());
+    LOG_E("[Engine] Uncaught exception in Engine::run: %s", ex.what());
     shutdown();
     return;
   } catch (...) {
-    LOG_F("[Engine] Uncaught unknown exception in Engine::run");
+    LOG_E("[Engine] Uncaught unknown exception in Engine::run");
     shutdown();
     return;
   }
@@ -158,12 +171,16 @@ void Engine::render() {
 
   renderSystem.renderPipeline(m_systemManager, m_entityManager, m_componentManager);
 
-  uiSystem.render(m_entityManager, m_systemManager, m_componentManager);
+  uiSystem.render(*this, m_entityManager, m_systemManager, m_componentManager);
 
   uiSystem.endFrame();
 
   renderer.endFrame();
 }
+
+Entity Engine::createEntity() { return m_entityManager.createEntity(); }
+
+Engine::EntityFactory Engine::entities() { return EntityFactory(*this); }
 
 void Engine::createCameraEntity(std::string_view name, glm::vec3 position, float yaw, float pitch, float fov,
                                 bool isActive) {
@@ -171,16 +188,16 @@ void Engine::createCameraEntity(std::string_view name, glm::vec3 position, float
 }
 
 Entity Engine::createModelEntity(std::string_view name, std::string_view modelPath, glm::vec3 position,
-                                 glm::vec3 rotation, glm::vec3 scale) {
-  return m_systemManager.getSystem<SceneSystem>().createModelEntity(std::string(name),
-                                                                    EngineConfig::resolvePath(std::string(modelPath)),
-                                                                    m_baseShaderHandle, position, rotation, scale);
+                                 glm::vec3 rotation, glm::vec3 scale, uint32_t shaderHandle) {
+  uint32_t effectiveShader = shaderHandle == 0 ? m_baseShaderHandle : shaderHandle;
+  return m_systemManager.getSystem<SceneSystem>().createModelEntity(
+      std::string(name), EngineConfig::resolvePath(std::string(modelPath)), effectiveShader, position, rotation, scale);
 }
 
-void Engine::createLightEntity(std::string_view name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,
-                               LightType type, float intensity, float cutOff, float outerCutOff) {
-  m_systemManager.getSystem<SceneSystem>().createLightEntity(std::string(name), position, direction, color, type,
-                                                             intensity, cutOff, outerCutOff);
+Entity Engine::createLightEntity(std::string_view name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,
+                                 LightType type, float intensity, float cutOff, float outerCutOff) {
+  return m_systemManager.getSystem<SceneSystem>().createLightEntity(std::string(name), position, direction, color, type,
+                                                                    intensity, cutOff, outerCutOff);
 }
 
 void Engine::setState(Toggle toggle, bool value) {
@@ -192,20 +209,71 @@ void Engine::setEmission(Entity entity, int submesh, glm::vec3 color, float stre
   m_systemManager.getSystem<ResourceSystem>().setEmission(entity, submesh, color, strength);
 }
 
+void Engine::setEmission(Entity entity, glm::vec3 color, float strength) { setEmission(entity, -1, color, strength); }
+
 void Engine::setTexture(Entity entity, int submesh, TextureSlot slot, std::string_view path) {
   m_systemManager.getSystem<ResourceSystem>().setTexture(entity, submesh, slot, path);
 }
+
+void Engine::setTexture(Entity entity, TextureSlot slot, std::string_view path) { setTexture(entity, -1, slot, path); }
 
 void Engine::setShininess(Entity entity, int submesh, float shininess) {
   m_systemManager.getSystem<ResourceSystem>().setShininess(entity, submesh, shininess);
 }
 
+void Engine::setShininess(Entity entity, float shininess) { setShininess(entity, -1, shininess); }
+
 void Engine::setSolidColor(Entity entity, int submesh, glm::vec3 color) {
   m_systemManager.getSystem<ResourceSystem>().setSolidColor(entity, submesh, color);
 }
 
-Entity Engine::createEntity() { return m_entityManager.createEntity(); }
+void Engine::setSolidColor(Entity entity, glm::vec3 color) { setSolidColor(entity, -1, color); }
 
 SystemManager &Engine::getSystemManager() { return m_systemManager; }
 ComponentManager &Engine::getComponentManager() { return m_componentManager; }
 EntityManager &Engine::getEntityManager() { return m_entityManager; }
+
+void Engine::registerSystems() {
+  m_systemManager.insert<WindowSystem>(m_screenWidth, m_screenHeight);
+  m_systemManager.insert<StateSystem>();
+  m_systemManager.insert<InputSystem>();
+  m_systemManager.insert<TimeSystem>();
+  m_systemManager.insert<ResourceSystem>(m_componentManager);
+  m_systemManager.insert<RenderSystem>();
+  m_systemManager.insert<TransformSystem>();
+  m_systemManager.insert<CameraSystem>(m_componentManager, m_systemManager.getSystem<InputSystem>());
+  m_systemManager.insert<LightSystem>();
+  m_systemManager.insert<SceneSystem>(m_entityManager, m_componentManager, m_systemManager);
+  m_systemManager.insert<ParticleSystem>(m_componentManager);
+  m_systemManager.insert<CollisionSystem>();
+  m_systemManager.insert<UISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
+                                   m_systemManager.getSystem<WindowSystem>().getContext());
+}
+
+bool Engine::loadResources() {
+  auto &renderer = m_systemManager.getSystem<RenderSystem>().getRenderer();
+  auto &windowSystem = m_systemManager.getSystem<WindowSystem>();
+  auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
+  renderer.init(windowSystem.getWindow());
+
+  uint32_t baseShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
+                                                  EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT));
+  uint32_t shadowShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_SHADOW),
+                                                    EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_SHADOW));
+  uint32_t particleShader =
+      resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_PARTICLE),
+                                EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_PARTICLE));
+  if (!baseShader || !shadowShader || !particleShader) {
+    LOG_E("[Engine] Failed to load shaders.");
+    return false;
+  }
+
+  m_baseShaderHandle = baseShader;
+  resourceSystem.getMaterial(0).setShaderHandle(baseShader);
+  m_systemManager.getSystem<RenderSystem>().setShadowShaderHandle(shadowShader);
+
+  auto &particleSystem = m_systemManager.getSystem<ParticleSystem>();
+  particleSystem.setShaderHandle(particleShader);
+
+  return true;
+}

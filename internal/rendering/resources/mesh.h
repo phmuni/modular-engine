@@ -1,5 +1,5 @@
 #pragma once
-// Mesh class for loading OBJ files and managing vertex/index buffers.
+// Mesh class for loading OBJ/GLB files and managing vertex/index buffers.
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
@@ -22,6 +22,10 @@ struct MtlMaterialData {
   std::string specularTexPath;
   std::string normalTexPath;
   std::string emissionTexPath;
+  GLuint diffuseTextureId = 0;
+  GLuint specularTextureId = 0;
+  GLuint normalTextureId = 0;
+  GLuint emissionTextureId = 0;
   glm::vec3 diffuseColor{0.8f};
   glm::vec3 specularColor{0.0f};
   glm::vec3 emissionColor{0.0f};
@@ -43,8 +47,10 @@ private:
   std::vector<MtlMaterialData> m_mtlMaterials;
   std::string m_baseDir;
 
+  void resetMesh();
   void setupBuffers(std::vector<Vertex> &vertices, std::vector<uint32_t> &indices);
   bool loadOBJ(const std::string filename);
+  bool loadGLB(const std::string filename);
 
 public:
   Mesh() = default;

@@ -2,8 +2,10 @@
 // Type-erased component storage for the ECS.
 
 #include "entityManager.h"
+#include "foundation/core/logger.h"
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <typeindex>
 #include <unordered_map>
 
@@ -25,7 +27,7 @@ public:
   }
 
   template <typename T, typename... Args> T &addInPlace(Entity entity, Args &&...args) {
-    auto component = std::make_unique<T>(std::forward<Args>(args)...);
+    std::unique_ptr<T> component(new T{std::forward<Args>(args)...});
     T &ref = *component;
 
     auto &inner = m_storage[std::type_index(typeid(T))];
@@ -38,6 +40,7 @@ public:
     auto &map = m_storage.at(std::type_index(typeid(T)));
     auto it = map.find(entity);
     if (it == map.end()) {
+      LOG_E("[ComponentManager] Missing component %s for entity %d", typeid(T).name(), entity);
       throw std::runtime_error("Component not found for entity");
     }
     return *static_cast<T *>(it->second.get());

@@ -1,7 +1,9 @@
 #pragma once
 // Type-erased system container with insert/get interface.
 
+#include "foundation/core/logger.h"
 #include <memory>
+#include <stdexcept>
 #include <typeindex>
 #include <unordered_map>
 
@@ -31,6 +33,7 @@ template <typename T> T &SystemManager::getSystem() const {
   if (it != m_systems.end()) {
     return *static_cast<T *>(it->second.get());
   }
+  LOG_E("[SystemManager] Missing system %s", typeid(T).name());
   throw std::runtime_error("System not found");
 }
 

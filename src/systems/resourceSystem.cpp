@@ -60,18 +60,31 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
     uint32_t matHandle = createMaterial(shaderHandle);
     Material &mat = getMaterial(matHandle);
 
-    if (!mtl.diffuseTexPath.empty()) {
+    if (mtl.diffuseTextureId != 0) {
+      mat.setDiffuseTexture(mtl.diffuseTextureId);
+      mat.setHasDiffuseTexture(true);
+      mat.setDiffuseColor(mtl.diffuseColor);
+    } else if (!mtl.diffuseTexPath.empty()) {
       mat.setDiffuse(resolve(mtl.diffuseTexPath));
       mat.setDiffuseColor(mtl.diffuseColor);
     } else {
       mat.setDiffuseColor(mtl.diffuseColor);
       mat.setHasDiffuseTexture(false);
     }
-    if (!mtl.specularTexPath.empty())
+
+    if (mtl.specularTextureId != 0)
+      mat.setSpecularTexture(mtl.specularTextureId);
+    else if (!mtl.specularTexPath.empty())
       mat.setSpecular(resolve(mtl.specularTexPath));
-    if (!mtl.normalTexPath.empty())
+
+    if (mtl.normalTextureId != 0)
+      mat.setNormalTexture(mtl.normalTextureId);
+    else if (!mtl.normalTexPath.empty())
       mat.setNormal(resolve(mtl.normalTexPath));
-    if (!mtl.emissionTexPath.empty())
+
+    if (mtl.emissionTextureId != 0)
+      mat.setEmissionTexture(mtl.emissionTextureId);
+    else if (!mtl.emissionTexPath.empty())
       mat.setEmission(resolve(mtl.emissionTexPath));
 
     mat.setShininess(mtl.shininess);

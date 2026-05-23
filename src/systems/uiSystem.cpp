@@ -1,4 +1,3 @@
-
 // UI system implementation for rendering the ImGui-based user interface, including the scene explorer and properties
 // panel.
 
@@ -9,6 +8,7 @@
 #include "components/name.h"
 #include "components/particleEmitter.h"
 #include "components/transform.h"
+#include "foundation/core/engine.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "systems/cameraSystem.h"
@@ -79,7 +79,8 @@ void UISystem::update(SystemManager &systemManager) {
   m_renderUI = state.isToggled(Toggle::ShowUI);
 }
 
-void UISystem::render(EntityManager &entityManager, SystemManager &systemManager, ComponentManager &componentManager) {
+void UISystem::render(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
+                      ComponentManager &componentManager) {
 
   if (!m_renderUI) {
     return;
@@ -179,7 +180,7 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
   if (ImGui::Button("+ Add Entity", ImVec2(-1, 0))) {
     ImGui::OpenPopup("AddEntityPopup");
   }
-  renderAddEntityPopup(sceneSystem, entityManager, componentManager, resourceSystem, renderSystem, window);
+  renderAddEntityPopup(engine, sceneSystem, systemManager, componentManager, resourceSystem, renderSystem, window);
 
   ImGui::End();
 
@@ -191,13 +192,21 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
     bool propOpen = true;
     ImGui::Begin("Properties", &propOpen,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+
     if (!propOpen) {
       selectedEntity = -1;
       ImGui::End();
-    } else {
+      return;
+    }
 
-      ImGui::BeginChild("PropertiesScroll", ImVec2(0, 0), false, ImGuiWindowFlags_None);
+    // --- All early-out actions (Remove buttons, Delete entity) set this flag.
+    //     We NEVER return early from inside BeginChild/End — we always let the
+    //     stack unwind cleanly first.
+    bool earlyOut = false;
 
+    ImGui::BeginChild("PropertiesScroll", ImVec2(0, 0), false, ImGuiWindowFlags_None);
+
+    if (!earlyOut) {
       auto *nc = componentManager.getOrNil<Name>(selectedEntity);
       if (nc) {
         char buf[64];
@@ -209,22 +218,42 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       }
       ImGui::Text("Entity ID: %d", selectedEntity);
       ImGui::Separator();
+    }
 
-      if (componentManager.containsComponent<Transform>(selectedEntity)) {
-        if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+    // Transform
+    if (!earlyOut && componentManager.containsComponent<Transform>(selectedEntity)) {
+      bool open = ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen);
+      if (open) {
+        if (ImGui::SmallButton("Remove##transform")) {
+          componentManager.removeComponent<Transform>(selectedEntity);
+          earlyOut = true;
+        }
+        if (!earlyOut) {
+          ImGui::Separator();
           auto &t = componentManager.getOrThrow<Transform>(selectedEntity);
           ImGui::DragFloat3("Position##t", &t.position.x, 0.1f);
           ImGui::DragFloat3("Rotation##t", &t.rotation.x, 0.1f);
           ImGui::DragFloat3("Scale##t", &t.scale.x, 0.01f);
         }
       }
+    }
 
-      if (componentManager.containsComponent<Camera>(selectedEntity)) {
-        renderCameraInspector(selectedEntity, systemManager, componentManager, resourceSystem, window);
-      }
+    // Camera
+    if (!earlyOut && componentManager.containsComponent<Camera>(selectedEntity)) {
+      earlyOut = renderCameraInspector(selectedEntity, systemManager, componentManager, resourceSystem, window);
+    }
 
-      if (componentManager.containsComponent<Light>(selectedEntity)) {
-        if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+    // Light
+    if (!earlyOut && componentManager.containsComponent<Light>(selectedEntity)) {
+      bool open = ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen);
+      if (open) {
+        if (ImGui::SmallButton("Remove##light")) {
+          systemManager.getSystem<LightSystem>().destroyLight(selectedEntity);
+          componentManager.removeComponent<Light>(selectedEntity);
+          earlyOut = true;
+        }
+        if (!earlyOut) {
+          ImGui::Separator();
           auto &light = componentManager.getOrThrow<Light>(selectedEntity);
           const char *types[] = {"Directional", "Point", "Spot"};
           int type = static_cast<int>(light.type);
@@ -248,25 +277,38 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
           }
         }
       }
+    }
 
-      if (componentManager.containsComponent<Model>(selectedEntity)) {
-        renderMaterialInspector(selectedEntity, componentManager, resourceSystem, renderSystem, window);
-      }
+    // Model / Material
+    if (!earlyOut && componentManager.containsComponent<Model>(selectedEntity)) {
+      earlyOut = renderMaterialInspector(selectedEntity, componentManager, resourceSystem, renderSystem, window);
+    }
 
-      if (componentManager.containsComponent<ParticleEmitter>(selectedEntity)) {
-        renderParticleInspector(selectedEntity, componentManager);
-      }
+    // Particle
+    if (!earlyOut && componentManager.containsComponent<ParticleEmitter>(selectedEntity)) {
+      earlyOut = renderParticleInspector(selectedEntity, componentManager);
+    }
 
-      if (componentManager.containsComponent<Collision>(selectedEntity)) {
-        if (ImGui::CollapsingHeader("Collision (AABB)", ImGuiTreeNodeFlags_DefaultOpen)) {
+    // Collision
+    if (!earlyOut && componentManager.containsComponent<Collision>(selectedEntity)) {
+      bool open = ImGui::CollapsingHeader("Collision (AABB)", ImGuiTreeNodeFlags_DefaultOpen);
+      if (open) {
+        if (ImGui::SmallButton("Remove##collision")) {
+          componentManager.removeComponent<Collision>(selectedEntity);
+          earlyOut = true;
+        }
+        if (!earlyOut) {
+          ImGui::Separator();
           auto &col = componentManager.getOrThrow<Collision>(selectedEntity);
           ImGui::Checkbox("Static", &col.isStatic);
           ImGui::DragFloat3("Min##col", &col.min.x, 0.05f);
           ImGui::DragFloat3("Max##col", &col.max.x, 0.05f);
         }
       }
+    }
 
-      // Add Component section
+    // Add Component section
+    if (!earlyOut) {
       ImGui::Separator();
       if (ImGui::CollapsingHeader("Add Component", ImGuiTreeNodeFlags_None)) {
         if (!componentManager.containsComponent<Transform>(selectedEntity)) {
@@ -322,25 +364,37 @@ void UISystem::render(EntityManager &entityManager, SystemManager &systemManager
       if (ImGui::Button("Delete Entity", ImVec2(-1, 0))) {
         sceneSystem.destroyEntity(selectedEntity);
         selectedEntity = -1;
+        earlyOut = true;
       }
       ImGui::PopStyleColor(2);
-
-      ImGui::EndChild();
-      ImGui::End();
     }
+
+    // Always close BeginChild and End before any return
+    ImGui::EndChild();
+    ImGui::End();
   }
 }
 
-void UISystem::renderCameraInspector(Entity /*entity*/, SystemManager &systemManager,
-                                     ComponentManager &componentManager, ResourceSystem & /*resourceSystem*/,
-                                     SDL_Window * /*window*/) {
+// Returns true if the component was removed (caller should set earlyOut).
+bool UISystem::renderCameraInspector(Entity entity, SystemManager &systemManager, ComponentManager &componentManager,
+                                     ResourceSystem & /*resourceSystem*/, SDL_Window * /*window*/) {
 
   if (!ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
-    return;
-  auto &camSys = systemManager.getSystem<CameraSystem>();
-  auto &cam = componentManager.getOrThrow<Camera>(selectedEntity);
+    return false;
 
-  bool camToogle = (camSys.getActiveCamera() == selectedEntity);
+  auto &camSys = systemManager.getSystem<CameraSystem>();
+  if (ImGui::SmallButton("Remove##ce")) {
+    if (camSys.getActiveCamera() == entity) {
+      camSys.removeActiveCamera();
+    }
+    componentManager.removeComponent<Camera>(entity);
+    return true;
+  }
+
+  ImGui::Separator();
+  auto &cam = componentManager.getOrThrow<Camera>(entity);
+
+  bool camToogle = (camSys.getActiveCamera() == entity);
 
   ImGui::Checkbox("Active##ce", &camToogle);
   ImGui::SameLine();
@@ -353,16 +407,25 @@ void UISystem::renderCameraInspector(Entity /*entity*/, SystemManager &systemMan
   ImGui::DragFloat("Pitch##ce", &cam.pitch, 0.5f, -89.0f, 89.0f);
 
   if (camToogle) {
-    camSys.setActiveCamera(selectedEntity);
-  } else if (camSys.getActiveCamera() == selectedEntity) {
+    camSys.setActiveCamera(entity);
+  } else if (camSys.getActiveCamera() == entity) {
     camSys.removeActiveCamera();
   }
+
+  return false;
 }
 
-void UISystem::renderParticleInspector(Entity entity, ComponentManager &componentManager) {
+// Returns true if the component was removed (caller should set earlyOut).
+bool UISystem::renderParticleInspector(Entity entity, ComponentManager &componentManager) {
   if (!ImGui::CollapsingHeader("ParticleEmitter Emitter", ImGuiTreeNodeFlags_DefaultOpen))
-    return;
+    return false;
 
+  if (ImGui::SmallButton("Remove##pe")) {
+    componentManager.removeComponent<ParticleEmitter>(entity);
+    return true;
+  }
+
+  ImGui::Separator();
   auto &p = componentManager.getOrThrow<ParticleEmitter>(entity);
 
   ImGui::Checkbox("Active##pe", &p.active);
@@ -424,13 +487,23 @@ void UISystem::renderParticleInspector(Entity entity, ComponentManager &componen
   int alive = static_cast<int>(p.particles.size());
   ImGui::Text("Alive: %d / %d", alive, p.maxParticles);
   ImGui::ProgressBar(static_cast<float>(alive) / static_cast<float>(p.maxParticles));
+
+  return false;
 }
 
-void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componentManager,
+// Returns true if the component was removed (caller should set earlyOut).
+bool UISystem::renderMaterialInspector(Entity entity, ComponentManager &componentManager,
                                        ResourceSystem &resourceSystem, RenderSystem &renderSystem, SDL_Window *window) {
   if (!ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
-    return;
+    return false;
 
+  if (ImGui::SmallButton("Remove##model")) {
+    componentManager.removeComponent<Model>(entity);
+    renderSystem.markBatchesDirty();
+    return true;
+  }
+
+  ImGui::Separator();
   auto &model = componentManager.getOrThrow<Model>(entity);
   const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
   const auto &submeshes = mesh.getSubmeshes();
@@ -528,20 +601,22 @@ void UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
       ImGui::Text("Manual Emission");
       glm::vec3 emCol = matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f);
       if (ImGui::ColorEdit3("Emission Color", &emCol.x)) {
-        resourceSystem.setEmission(selectedEntity, i, emCol, matPtr ? matPtr->getEmissionStrength() : 0.0f);
+        resourceSystem.setEmission(entity, i, emCol, matPtr ? matPtr->getEmissionStrength() : 0.0f);
       }
       float emStr = matPtr ? matPtr->getEmissionStrength() : 0.0f;
       if (ImGui::DragFloat("Emission Strength", &emStr, 0.1f, 0.0f, 50.0f)) {
-        resourceSystem.setEmission(selectedEntity, i, matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f), emStr);
+        resourceSystem.setEmission(entity, i, matPtr ? matPtr->getEmissionColor() : glm::vec3(0.0f), emStr);
       }
 
       ImGui::TreePop();
     }
     ImGui::PopID();
   }
+
+  return false;
 }
 
-void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &entityManager,
+void UISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSystem, SystemManager &systemManager,
                                     ComponentManager &componentManager, ResourceSystem &resourceSystem,
                                     RenderSystem &renderSystem, SDL_Window *window) {
   if (!ImGui::BeginPopup("AddEntityPopup"))
@@ -550,190 +625,201 @@ void UISystem::renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &ent
   ImGui::SetNextItemWidth(300.0f);
   ImGui::Dummy(ImVec2(300.0f, 0.0f));
 
-  static int formType = 0; // 0 = menu, 1 = model, 2 = light, 3 = particle
+  // Single unified create dialog with per-component checkboxes and options
+  static char entityName[64] = "";
+  static bool addModel = false;
+  static bool addLight = false;
+  static bool addParticle = false;
+  static bool addCamera = false;
+  static bool addCollision = false;
 
-  if (formType == 0) {
-    if (ImGui::Button("Add Model", ImVec2(-1, 0)))
-      formType = 1;
-    if (ImGui::Button("Add Light", ImVec2(-1, 0)))
-      formType = 2;
-    if (ImGui::Button("Add ParticleEmitter Emitter", ImVec2(-1, 0)))
-      formType = 3;
-    if (ImGui::Button("Add Camera", ImVec2(-1, 0)))
-      formType = 4;
-  } else if (formType == 1) {
-    static char modelName[64] = "";
-    static char modelPath[256] = "";
-    static float pos[3] = {0, 0, 0};
-    static float rot[3] = {0, 0, 0};
-    static float scale[3] = {1, 1, 1};
-    static float modelOpacity = 1.0f;
-    static float modelSolidColor[3] = {1.0f, 1.0f, 1.0f};
+  // Transform defaults
+  static float tpos[3] = {0, 0, 0};
+  static float trot[3] = {0, 0, 0};
+  static float tscale[3] = {1, 1, 1};
 
-    ImGui::Text("New Model");
-    ImGui::Separator();
-    ImGui::InputText("Name", modelName, 64);
+  // Model options
+  static char modelPath[256] = "";
+  static float modelOpacity = 1.0f;
+  static float modelSolidColor[3] = {1.0f, 1.0f, 1.0f};
+  static bool modelUseSolidTexture = false;
+
+  // Light options
+  static float lpos[3] = {0, 0, 0};
+  static float ldir[3] = {0, -1, 0};
+  static float lcolor[3] = {1, 1, 1};
+  static int ltype = 0;
+  static float lintensity = 1.0f;
+  static float lcut = 0.207911f;
+  static float louter = 0.139173f;
+
+  // Particle options
+  static char emitterName[64] = "Emitter";
+  static float ppos[3] = {0, 0, 0};
+  static float pemitRate = 40.0f;
+  static float plifetime = 2.0f;
+  static float pspeed = 2.0f;
+  static float pspread = 0.5f;
+  static float pstartCol[4] = {1, 0.8f, 0.2f, 1};
+  static float pendCol[4] = {1, 0, 0, 0};
+
+  // Camera options
+  static char camName[64] = "New Camera";
+  static float cpos[3] = {0, 0, 0};
+  static float cyaw = 0;
+  static float cpitch = 0;
+  static float cfov = 60.0f;
+  static bool cisActive = false;
+
+  ImGui::InputText("Name", entityName, 64);
+
+  ImGui::Separator();
+  ImGui::Checkbox("Model", &addModel);
+  ImGui::SameLine();
+  ImGui::Checkbox("Light", &addLight);
+  ImGui::SameLine();
+  ImGui::Checkbox("ParticleEmitter", &addParticle);
+  ImGui::SameLine();
+  ImGui::Checkbox("Camera", &addCamera);
+  ImGui::Checkbox("Collision (AABB)", &addCollision);
+
+  // Transform is mandatory
+  ImGui::Text("Transform");
+  ImGui::InputFloat3("Position##create", tpos);
+  ImGui::InputFloat3("Rotation##create", trot);
+  ImGui::InputFloat3("Scale##create", tscale);
+  ImGui::Separator();
+
+  if (addModel) {
+    ImGui::Text("Model");
     ImGui::InputText("Model Path", modelPath, 256);
     pickFileButton("pick_model_path", modelPath, 256, window);
-    ImGui::InputFloat3("Position", pos);
-    ImGui::InputFloat3("Rotation", rot);
-    ImGui::InputFloat3("Scale", scale);
-    ImGui::Separator();
     ImGui::DragFloat("Opacity##create", &modelOpacity, 0.01f, 0.0f, 1.0f, "%.2f");
     ImGui::ColorEdit3("Solid Color##create", modelSolidColor);
-
-    if (ImGui::Button("Create", ImVec2(120, 0))) {
-      uint32_t shaderHandle = resourceSystem.getMaterial(0).getShaderHandle();
-      Entity e =
-          sceneSystem.createModelEntity(modelName, modelPath, shaderHandle, glm::vec3(pos[0], pos[1], pos[2]),
-                                        glm::vec3(rot[0], rot[1], rot[2]), glm::vec3(scale[0], scale[1], scale[2]));
-      // Apply opacity and solid color
-      auto *modelComp = componentManager.getOrNil<Model>(e);
-      if (modelComp) {
-        modelComp->opacity = modelOpacity;
-        renderSystem.markBatchesDirty();
-        if (modelComp->materialHandles.size() > 0) {
-          auto &firstMat = resourceSystem.getMaterial(modelComp->materialHandles[0]);
-          if (!firstMat.hasDiffuseTexture()) {
-            resourceSystem.setSolidColor(e, -1, glm::vec3(modelSolidColor[0], modelSolidColor[1], modelSolidColor[2]));
-          }
-        }
-      }
-      formType = 0;
-      ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Back", ImVec2(120, 0)))
-      formType = 0;
-  } else if (formType == 2) {
-    static char lightName[64] = "";
-    static float pos[3] = {0, 0, 0};
-    static float dir[3] = {0, -1, 0};
-    static float color[3] = {1, 1, 1};
-    static int type = 0;
-    static float intensity = 1.0f;
-    static float cutOff = 0.207911f;
-    static float outerCutOff = 0.139173f;
-
-    ImGui::Text("New Light");
+    ImGui::Checkbox("Use Solid Texture", &modelUseSolidTexture);
     ImGui::Separator();
-    ImGui::InputText("Name##lf", lightName, 64);
-    ImGui::InputFloat3("Position##lf", pos);
-    ImGui::InputFloat3("Direction##lf", dir);
-    ImGui::ColorEdit3("Color##lf", color);
-    ImGui::Combo("Type##lf", &type, "Directional\0Point\0Spot\0");
-    ImGui::DragFloat("Intensity##lf", &intensity, 0.1f, 0.0f, 50.0f);
+  }
 
-    if (type == 2) {
-      ImGui::DragFloat("Cutoff##lf", &cutOff, 0.01f, 0.0f, glm::min(outerCutOff - 0.01f, 0.98f));
-      ImGui::DragFloat("Outer Cutoff##lf", &outerCutOff, 0.01f, cutOff + 0.01f, 0.98f);
+  if (addLight) {
+    ImGui::Text("Light");
+    ImGui::InputFloat3("Position##lf", lpos);
+    ImGui::InputFloat3("Direction##lf", ldir);
+    ImGui::ColorEdit3("Color##lf", lcolor);
+    ImGui::Combo("Type##lf", &ltype, "Directional\0Point\0Spot\0");
+    ImGui::DragFloat("Intensity##lf", &lintensity, 0.1f, 0.0f, 50.0f);
+    if (ltype == 2) {
+      ImGui::DragFloat("Cutoff##lf", &lcut, 0.01f, 0.0f, glm::min(louter - 0.01f, 0.98f));
+      ImGui::DragFloat("Outer Cutoff##lf", &louter, 0.01f, lcut + 0.01f, 0.98f);
     }
-
-    if (ImGui::Button("Create##lf", ImVec2(120, 0))) {
-      sceneSystem.createLightEntity(lightName, glm::vec3(pos[0], pos[1], pos[2]), glm::vec3(dir[0], dir[1], dir[2]),
-                                    glm::vec3(color[0], color[1], color[2]), static_cast<LightType>(type), intensity,
-                                    cutOff, outerCutOff);
-      memset(lightName, 0, sizeof(lightName));
-      pos[0] = pos[1] = pos[2] = 0;
-      dir[0] = 0;
-      dir[1] = -1;
-      dir[2] = 0;
-      color[0] = color[1] = color[2] = 1;
-      type = 0;
-      intensity = 1.0f;
-      cutOff = 0.207911f;
-      outerCutOff = 0.139173f;
-      formType = 0;
-      ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Back##lf", ImVec2(120, 0)))
-      formType = 0;
-  } else if (formType == 3) {
-    static char emitterName[64] = "Emitter";
-    static float pos[3] = {0, 0, 0};
-    static float emitRate = 40.0f;
-    static float lifetime = 2.0f;
-    static float speed = 2.0f;
-    static float spread = 0.5f;
-    static float startCol[4] = {1, 0.8f, 0.2f, 1};
-    static float endCol[4] = {1, 0, 0, 0};
-
-    ImGui::Text("New ParticleEmitter Emitter");
     ImGui::Separator();
+  }
+
+  if (addParticle) {
+    ImGui::Text("ParticleEmitter");
     ImGui::InputText("Name##pf", emitterName, 64);
-    ImGui::InputFloat3("Position##pf", pos);
-    ImGui::DragFloat("Emit Rate##pf", &emitRate, 1.0f, 1, 10000);
-    ImGui::DragFloat("Lifetime##pf", &lifetime, 0.1f, 0.1f, 100);
-    ImGui::DragFloat("Speed##pf", &speed, 0.1f, 0, 100);
-    ImGui::DragFloat("Spread##pf", &spread, 0.01f, 0, 10);
-    ImGui::ColorEdit4("Start Color##pf", startCol);
-    ImGui::ColorEdit4("End Color##pf", endCol);
-
-    if (ImGui::Button("Create##pf", ImVec2(120, 0))) {
-      Entity e = entityManager.createEntity();
-      componentManager.addInPlace<Name>(e, std::string(emitterName));
-      componentManager.addInPlace<Transform>(e, glm::vec3(pos[0], pos[1], pos[2]), glm::vec3(0), glm::vec3(1));
-      auto &p = componentManager.addInPlace<ParticleEmitter>(e);
-      p.emitRate = emitRate;
-      p.particleLifetime = lifetime;
-      p.speed = speed;
-      p.spread = spread;
-      p.startColor = glm::vec4(startCol[0], startCol[1], startCol[2], startCol[3]);
-      p.endColor = glm::vec4(endCol[0], endCol[1], endCol[2], endCol[3]);
-
-      memset(emitterName, 0, sizeof(emitterName));
-      std::strncpy(emitterName, "Emitter", sizeof(emitterName));
-      pos[0] = pos[1] = pos[2] = 0;
-      emitRate = 40;
-      lifetime = 2;
-      speed = 2;
-      spread = 0.5f;
-      startCol[0] = 1;
-      startCol[1] = 0.8f;
-      startCol[2] = 0.2f;
-      startCol[3] = 1;
-      endCol[0] = 1;
-      endCol[1] = 0;
-      endCol[2] = 0;
-      endCol[3] = 0;
-      formType = 0;
-      ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Back##pf", ImVec2(120, 0)))
-      formType = 0;
-  } else if (formType == 4) {
-    static char emitterName[64] = "New Camera";
-    static float position[3] = {0, 0, 0};
-    static float yaw = 0;
-    static float pitch = 0;
-    static float fov = 60.0f;
-    static bool isActive = false;
-
-    ImGui::Text("New Camera");
+    ImGui::InputFloat3("Position##pf", ppos);
+    ImGui::DragFloat("Emit Rate##pf", &pemitRate, 1.0f, 1, 10000);
+    ImGui::DragFloat("Lifetime##pf", &plifetime, 0.1f, 0.1f, 100);
+    ImGui::DragFloat("Speed##pf", &pspeed, 0.1f, 0, 100);
+    ImGui::DragFloat("Spread##pf", &pspread, 0.01f, 0, 10);
+    ImGui::ColorEdit4("Start Color##pf", pstartCol);
+    ImGui::ColorEdit4("End Color##pf", pendCol);
     ImGui::Separator();
-    ImGui::InputText("Name##cf", emitterName, 64);
-    ImGui::InputFloat3("Position##cf", position);
-    ImGui::InputFloat("Yaw##cf", &yaw);
-    ImGui::InputFloat("Pitch##cf", &pitch);
-    ImGui::SliderFloat("FOV##cf", &fov, 30.0f, 120.0f);
-    ImGui::Checkbox("Active##cf", &isActive);
+  }
 
-    if (ImGui::Button("Create##cf", ImVec2(120, 0))) {
-      sceneSystem.createCameraEntity(std::string(emitterName), glm::vec3(position[0], position[1], position[2]), yaw,
-                                     pitch, fov, isActive);
-      position[0] = position[1] = position[2] = 0;
-      yaw = 0;
-      pitch = 0;
-      fov = 60.0f;
-      isActive = true;
-      formType = 0;
-      ImGui::CloseCurrentPopup();
+  if (addCamera) {
+    ImGui::Text("Camera");
+    ImGui::InputText("Name##cf", camName, 64);
+    ImGui::InputFloat3("Position##cf", cpos);
+    ImGui::InputFloat("Yaw##cf", &cyaw);
+    ImGui::InputFloat("Pitch##cf", &cpitch);
+    ImGui::SliderFloat("FOV##cf", &cfov, 30.0f, 120.0f);
+    ImGui::Checkbox("Active##cf", &cisActive);
+    ImGui::Separator();
+  }
+
+  if (ImGui::Button("Create", ImVec2(120, 0))) {
+    const std::string finalName = entityName[0] != '\0' ? std::string(entityName) : std::string("Entity");
+    auto builder = engine.entities().create(finalName);
+    const bool createModel = addModel && modelPath[0] != '\0';
+
+    // Transform is mandatory
+    builder.withTransform(glm::vec3(tpos[0], tpos[1], tpos[2]), glm::vec3(trot[0], trot[1], trot[2]),
+                          glm::vec3(tscale[0], tscale[1], tscale[2]));
+
+    // Model
+    if (createModel) {
+      uint32_t shaderHandle = resourceSystem.getMaterial(0).getShaderHandle();
+      builder.withModel(modelPath, glm::vec3(tpos[0], tpos[1], tpos[2]), glm::vec3(trot[0], trot[1], trot[2]),
+                        glm::vec3(tscale[0], tscale[1], tscale[2]), shaderHandle);
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Back##cf", ImVec2(120, 0)))
-      formType = 0;
+
+    // Light
+    if (addLight) {
+      builder.withComponent<Light>(static_cast<LightType>(ltype), glm::vec3(lpos[0], lpos[1], lpos[2]),
+                                   glm::vec3(ldir[0], ldir[1], ldir[2]), glm::vec3(lcolor[0], lcolor[1], lcolor[2]),
+                                   lintensity, lcut, louter);
+    }
+
+    // Particle
+    if (addParticle) {
+      builder.withComponent<ParticleEmitter>();
+    }
+
+    // Collision
+    if (addCollision) {
+      builder.withCollision(glm::vec3(tscale[0], tscale[1], tscale[2]));
+    }
+
+    // Camera
+    if (addCamera) {
+      builder.withComponent<Camera>();
+    }
+
+    Entity e = builder.build();
+
+    if (createModel) {
+      auto &model = componentManager.getOrThrow<Model>(e);
+      model.opacity = modelOpacity;
+      renderSystem.markBatchesDirty();
+      if (modelUseSolidTexture) {
+        resourceSystem.setSolidColor(e, -1, glm::vec3(modelSolidColor[0], modelSolidColor[1], modelSolidColor[2]));
+      }
+    }
+
+    if (addLight) {
+      systemManager.getSystem<LightSystem>().createLight(e);
+    }
+
+    if (addParticle) {
+      auto &p = componentManager.getOrThrow<ParticleEmitter>(e);
+      p.emitRate = pemitRate;
+      p.particleLifetime = plifetime;
+      p.speed = pspeed;
+      p.spread = pspread;
+      p.startColor = glm::vec4(pstartCol[0], pstartCol[1], pstartCol[2], pstartCol[3]);
+      p.endColor = glm::vec4(pendCol[0], pendCol[1], pendCol[2], pendCol[3]);
+    }
+
+    if (addCamera) {
+      auto &cam = componentManager.getOrThrow<Camera>(e);
+      cam.position = glm::vec3(cpos[0], cpos[1], cpos[2]);
+      cam.yaw = cyaw;
+      cam.pitch = cpitch;
+      cam.fov = cfov;
+      if (cisActive)
+        systemManager.getSystem<CameraSystem>().setActiveCamera(e);
+    }
+
+    selectedEntity = e;
+
+    // Reset some fields
+    memset(entityName, 0, sizeof(entityName));
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    ImGui::CloseCurrentPopup();
   }
 
   ImGui::EndPopup();

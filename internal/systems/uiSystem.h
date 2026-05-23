@@ -7,6 +7,7 @@
 class EntityManager;
 class SystemManager;
 class ComponentManager;
+class Engine;
 class SceneSystem;
 class ResourceSystem;
 class RenderSystem;
@@ -21,7 +22,8 @@ public:
 
   void beginFrame();
   void update(SystemManager &systemManager);
-  void render(EntityManager &entityManager, SystemManager &systemManager, ComponentManager &componentManager);
+  void render(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
+              ComponentManager &componentManager);
   void endFrame();
 
 private:
@@ -29,11 +31,12 @@ private:
   void pickFileButton(const char *id, char *buf, int bufSize, SDL_Window *window,
                       const SDL_DialogFileFilter *filters = nullptr, int nfilters = 0);
 
-  void renderCameraInspector(Entity entity, SystemManager &systemManager, ComponentManager &componentManager,
+  bool renderCameraInspector(Entity entity, SystemManager &systemManager, ComponentManager &componentManager,
                              ResourceSystem &resourceSystem, SDL_Window *window);
-  void renderParticleInspector(Entity entity, ComponentManager &componentManager);
-  void renderMaterialInspector(Entity entity, ComponentManager &componentManager, ResourceSystem &resourceSystem,
+  bool renderParticleInspector(Entity entity, ComponentManager &componentManager);
+  bool renderMaterialInspector(Entity entity, ComponentManager &componentManager, ResourceSystem &resourceSystem,
                                RenderSystem &renderSystem, SDL_Window *window);
-  void renderAddEntityPopup(SceneSystem &sceneSystem, EntityManager &entityManager, ComponentManager &componentManager,
-                            ResourceSystem &resourceSystem, RenderSystem &renderSystem, SDL_Window *window);
+  void renderAddEntityPopup(Engine &engine, SceneSystem &sceneSystem, SystemManager &systemManager,
+                            ComponentManager &componentManager, ResourceSystem &resourceSystem,
+                            RenderSystem &renderSystem, SDL_Window *window);
 };
