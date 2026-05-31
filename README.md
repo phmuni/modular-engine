@@ -180,18 +180,18 @@ class MyApp : public App {
     Entity player;
 
     void setup(Engine& engine) override {
-        // Create player entity
-        player = engine.createModelEntity(
-            "Player",
-            EngineConfig::MODEL_BOX,
-            glm::vec3(0.0f),   // position
-            glm::vec3(0.0f),   // rotation
-            glm::vec3(1.0f)    // scale
-        );
-
-        // Apply solid color to player
-        engine.setSolidColor(player, glm::vec3(0.2f, 0.8f, 1.0f));
-        engine.setEmission(player, glm::vec3(0.2f, 0.8f, 1.0f), 1.5f);
+        // Create player entity with the entity builder
+        player = engine.entities()
+            .create("Player")
+            .withModel(
+                EngineConfig::MODEL_BOX,
+                glm::vec3(0.0f),   // position
+                glm::vec3(0.0f),   // rotation
+                glm::vec3(1.0f)    // scale
+            )
+            .withSolidColor(glm::vec3(0.2f, 0.8f, 1.0f))
+            .withEmission(glm::vec3(0.2f, 0.8f, 1.0f), 1.5f)
+            .build();
 
         // Create directional light (Sun)
         engine.createLightEntity(
@@ -250,9 +250,11 @@ struct Velocity {
 };
 
 // Create entity and add components
-Entity e = engine.createEntity();
-engine.addComponent<Health>(e, 3, 3);
-engine.addComponent<Velocity>(e, glm::vec3(1, 0, 0), 2.0f);
+Entity e = engine.entities()
+    .create("Enemy")
+    .withComponent<Health>(3, 3)
+    .withComponent<Velocity>(glm::vec3(1, 0, 0), 2.0f)
+    .build();
 
 // Query and modify components
 auto& health = engine.getOrThrow<Health>(e);
