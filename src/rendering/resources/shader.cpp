@@ -6,6 +6,7 @@
 #include <fstream>
 #include <glm/gtc/type_ptr.hpp>
 #include <sstream>
+#include <vector>
 
 Shader::Shader(std::string_view vertexFile, std::string_view fragmentFile) {
   m_shaderID = createShaderProgram(vertexFile.data(), fragmentFile.data());

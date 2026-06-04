@@ -4,6 +4,9 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <map>
+#include <string>
+#include <string_view>
+#include <utility>
 
 class Shader {
 private:

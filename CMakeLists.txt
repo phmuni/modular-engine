@@ -61,6 +61,11 @@ target_link_libraries(engine
     nlohmann_json::nlohmann_json
 )
 
+# Suppress MSVC deprecation warnings for legacy C functions in third-party headers
+if(MSVC)
+  target_compile_definitions(engine PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
 # --- OpenGL por plataforma ---
 if(WIN32)
     target_link_libraries(engine opengl32)
