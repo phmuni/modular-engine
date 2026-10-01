@@ -84,10 +84,9 @@ The engine is built on the **Entity-Component-System (ECS)** pattern, which sepa
 
 | Directory   | Purpose                                             |
 | ----------- | --------------------------------------------------- |
-| `src/`      | Implementation files for all systems and components |
-| `internal/` | Header files defining interfaces and structures     |
+| `src/`      | Source and header files organized by engine module  |
 | `external/` | Third-party dependencies and libraries              |
-| `assets/`   | Game assets — models, shaders, textures, sounds     |
+| `assets/`   | Game assets — models, shaders, textures, sounds    |
 
 ---
 
@@ -123,15 +122,11 @@ All dependencies are included in the `external/` directory. See `CMakeLists.txt`
 
 ```
 modular-engine/
-├── src/                        # Implementation files
-│   ├── foundation/             # Core engine functionality
-│   ├── rendering/              # Rendering backend
-│   └── systems/                # ECS system logic
-├── internal/                   # Header files and interfaces
-│   ├── components/             # Component definitions
-│   ├── foundation/             # Core structures and interfaces
-│   ├── rendering/              # Renderer interfaces and API
-│   └── systems/                # System interfaces
+├── src/                        # Source and header files
+│   ├── components/             # ECS component definitions
+│   ├── foundation/             # Core engine and ECS functionality
+│   ├── rendering/              # Renderer and resource implementations
+│   └── systems/                # ECS system implementations
 ├── external/                   # Third-party dependencies
 ├── assets/                     # Models, shaders, textures
 ├── bin/                        # Compiled binaries
@@ -295,7 +290,7 @@ engine.setTexture(entity, "path/to/texture.png", TextureSlot::Diffuse, 0);
 engine.setShininess(entity, 32.0f);
 ```
 
-For direct ResourceSystem access and full API reference, explore [`internal/rendering/resources/resourceSystem.h`](internal/rendering/resources/resourceSystem.h).
+For direct ResourceSystem access and full API reference, explore [`src/systems/resourceSystem.h`](src/systems/resourceSystem.h).
 
 ---
 

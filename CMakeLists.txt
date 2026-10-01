@@ -50,7 +50,7 @@ add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE})
 
 # --- Include directories ---
 target_include_directories(engine PRIVATE
-    ${CMAKE_SOURCE_DIR}/internal
+  ${CMAKE_SOURCE_DIR}/src
     ${EXTERNAL_DIR}
 )
 
@@ -61,7 +61,6 @@ target_link_libraries(engine
     nlohmann_json::nlohmann_json
 )
 
-# Suppress MSVC deprecation warnings for legacy C functions in third-party headers
 if(MSVC)
   target_compile_definitions(engine PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
