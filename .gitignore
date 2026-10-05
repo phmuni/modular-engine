@@ -17,12 +17,14 @@ exclude/
 assets/models/*
 !assets/models/box/
 !assets/models/spaceship/
+!assets/models/alien/
 
 # Temporary files
 *.log
 *.obj
 !assets/models/box/*.obj
 !assets/models/spaceship/*.obj
+!assets/models/alien/*.glb
 
 # IDEs
 .vscode/

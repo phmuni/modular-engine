@@ -67,7 +67,7 @@ struct InvaderGroup {
 
   int rows = 3;
   int cols = 6;
-  float spacing = 1.8f;
+  float spacing = 2.4f;
   glm::vec3 scale = {1.1f, 0.5f, 1.1f};
   float baseSpeed = 2.5f;
   float maxSpeed = 12.0f;
@@ -78,7 +78,7 @@ struct InvaderGroup {
   float bulletSpeed = 10.0f;
 };
 
-class SpaceInvadersApp : public App {
+class SpaceAliens : public App {
   Entity player = -1;
   Entity starfield = -1;
   Entity gameManager = -1;
@@ -89,7 +89,7 @@ class SpaceInvadersApp : public App {
   // Returns a color interpolated from purple (first row) to red (last row).
   // The gradient is stretched by `spread` so the transition to red happens later.
   glm::vec3 rowColor(int row, int totalRows) const {
-    glm::vec3 purple = {0.55f, 0.10f, 0.75f};
+    glm::vec3 purple = {0.2f, 0.8f, 0.2f};
     glm::vec3 red = {1.00f, 0.08f, 0.08f};
     if (totalRows <= 1)
       return purple;
@@ -331,7 +331,7 @@ class SpaceInvadersApp : public App {
       Entity invader =
           engine.entities()
               .create("Invader")
-              .withModel(EngineConfig::MODEL_BOX, glm::vec3(0.0f), glm::vec3(0.0f), ig.scale)
+              .withModel("../assets/models/alien/alien.glb", glm::vec3(0.0f), glm::vec3(-90.0f), ig.scale)
               .withCollision(ig.scale)
               .withSolidColor(slot.color)
               .withComponent<Invader>(true, slot.color, slot.scoreValue, static_cast<int>(ig.nextInvaderIndex), -1)
@@ -522,7 +522,7 @@ int main() {
   Engine engine;
   if (!engine.initialize())
     return 1;
-  SpaceInvadersApp application;
+  SpaceAliens application;
   engine.run(application);
   return 0;
 }
