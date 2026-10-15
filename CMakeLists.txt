@@ -78,5 +78,8 @@ endif()
 
 # --- Post-build ---
 add_custom_command(TARGET engine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:SDL3::SDL3>"
+        "$<TARGET_FILE_DIR:engine>"
     COMMAND ${CMAKE_COMMAND} -E echo "Build completed! Executable: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/engine${CMAKE_EXECUTABLE_SUFFIX}"
 )
