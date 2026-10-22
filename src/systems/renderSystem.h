@@ -11,7 +11,7 @@ class ResourceSystem;
 
 class RenderSystem : public BaseSystem {
 public:
-  void renderPipeline(SystemManager &systemManager, EntityManager &entityManager, ComponentManager &componentManager);
+  void renderPipeline(SystemManager &systemManager, ComponentManager &componentManager);
   Renderer &getRenderer();
   void setShadowShaderHandle(uint32_t handle);
   void markBatchesDirty();

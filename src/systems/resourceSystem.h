@@ -44,17 +44,14 @@ public:
   uint32_t loadMesh(std::string_view path);
   ModelLoadResult loadModel(std::string_view path, uint32_t shaderHandle);
   Mesh &getMesh(uint32_t handle);
-  void unloadMesh(uint32_t handle);
 
   // Shader
   uint32_t loadShader(std::string_view vertexPath, std::string_view fragmentPath);
   Shader &getShader(uint32_t handle);
-  void unloadShader(uint32_t handle);
 
   // Material
   uint32_t createMaterial(uint32_t shaderHandle);
   Material &getMaterial(uint32_t handle);
-  void unloadMaterial(uint32_t handle);
 
   // Material helpers
   void ensureOwnMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles);

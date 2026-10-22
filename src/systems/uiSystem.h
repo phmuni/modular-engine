@@ -27,6 +27,9 @@ public:
   void endFrame();
 
 private:
+  void renderSceneExplorer(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  void renderPropertiesPanel(SystemManager &systemManager, ComponentManager &componentManager);
+
   static void fileDialogCallback(void *userdata, const char *const *filelist, int filter);
   void pickFileButton(const char *id, char *buf, int bufSize, SDL_Window *window,
                       const SDL_DialogFileFilter *filters = nullptr, int nfilters = 0);

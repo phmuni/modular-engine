@@ -3,7 +3,6 @@
 *.lib
 *.so
 *.dll
-!external/**/*.dll
 
 # Build directories
 /build/
@@ -11,9 +10,8 @@
 /bin/
 exclude/
 .cache/
-!external/**/bin/
 
-# Assets: include only box model
+# Assets: only the models used by the engine are tracked
 assets/models/*
 !assets/models/box/
 !assets/models/spaceship/

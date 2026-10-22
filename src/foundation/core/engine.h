@@ -113,14 +113,11 @@ public:
   void setState(Toggle toggle, bool value);
 
   // Material utilities
-  void setEmission(Entity entity, int submesh, glm::vec3 color, float strength);
-  void setEmission(Entity entity, glm::vec3 color, float strength);
-  void setTexture(Entity entity, int submesh, TextureSlot slot, std::string_view path);
-  void setTexture(Entity entity, TextureSlot slot, std::string_view path);
-  void setShininess(Entity entity, int submesh, float shininess);
-  void setShininess(Entity entity, float shininess);
-  void setSolidColor(Entity entity, int submesh, glm::vec3 color);
-  void setSolidColor(Entity entity, glm::vec3 color);
+  // `submesh` of -1 applies to every submesh of the entity.
+  void setEmission(Entity entity, glm::vec3 color, float strength, int submesh = -1);
+  void setTexture(Entity entity, TextureSlot slot, std::string_view path, int submesh = -1);
+  void setShininess(Entity entity, float shininess, int submesh = -1);
+  void setSolidColor(Entity entity, glm::vec3 color, int submesh = -1);
 
 private:
   float m_screenWidth;

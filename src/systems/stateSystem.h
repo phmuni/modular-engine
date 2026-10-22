@@ -1,16 +1,8 @@
 #pragma once
 // State system for managing global toggles like wireframe mode, cursor lock, and camera movement.
 
+#include "foundation/core/toggle.h"
 #include "foundation/ecs/systemManager.h"
-
-enum class Toggle {
-  CameraMovement,
-  CameraFly,
-  CursorLock,
-  Wireframe,
-  ShowUI,
-  Shadows,
-};
 
 class StateSystem : public BaseSystem {
 public:

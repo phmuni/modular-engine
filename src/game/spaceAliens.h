@@ -1,82 +1,16 @@
-
-// Main entry point for the application. Sets up the engine and runs the main loop with the provided application logic.
+#pragma once
+// Space Aliens example game built on top of the engine.
 
 #include "components/particleEmitter.h"
 #include "components/transform.h"
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
+#include "game/components.h"
 #include "systems/collisionSystem.h"
 #include "systems/inputSystem.h"
 #include "systems/sceneSystem.h"
 #include <random>
 #include <unordered_set>
-
-struct InvaderSlot {
-  glm::vec3 color;
-  int scoreValue;
-};
-
-struct Bullet {
-  glm::vec3 velocity;
-  float ttl;
-  bool friendly;
-};
-
-struct Invader {
-  bool alive;
-  glm::vec3 color;
-  int scoreValue;
-  int pathIndex;
-  int currentRow = -1;
-};
-
-struct Explosion {
-  float emitTimer;
-  float ttl;
-};
-
-struct GameState {
-  int score = 0;
-  int lives = 3;
-  bool gameOver = false;
-  bool playerWon = false;
-  float restartTimer = 0.0f;
-};
-
-struct Player {
-  float velocityX = 0.0f;
-  float tilt = 0.0f;
-  float flashTimer = 0.0f;
-  float hitCooldown = 0.0f;
-  float shootTimer = 0.0f;
-
-  float acceleration = 80.0f;
-  float friction = 10.0f;
-  float maxSpeed = 18.0f;
-  float bounds = 12.0f;
-  float shootCooldown = 0.5f;
-  float bulletSpeed = 28.0f;
-  float hitInvincibility = 1.8f;
-};
-
-struct InvaderGroup {
-  std::vector<InvaderSlot> invaderSlots;
-  size_t nextInvaderIndex = 0;
-  float headPathDistance = 0.0f;
-  float enemyShootTimer = 1.0f;
-
-  int rows = 3;
-  int cols = 6;
-  float spacing = 2.4f;
-  glm::vec3 scale = {1.1f, 0.5f, 1.1f};
-  float baseSpeed = 2.5f;
-  float maxSpeed = 12.0f;
-  float stepDown = 1.5f;
-
-  float shootCooldownMin = 0.6f;
-  float shootCooldownMax = 2.0f;
-  float bulletSpeed = 10.0f;
-};
 
 class SpaceAliens : public App {
   Entity player = -1;
@@ -193,7 +127,7 @@ class SpaceAliens : public App {
 
   void spawnBullet(Engine &engine, const glm::vec3 &pos, const glm::vec3 &vel, bool friendly) {
     const glm::vec3 scale = friendly ? glm::vec3(0.12f, 0.12f, 1.2f) : glm::vec3(0.22f, 0.22f, 0.70f);
-    Entity bullet = engine.entities()
+    engine.entities()
                         .create(friendly ? "PlayerBullet" : "EnemyBullet")
                         .withModel(EngineConfig::MODEL_BOX, pos, glm::vec3(0.0f), scale)
                         .withCollision(scale)
@@ -209,6 +143,16 @@ class SpaceAliens : public App {
     for (int r = 0; r < ig.rows; ++r)
       for (int c = 0; c < ig.cols; ++c)
         ig.invaderSlots.push_back({rowColor(r, ig.rows), rowScore(r, ig)});
+  }
+
+  float invaderSpeed(const InvaderGroup &ig, int activeInvaders) const {
+    if (ig.invaderSlots.empty())
+      return ig.baseSpeed;
+
+    const float aliveFraction =
+        glm::clamp(static_cast<float>(activeInvaders) / static_cast<float>(ig.invaderSlots.size()), 0.0f, 1.0f);
+    const float acceleration = 1.0f - aliveFraction;
+    return glm::mix(ig.baseSpeed, ig.maxSpeed, acceleration * acceleration);
   }
 
   void resetGame(Engine &engine) {
@@ -236,7 +180,7 @@ class SpaceAliens : public App {
     tf.position = glm::vec3(0.0f, 0.0f, 8.0f);
     tf.rotation = glm::vec3(0.0f);
 
-    engine.setEmission(player, -1, glm::vec3(1.0f, 0.90f, 0.20f), 0.0f);
+    engine.setEmission(player, glm::vec3(1.0f, 0.90f, 0.20f), 0.0f);
 
     state = GameState{};
   }
@@ -294,9 +238,9 @@ class SpaceAliens : public App {
       state.gameOver = true;
       state.playerWon = false;
       state.restartTimer = 3.5f;
-      engine.setEmission(player, -1, glm::vec3(1.0f, 0.1f, 0.1f), 3.0f);
+      engine.setEmission(player, glm::vec3(1.0f, 0.1f, 0.1f), 3.0f);
     } else {
-      engine.setEmission(player, -1, glm::vec3(1.0f, 0.5f, 0.2f), 4.0f);
+      engine.setEmission(player, glm::vec3(1.0f, 0.5f, 0.2f), 4.0f);
     }
   }
 
@@ -320,16 +264,16 @@ class SpaceAliens : public App {
       return;
     }
 
-    float fractionAlive = allSpawned ? static_cast<float>(totalAlive) / (ig.rows * ig.cols) : 1.0f;
-    float speedT = 1.0f - glm::clamp(fractionAlive, 0.0f, 1.0f);
-    ig.headPathDistance += glm::mix(ig.baseSpeed, ig.maxSpeed, speedT * speedT) * deltaTime;
+    const float fractionAlive =
+        glm::clamp(static_cast<float>(totalAlive) / static_cast<float>(ig.invaderSlots.size()), 0.0f, 1.0f);
+    const float shootingFractionAlive = allSpawned ? fractionAlive : 1.0f;
+    ig.headPathDistance += invaderSpeed(ig, totalAlive) * deltaTime;
 
     while (ig.nextInvaderIndex < ig.invaderSlots.size()) {
       if (ig.headPathDistance < static_cast<float>(ig.nextInvaderIndex) * ig.spacing)
         break;
       const auto &slot = ig.invaderSlots[ig.nextInvaderIndex];
-      Entity invader =
-          engine.entities()
+      engine.entities()
               .create("Invader")
               .withModel("../assets/models/alien/alien.glb", glm::vec3(0.0f), glm::vec3(-90.0f), ig.scale)
               .withCollision(ig.scale)
@@ -360,7 +304,7 @@ class SpaceAliens : public App {
         inv.currentRow = newRow;
         glm::vec3 newColor = rowColor(newRow, ig.rows);
         inv.color = newColor;
-        engine.setSolidColor(e, -1, newColor);
+        engine.setSolidColor(e, newColor);
       }
     });
 
@@ -369,7 +313,7 @@ class SpaceAliens : public App {
       Entity shooter = aliveEntities[std::uniform_int_distribution<size_t>(0, aliveEntities.size() - 1)(rng)];
       auto &tf = engine.getOrThrow<Transform>(shooter);
       spawnBullet(engine, tf.position + glm::vec3(0.0f, 0.0f, 1.0f), {0.0f, 0.0f, ig.bulletSpeed}, false);
-      float aggressionScale = glm::mix(0.25f, 1.0f, fractionAlive);
+      float aggressionScale = glm::mix(0.25f, 1.0f, shootingFractionAlive);
       ig.enemyShootTimer =
           std::uniform_real_distribution<float>(ig.shootCooldownMin, ig.shootCooldownMax)(rng) * aggressionScale;
     }
@@ -466,9 +410,9 @@ class SpaceAliens : public App {
 
     if (pData.hitCooldown > 0.0f) {
       float blink = glm::sin(pData.hitCooldown * 24.0f) * 0.5f + 0.5f;
-      engine.setEmission(player, -1, glm::vec3(0.2f, 0.2f, 0.2f), 0.8f + blink * 5.0f);
+      engine.setEmission(player, glm::vec3(0.2f, 0.2f, 0.2f), 0.8f + blink * 5.0f);
     } else {
-      engine.setEmission(player, -1, glm::vec3(0.0f), 0.0f);
+      engine.setEmission(player, glm::vec3(0.0f), 0.0f);
     }
   }
 
@@ -503,7 +447,7 @@ public:
       state.restartTimer -= deltaTime;
       if (state.playerWon) {
         float blink = glm::sin(state.restartTimer * 12.0f) * 0.5f + 0.5f;
-        engine.setEmission(player, -1, glm::vec3(0.15f, 1.0f, 0.2f), 1.2f + blink * 5.0f);
+        engine.setEmission(player, glm::vec3(0.15f, 1.0f, 0.2f), 1.2f + blink * 5.0f);
       }
       if (state.restartTimer <= 0.0f)
         resetGame(engine);
@@ -517,12 +461,3 @@ public:
     updatePlayerEmission(engine, deltaTime);
   }
 };
-
-int main() {
-  Engine engine;
-  if (!engine.initialize())
-    return 1;
-  SpaceAliens application;
-  engine.run(application);
-  return 0;
-}

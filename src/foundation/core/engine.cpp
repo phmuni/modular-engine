@@ -1,4 +1,3 @@
-
 // Core engine class managing the main loop, system registration, and resource loading.
 
 #include "foundation/core/engine.h"
@@ -59,12 +58,8 @@ Entity Engine::EntityBuilder::build() {
   if (!m_entity) {
     if (m_model) {
       const auto &model = *m_model;
-      if (model.shaderHandle != 0) {
-        m_entity = m_engine.createModelEntity(m_name, model.path, model.position, model.rotation, model.scale,
-                                              model.shaderHandle);
-      } else {
-        m_entity = m_engine.createModelEntity(m_name, model.path, model.position, model.rotation, model.scale);
-      }
+      m_entity = m_engine.createModelEntity(m_name, model.path, model.position, model.rotation, model.scale,
+                                            model.shaderHandle);
     } else {
       m_entity = m_engine.createEntity();
       m_engine.addComponent<Name>(*m_entity, m_name);
@@ -87,9 +82,7 @@ bool Engine::initialize() {
 
   Logger::setLevel(Logger::Level::Info);
 
-  loadResources();
-
-  return true;
+  return loadResources();
 }
 
 void Engine::run(App &app) {
@@ -169,7 +162,7 @@ void Engine::render() {
 
   uiSystem.beginFrame();
 
-  renderSystem.renderPipeline(m_systemManager, m_entityManager, m_componentManager);
+  renderSystem.renderPipeline(m_systemManager, m_componentManager);
 
   uiSystem.render(*this, m_entityManager, m_systemManager, m_componentManager);
 
@@ -205,29 +198,21 @@ void Engine::setState(Toggle toggle, bool value) {
   stateSystem.setToggle(toggle, value);
 }
 
-void Engine::setEmission(Entity entity, int submesh, glm::vec3 color, float strength) {
+void Engine::setEmission(Entity entity, glm::vec3 color, float strength, int submesh) {
   m_systemManager.getSystem<ResourceSystem>().setEmission(entity, submesh, color, strength);
 }
 
-void Engine::setEmission(Entity entity, glm::vec3 color, float strength) { setEmission(entity, -1, color, strength); }
-
-void Engine::setTexture(Entity entity, int submesh, TextureSlot slot, std::string_view path) {
+void Engine::setTexture(Entity entity, TextureSlot slot, std::string_view path, int submesh) {
   m_systemManager.getSystem<ResourceSystem>().setTexture(entity, submesh, slot, path);
 }
 
-void Engine::setTexture(Entity entity, TextureSlot slot, std::string_view path) { setTexture(entity, -1, slot, path); }
-
-void Engine::setShininess(Entity entity, int submesh, float shininess) {
+void Engine::setShininess(Entity entity, float shininess, int submesh) {
   m_systemManager.getSystem<ResourceSystem>().setShininess(entity, submesh, shininess);
 }
 
-void Engine::setShininess(Entity entity, float shininess) { setShininess(entity, -1, shininess); }
-
-void Engine::setSolidColor(Entity entity, int submesh, glm::vec3 color) {
+void Engine::setSolidColor(Entity entity, glm::vec3 color, int submesh) {
   m_systemManager.getSystem<ResourceSystem>().setSolidColor(entity, submesh, color);
 }
-
-void Engine::setSolidColor(Entity entity, glm::vec3 color) { setSolidColor(entity, -1, color); }
 
 SystemManager &Engine::getSystemManager() { return m_systemManager; }
 ComponentManager &Engine::getComponentManager() { return m_componentManager; }

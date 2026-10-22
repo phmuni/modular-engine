@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 project(modular-engine C CXX)
 
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
@@ -41,9 +41,10 @@ endforeach()
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
 # --- Source files ---
-file(GLOB_RECURSE SOURCE_FILES "${CMAKE_SOURCE_DIR}/src/*.cpp")
+file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp")
 file(GLOB GLAD_SOURCE "${EXTERNAL_DIR}/glad/*.cpp")
 file(GLOB IMGUI_SOURCE "${EXTERNAL_DIR}/imgui/*.cpp")
+list(FILTER IMGUI_SOURCE EXCLUDE REGEX "imgui_demo\\.cpp$")
 
 # --- Executable ---
 add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE})
@@ -51,7 +52,7 @@ add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE})
 # --- Include directories ---
 target_include_directories(engine PRIVATE
   ${CMAKE_SOURCE_DIR}/src
-    ${EXTERNAL_DIR}
+  ${EXTERNAL_DIR}
 )
 
 # --- Link libraries ---

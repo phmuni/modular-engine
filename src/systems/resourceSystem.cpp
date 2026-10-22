@@ -99,21 +99,6 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
   return result;
 }
 
-void ResourceSystem::unloadMesh(uint32_t handle) {
-  auto it = m_meshes.find(handle);
-  if (it == m_meshes.end()) {
-    LOG_W("[ResourceSystem] Failed to unload mesh %u", handle);
-    return;
-  }
-  for (auto cit = m_meshCache.begin(); cit != m_meshCache.end(); ++cit) {
-    if (cit->second == handle) {
-      m_meshCache.erase(cit);
-      break;
-    }
-  }
-  m_meshes.erase(it);
-}
-
 GLuint ResourceSystem::loadTexture(std::string_view path) {
   std::string normalized = PathUtils::normalizeSeparators(std::string(path));
   std::string key = std::string(PathUtils::stripExtension(normalized));
@@ -139,15 +124,6 @@ Material &ResourceSystem::getMaterial(uint32_t handle) {
   return *it->second;
 }
 
-void ResourceSystem::unloadMaterial(uint32_t handle) {
-  if (handle == 0) {
-    LOG_W("[ResourceSystem] Cannot unload default material");
-    return;
-  }
-  if (m_materials.erase(handle) == 0)
-    LOG_W("[ResourceSystem] Failed to unload material %u", handle);
-}
-
 uint32_t ResourceSystem::loadShader(std::string_view vertexPath, std::string_view fragmentPath) {
   auto shader = std::make_unique<Shader>(vertexPath, fragmentPath);
   if (shader->getShaderID() == 0)
@@ -162,11 +138,6 @@ Shader &ResourceSystem::getShader(uint32_t handle) {
   auto it = m_shaders.find(handle);
   assert(it != m_shaders.end() && "Invalid shader handle");
   return *it->second;
-}
-
-void ResourceSystem::unloadShader(uint32_t handle) {
-  if (m_shaders.erase(handle) == 0)
-    LOG_W("[ResourceSystem] Failed to unload shader %u", handle);
 }
 
 void ResourceSystem::ensureOwnMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles) {

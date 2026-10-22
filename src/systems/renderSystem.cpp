@@ -1,4 +1,3 @@
-
 #include "systems/renderSystem.h"
 #include "components/hidden.h"
 #include "components/light.h"
@@ -21,6 +20,11 @@ struct TransparentDraw {
   uint32_t shaderHandle;
 };
 
+// Entities without a Transform or marked Hidden are never drawn.
+bool isHidden(ComponentManager &componentManager, Entity entity) {
+  return componentManager.containsComponent<Hidden>(entity) || !componentManager.containsComponent<Transform>(entity);
+}
+
 constexpr float kSoftOpacityEnter = 0.95f;
 constexpr float kSoftOpacityExit = 0.90f;
 } // namespace
@@ -33,13 +37,7 @@ void RenderSystem::rebuildRenderBatches(ComponentManager &componentManager, Reso
   m_renderBatches.clear();
 
   componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
-    if (componentManager.containsComponent<Hidden>(entity))
-      return;
-
-    if (!componentManager.containsComponent<Transform>(entity))
-      return;
-
-    if (model.opacity < kSoftOpacityEnter)
+    if (isHidden(componentManager, entity) || model.opacity < kSoftOpacityEnter)
       return;
 
     const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
@@ -54,8 +52,7 @@ void RenderSystem::rebuildRenderBatches(ComponentManager &componentManager, Reso
   m_batchesDirty = false;
 }
 
-void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager & /*entityManager*/,
-                                  ComponentManager &componentManager) {
+void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager &componentManager) {
   auto &renderer = getRenderer();
   auto &transformSystem = systemManager.getSystem<TransformSystem>();
   auto &lightSystem = systemManager.getSystem<LightSystem>();
@@ -111,12 +108,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager & 
         depthShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
         renderer.beginShadowPass();
-        int shadowCount = 0;
         componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
-          if (componentManager.containsComponent<Hidden>(entity))
-            return;
-
-          if (!componentManager.containsComponent<Transform>(entity))
+          if (isHidden(componentManager, entity))
             return;
 
           const auto &transform = componentManager.getOrThrow<Transform>(entity);
@@ -126,7 +119,6 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager & 
           glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
           depthShader.setMat4("model", modelMatrix);
           renderer.drawMesh(mesh);
-          shadowCount++;
         });
         renderer.endShadowPass();
         shadowLightDir = light.direction;
@@ -153,161 +145,83 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, EntityManager & 
     lightSystem.uploadLightsToShader(shader, componentManager);
   };
 
+  auto drawSubmesh = [&](Shader &shader, Entity entity, size_t submeshIndex, float opacityOverride = -1.0f) {
+    if (!componentManager.containsComponent<Transform>(entity) || !componentManager.containsComponent<Model>(entity))
+      return;
+
+    const auto &transform = componentManager.getOrThrow<Transform>(entity);
+    const auto &model = componentManager.getOrThrow<Model>(entity);
+    const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
+    const Material &material = resourceSystem.getMaterial(model.materialHandles[submeshIndex]);
+
+    glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
+    glm::mat4 MVP = projection * view * modelMatrix;
+    glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
+
+    shader.setMat4("MVP", MVP);
+    shader.setMat4("model", modelMatrix);
+    shader.setMat3("normalMatrix", normalMatrix);
+
+    shader.setTex("material.diffuse", material.getDiffuse(), 0);
+    shader.setTex("material.specular", material.getSpecular(), 1);
+    // material.normal disabled until TBN is implemented
+    shader.setTex("material.emission", material.getEmission(), 2);
+    shader.setFloat("material.shininess", material.getShininess());
+    shader.setVec3("material.emissionColor", material.getEmissionColor());
+    shader.setFloat("material.emissionStrength", material.getEmissionStrength());
+    shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);
+    shader.setVec3("solidDiffuseColor", material.getDiffuseColor());
+    shader.setFloat("opacity", opacityOverride < 0.0f ? model.opacity : opacityOverride);
+
+    renderer.drawSubmesh(mesh, mesh.getSubmeshes()[submeshIndex]);
+  };
+
   for (auto &[shaderHandle, batch] : m_renderBatches) {
     Shader &shader = resourceSystem.getShader(shaderHandle);
     shader.use();
     configureShader(shader);
 
-    for (const auto &[entity, submeshIndex] : batch) {
-      if (!componentManager.containsComponent<Transform>(entity) || !componentManager.containsComponent<Model>(entity))
-        continue;
-
-      const auto &transform = componentManager.getOrThrow<Transform>(entity);
-      const auto &model = componentManager.getOrThrow<Model>(entity);
-      const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
-      const Material &material = resourceSystem.getMaterial(model.materialHandles[submeshIndex]);
-
-      glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
-      glm::mat4 MVP = projection * view * modelMatrix;
-      glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
-
-      shader.setMat4("MVP", MVP);
-      shader.setMat4("model", modelMatrix);
-      shader.setMat3("normalMatrix", normalMatrix);
-
-      shader.setTex("material.diffuse", material.getDiffuse(), 0);
-      shader.setTex("material.specular", material.getSpecular(), 1);
-      // material.normal disabled until TBN is implemented
-      shader.setTex("material.emission", material.getEmission(), 2);
-      shader.setFloat("material.shininess", material.getShininess());
-      shader.setVec3("material.emissionColor", material.getEmissionColor());
-      shader.setFloat("material.emissionStrength", material.getEmissionStrength());
-      shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);
-      shader.setVec3("solidDiffuseColor", material.getDiffuseColor());
-
-      shader.setFloat("opacity", 1.0f);
-      renderer.drawSubmesh(mesh, mesh.getSubmeshes()[submeshIndex]);
-    }
+    for (const auto &[entity, submeshIndex] : batch)
+      drawSubmesh(shader, entity, submeshIndex, 1.0f);
   }
 
   std::vector<TransparentDraw> softDraws;
   std::vector<TransparentDraw> transparentDraws;
 
   componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
-    if (componentManager.containsComponent<Hidden>(entity))
-      return;
-
-    if (!componentManager.containsComponent<Transform>(entity))
+    if (isHidden(componentManager, entity) || model.opacity >= kSoftOpacityEnter)
       return;
 
     const auto &transform = componentManager.getOrThrow<Transform>(entity);
-    const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
-    const auto &submeshes = mesh.getSubmeshes();
-    float distance = glm::length(camera.position - transform.position);
+    const size_t submeshCount = resourceSystem.getMesh(model.meshHandle).getSubmeshes().size();
+    const float distance = glm::length(camera.position - transform.position);
+    auto &draws = model.opacity >= kSoftOpacityExit ? softDraws : transparentDraws;
 
-    if (model.opacity < kSoftOpacityEnter && model.opacity >= kSoftOpacityExit) {
-      for (size_t i = 0; i < submeshes.size(); ++i) {
-        const Material &material = resourceSystem.getMaterial(model.materialHandles[i]);
-        softDraws.push_back({entity, i, distance, material.getShaderHandle()});
-      }
-      return;
-    }
-
-    if (model.opacity < kSoftOpacityExit) {
-      for (size_t i = 0; i < submeshes.size(); ++i) {
-        const Material &material = resourceSystem.getMaterial(model.materialHandles[i]);
-        transparentDraws.push_back({entity, i, distance, material.getShaderHandle()});
-      }
-      return;
+    for (size_t i = 0; i < submeshCount; ++i) {
+      const Material &material = resourceSystem.getMaterial(model.materialHandles[i]);
+      draws.push_back({entity, i, distance, material.getShaderHandle()});
     }
   });
 
-  std::sort(transparentDraws.begin(), transparentDraws.end(),
-            [](const TransparentDraw &a, const TransparentDraw &b) { return a.distance > b.distance; });
+  auto renderSorted = [&](std::vector<TransparentDraw> &draws, void (Renderer::*begin)(), void (Renderer::*end)()) {
+    if (draws.empty())
+      return;
 
-  if (!softDraws.empty()) {
-
-    std::sort(softDraws.begin(), softDraws.end(),
+    std::sort(draws.begin(), draws.end(),
               [](const TransparentDraw &a, const TransparentDraw &b) { return a.distance > b.distance; });
 
-    renderer.beginSoftTransparentPass();
-    for (const auto &draw : softDraws) {
+    (renderer.*begin)();
+    for (const auto &draw : draws) {
       Shader &shader = resourceSystem.getShader(draw.shaderHandle);
       shader.use();
       configureShader(shader);
-
-      if (!componentManager.containsComponent<Transform>(draw.entity) ||
-          !componentManager.containsComponent<Model>(draw.entity))
-        continue;
-
-      const auto &transform = componentManager.getOrThrow<Transform>(draw.entity);
-      const auto &model = componentManager.getOrThrow<Model>(draw.entity);
-      const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
-      const Material &material = resourceSystem.getMaterial(model.materialHandles[draw.submeshIndex]);
-
-      glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
-      glm::mat4 MVP = projection * view * modelMatrix;
-      glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
-
-      shader.setMat4("MVP", MVP);
-      shader.setMat4("model", modelMatrix);
-      shader.setMat3("normalMatrix", normalMatrix);
-
-      shader.setTex("material.diffuse", material.getDiffuse(), 0);
-      shader.setTex("material.specular", material.getSpecular(), 1);
-      shader.setTex("material.emission", material.getEmission(), 2);
-      shader.setFloat("material.shininess", material.getShininess());
-      shader.setVec3("material.emissionColor", material.getEmissionColor());
-      shader.setFloat("material.emissionStrength", material.getEmissionStrength());
-      shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);
-      shader.setVec3("solidDiffuseColor", material.getDiffuseColor());
-      shader.setFloat("opacity", model.opacity);
-
-      renderer.drawSubmesh(mesh, mesh.getSubmeshes()[draw.submeshIndex]);
+      drawSubmesh(shader, draw.entity, draw.submeshIndex);
     }
-    renderer.endSoftTransparentPass();
-  }
+    (renderer.*end)();
+  };
 
-  if (!transparentDraws.empty()) {
-    renderer.beginTransparentPass();
-
-    for (const auto &draw : transparentDraws) {
-      Shader &shader = resourceSystem.getShader(draw.shaderHandle);
-      shader.use();
-      configureShader(shader);
-
-      if (!componentManager.containsComponent<Transform>(draw.entity) ||
-          !componentManager.containsComponent<Model>(draw.entity))
-        continue;
-
-      const auto &transform = componentManager.getOrThrow<Transform>(draw.entity);
-      const auto &model = componentManager.getOrThrow<Model>(draw.entity);
-      const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
-      const Material &material = resourceSystem.getMaterial(model.materialHandles[draw.submeshIndex]);
-
-      glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
-      glm::mat4 MVP = projection * view * modelMatrix;
-      glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
-
-      shader.setMat4("MVP", MVP);
-      shader.setMat4("model", modelMatrix);
-      shader.setMat3("normalMatrix", normalMatrix);
-
-      shader.setTex("material.diffuse", material.getDiffuse(), 0);
-      shader.setTex("material.specular", material.getSpecular(), 1);
-      shader.setTex("material.emission", material.getEmission(), 2);
-      shader.setFloat("material.shininess", material.getShininess());
-      shader.setVec3("material.emissionColor", material.getEmissionColor());
-      shader.setFloat("material.emissionStrength", material.getEmissionStrength());
-      shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);
-      shader.setVec3("solidDiffuseColor", material.getDiffuseColor());
-      shader.setFloat("opacity", model.opacity);
-
-      renderer.drawSubmesh(mesh, mesh.getSubmeshes()[draw.submeshIndex]);
-    }
-
-    renderer.endTransparentPass();
-  }
+  renderSorted(softDraws, &Renderer::beginSoftTransparentPass, &Renderer::endSoftTransparentPass);
+  renderSorted(transparentDraws, &Renderer::beginTransparentPass, &Renderer::endTransparentPass);
 
   // Transparent / Particles pass
   if (systemManager.hasSystem<ParticleSystem>()) {

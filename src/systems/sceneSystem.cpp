@@ -1,4 +1,3 @@
-
 // Scene system implementation for managing entities, components, and their interactions with other systems like
 // rendering and lighting.
 
@@ -31,7 +30,7 @@ void SceneSystem::destroyEntity(Entity entity) {
   if (hadModel) {
     m_systemManager.getSystem<RenderSystem>().markBatchesDirty();
   }
-};
+}
 
 void SceneSystem::createCameraEntity(std::string name, glm::vec3 position, float yaw, float pitch, float fov,
                                      bool isActive, bool isRelative) {

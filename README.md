@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![C++](https://img.shields.io/badge/C%2B%2B-Modern-00599C?logo=c%2B%2B)](https://isocpp.org/)
-[![CMake](https://img.shields.io/badge/CMake-3.10%2B-064F8C?logo=cmake)](https://cmake.org/)
+[![CMake](https://img.shields.io/badge/CMake-3.14%2B-064F8C?logo=cmake)](https://cmake.org/)
 [![OpenGL](https://img.shields.io/badge/OpenGL-Rendering-5586A4?logo=opengl)](https://www.opengl.org/)
 
 Built on a robust **Entity-Component-System (ECS)** architecture with flexible rendering capabilities using OpenGL and SDL3.
@@ -46,7 +46,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Solid Color Fallback**   | Centralized solid color texture generation and caching for simple rendering    |
 | **Resource Caching**       | Automatic texture caching with handle-based resource management                |
 | **Shadow Mapping**         | Real-time shadow rendering with configurable depth maps                        |
-| **Asset Loading**          | OBJ support via Tiny_Obj with automated resource management                    |
+| **Asset Loading**          | OBJ (Tiny_Obj) and GLB (tinygltf) support with automated resource management                    |
 | **Camera System**          | Flexible camera control with quaternion-based rotations                        |
 | **Input System**           | Keyboard and mouse handling via SDL3                                           |
 | **Lighting System**        | Directional, point, and spotlight types with intensity and cutoff controls     |
@@ -94,7 +94,7 @@ The engine is built on the **Entity-Component-System (ECS)** pattern, which sepa
 
 ## Prerequisites
 
-- **CMake** 3.10+
+- **CMake** 3.14+
 - **C++ compiler** with modern standard support (C++17 or later recommended)
 - **OpenGL** compatible graphics driver
 - **Git**
@@ -112,7 +112,7 @@ git clone https://github.com/phmuni/modular-engine.git
 cd modular-engine
 ```
 
-All dependencies are included in the `external/` directory. See `CMakeLists.txt` for the complete dependency list.
+Bundled dependencies (ImGui, glad, stb_image, Tiny_Obj, tinygltf) live in `external/`. SDL3, GLM and nlohmann/json are fetched automatically by CPM at configure time (internet required on first build).
 
 ---
 
@@ -125,9 +125,11 @@ modular-engine/
 ├── src/                        # Source and header files
 │   ├── components/             # ECS component definitions
 │   ├── foundation/             # Core engine and ECS functionality
+│   ├── game/                   # Space Aliens example game
 │   ├── rendering/              # Renderer and resource implementations
 │   └── systems/                # ECS system implementations
-├── external/                   # Third-party dependencies
+├── cmake/                      # CPM package manager script
+├── external/                   # Bundled third-party dependencies
 ├── assets/                     # Models, shaders, textures
 ├── bin/                        # Compiled binaries
 ├── build/                      # CMake build output
@@ -164,7 +166,7 @@ cmake --build build
 
 ## Usage
 
-The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. See [`src/foundation/core/main.cpp`](src/foundation/core/main.cpp) for a complete example.
+The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains a complete example game (Space Aliens), launched from [`src/main.cpp`](src/main.cpp).
 
 ### Quick Start
 
@@ -281,10 +283,10 @@ engine.setSolidColor(entity, glm::vec3(1.0f, 0.2f, 0.1f));  // Red
 engine.setEmission(entity, glm::vec3(1.0f, 0.2f, 0.1f), 2.0f);
 
 // Apply texture to an entity
-engine.setTexture(entity, "path/to/texture.png", TextureSlot::Diffuse);
+engine.setTexture(entity, TextureSlot::Diffuse, "path/to/texture.png");
 
 // Apply texture to specific submesh
-engine.setTexture(entity, "path/to/texture.png", TextureSlot::Diffuse, 0);
+engine.setTexture(entity, TextureSlot::Diffuse, "path/to/texture.png", 0);
 
 // Set shininess
 engine.setShininess(entity, 32.0f);
@@ -305,7 +307,7 @@ For direct ResourceSystem access and full API reference, explore [`src/systems/r
 | Build System   | CMake               |
 | Window & Input | SDL3                |
 | Mathematics    | GLM                 |
-| Asset Loading  | Tiny_Obj            |
+| Asset Loading  | Tiny_Obj, tinygltf  |
 | UI Framework   | Dear ImGui          |
 | Dependencies   | See `external/`     |
 
