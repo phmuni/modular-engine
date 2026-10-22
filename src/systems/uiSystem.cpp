@@ -126,9 +126,12 @@ void UISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager,
     return std::string(icon) + " " + name + "##" + std::to_string(e);
   };
 
+  constexpr float kSectionHeight = 120.0f; // initial height
   auto section = [&](const char *header, const char *icon, const std::vector<Entity> &entities) {
     if (!ImGui::CollapsingHeader(header, ImGuiTreeNodeFlags_DefaultOpen))
       return;
+    // Scroll area with a stable, user-resizable height so sections keep their size as entities come and go.
+    ImGui::BeginChild(header, ImVec2(0, kSectionHeight), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
     for (Entity entity : entities) {
       std::string label = entityLabel(entity, icon);
       if (ImGui::Selectable(label.c_str(), selectedEntity == entity))
@@ -136,6 +139,7 @@ void UISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager,
     }
     if (entities.empty())
       ImGui::TextDisabled("  (empty)");
+    ImGui::EndChild();
   };
 
   section("Models", "[M]", entitiesWith<Model>(componentManager));
