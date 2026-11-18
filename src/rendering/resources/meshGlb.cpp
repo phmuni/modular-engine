@@ -453,7 +453,8 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
 
   // Extensions this loader understands; anything else in extensionsRequired would load as broken geometry or
   // materials (e.g. Draco- or meshopt-compressed buffers), so refuse those files with a clear message.
-  static constexpr const char *kSupportedExtensions[] = {"KHR_materials_specular", "KHR_mesh_quantization"};
+  static constexpr const char *kSupportedExtensions[] = {"KHR_materials_specular", "KHR_materials_unlit",
+                                                         "KHR_mesh_quantization"};
   auto isSupported = [](const tg3_str &name) {
     for (const char *supported : kSupportedExtensions)
       if (tg3_str_equals_cstr(name, supported))
@@ -497,6 +498,7 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
       material.alphaMode = AlphaMode::Blend;
     material.alphaCutoff = static_cast<float>(source.alpha_cutoff);
     material.doubleSided = source.double_sided != 0;
+    material.unlit = findExtension(source.ext, "KHR_materials_unlit") != nullptr;
     if (source.pbr_metallic_roughness.base_color_texture.index >= 0 &&
         source.pbr_metallic_roughness.base_color_texture.index < static_cast<int32_t>(gltf->textures_count)) {
       const tg3_texture &texture = gltf->textures[source.pbr_metallic_roughness.base_color_texture.index];

@@ -157,6 +157,7 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
         mat.setShaderHandle(variant->second);
     mat.setAlphaCutoff(mtl.alphaCutoff);
     mat.setDoubleSided(mtl.doubleSided);
+    mat.setUnlit(mtl.unlit);
     m_hasBlendMaterials = m_hasBlendMaterials || mtl.alphaMode == AlphaMode::Blend;
 
     if (glm::length(mtl.emissionColor) > 0.0f)

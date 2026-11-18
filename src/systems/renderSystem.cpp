@@ -285,6 +285,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setInt("alphaMode", static_cast<int>(material.getAlphaMode()));
     shader.setFloat("alphaCutoff", material.getAlphaCutoff());
     shader.setInt("doubleSided", material.isDoubleSided() ? 1 : 0);
+    shader.setInt("unlit", material.isUnlit() ? 1 : 0);
     renderer.setFaceCulling(!material.isDoubleSided());
   };
 

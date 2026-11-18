@@ -37,6 +37,7 @@ public:
   AlphaMode getAlphaMode() const { return m_alphaMode; }
   float getAlphaCutoff() const { return m_alphaCutoff; }
   bool isDoubleSided() const { return m_doubleSided; }
+  bool isUnlit() const { return m_unlit; }
 
   void setDiffuseTexture(GLuint texture);
   void setSpecularTexture(GLuint texture);
@@ -53,6 +54,7 @@ public:
   void setAlphaMode(AlphaMode mode) { m_alphaMode = mode; }
   void setAlphaCutoff(float cutoff) { m_alphaCutoff = cutoff; }
   void setDoubleSided(bool doubleSided) { m_doubleSided = doubleSided; }
+  void setUnlit(bool unlit) { m_unlit = unlit; }
 
 private:
   GLuint m_diffuse = 0;
@@ -69,4 +71,5 @@ private:
   AlphaMode m_alphaMode = AlphaMode::Opaque;
   float m_alphaCutoff = 0.5f;
   bool m_doubleSided = false;
+  bool m_unlit = false;
 };

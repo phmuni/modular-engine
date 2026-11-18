@@ -47,6 +47,7 @@ uniform vec4 baseColorFactor; // tints the diffuse texture; alpha multiplies its
 uniform int alphaMode;        // 0 opaque, 1 mask, 2 blend
 uniform float alphaCutoff;
 uniform int doubleSided;
+uniform int unlit; // KHR_materials_unlit: base color only, no lights or shadows
 
 float calculateShadow(vec4 fragPosLightSpace)
 {
@@ -109,7 +110,9 @@ void main()
 
     vec3 result = emissionResult;
 
-    if (numLights == 0) {
+    if (unlit == 1) {
+        result += diffuseTex;
+    } else if (numLights == 0) {
         result += diffuseTex * 0.7;
     } else {
         for (int i = 0; i < numLights; ++i) {

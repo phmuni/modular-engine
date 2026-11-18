@@ -44,6 +44,7 @@ struct MtlMaterialData {
   AlphaMode alphaMode = AlphaMode::Opaque;
   float alphaCutoff = 0.5f;
   bool doubleSided = false;
+  bool unlit = false; // KHR_materials_unlit: shown at its base color, without lighting or shadows
 };
 
 // A named part of a mesh (an OBJ object/group or a glTF node primitive), kept in file order. Parts are what
