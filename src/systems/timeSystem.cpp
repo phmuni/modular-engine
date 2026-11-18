@@ -18,11 +18,14 @@ void TimeSystem::begin() {
 
 void TimeSystem::update() {
   float currentTime = nowSeconds();
-  m_deltaTime = currentTime - m_lastFrameTime;
+  m_unscaledDeltaTime = currentTime - m_lastFrameTime;
+  m_deltaTime = m_paused ? 0.0f : m_unscaledDeltaTime * m_timeScale;
   m_lastFrameTime = currentTime;
 }
 
 float TimeSystem::getDeltaTime() const { return m_deltaTime; }
+
+float TimeSystem::getUnscaledDeltaTime() const { return m_unscaledDeltaTime; }
 
 float TimeSystem::getLastFrameTime() const { return m_lastFrameTime; }
 

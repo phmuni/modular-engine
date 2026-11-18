@@ -10,4 +10,5 @@ enum class Toggle {
   Shadows,
   ShowStats,
   VSync,
+  Paused,
 };

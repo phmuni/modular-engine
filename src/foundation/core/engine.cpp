@@ -168,15 +168,17 @@ void Engine::update(bool &isRunning) {
   auto &inputSystem = m_systemManager.getSystem<InputSystem>();
   inputSystem.update(&isRunning, m_systemManager);
 
+  auto &state = m_systemManager.getSystem<StateSystem>();
   auto &timeSystem = m_systemManager.getSystem<TimeSystem>();
+  timeSystem.setPaused(state.isToggled(Toggle::Paused));
   timeSystem.update();
 
+  // The camera runs on real time, so it can still fly around a paused scene
   auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
-  cameraSystem.update(timeSystem.getDeltaTime(), m_systemManager);
+  cameraSystem.update(timeSystem.getUnscaledDeltaTime(), m_systemManager);
 
   // Apply wireframe and vsync toggles
   auto &renderer = m_systemManager.getSystem<RenderSystem>().getRenderer();
-  auto &state = m_systemManager.getSystem<StateSystem>();
   renderer.setWireframe(state.isToggled(Toggle::Wireframe));
   m_systemManager.getSystem<WindowSystem>().setVSync(state.isToggled(Toggle::VSync));
 
@@ -202,7 +204,7 @@ void Engine::update(bool &isRunning) {
   m_screenshotKeyDown = screenshotKey;
 
   if (m_screenshot)
-    m_screenshot->delay -= timeSystem.getDeltaTime();
+    m_screenshot->delay -= timeSystem.getUnscaledDeltaTime();
 
   if (m_quitRequested)
     isRunning = false;
@@ -225,7 +227,7 @@ void Engine::render() {
 
   // Everything this frame did before the swap, which may wait on vsync
   float workSeconds = static_cast<float>(static_cast<double>(SDL_GetTicksNS() - m_frameStartNs) / 1e9);
-  uiSystem.recordFrame(m_systemManager.getSystem<TimeSystem>().getDeltaTime(), workSeconds);
+  uiSystem.recordFrame(m_systemManager.getSystem<TimeSystem>().getUnscaledDeltaTime(), workSeconds);
 
   if (m_screenshot && m_screenshot->delay <= 0.0f) {
     renderer.saveScreenshot(m_screenshot->path);
