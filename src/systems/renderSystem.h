@@ -19,10 +19,25 @@ public:
 private:
   using RenderBatch = std::vector<std::pair<Entity, size_t>>;
 
+  // Draws sharing mesh, submesh and material, gathered every frame for instancing.
+  // Grouped per frame, not per rebuild, because material handles can change without dirtying the batches.
+  struct InstanceItem {
+    uint32_t meshHandle;
+    uint32_t submeshIndex;
+    uint32_t materialHandle;
+    InstanceData instance;
+  };
+
   std::unordered_map<uint32_t, RenderBatch> m_renderBatches;
+  std::vector<InstanceItem> m_instanceItems;
+  std::vector<InstanceData> m_instanceData;
   bool m_batchesDirty = true;
   uint32_t m_shadowShaderHandle = 0;
   Renderer m_renderer;
   void setupLights();
   void rebuildRenderBatches(ComponentManager &componentManager, ResourceSystem &resourceSystem);
+
+  // Sorts m_instanceItems into runs of identical keys and calls drawRun(firstItem, instanceCount) for each,
+  // with the run's instances already uploaded.
+  template <typename SameRun, typename DrawRun> void drawInstanceRuns(SameRun sameRun, DrawRun drawRun);
 };

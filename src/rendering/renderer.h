@@ -10,6 +10,12 @@
 class Mesh;
 struct Submesh;
 
+// Per-instance data for instanced mesh drawing: vertex attributes 3-6 (model) and 7-9 (normal matrix)
+struct InstanceData {
+  glm::mat4 model;
+  glm::mat3 normal;
+};
+
 // Interleaved vertex data for particle GPU upload
 struct ParticleVertex {
   glm::vec3 position;
@@ -30,6 +36,9 @@ private:
   int m_screenWidth = 1280;
   int m_screenHeight = 720;
 
+  GLuint m_instanceVBO = 0;
+  void bindInstanceAttributes(const Mesh &mesh) const;
+
   // Particle GPU resources
   GLuint m_particleVAO = 0;
   GLuint m_particleVBO = 0;
@@ -46,6 +55,11 @@ public:
   // Mesh drawing
   void drawMesh(const Mesh &mesh) const;
   void drawSubmesh(const Mesh &mesh, const Submesh &submesh) const;
+
+  // Instanced drawing: upload the instances, then draw them in one call
+  void uploadInstances(const InstanceData *data, int count);
+  void drawMeshInstanced(const Mesh &mesh, int count) const;
+  void drawSubmeshInstanced(const Mesh &mesh, const Submesh &submesh, int count) const;
 
   // Shadow pass
   void beginShadowPass();

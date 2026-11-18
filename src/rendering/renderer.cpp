@@ -11,6 +11,7 @@ void Renderer::init(SDL_Window *window) {
   m_window = window;
   initShadowMapping();
   initParticleBuffers();
+  glGenBuffers(1, &m_instanceVBO);
 }
 
 void Renderer::beginFrame() const { glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); }
@@ -33,6 +34,50 @@ void Renderer::drawSubmesh(const Mesh &mesh, const Submesh &submesh) const {
   glBindVertexArray(mesh.getVAO());
   glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
                  (void *)(submesh.indexStart * sizeof(uint32_t)));
+  glBindVertexArray(0);
+}
+
+void Renderer::uploadInstances(const InstanceData *data, int count) {
+  glBindBuffer(GL_ARRAY_BUFFER, m_instanceVBO);
+  glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(count * sizeof(InstanceData)), data, GL_STREAM_DRAW);
+}
+
+// Points the mesh's VAO at the instance buffer. Cheap enough to redo per draw, and it stays correct if a VAO name
+// is reused by a newly loaded mesh.
+void Renderer::bindInstanceAttributes(const Mesh &mesh) const {
+  glBindVertexArray(mesh.getVAO());
+  glBindBuffer(GL_ARRAY_BUFFER, m_instanceVBO);
+
+  constexpr GLsizei stride = sizeof(InstanceData);
+  for (int column = 0; column < 4; ++column) {
+    GLuint location = 3 + column;
+    glEnableVertexAttribArray(location);
+    glVertexAttribPointer(location, 4, GL_FLOAT, GL_FALSE, stride,
+                          (void *)(offsetof(InstanceData, model) + sizeof(glm::vec4) * column));
+    glVertexAttribDivisor(location, 1);
+  }
+  for (int column = 0; column < 3; ++column) {
+    GLuint location = 7 + column;
+    glEnableVertexAttribArray(location);
+    glVertexAttribPointer(location, 3, GL_FLOAT, GL_FALSE, stride,
+                          (void *)(offsetof(InstanceData, normal) + sizeof(glm::vec3) * column));
+    glVertexAttribDivisor(location, 1);
+  }
+}
+
+void Renderer::drawMeshInstanced(const Mesh &mesh, int count) const {
+  bindInstanceAttributes(mesh);
+  for (const auto &submesh : mesh.getSubmeshes()) {
+    glDrawElementsInstanced(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
+                            (void *)(submesh.indexStart * sizeof(uint32_t)), count);
+  }
+  glBindVertexArray(0);
+}
+
+void Renderer::drawSubmeshInstanced(const Mesh &mesh, const Submesh &submesh, int count) const {
+  bindInstanceAttributes(mesh);
+  glDrawElementsInstanced(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
+                          (void *)(submesh.indexStart * sizeof(uint32_t)), count);
   glBindVertexArray(0);
 }
 
@@ -198,6 +243,10 @@ void Renderer::endParticlePass() {
 }
 
 void Renderer::shutdown() {
+  if (m_instanceVBO) {
+    glDeleteBuffers(1, &m_instanceVBO);
+    m_instanceVBO = 0;
+  }
   if (m_depthMapFBO) {
     glDeleteFramebuffers(1, &m_depthMapFBO);
     m_depthMapFBO = 0;

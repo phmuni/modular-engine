@@ -9,8 +9,10 @@
 #include "systems/particleSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/transformSystem.h"
+#include <algorithm>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <tuple>
 
 namespace {
 struct TransparentDraw {
@@ -58,11 +60,38 @@ bool isMeshVisible(const Frustum &frustum, const Mesh &mesh, const glm::mat4 &mo
   return frustum.intersectsSphere(center, mesh.getBoundsRadius() * maxScale);
 }
 
+glm::mat3 calculateNormalMatrix(const glm::mat4 &modelMatrix) {
+  return glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
+}
+
 constexpr float kSoftOpacityEnter = 0.95f;
 constexpr float kSoftOpacityExit = 0.90f;
 } // namespace
 
 void RenderSystem::setShadowShaderHandle(uint32_t handle) { m_shadowShaderHandle = handle; }
+
+template <typename SameRun, typename DrawRun> void RenderSystem::drawInstanceRuns(SameRun sameRun, DrawRun drawRun) {
+  auto byKey = [](const InstanceItem &a, const InstanceItem &b) {
+    return std::tie(a.meshHandle, a.submeshIndex, a.materialHandle) <
+           std::tie(b.meshHandle, b.submeshIndex, b.materialHandle);
+  };
+  std::sort(m_instanceItems.begin(), m_instanceItems.end(), byKey);
+
+  for (size_t start = 0; start < m_instanceItems.size();) {
+    size_t end = start + 1;
+    while (end < m_instanceItems.size() && sameRun(m_instanceItems[start], m_instanceItems[end]))
+      ++end;
+
+    m_instanceData.clear();
+    for (size_t i = start; i < end; ++i)
+      m_instanceData.push_back(m_instanceItems[i].instance);
+
+    const int count = static_cast<int>(end - start);
+    m_renderer.uploadInstances(m_instanceData.data(), count);
+    drawRun(m_instanceItems[start], count);
+    start = end;
+  }
+}
 
 void RenderSystem::markBatchesDirty() { m_batchesDirty = true; }
 
@@ -142,18 +171,33 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
         depthShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
         renderer.beginShadowPass();
-        componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
-          if (isHidden(componentManager, entity))
-            return;
+        if (depthShader.supportsInstancing()) {
+          depthShader.setInt("useInstancing", 1);
+          m_instanceItems.clear();
+          componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
+            if (isHidden(componentManager, entity))
+              return;
+            const auto &transform = componentManager.getOrThrow<Transform>(entity);
+            m_instanceItems.push_back({model.meshHandle, 0, 0, {transformSystem.calculateModelMatrix(transform), {}}});
+          });
+          drawInstanceRuns([](const InstanceItem &a, const InstanceItem &b) { return a.meshHandle == b.meshHandle; },
+                           [&](const InstanceItem &first, int count) {
+                             renderer.drawMeshInstanced(resourceSystem.getMesh(first.meshHandle), count);
+                           });
+        } else {
+          componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
+            if (isHidden(componentManager, entity))
+              return;
 
-          const auto &transform = componentManager.getOrThrow<Transform>(entity);
+            const auto &transform = componentManager.getOrThrow<Transform>(entity);
 
-          const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
+            const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
 
-          glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
-          depthShader.setMat4("model", modelMatrix);
-          renderer.drawMesh(mesh);
-        });
+            glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
+            depthShader.setMat4("model", modelMatrix);
+            renderer.drawMesh(mesh);
+          });
+        }
         renderer.endShadowPass();
         shadowLightDir = light.direction;
 
@@ -179,6 +223,19 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     lightSystem.uploadLightsToShader(shader, componentManager);
   };
 
+  auto applyMaterial = [&](Shader &shader, const Material &material, float opacity) {
+    shader.setTex("material.diffuse", material.getDiffuse(), 0);
+    shader.setTex("material.specular", material.getSpecular(), 1);
+    // material.normal disabled until TBN is implemented
+    shader.setTex("material.emission", material.getEmission(), 2);
+    shader.setFloat("material.shininess", material.getShininess());
+    shader.setVec3("material.emissionColor", material.getEmissionColor());
+    shader.setFloat("material.emissionStrength", material.getEmissionStrength());
+    shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);
+    shader.setVec3("solidDiffuseColor", material.getDiffuseColor());
+    shader.setFloat("opacity", opacity);
+  };
+
   auto drawSubmesh = [&](Shader &shader, Entity entity, size_t submeshIndex, float opacityOverride = -1.0f) {
     if (!componentManager.containsComponent<Transform>(entity) || !componentManager.containsComponent<Model>(entity))
       return;
@@ -192,23 +249,11 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     if (!isMeshVisible(frustum, mesh, modelMatrix))
       return;
 
-    glm::mat4 MVP = projection * view * modelMatrix;
-    glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
-
-    shader.setMat4("MVP", MVP);
+    shader.setInt("useInstancing", 0);
+    shader.setMat4("MVP", projection * view * modelMatrix);
     shader.setMat4("model", modelMatrix);
-    shader.setMat3("normalMatrix", normalMatrix);
-
-    shader.setTex("material.diffuse", material.getDiffuse(), 0);
-    shader.setTex("material.specular", material.getSpecular(), 1);
-    // material.normal disabled until TBN is implemented
-    shader.setTex("material.emission", material.getEmission(), 2);
-    shader.setFloat("material.shininess", material.getShininess());
-    shader.setVec3("material.emissionColor", material.getEmissionColor());
-    shader.setFloat("material.emissionStrength", material.getEmissionStrength());
-    shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);
-    shader.setVec3("solidDiffuseColor", material.getDiffuseColor());
-    shader.setFloat("opacity", opacityOverride < 0.0f ? model.opacity : opacityOverride);
+    shader.setMat3("normalMatrix", calculateNormalMatrix(modelMatrix));
+    applyMaterial(shader, material, opacityOverride < 0.0f ? model.opacity : opacityOverride);
 
     renderer.drawSubmesh(mesh, mesh.getSubmeshes()[submeshIndex]);
   };
@@ -218,8 +263,40 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.use();
     configureShader(shader);
 
-    for (const auto &[entity, submeshIndex] : batch)
-      drawSubmesh(shader, entity, submeshIndex, 1.0f);
+    if (!shader.supportsInstancing()) {
+      for (const auto &[entity, submeshIndex] : batch)
+        drawSubmesh(shader, entity, submeshIndex, 1.0f);
+      continue;
+    }
+
+    // Opaque draws sharing mesh, submesh and material go out as one instanced call
+    m_instanceItems.clear();
+    for (const auto &[entity, submeshIndex] : batch) {
+      auto *transform = componentManager.getOrNil<Transform>(entity);
+      auto *model = componentManager.getOrNil<Model>(entity);
+      if (!transform || !model)
+        continue;
+
+      glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(*transform);
+      if (!isMeshVisible(frustum, resourceSystem.getMesh(model->meshHandle), modelMatrix))
+        continue;
+
+      m_instanceItems.push_back({model->meshHandle, static_cast<uint32_t>(submeshIndex),
+                                 model->materialHandles[submeshIndex],
+                                 {modelMatrix, calculateNormalMatrix(modelMatrix)}});
+    }
+
+    shader.setInt("useInstancing", 1);
+    drawInstanceRuns(
+        [](const InstanceItem &a, const InstanceItem &b) {
+          return a.meshHandle == b.meshHandle && a.submeshIndex == b.submeshIndex &&
+                 a.materialHandle == b.materialHandle;
+        },
+        [&](const InstanceItem &first, int count) {
+          const Mesh &mesh = resourceSystem.getMesh(first.meshHandle);
+          applyMaterial(shader, resourceSystem.getMaterial(first.materialHandle), 1.0f);
+          renderer.drawSubmeshInstanced(mesh, mesh.getSubmeshes()[first.submeshIndex], count);
+        });
   }
 
   std::vector<TransparentDraw> softDraws;

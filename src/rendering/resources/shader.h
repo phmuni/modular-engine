@@ -17,6 +17,7 @@ private:
   };
   // Keyed by the name's hash, so lookups never allocate; the stored name guards against collisions.
   mutable std::unordered_map<size_t, CachedUniform> m_uniformCache;
+  mutable int m_instancingSupport = -1; // -1 unknown, 0 no, 1 yes
 
   std::string readShaderFile(const char *filename) const;
   GLuint compileShader(GLenum type, const char *filename);
@@ -35,7 +36,8 @@ public:
   Shader &operator=(const Shader &) = delete;
 
   Shader(Shader &&other) noexcept
-      : m_shaderID(std::exchange(other.m_shaderID, 0)), m_uniformCache(std::move(other.m_uniformCache)) {}
+      : m_shaderID(std::exchange(other.m_shaderID, 0)), m_uniformCache(std::move(other.m_uniformCache)),
+        m_instancingSupport(other.m_instancingSupport) {}
 
   Shader &operator=(Shader &&other) noexcept {
     if (this != &other) {
@@ -43,6 +45,7 @@ public:
         glDeleteProgram(m_shaderID);
       m_shaderID = std::exchange(other.m_shaderID, 0);
       m_uniformCache = std::move(other.m_uniformCache);
+      m_instancingSupport = other.m_instancingSupport;
     }
     return *this;
   }
@@ -58,4 +61,7 @@ public:
   void setTex(std::string_view name, GLuint, int) const;
 
   GLuint getShaderID() const;
+
+  // True when the vertex shader reads per-instance model matrices (aInstanceModel at location 3)
+  bool supportsInstancing() const;
 };

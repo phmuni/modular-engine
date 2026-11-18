@@ -17,6 +17,7 @@ bool Shader::load(std::string_view vertexFile, std::string_view fragmentFile) {
     glDeleteProgram(m_shaderID);
     m_shaderID = 0;
     m_uniformCache.clear();
+    m_instancingSupport = -1;
   }
   m_shaderID = createShaderProgram(vertexFile.data(), fragmentFile.data());
   return m_shaderID != 0;
@@ -109,6 +110,12 @@ GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentF
 void Shader::use() const { glUseProgram(m_shaderID); }
 
 GLuint Shader::getShaderID() const { return m_shaderID; }
+
+bool Shader::supportsInstancing() const {
+  if (m_instancingSupport < 0)
+    m_instancingSupport = glGetAttribLocation(m_shaderID, "aInstanceModel") == 3 ? 1 : 0;
+  return m_instancingSupport == 1;
+}
 
 void Shader::setTex(std::string_view name, GLuint textureID, int textureUnit) const {
   glActiveTexture(GL_TEXTURE0 + textureUnit);
