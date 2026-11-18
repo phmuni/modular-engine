@@ -34,7 +34,7 @@ uniform Material material;
 uniform int numLights;
 uniform Light lights[10];
 
-uniform sampler2D shadowMap;
+uniform sampler2DShadow shadowMap; // hardware depth comparison with bilinear filtering
 uniform mat4 lightSpaceMatrix;
 uniform int useShadows;
 uniform vec3 shadowLightDir;
@@ -58,22 +58,19 @@ float calculateShadow(vec4 fragPosLightSpace)
     
     float bias = max(0.005 * (1.0 - dot(nGeom, lightDir)), 0.0005);
 
-    float shadow = 0.0;
+    float lit = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
 
-    // Simple 5x5 PCF kernel
-    for (int x = -2; x <= 2; ++x) {
-        for (int y = -2; y <= 2; ++y) {
-            vec2 offset = vec2(float(x), float(y)) * texelSize * 1.25;
-            vec2 sampleUV = projCoords.xy + offset;
-            if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) continue;
-            float pcfDepth = texture(shadowMap, sampleUV).r;
-            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+    // 3x3 PCF: each tap is already a filtered 2x2 comparison, so this covers about the same area as a manual 5x5.
+    // Taps outside the map read the border depth (1.0) and count as lit.
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            vec2 offset = vec2(float(x), float(y)) * texelSize * 1.5;
+            lit += texture(shadowMap, vec3(projCoords.xy + offset, currentDepth - bias));
         }
     }
 
-    shadow /= 25.0;
-    return shadow;
+    return 1.0 - lit / 9.0;
 }
 
 void main()
