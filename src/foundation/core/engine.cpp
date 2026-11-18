@@ -19,6 +19,7 @@
 #include "systems/transformSystem.h"
 #include "systems/uiSystem.h"
 #include "systems/windowSystem.h"
+#include <algorithm>
 
 Engine::Engine()
     : m_screenWidth(EngineConfig::DEFAULT_SCREEN_WIDTH), m_screenHeight(EngineConfig::DEFAULT_SCREEN_HEIGHT) {}
@@ -117,7 +118,48 @@ void Engine::loop(bool &isRunning) {
   while (isRunning) {
     update(isRunning);
     render();
+    if (m_benchmark)
+      recordBenchmarkFrame();
   }
+}
+
+void Engine::runBenchmark(float seconds) {
+  m_benchmark = Benchmark{};
+  m_benchmark->duration = seconds;
+  SDL_GL_SetSwapInterval(0);
+}
+
+void Engine::recordBenchmarkFrame() {
+  auto &bench = *m_benchmark;
+  uint64_t now = SDL_GetTicksNS();
+  if (bench.lastFrame == 0) {
+    bench.lastFrame = now;
+    return;
+  }
+
+  double frameMs = static_cast<double>(now - bench.lastFrame) / 1e6;
+  bench.lastFrame = now;
+  bench.elapsed += frameMs / 1000.0;
+
+  if (bench.elapsed < bench.warmup)
+    return;
+  bench.frameMs.push_back(frameMs);
+  if (bench.elapsed < bench.warmup + bench.duration)
+    return;
+
+  std::vector<double> sorted = bench.frameMs;
+  std::sort(sorted.begin(), sorted.end());
+  auto percentile = [&](double p) { return sorted[static_cast<size_t>(p * (sorted.size() - 1))]; };
+  double total = 0.0;
+  for (double ms : sorted)
+    total += ms;
+  double average = total / static_cast<double>(sorted.size());
+
+  LOG_I("[Benchmark] %zu frames | avg %.3f ms (%.0f FPS) | p50 %.3f | p95 %.3f | p99 %.3f | max %.3f ms", sorted.size(),
+        average, 1000.0 / average, percentile(0.50), percentile(0.95), percentile(0.99), sorted.back());
+
+  m_benchmark.reset();
+  m_quitRequested = true;
 }
 
 void Engine::update(bool &isRunning) {

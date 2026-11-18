@@ -1,6 +1,6 @@
 // Main entry point for the application. Sets up the engine and runs the main loop with the provided application logic.
 //
-// Usage: engine [aliens|blackhole] [--screenshot <file.bmp> [seconds]]
+// Usage: engine [aliens|blackhole] [--screenshot <file.bmp> [seconds]] [--benchmark [seconds]]
 
 #include "foundation/core/engine.h"
 #include "game/blackHole.h"
@@ -13,6 +13,7 @@ int main(int argc, char **argv) {
   std::string example = "aliens";
   std::string screenshotPath;
   float screenshotDelay = 3.0f;
+  float benchmarkSeconds = 0.0f;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -20,6 +21,10 @@ int main(int argc, char **argv) {
       screenshotPath = argv[++i];
       if (i + 1 < argc && argv[i + 1][0] != '-')
         screenshotDelay = std::strtof(argv[++i], nullptr);
+    } else if (arg == "--benchmark") {
+      benchmarkSeconds = 10.0f;
+      if (i + 1 < argc && argv[i + 1][0] != '-')
+        benchmarkSeconds = std::strtof(argv[++i], nullptr);
     } else {
       example = arg;
     }
@@ -37,6 +42,9 @@ int main(int argc, char **argv) {
 
   if (!screenshotPath.empty())
     engine.captureScreenshot(screenshotPath, screenshotDelay, true);
+
+  if (benchmarkSeconds > 0.0f)
+    engine.runBenchmark(benchmarkSeconds);
 
   engine.run(*application);
   return 0;

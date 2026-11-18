@@ -112,6 +112,9 @@ public:
 
   void setState(Toggle toggle, bool value);
 
+  // Runs with vsync off for `seconds` (after a 1 s warm-up), logs frame-time statistics and closes the engine.
+  void runBenchmark(float seconds);
+
   // Saves a BMP of the next frame. With a delay, waits that long after start-up; `quitAfter` closes the engine.
   void captureScreenshot(std::string path, float delaySeconds = 0.0f, bool quitAfter = false);
 
@@ -147,6 +150,16 @@ private:
   std::optional<ScreenshotRequest> m_screenshot;
   bool m_screenshotKeyDown = false;
   bool m_quitRequested = false;
+
+  struct Benchmark {
+    double duration = 10.0;
+    double warmup = 1.0;
+    double elapsed = 0.0;
+    uint64_t lastFrame = 0;
+    std::vector<double> frameMs;
+  };
+  std::optional<Benchmark> m_benchmark;
+  void recordBenchmarkFrame();
 
   void registerSystems();
   bool loadResources();
