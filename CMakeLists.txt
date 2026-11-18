@@ -32,6 +32,33 @@ CPMAddPackage(
   VERSION 3.11.3
   OPTIONS "JSON_BuildTests OFF"
 )
+# Game UI: RmlUi (HTML/CSS-like documents) with FreeType for fonts, both built as static libraries.
+# FreeType comes first so RmlUi finds its Freetype::Freetype target instead of a system copy.
+CPMAddPackage(
+  NAME freetype
+  GITHUB_REPOSITORY freetype/freetype
+  GIT_TAG VER-2-14-3
+  OPTIONS
+    "BUILD_SHARED_LIBS OFF"
+    "FT_DISABLE_ZLIB ON"
+    "FT_DISABLE_BZIP2 ON"
+    "FT_DISABLE_PNG ON"
+    "FT_DISABLE_HARFBUZZ ON"
+    "FT_DISABLE_BROTLI ON"
+)
+if(TARGET freetype AND NOT TARGET Freetype::Freetype)
+  add_library(Freetype::Freetype ALIAS freetype)
+endif()
+CPMAddPackage(
+  NAME RmlUi
+  GITHUB_REPOSITORY mikke89/RmlUi
+  GIT_TAG 6.3
+  OPTIONS
+    "BUILD_SHARED_LIBS OFF"
+    "RMLUI_SAMPLES OFF"
+    "BUILD_TESTING OFF"
+    "RMLUI_FONT_ENGINE freetype"
+)
 # Audio: only the sources are used; miniaudio.c is compiled into the engine below
 CPMAddPackage(
   NAME miniaudio
@@ -54,22 +81,29 @@ file(GLOB GLAD_SOURCE "${EXTERNAL_DIR}/glad/*.cpp")
 file(GLOB IMGUI_SOURCE "${EXTERNAL_DIR}/imgui/*.cpp")
 list(FILTER IMGUI_SOURCE EXCLUDE REGEX "imgui_demo\\.cpp$")
 set(MINIAUDIO_SOURCE "${miniaudio_SOURCE_DIR}/miniaudio.c")
+# RmlUi's reference SDL platform and OpenGL 3 renderer, built against the engine's SDL3 and glad
+set(RMLUI_BACKEND_SOURCE
+  "${RmlUi_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp"
+  "${RmlUi_SOURCE_DIR}/Backends/RmlUi_Renderer_GL3.cpp"
+)
 
 # --- Executable ---
-add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE})
+add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE} ${RMLUI_BACKEND_SOURCE})
 
 # --- Include directories ---
 target_include_directories(engine PRIVATE
   ${CMAKE_SOURCE_DIR}/src
   ${EXTERNAL_DIR}
 )
-target_include_directories(engine SYSTEM PRIVATE ${miniaudio_SOURCE_DIR})
+target_include_directories(engine SYSTEM PRIVATE ${miniaudio_SOURCE_DIR} ${RmlUi_SOURCE_DIR}/Backends)
+target_compile_definitions(engine PRIVATE RMLUI_SDL_VERSION_MAJOR=3 "RMLUI_GL3_CUSTOM_LOADER=<glad/glad.h>")
 
 # --- Link libraries ---
 target_link_libraries(engine
     SDL3::SDL3
     glm::glm
     nlohmann_json::nlohmann_json
+    RmlUi::RmlUi
 )
 
 if(MSVC)

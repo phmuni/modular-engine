@@ -19,6 +19,11 @@
 #include <utility>
 #include <vector>
 
+namespace Rml {
+class Context;
+class ElementDocument;
+} // namespace Rml
+
 class Engine {
 public:
   class EntityBuilder {
@@ -130,6 +135,13 @@ public:
   // Streams from disk, replacing the music already playing
   void playMusic(std::string_view path, float volume = 1.0f, bool loop = true);
   void stopMusic();
+
+  // Game UI (RmlUi). Create data models on the context before loading the documents that bind to them.
+  Rml::Context *getUIContext();
+  // Loads an RML document (relative to bin/ like models) and shows it unless `show` is false
+  Rml::ElementDocument *loadUIDocument(std::string_view path, bool show = true);
+  // Lato (font-family: LatoLatin) is loaded by default; fonts are used by the family name inside the file
+  bool loadUIFont(std::string_view path, bool fallback = false);
 
   // Runs with vsync off for `seconds` (after a 1 s warm-up), logs frame-time statistics and closes the engine.
   void runBenchmark(float seconds);

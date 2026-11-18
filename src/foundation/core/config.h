@@ -77,6 +77,10 @@ constexpr const char *SHADER_FRAGMENT_PARTICLE = "../assets/shaders/fragmentPart
 constexpr const char *MODEL_BOX = "../assets/models/box/box.obj";
 constexpr const char *MODEL_SPHERE = "../assets/models/sphere/sphere.obj";
 
+// Game UI fonts loaded at start-up, available to every document as font-family: LatoLatin
+inline const char *const UI_FONTS[] = {"../assets/ui/fonts/LatoLatin-Regular.ttf",
+                                       "../assets/ui/fonts/LatoLatin-Bold.ttf"};
+
 // Screenshots (F12), saved next to the executable
 constexpr SDL_Scancode SCREENSHOT_KEY = SDL_SCANCODE_F12;
 constexpr const char *SCREENSHOT_PATH = "screenshot.bmp";
@@ -86,7 +90,7 @@ inline const std::pair<Toggle, bool> DEFAULT_TOGGLES[] = {
     {Toggle::CameraMovement, true}, {Toggle::CameraFly, true}, {Toggle::CursorLock, true},
     {Toggle::Wireframe, false},     {Toggle::ShowUI, false},   {Toggle::Shadows, true},
     {Toggle::ShowStats, false},     {Toggle::VSync, true},     {Toggle::Paused, false},
-    {Toggle::GammaCorrect, true},
+    {Toggle::GammaCorrect, true},   {Toggle::UIDebugger, false},
 };
 constexpr int DEFAULT_TOGGLES_COUNT = std::size(DEFAULT_TOGGLES);
 
@@ -96,6 +100,7 @@ inline const std::pair<SDL_Scancode, Toggle> DEFAULT_TOGGLE_KEYBINDS[] = {
     {SDL_SCANCODE_F3, Toggle::Shadows},      {SDL_SCANCODE_F4, Toggle::CameraFly},
     {SDL_SCANCODE_F5, Toggle::ShowStats},    {SDL_SCANCODE_F6, Toggle::VSync},
     {SDL_SCANCODE_F7, Toggle::Paused},       {SDL_SCANCODE_F8, Toggle::GammaCorrect},
+    {SDL_SCANCODE_F9, Toggle::UIDebugger},
 };
 
 constexpr int DEFAULT_TOGGLE_KEYBINDS_COUNT = std::size(DEFAULT_TOGGLE_KEYBINDS);

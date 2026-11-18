@@ -186,6 +186,7 @@ void UISystem::renderSettingsPanel(Engine &engine, EntityManager &entityManager,
     toggleCheckbox("Wireframe", Toggle::Wireframe);
     toggleCheckbox("Shadows", Toggle::Shadows);
     toggleCheckbox("Gamma-correct lighting", Toggle::GammaCorrect, "Lights in linear space; off is the old look");
+    toggleCheckbox("Game UI debugger", Toggle::UIDebugger, "RmlUi's element inspector and log for the game UI");
   }
 
   if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) {

@@ -3,7 +3,9 @@
 
 #include "systems/inputSystem.h"
 #include "foundation/core/config.h"
+#include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl3.h"
+#include "systems/gameUISystem.h"
 #include "systems/renderSystem.h"
 #include "systems/stateSystem.h"
 #include "systems/windowSystem.h"
@@ -31,6 +33,8 @@ void InputSystem::setDefaultToggleKeyBinds() {
 void InputSystem::update(bool *running, SystemManager &systemManager) {
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
   auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
+  auto &gameUI = systemManager.getSystem<GameUISystem>();
+  const auto &state = systemManager.getSystem<StateSystem>();
 
   m_mouseXOffset = 0.0f;
   m_mouseYOffset = 0.0f;
@@ -39,13 +43,20 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
   while (SDL_PollEvent(&event)) {
     ImGui_ImplSDL3_ProcessEvent(&event);
 
+    // The game UI gets what the debug panels do not want; with the cursor locked, the mouse belongs to the camera
+    const ImGuiIO &io = ImGui::GetIO();
+    bool mouseAllowed = !state.isToggled(Toggle::CursorLock) && !io.WantCaptureMouse;
+    bool usedByUI = gameUI.processEvent(event, mouseAllowed, !io.WantCaptureKeyboard);
+
     switch (event.type) {
     case SDL_EVENT_QUIT:
       *running = false;
       break;
 
     case SDL_EVENT_KEY_DOWN:
-      m_keys[event.key.scancode] = true;
+      // A key the UI used (typing in a field, Enter on a button) is not a game key press. Releases always count.
+      if (!usedByUI)
+        m_keys[event.key.scancode] = true;
       break;
 
     case SDL_EVENT_KEY_UP:

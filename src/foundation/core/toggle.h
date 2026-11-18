@@ -12,4 +12,5 @@ enum class Toggle {
   VSync,
   Paused,
   GammaCorrect,
+  UIDebugger,
 };

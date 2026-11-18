@@ -10,6 +10,7 @@
 #include "systems/audioSystem.h"
 #include "systems/cameraSystem.h"
 #include "systems/collisionSystem.h"
+#include "systems/gameUISystem.h"
 #include "systems/inputSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/particleSystem.h"
@@ -80,9 +81,9 @@ Engine::EntityFactory::EntityFactory(Engine &engine) : m_engine(engine) {}
 Engine::EntityBuilder Engine::EntityFactory::create(std::string_view name) { return EntityBuilder(m_engine, name); }
 
 bool Engine::initialize() {
-  registerSystems();
-
   Logger::setLevel(Logger::Level::Info);
+
+  registerSystems();
 
   return loadResources();
 }
@@ -109,7 +110,8 @@ void Engine::shutdown() {
     return;
   m_shutdown = true;
 
-  // Attempt to clean up renderer and SDL
+  // Attempt to clean up renderer and SDL; the game UI frees its GPU resources first, while the context is alive
+  m_systemManager.getSystem<GameUISystem>().shutdown();
   auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
   renderSystem.getRenderer().shutdown();
   SDL_Quit();
@@ -206,6 +208,8 @@ void Engine::update(bool &isRunning) {
   m_systemManager.getSystem<ResourceSystem>().collectUnusedMaterials();
   m_systemManager.getSystem<AudioSystem>().update(m_systemManager, state.isToggled(Toggle::Paused),
                                                   timeSystem.getTimeScale());
+  // After the app, so data models it changed this frame are shown this frame
+  m_systemManager.getSystem<GameUISystem>().update(state.isToggled(Toggle::UIDebugger));
 
   bool screenshotKey = inputSystem.isKeyPressed(EngineConfig::SCREENSHOT_KEY);
   if (screenshotKey && !m_screenshotKeyDown)
@@ -229,6 +233,9 @@ void Engine::render() {
   uiSystem.beginFrame();
 
   renderSystem.renderPipeline(m_systemManager, m_componentManager);
+
+  // Game UI over the scene, debug panels over the game UI
+  m_systemManager.getSystem<GameUISystem>().render();
 
   uiSystem.render(*this, m_entityManager, m_systemManager, m_componentManager);
 
@@ -292,6 +299,16 @@ void Engine::playSoundAt(std::string_view path, glm::vec3 position, float volume
 
 void Engine::playMusic(std::string_view path, float volume, bool loop) {
   m_systemManager.getSystem<AudioSystem>().playMusic(std::string(path), volume, loop);
+}
+
+Rml::Context *Engine::getUIContext() { return m_systemManager.getSystem<GameUISystem>().getContext(); }
+
+Rml::ElementDocument *Engine::loadUIDocument(std::string_view path, bool show) {
+  return m_systemManager.getSystem<GameUISystem>().loadDocument(std::string(path), show);
+}
+
+bool Engine::loadUIFont(std::string_view path, bool fallback) {
+  return m_systemManager.getSystem<GameUISystem>().loadFont(std::string(path), fallback);
 }
 
 void Engine::stopMusic() { m_systemManager.getSystem<AudioSystem>().stopMusic(); }
@@ -358,6 +375,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<ParticleSystem>(m_componentManager);
   m_systemManager.insert<CollisionSystem>();
   m_systemManager.insert<AudioSystem>(m_componentManager);
+  m_systemManager.insert<GameUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow());
   m_systemManager.insert<UISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
                                    m_systemManager.getSystem<WindowSystem>().getContext());
 }
