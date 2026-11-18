@@ -365,8 +365,14 @@ GLuint uploadTextureFromPixels(const uint8_t *pixels, int width, int height, int
 }
 
 GLuint loadTextureFromImage(const tg3_model &model, const tg3_image &image) {
+  // Images are stored bottom row first, like every other texture in the engine; texcoords get v -> 1 - v to match
   if (image.image.data && image.image.count > 0 && image.as_is == 0) {
-    return uploadTextureFromPixels(image.image.data, image.width, image.height, image.component, image.pixel_type);
+    const size_t rowBytes = image.image.count / static_cast<size_t>(std::max(image.height, 1));
+    std::vector<uint8_t> flipped(image.image.count);
+    for (int y = 0; y < image.height; ++y)
+      std::memcpy(flipped.data() + static_cast<size_t>(y) * rowBytes,
+                  image.image.data + static_cast<size_t>(image.height - 1 - y) * rowBytes, rowBytes);
+    return uploadTextureFromPixels(flipped.data(), image.width, image.height, image.component, image.pixel_type);
   }
 
   std::vector<uint8_t> encoded = extractImageBytes(model, image);
@@ -376,6 +382,7 @@ GLuint loadTextureFromImage(const tg3_model &model, const tg3_image &image) {
   int decodedWidth = 0;
   int decodedHeight = 0;
   int decodedChannels = 0;
+  stbi_set_flip_vertically_on_load_thread(1);
   stbi_uc *decoded = stbi_load_from_memory(encoded.data(), static_cast<int>(encoded.size()), &decodedWidth, &decodedHeight,
                                           &decodedChannels, 0);
   if (!decoded)
@@ -546,7 +553,9 @@ bool Mesh::loadGLB(std::string filename) {
       }
 
       if (texcoordAccessor) {
+        // glTF puts the UV origin at the top-left of the image; the engine's images start at the bottom
         vertex.texCoord = readAccessorVec2(*gltf, *texcoordAccessor, i);
+        vertex.texCoord.y = 1.0f - vertex.texCoord.y;
       }
 
       vertices.push_back(vertex);

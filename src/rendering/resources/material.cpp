@@ -108,7 +108,9 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
 
   GLuint textureID = 0;
   bool hasMipmap = false;
-  stbi_set_flip_vertically_on_load(true);
+  // Every image is stored bottom row first (OpenGL's convention). Set per call and per thread: the flag is
+  // otherwise global, and other loaders decode images too.
+  stbi_set_flip_vertically_on_load_thread(1);
 
   if (!foundPath.empty()) {
     int width, height, channels;
