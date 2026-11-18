@@ -44,14 +44,16 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 
 | Category                   | Description                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------ |
-| **ECS Architecture**       | Flexible, decoupled Entity-Component-System for scalable game logic            |
+| **ECS Architecture**       | Sparse-set component pools: O(1) lookups, packed iteration, stable component addresses |
 | **App Base Class**         | Simple `App` interface with `setup()` and `update()` for clean game logic      |
 | **Generic Components**     | Any plain struct works as a component — no base class required                 |
 | **OpenGL Rendering**       | Modern graphics API integration with full shader support                       |
+| **Instanced Rendering**    | Models sharing mesh and material are drawn in one call, in the main and shadow passes |
+| **Frustum Culling**        | Models outside the camera are skipped using their mesh's bounding sphere       |
 | **PBR Material System**    | Per-submesh materials with diffuse, specular, normal, and emission maps        |
 | **Solid Color Fallback**   | Centralized solid color texture generation and caching for simple rendering    |
 | **Resource Caching**       | Automatic texture caching with handle-based resource management                |
-| **Shadow Mapping**         | Real-time shadow rendering with configurable depth maps                        |
+| **Shadow Mapping**         | Real-time shadows with hardware-filtered PCF                                   |
 | **Asset Loading**          | OBJ (Tiny_Obj) and GLB (tinygltf) support with automated resource management                    |
 | **Camera System**          | Flexible camera control with quaternion-based rotations                        |
 | **Input System**           | Keyboard and mouse handling via SDL3                                           |
@@ -136,7 +138,7 @@ modular-engine/
 ├── src/                        # Source and header files
 │   ├── components/             # ECS component definitions
 │   ├── foundation/             # Core engine and ECS functionality
-│   ├── game/                   # Example apps: Space Aliens and Black Hole
+│   ├── game/                   # Example apps: Space Aliens, Black Hole and Stress
 │   ├── rendering/              # Renderer and resource implementations
 │   └── systems/                # ECS system implementations
 ├── cmake/                      # CPM package manager script
@@ -176,6 +178,21 @@ cmake --build build
 
 In the black hole example the camera orbits on its own: `←` `→` orbit, `↑` `↓` change the elevation and `W` `S` zoom.
 
+**Controls (all examples):**
+
+| Key | Action |
+| --- | --- |
+| `F1` | Wireframe |
+| `F2` | Debug UI (scene explorer, properties, settings) |
+| `F3` | Shadows |
+| `F4` | Camera fly mode |
+| `F5` | Performance overlay |
+| `F6` | VSync |
+| `F7` | Pause the simulation |
+| `F12` | Screenshot (`bin/screenshot.bmp`) |
+| `Right Alt` / `Right Option` | Cursor lock |
+| `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled |
+
 To save a frame without a window manager screenshot, pass `--screenshot <file.bmp> [seconds]`; the engine waits that long (3 seconds by default), saves the frame and exits:
 
 ```bash
@@ -211,7 +228,7 @@ The optimizations are instanced drawing for opaque models and shadows, sparse-se
 
 ## Usage
 
-The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains two examples, a complete game (Space Aliens) and a black hole scene, both launched from [`src/main.cpp`](src/main.cpp).
+The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains three examples, a complete game (Space Aliens), a black hole scene and a stress scene for benchmarking, all launched from [`src/main.cpp`](src/main.cpp).
 
 ### Quick Start
 
