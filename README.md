@@ -59,6 +59,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
 | **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
+| **Performance Overlay**    | `F5` shows FPS, frame time, work time before the buffer swap and the worst frame |
 | **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
 | **UI Integration**         | ImGui-based editor with material inspector, light tweaks, and entity hierarchy |
 | **Scene Management**       | Entity lifecycle management and component composition                          |

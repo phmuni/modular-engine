@@ -85,6 +85,7 @@ constexpr const char *SCREENSHOT_PATH = "screenshot.bmp";
 inline const std::pair<Toggle, bool> DEFAULT_TOGGLES[] = {
     {Toggle::CameraMovement, true}, {Toggle::CameraFly, true}, {Toggle::CursorLock, true},
     {Toggle::Wireframe, false},     {Toggle::ShowUI, false},   {Toggle::Shadows, true},
+    {Toggle::ShowStats, false},
 };
 constexpr int DEFAULT_TOGGLES_COUNT = std::size(DEFAULT_TOGGLES);
 
@@ -92,6 +93,7 @@ constexpr int DEFAULT_TOGGLES_COUNT = std::size(DEFAULT_TOGGLES);
 inline const std::pair<SDL_Scancode, Toggle> DEFAULT_TOGGLE_KEYBINDS[] = {
     {SDL_SCANCODE_RALT, Toggle::CursorLock}, {SDL_SCANCODE_F1, Toggle::Wireframe}, {SDL_SCANCODE_F2, Toggle::ShowUI},
     {SDL_SCANCODE_F3, Toggle::Shadows},      {SDL_SCANCODE_F4, Toggle::CameraFly},
+    {SDL_SCANCODE_F5, Toggle::ShowStats},
 };
 
 constexpr int DEFAULT_TOGGLE_KEYBINDS_COUNT = std::size(DEFAULT_TOGGLE_KEYBINDS);

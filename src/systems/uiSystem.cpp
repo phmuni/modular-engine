@@ -18,6 +18,7 @@
 #include "systems/sceneSystem.h"
 #include "systems/windowSystem.h"
 
+#include <algorithm>
 #include <array>
 #include <glm/glm.hpp>
 #include <imgui/imgui.h>
@@ -78,6 +79,44 @@ void UISystem::update(SystemManager &systemManager) {
   windowSystem.setCursor(cursorLocked);
 
   m_renderUI = state.isToggled(Toggle::ShowUI);
+  m_showStats = state.isToggled(Toggle::ShowStats);
+}
+
+void UISystem::recordFrame(float frameSeconds, float workSeconds) {
+  m_statsElapsed += frameSeconds;
+  m_statsWork += workSeconds;
+  m_statsMaxFrame = std::max(m_statsMaxFrame, frameSeconds);
+  ++m_statsFrames;
+
+  if (m_statsElapsed < kStatsWindow)
+    return;
+
+  m_shownFps = static_cast<float>(m_statsFrames) / m_statsElapsed;
+  m_shownFrameMs = m_statsElapsed * 1000.0f / static_cast<float>(m_statsFrames);
+  m_shownWorkMs = m_statsWork * 1000.0f / static_cast<float>(m_statsFrames);
+  m_shownMaxMs = m_statsMaxFrame * 1000.0f;
+
+  m_statsElapsed = m_statsWork = m_statsMaxFrame = 0.0f;
+  m_statsFrames = 0;
+}
+
+void UISystem::renderStatsOverlay() {
+  const ImGuiViewport *viewport = ImGui::GetMainViewport();
+  constexpr float kMargin = 10.0f;
+  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - kMargin, viewport->WorkPos.y + kMargin),
+                          ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+  ImGui::SetNextWindowBgAlpha(0.6f);
+
+  constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
+  if (ImGui::Begin("##stats", nullptr, kFlags)) {
+    ImGui::Text("%.0f FPS", m_shownFps);
+    ImGui::Text("frame  %6.2f ms", m_shownFrameMs);
+    ImGui::Text("work   %6.2f ms", m_shownWorkMs);
+    ImGui::Text("max    %6.2f ms", m_shownMaxMs);
+  }
+  ImGui::End();
 }
 
 namespace {
@@ -90,6 +129,9 @@ template <typename T> std::vector<Entity> entitiesWith(ComponentManager &compone
 
 void UISystem::render(Engine &engine, EntityManager & /*entityManager*/, SystemManager &systemManager,
                       ComponentManager &componentManager) {
+  if (m_showStats)
+    renderStatsOverlay();
+
   if (!m_renderUI)
     return;
 

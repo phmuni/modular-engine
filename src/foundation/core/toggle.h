@@ -8,4 +8,5 @@ enum class Toggle {
   Wireframe,
   ShowUI,
   Shadows,
+  ShowStats,
 };

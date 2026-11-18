@@ -26,7 +26,24 @@ public:
               ComponentManager &componentManager);
   void endFrame();
 
+  // Feeds the performance overlay: the whole frame, and the part spent in update + render before the buffer swap
+  void recordFrame(float frameSeconds, float workSeconds);
+
 private:
+  bool m_showStats = false;
+
+  // Performance overlay, averaged over kStatsWindow seconds so the numbers stay readable
+  static constexpr float kStatsWindow = 0.5f;
+  float m_statsElapsed = 0.0f;
+  float m_statsWork = 0.0f;
+  float m_statsMaxFrame = 0.0f;
+  int m_statsFrames = 0;
+  float m_shownFps = 0.0f;
+  float m_shownFrameMs = 0.0f;
+  float m_shownWorkMs = 0.0f;
+  float m_shownMaxMs = 0.0f;
+
+  void renderStatsOverlay();
   void renderSceneExplorer(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   void renderPropertiesPanel(SystemManager &systemManager, ComponentManager &componentManager);
 

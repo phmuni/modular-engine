@@ -150,6 +150,7 @@ private:
   std::optional<ScreenshotRequest> m_screenshot;
   bool m_screenshotKeyDown = false;
   bool m_quitRequested = false;
+  uint64_t m_frameStartNs = 0;
 
   struct Benchmark {
     double duration = 10.0;

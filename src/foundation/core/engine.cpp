@@ -163,6 +163,7 @@ void Engine::recordBenchmarkFrame() {
 }
 
 void Engine::update(bool &isRunning) {
+  m_frameStartNs = SDL_GetTicksNS();
 
   auto &inputSystem = m_systemManager.getSystem<InputSystem>();
   inputSystem.update(&isRunning, m_systemManager);
@@ -220,6 +221,10 @@ void Engine::render() {
   uiSystem.render(*this, m_entityManager, m_systemManager, m_componentManager);
 
   uiSystem.endFrame();
+
+  // Everything this frame did before the swap, which may wait on vsync
+  float workSeconds = static_cast<float>(static_cast<double>(SDL_GetTicksNS() - m_frameStartNs) / 1e9);
+  uiSystem.recordFrame(m_systemManager.getSystem<TimeSystem>().getDeltaTime(), workSeconds);
 
   if (m_screenshot && m_screenshot->delay <= 0.0f) {
     renderer.saveScreenshot(m_screenshot->path);
