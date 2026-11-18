@@ -25,6 +25,39 @@ bool isHidden(ComponentManager &componentManager, Entity entity) {
   return componentManager.containsComponent<Hidden>(entity) || !componentManager.containsComponent<Transform>(entity);
 }
 
+// Frustum planes (ax + by + cz + d >= 0 inside), extracted from a view-projection matrix
+struct Frustum {
+  glm::vec4 planes[6];
+
+  explicit Frustum(const glm::mat4 &viewProjection) {
+    const glm::mat4 m = glm::transpose(viewProjection);
+    planes[0] = m[3] + m[0];
+    planes[1] = m[3] - m[0];
+    planes[2] = m[3] + m[1];
+    planes[3] = m[3] - m[1];
+    planes[4] = m[3] + m[2];
+    planes[5] = m[3] - m[2];
+    for (auto &plane : planes)
+      plane /= glm::length(glm::vec3(plane));
+  }
+
+  bool intersectsSphere(const glm::vec3 &center, float radius) const {
+    for (const auto &plane : planes)
+      if (glm::dot(glm::vec3(plane), center) + plane.w < -radius)
+        return false;
+    return true;
+  }
+};
+
+// Mesh bounds moved to world space; rotation keeps the radius, scale stretches it by its largest axis.
+bool isMeshVisible(const Frustum &frustum, const Mesh &mesh, const glm::mat4 &modelMatrix) {
+  const glm::vec3 center = glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f));
+  const float maxScale = glm::sqrt(glm::max(glm::max(glm::dot(glm::vec3(modelMatrix[0]), glm::vec3(modelMatrix[0])),
+                                                     glm::dot(glm::vec3(modelMatrix[1]), glm::vec3(modelMatrix[1]))),
+                                            glm::dot(glm::vec3(modelMatrix[2]), glm::vec3(modelMatrix[2]))));
+  return frustum.intersectsSphere(center, mesh.getBoundsRadius() * maxScale);
+}
+
 constexpr float kSoftOpacityEnter = 0.95f;
 constexpr float kSoftOpacityExit = 0.90f;
 } // namespace
@@ -67,6 +100,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   glm::mat4 view = cameraSystem.getViewMatrix(camera);
   glm::mat4 projection = cameraSystem.getProjectionMatrix(camera);
   glm::vec3 viewPos = camera.position;
+  const Frustum frustum(projection * view);
 
   glm::mat4 lightSpaceMatrix = glm::mat4(1.0f);
   glm::vec3 shadowLightDir = glm::vec3(0.0f, -1.0f, 0.0f);
@@ -155,6 +189,9 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     const Material &material = resourceSystem.getMaterial(model.materialHandles[submeshIndex]);
 
     glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
+    if (!isMeshVisible(frustum, mesh, modelMatrix))
+      return;
+
     glm::mat4 MVP = projection * view * modelMatrix;
     glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
 

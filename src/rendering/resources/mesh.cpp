@@ -63,6 +63,17 @@ void Mesh::setupBuffers(std::vector<Vertex> &vertices, std::vector<uint32_t> &in
     return;
   }
 
+  glm::vec3 boundsMin = vertices.front().position;
+  glm::vec3 boundsMax = boundsMin;
+  for (const auto &vertex : vertices) {
+    boundsMin = glm::min(boundsMin, vertex.position);
+    boundsMax = glm::max(boundsMax, vertex.position);
+  }
+  m_boundsCenter = (boundsMin + boundsMax) * 0.5f;
+  m_boundsRadius = 0.0f;
+  for (const auto &vertex : vertices)
+    m_boundsRadius = glm::max(m_boundsRadius, glm::length(vertex.position - m_boundsCenter));
+
   glGenVertexArrays(1, &m_VAO);
   glBindVertexArray(m_VAO);
 

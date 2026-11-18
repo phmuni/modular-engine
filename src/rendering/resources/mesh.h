@@ -47,6 +47,10 @@ private:
   std::vector<MtlMaterialData> m_mtlMaterials;
   std::string m_baseDir;
 
+  // Bounding sphere in model space, used for frustum culling
+  glm::vec3 m_boundsCenter{0.0f};
+  float m_boundsRadius = 0.0f;
+
   void resetMesh();
   void setupBuffers(std::vector<Vertex> &vertices, std::vector<uint32_t> &indices);
   bool loadOBJ(const std::string filename);
@@ -63,7 +67,8 @@ public:
   Mesh(Mesh &&other) noexcept
       : m_VAO(std::exchange(other.m_VAO, 0)), m_VBO(std::exchange(other.m_VBO, 0)),
         m_EBO(std::exchange(other.m_EBO, 0)), m_submeshes(std::move(other.m_submeshes)),
-        m_mtlMaterials(std::move(other.m_mtlMaterials)), m_baseDir(std::move(other.m_baseDir)) {}
+        m_mtlMaterials(std::move(other.m_mtlMaterials)), m_baseDir(std::move(other.m_baseDir)),
+        m_boundsCenter(other.m_boundsCenter), m_boundsRadius(other.m_boundsRadius) {}
 
   Mesh &operator=(Mesh &&other) noexcept {
     if (this != &other) {
@@ -76,6 +81,8 @@ public:
       m_submeshes = std::move(other.m_submeshes);
       m_mtlMaterials = std::move(other.m_mtlMaterials);
       m_baseDir = std::move(other.m_baseDir);
+      m_boundsCenter = other.m_boundsCenter;
+      m_boundsRadius = other.m_boundsRadius;
     }
     return *this;
   }
@@ -84,4 +91,6 @@ public:
   const std::vector<Submesh> &getSubmeshes() const { return m_submeshes; }
   const std::vector<MtlMaterialData> &getMtlMaterials() const { return m_mtlMaterials; }
   std::string_view getBaseDir() const { return m_baseDir; }
+  glm::vec3 getBoundsCenter() const { return m_boundsCenter; }
+  float getBoundsRadius() const { return m_boundsRadius; }
 };
