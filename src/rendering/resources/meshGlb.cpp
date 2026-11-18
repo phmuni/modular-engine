@@ -5,6 +5,7 @@
 #include "foundation/core/logger.h"
 #include "rendering/resources/mesh.h"
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -55,19 +56,6 @@ int32_t readNestedTextureIndex(const tg3_value *value, const char *key, int32_t 
     return fallback;
 
   return static_cast<int32_t>(indexValue->int_val);
-}
-
-std::string joinBasePath(std::string_view baseDir, std::string_view relativePath) {
-  if (baseDir.empty())
-    return std::string(relativePath);
-
-  std::string result;
-  result.reserve(baseDir.size() + relativePath.size() + 1);
-  result.append(baseDir);
-  if (!result.empty() && result.back() != '/')
-    result.push_back('/');
-  result.append(relativePath);
-  return result;
 }
 
 template <typename T> T readPod(const uint8_t *data) {
@@ -240,7 +228,24 @@ std::vector<uint32_t> readAccessorIndices(const tg3_model &model, const tg3_acce
   return indices;
 }
 
-std::string resolveTexturePath(const std::string &baseDir, const tg3_model &model, int32_t textureIndex) {
+// glTF image URIs are percent-encoded ("my%20texture.png")
+std::string decodeUri(std::string_view uri) {
+  std::string result;
+  result.reserve(uri.size());
+  for (size_t i = 0; i < uri.size(); ++i) {
+    if (uri[i] == '%' && i + 2 < uri.size() && std::isxdigit(static_cast<unsigned char>(uri[i + 1])) &&
+        std::isxdigit(static_cast<unsigned char>(uri[i + 2]))) {
+      result.push_back(static_cast<char>(std::stoi(std::string(uri.substr(i + 1, 2)), nullptr, 16)));
+      i += 2;
+    } else {
+      result.push_back(uri[i]);
+    }
+  }
+  return result;
+}
+
+// Relative to the model's folder, like OBJ texture paths: ResourceSystem::loadModel prepends the base directory
+std::string textureFileUri(const tg3_model &model, int32_t textureIndex) {
   if (textureIndex < 0 || textureIndex >= static_cast<int32_t>(model.textures_count))
     return {};
 
@@ -252,7 +257,7 @@ std::string resolveTexturePath(const std::string &baseDir, const tg3_model &mode
   if (image.uri.len == 0 || tg3_is_data_uri(image.uri.data, image.uri.len))
     return {};
 
-  return joinBasePath(baseDir, std::string_view(image.uri.data, image.uri.len));
+  return decodeUri(std::string_view(image.uri.data, image.uri.len));
 }
 
 glm::mat4 composeNodeTransform(const tg3_node &node) {
@@ -510,7 +515,7 @@ bool Mesh::loadGLB(std::string filename) {
       if (texture.source >= 0 && texture.source < static_cast<int32_t>(imageTextureIds.size()) && imageTextureIds[texture.source] != 0) {
         material.diffuseTextureId = imageTextureIds[texture.source];
       } else {
-        material.diffuseTexPath = resolveTexturePath(m_baseDir, *gltf, source.pbr_metallic_roughness.base_color_texture.index);
+        material.diffuseTexPath = textureFileUri(*gltf, source.pbr_metallic_roughness.base_color_texture.index);
       }
     }
     if (source.normal_texture.index >= 0 && source.normal_texture.index < static_cast<int32_t>(gltf->textures_count)) {
@@ -518,7 +523,7 @@ bool Mesh::loadGLB(std::string filename) {
       if (texture.source >= 0 && texture.source < static_cast<int32_t>(imageTextureIds.size()) && imageTextureIds[texture.source] != 0) {
         material.normalTextureId = imageTextureIds[texture.source];
       } else {
-        material.normalTexPath = resolveTexturePath(m_baseDir, *gltf, source.normal_texture.index);
+        material.normalTexPath = textureFileUri(*gltf, source.normal_texture.index);
       }
     }
     if (source.emissive_texture.index >= 0 && source.emissive_texture.index < static_cast<int32_t>(gltf->textures_count)) {
@@ -526,7 +531,7 @@ bool Mesh::loadGLB(std::string filename) {
       if (texture.source >= 0 && texture.source < static_cast<int32_t>(imageTextureIds.size()) && imageTextureIds[texture.source] != 0) {
         material.emissionTextureId = imageTextureIds[texture.source];
       } else {
-        material.emissionTexPath = resolveTexturePath(m_baseDir, *gltf, source.emissive_texture.index);
+        material.emissionTexPath = textureFileUri(*gltf, source.emissive_texture.index);
       }
     }
 
@@ -538,7 +543,7 @@ bool Mesh::loadGLB(std::string filename) {
         if (texture.source >= 0 && texture.source < static_cast<int32_t>(imageTextureIds.size()) && imageTextureIds[texture.source] != 0) {
           material.specularTextureId = imageTextureIds[texture.source];
         } else {
-          material.specularTexPath = resolveTexturePath(m_baseDir, *gltf, specularTextureIndex);
+          material.specularTexPath = textureFileUri(*gltf, specularTextureIndex);
         }
       }
     }
