@@ -18,6 +18,13 @@ class SpaceAliens : public App {
   Entity gameManager = -1;
 
   std::mt19937 rng{std::random_device{}()};
+  std::uniform_real_distribution<float> pitchJitter{0.92f, 1.08f};
+
+  static constexpr const char *SOUND_LASER = "../assets/sounds/laser.wav";
+  static constexpr const char *SOUND_ENEMY_SHOT = "../assets/sounds/enemy_shot.wav";
+  static constexpr const char *SOUND_EXPLOSION = "../assets/sounds/explosion.wav";
+  static constexpr const char *SOUND_PLAYER_HIT = "../assets/sounds/player_hit.wav";
+  static constexpr const char *MUSIC = "../assets/sounds/music.wav";
   float bulletTTL = 5.0f;
 
   // Returns a color interpolated from purple (first row) to red (last row).
@@ -215,6 +222,7 @@ class SpaceAliens : public App {
     pData.shootTimer -= deltaTime;
     if (input.isKeyPressed(SDL_SCANCODE_SPACE) && pData.shootTimer <= 0.0f) {
       spawnBullet(engine, tf.position + glm::vec3(0.0f, 0.0f, -1.0f), {0.0f, 0.0f, -pData.bulletSpeed}, true);
+      engine.playSound(SOUND_LASER, 0.35f, pitchJitter(rng));
       pData.shootTimer = pData.shootCooldown;
       pData.flashTimer = 0.06f;
     }
@@ -233,6 +241,7 @@ class SpaceAliens : public App {
     auto &state = engine.getOrThrow<GameState>(gameManager);
     auto &tf = engine.getOrThrow<Transform>(player);
     createExplosion(engine, tf.position, glm::vec3(0.2f, 1.0f, 0.8f), 2.5f);
+    engine.playSoundAt(SOUND_PLAYER_HIT, tf.position, 1.0f);
 
     if (--state.lives <= 0) {
       state.gameOver = true;
@@ -313,6 +322,7 @@ class SpaceAliens : public App {
       Entity shooter = aliveEntities[std::uniform_int_distribution<size_t>(0, aliveEntities.size() - 1)(rng)];
       auto &tf = engine.getOrThrow<Transform>(shooter);
       spawnBullet(engine, tf.position + glm::vec3(0.0f, 0.0f, 1.0f), {0.0f, 0.0f, ig.bulletSpeed}, false);
+      engine.playSoundAt(SOUND_ENEMY_SHOT, tf.position, 0.5f, pitchJitter(rng));
       float aggressionScale = glm::mix(0.25f, 1.0f, shootingFractionAlive);
       ig.enemyShootTimer =
           std::uniform_real_distribution<float>(ig.shootCooldownMin, ig.shootCooldownMax)(rng) * aggressionScale;
@@ -348,7 +358,9 @@ class SpaceAliens : public App {
           if (!invader.alive || destroySet.count(entity) || destroySet.count(inv))
             return;
           if (collisionSystem.checkEntitiesCollision(entity, inv, cm)) {
-            createExplosion(engine, engine.getOrThrow<Transform>(inv).position, invader.color, 1.2f);
+            const glm::vec3 &invaderPos = engine.getOrThrow<Transform>(inv).position;
+            createExplosion(engine, invaderPos, invader.color, 1.2f);
+            engine.playSoundAt(SOUND_EXPLOSION, invaderPos, 0.8f, pitchJitter(rng));
             invader.alive = false;
             state.score += invader.scoreValue;
             destroySet.insert(entity);
@@ -434,6 +446,9 @@ public:
 
     // The aliens spawn during play; read their model now instead of on the first spawn
     engine.preloadModel("../assets/models/alien/alien.glb");
+    for (const char *sound : {SOUND_LASER, SOUND_ENEMY_SHOT, SOUND_EXPLOSION, SOUND_PLAYER_HIT})
+      engine.preloadSound(sound);
+    engine.playMusic(MUSIC, 0.4f);
 
     createGameManager(engine);
     createStarfield(engine);
