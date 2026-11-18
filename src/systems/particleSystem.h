@@ -4,6 +4,8 @@
 #include "components/particleEmitter.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
+#include "rendering/renderer.h"
+#include <vector>
 
 class ParticleSystem : public BaseSystem {
 public:
@@ -18,6 +20,8 @@ public:
 private:
   ComponentManager &m_componentManager;
   uint32_t m_shaderHandle = 0;
+  std::vector<ParticleVertex> m_additiveVertices;
+  std::vector<ParticleVertex> m_alphaVertices;
 
   void emitParticles(ParticleEmitter &emitter, Entity entity, const glm::vec3 &origin, float deltaTime);
   void updateParticles(ParticleEmitter &emitter, Entity entity, float deltaTime);

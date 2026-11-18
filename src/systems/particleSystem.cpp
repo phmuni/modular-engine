@@ -133,6 +133,9 @@ void ParticleSystem::updateParticles(ParticleEmitter &emitter, Entity entity, fl
     }
   }
 
+  // Constant for the whole frame; computing it per particle made expf a hotspot
+  const float frictionFactor = std::exp(-emitter.friction * deltaTime);
+
   for (auto &p : emitter.particles) {
     p.life -= deltaTime;
 
@@ -150,7 +153,7 @@ void ParticleSystem::updateParticles(ParticleEmitter &emitter, Entity entity, fl
         p.velocity += inward * gravityForce * deltaTime;
       }
 
-      p.velocity *= std::exp(-emitter.friction * deltaTime);
+      p.velocity *= frictionFactor;
 
       if (dist < emitter.resetRadius) {
         if (emitter.enableRecycling && emitter.resetRadius > 0.0f && emitter.maxParticles > 0) {
@@ -227,8 +230,19 @@ void ParticleSystem::render(SystemManager &systemManager) {
   glm::mat4 view = cameraSystem.getViewMatrix(cam);
   glm::mat4 projection = cameraSystem.getProjectionMatrix(cam);
 
-  std::vector<ParticleVertex> additiveVertices;
-  std::vector<ParticleVertex> alphaVertices;
+  // Reused every frame, so steady-state rendering does not allocate
+  auto &additiveVertices = m_additiveVertices;
+  auto &alphaVertices = m_alphaVertices;
+  additiveVertices.clear();
+  alphaVertices.clear();
+
+  size_t additiveCount = 0;
+  size_t alphaCount = 0;
+  m_componentManager.forEachComponent<ParticleEmitter>([&](Entity /*entity*/, ParticleEmitter &emitter) {
+    (emitter.additiveBlending ? additiveCount : alphaCount) += emitter.particles.size();
+  });
+  additiveVertices.reserve(additiveCount);
+  alphaVertices.reserve(alphaCount);
 
   m_componentManager.forEachComponent<ParticleEmitter>([&](Entity /*entity*/, ParticleEmitter &emitter) {
     auto &target = emitter.additiveBlending ? additiveVertices : alphaVertices;

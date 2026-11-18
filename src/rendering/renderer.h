@@ -42,6 +42,7 @@ private:
   // Particle GPU resources
   GLuint m_particleVAO = 0;
   GLuint m_particleVBO = 0;
+  GLsizeiptr m_particleCapacity = 0; // bytes allocated in m_particleVBO
 
   void initShadowMapping();
   void initParticleBuffers();

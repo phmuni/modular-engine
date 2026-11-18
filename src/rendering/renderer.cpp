@@ -229,8 +229,14 @@ void Renderer::beginParticlePass(bool additiveBlending) {
 }
 
 void Renderer::uploadParticles(const ParticleVertex *data, int count) {
+  const auto size = static_cast<GLsizeiptr>(count * sizeof(ParticleVertex));
   glBindBuffer(GL_ARRAY_BUFFER, m_particleVBO);
-  glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(count * sizeof(ParticleVertex)), data, GL_DYNAMIC_DRAW);
+
+  // Grow geometrically; otherwise orphan the old storage so the driver does not wait for the GPU to finish with it
+  if (size > m_particleCapacity)
+    m_particleCapacity = std::max(size, m_particleCapacity * 2);
+  glBufferData(GL_ARRAY_BUFFER, m_particleCapacity, nullptr, GL_STREAM_DRAW);
+  glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);
 }
 
 void Renderer::drawParticles(int count, int images) {
