@@ -168,6 +168,7 @@ cmake --build build
 ```bash
 ./bin/engine              # Space Aliens
 ./bin/engine blackhole    # Black hole
+./bin/engine stress       # 2500 lit, shadowed boxes (for benchmarking)
 ```
 
 In the black hole example the camera orbits on its own: `←` `→` orbit, `↑` `↓` change the elevation and `W` `S` zoom.
@@ -181,6 +182,25 @@ To save a frame without a window manager screenshot, pass `--screenshot <file.bm
 | Space Aliens | Black Hole |
 | --- | --- |
 | <img src="docs/images/space-aliens.png" alt="Space Aliens example"/> | <img src="docs/images/black-hole.png" alt="Black hole example"/> |
+
+### Benchmarking
+
+`--benchmark [seconds]` (10 by default) turns vsync off, skips a 1 s warm-up and logs frame-time statistics before exiting:
+
+```bash
+./bin/engine stress --benchmark 8
+# [Benchmark] 21040 frames | avg 0.380 ms (2630 FPS) | p50 0.346 | p95 0.400 | p99 1.164 | max 3.526 ms
+```
+
+Average frame time on an Apple M5 at 1280×720, 8 s runs:
+
+| Scene | Debug | Release | Release + optimizations |
+| --- | ---: | ---: | ---: |
+| Space Aliens | 0.50 ms | 0.27 ms | 0.27 ms |
+| Black Hole | 16.04 ms | 0.98 ms | 0.78 ms |
+| Stress | 24.18 ms | 6.32 ms | 0.38 ms |
+
+The optimizations are instanced drawing for opaque models and shadows, sparse-set component storage, frustum culling, hardware shadow PCF, allocation-free uniform lookups and reused particle buffers.
 
 ---
 
