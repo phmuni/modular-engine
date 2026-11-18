@@ -73,7 +73,6 @@ bool Mesh::loadOBJ(std::string filename) {
   std::vector<Vertex> vertices;
   std::vector<uint32_t> indices;
   std::unordered_map<Vertex, uint32_t> vertexCache;
-  const bool generateNormals = attrib.normals.empty();
 
   for (const auto &shape : shapes) {
     const size_t numFaces = shape.mesh.num_face_vertices.size();
@@ -137,34 +136,32 @@ bool Mesh::loadOBJ(std::string filename) {
     }
   }
 
-  if (generateNormals) {
-    for (auto &vertex : vertices) {
-      vertex.normal = glm::vec3(0.0f);
-    }
+  // Faces without normals get smooth normals from the faces around them. Checked per vertex, not per file:
+  // an OBJ can give normals to some faces only, and those vertices would otherwise stay (0, 0, 0) and render unlit.
+  std::vector<glm::vec3> accumulated(vertices.size(), glm::vec3(0.0f));
+  bool missingNormals = false;
+  for (const auto &vertex : vertices)
+    missingNormals = missingNormals || glm::dot(vertex.normal, vertex.normal) == 0.0f;
 
+  if (missingNormals) {
     for (size_t i = 0; i + 2 < indices.size(); i += 3) {
-      Vertex &a = vertices[indices[i]];
-      Vertex &b = vertices[indices[i + 1]];
-      Vertex &c = vertices[indices[i + 2]];
-
-      glm::vec3 faceNormal = glm::cross(b.position - a.position, c.position - a.position);
+      const uint32_t ia = indices[i], ib = indices[i + 1], ic = indices[i + 2];
+      glm::vec3 faceNormal = glm::cross(vertices[ib].position - vertices[ia].position,
+                                        vertices[ic].position - vertices[ia].position);
       float normalLength = glm::length(faceNormal);
       if (normalLength <= 0.0f)
         continue;
-
       faceNormal /= normalLength;
-      a.normal += faceNormal;
-      b.normal += faceNormal;
-      c.normal += faceNormal;
+      accumulated[ia] += faceNormal;
+      accumulated[ib] += faceNormal;
+      accumulated[ic] += faceNormal;
     }
 
-    for (auto &vertex : vertices) {
-      float normalLength = glm::length(vertex.normal);
-      if (normalLength > 0.0f) {
-        vertex.normal /= normalLength;
-      } else {
-        vertex.normal = glm::vec3(0.0f, 1.0f, 0.0f);
-      }
+    for (size_t i = 0; i < vertices.size(); ++i) {
+      if (glm::dot(vertices[i].normal, vertices[i].normal) > 0.0f)
+        continue;
+      float normalLength = glm::length(accumulated[i]);
+      vertices[i].normal = normalLength > 0.0f ? accumulated[i] / normalLength : glm::vec3(0.0f, 1.0f, 0.0f);
     }
   }
 
