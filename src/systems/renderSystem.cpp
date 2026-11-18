@@ -17,10 +17,57 @@
 namespace {
 struct TransparentDraw {
   Entity entity;
-  size_t submeshIndex;
+  uint32_t indexStart;
+  uint32_t indexCount;
+  uint32_t materialHandle;
   float distance;
   uint32_t shaderHandle;
 };
+
+constexpr uint32_t kAnyShader = UINT32_MAX;
+
+// Calls fn(indexStart, indexCount, materialHandle) for each run of parts that are contiguous in the index buffer and
+// currently use the same material, among the parts whose material uses `shaderHandle` (or all parts with
+// kAnyShader). Parts sharing a material are laid out together, so this is usually one draw per material; a part
+// given a material of its own just becomes its own run.
+template <typename Fn>
+void forEachDrawRange(const Mesh &mesh, const Model &model, ResourceSystem &resourceSystem, uint32_t shaderHandle,
+                      Fn &&fn) {
+  const auto &submeshes = mesh.getSubmeshes();
+
+  // A single part is only in the batches of its own shader, so it needs no filtering
+  if (submeshes.size() == 1) {
+    fn(submeshes[0].indexStart, submeshes[0].indexCount, model.materialHandles.empty() ? 0 : model.materialHandles[0]);
+    return;
+  }
+
+  bool open = false;
+  uint32_t start = 0, end = 0, material = 0;
+
+  for (uint32_t index : mesh.getDrawOrder()) {
+    const Submesh &part = submeshes[index];
+    const uint32_t partMaterial = index < model.materialHandles.size() ? model.materialHandles[index] : 0;
+    if (shaderHandle != kAnyShader && resourceSystem.getMaterial(partMaterial).getShaderHandle() != shaderHandle) {
+      if (open)
+        fn(start, end - start, material);
+      open = false;
+      continue;
+    }
+
+    if (open && part.indexStart == end && partMaterial == material) {
+      end += part.indexCount;
+      continue;
+    }
+    if (open)
+      fn(start, end - start, material);
+    open = true;
+    start = part.indexStart;
+    end = part.indexStart + part.indexCount;
+    material = partMaterial;
+  }
+  if (open)
+    fn(start, end - start, material);
+}
 
 // Entities without a Transform or marked Hidden are never drawn.
 bool isHidden(ComponentManager &componentManager, Entity entity) {
@@ -72,8 +119,8 @@ void RenderSystem::setShadowShaderHandle(uint32_t handle) { m_shadowShaderHandle
 
 template <typename SameRun, typename DrawRun> void RenderSystem::drawInstanceRuns(SameRun sameRun, DrawRun drawRun) {
   auto byKey = [](const InstanceItem &a, const InstanceItem &b) {
-    return std::tie(a.meshHandle, a.submeshIndex, a.materialHandle) <
-           std::tie(b.meshHandle, b.submeshIndex, b.materialHandle);
+    return std::tie(a.meshHandle, a.indexStart, a.indexCount, a.materialHandle) <
+           std::tie(b.meshHandle, b.indexStart, b.indexCount, b.materialHandle);
   };
   std::sort(m_instanceItems.begin(), m_instanceItems.end(), byKey);
 
@@ -102,12 +149,11 @@ void RenderSystem::rebuildRenderBatches(ComponentManager &componentManager, Reso
     if (isHidden(componentManager, entity) || model.opacity < kSoftOpacityEnter)
       return;
 
-    const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
-    const auto &submeshes = mesh.getSubmeshes();
-
-    for (size_t i = 0; i < submeshes.size(); ++i) {
-      const Material &material = resourceSystem.getMaterial(model.materialHandles[i]);
-      m_renderBatches[material.getShaderHandle()].emplace_back(entity, i);
+    // One entry per shader the entity's parts use
+    for (size_t i = 0; i < model.materialHandles.size(); ++i) {
+      RenderBatch &batch = m_renderBatches[resourceSystem.getMaterial(model.materialHandles[i]).getShaderHandle()];
+      if (batch.empty() || batch.back() != entity)
+        batch.push_back(entity);
     }
   });
 
@@ -179,7 +225,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
             if (isHidden(componentManager, entity))
               return;
             const auto &transform = componentManager.getOrThrow<Transform>(entity);
-            m_instanceItems.push_back({model.meshHandle, 0, 0, {transformSystem.calculateModelMatrix(transform), {}}});
+            m_instanceItems.push_back(
+                {model.meshHandle, 0, 0, 0, {transformSystem.calculateModelMatrix(transform), {}}});
           });
           drawInstanceRuns([](const InstanceItem &a, const InstanceItem &b) { return a.meshHandle == b.meshHandle; },
                            [&](const InstanceItem &first, int count) {
@@ -237,16 +284,16 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setFloat("opacity", opacity);
   };
 
-  auto drawSubmesh = [&](Shader &shader, Entity entity, size_t submeshIndex, float opacityOverride = -1.0f) {
-    if (!componentManager.containsComponent<Transform>(entity) || !componentManager.containsComponent<Model>(entity))
+  // Per-draw path: shaders without instancing support and transparent models
+  auto drawRange = [&](Shader &shader, Entity entity, uint32_t indexStart, uint32_t indexCount,
+                       uint32_t materialHandle, float opacity) {
+    const auto *transform = componentManager.getOrNil<Transform>(entity);
+    const auto *model = componentManager.getOrNil<Model>(entity);
+    if (!transform || !model)
       return;
 
-    const auto &transform = componentManager.getOrThrow<Transform>(entity);
-    const auto &model = componentManager.getOrThrow<Model>(entity);
-    const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
-    const Material &material = resourceSystem.getMaterial(model.materialHandles[submeshIndex]);
-
-    glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
+    const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
+    glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(*transform);
     if (!isMeshVisible(frustum, mesh, modelMatrix)) {
       ++m_culledCount;
       return;
@@ -256,9 +303,9 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setMat4("MVP", projection * view * modelMatrix);
     shader.setMat4("model", modelMatrix);
     shader.setMat3("normalMatrix", calculateNormalMatrix(modelMatrix));
-    applyMaterial(shader, material, opacityOverride < 0.0f ? model.opacity : opacityOverride);
+    applyMaterial(shader, resourceSystem.getMaterial(materialHandle), opacity);
 
-    renderer.drawSubmesh(mesh, mesh.getSubmeshes()[submeshIndex]);
+    renderer.drawIndexRange(mesh, indexStart, indexCount);
   };
 
   for (auto &[shaderHandle, batch] : m_renderBatches) {
@@ -267,40 +314,50 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     configureShader(shader);
 
     if (!shader.supportsInstancing()) {
-      for (const auto &[entity, submeshIndex] : batch)
-        drawSubmesh(shader, entity, submeshIndex, 1.0f);
+      for (Entity entity : batch) {
+        const auto *model = componentManager.getOrNil<Model>(entity);
+        if (!model)
+          continue;
+        forEachDrawRange(resourceSystem.getMesh(model->meshHandle), *model, resourceSystem, shaderHandle,
+                         [&](uint32_t start, uint32_t count, uint32_t material) {
+                           drawRange(shader, entity, start, count, material, 1.0f);
+                         });
+      }
       continue;
     }
 
-    // Opaque draws sharing mesh, submesh and material go out as one instanced call
+    // Opaque draws of the same mesh range with the same material go out as one instanced call
     m_instanceItems.clear();
-    for (const auto &[entity, submeshIndex] : batch) {
+    for (Entity entity : batch) {
       auto *transform = componentManager.getOrNil<Transform>(entity);
       auto *model = componentManager.getOrNil<Model>(entity);
       if (!transform || !model)
         continue;
 
+      const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
       glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(*transform);
-      if (!isMeshVisible(frustum, resourceSystem.getMesh(model->meshHandle), modelMatrix)) {
+      if (!isMeshVisible(frustum, mesh, modelMatrix)) {
         ++m_culledCount;
         continue;
       }
 
-      m_instanceItems.push_back({model->meshHandle, static_cast<uint32_t>(submeshIndex),
-                                 model->materialHandles[submeshIndex],
-                                 {modelMatrix, calculateNormalMatrix(modelMatrix)}});
+      const InstanceData instance{modelMatrix, calculateNormalMatrix(modelMatrix)};
+      forEachDrawRange(mesh, *model, resourceSystem, shaderHandle,
+                       [&](uint32_t start, uint32_t count, uint32_t material) {
+                         m_instanceItems.push_back({model->meshHandle, start, count, material, instance});
+                       });
     }
 
     shader.setInt("useInstancing", 1);
     drawInstanceRuns(
         [](const InstanceItem &a, const InstanceItem &b) {
-          return a.meshHandle == b.meshHandle && a.submeshIndex == b.submeshIndex &&
+          return a.meshHandle == b.meshHandle && a.indexStart == b.indexStart && a.indexCount == b.indexCount &&
                  a.materialHandle == b.materialHandle;
         },
         [&](const InstanceItem &first, int count) {
-          const Mesh &mesh = resourceSystem.getMesh(first.meshHandle);
           applyMaterial(shader, resourceSystem.getMaterial(first.materialHandle), 1.0f);
-          renderer.drawSubmeshInstanced(mesh, mesh.getSubmeshes()[first.submeshIndex], count);
+          renderer.drawIndexRangeInstanced(resourceSystem.getMesh(first.meshHandle), first.indexStart,
+                                           first.indexCount, count);
         });
   }
 
@@ -312,14 +369,14 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       return;
 
     const auto &transform = componentManager.getOrThrow<Transform>(entity);
-    const size_t submeshCount = resourceSystem.getMesh(model.meshHandle).getSubmeshes().size();
     const float distance = glm::length(camera.position - transform.position);
     auto &draws = model.opacity >= kSoftOpacityExit ? softDraws : transparentDraws;
 
-    for (size_t i = 0; i < submeshCount; ++i) {
-      const Material &material = resourceSystem.getMaterial(model.materialHandles[i]);
-      draws.push_back({entity, i, distance, material.getShaderHandle()});
-    }
+    forEachDrawRange(resourceSystem.getMesh(model.meshHandle), model, resourceSystem, kAnyShader,
+                     [&](uint32_t start, uint32_t count, uint32_t material) {
+                       draws.push_back(
+                           {entity, start, count, material, distance, resourceSystem.getMaterial(material).getShaderHandle()});
+                     });
   });
 
   auto renderSorted = [&](std::vector<TransparentDraw> &draws, void (Renderer::*begin)(), void (Renderer::*end)()) {
@@ -334,7 +391,9 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       Shader &shader = resourceSystem.getShader(draw.shaderHandle);
       shader.use();
       configureShader(shader);
-      drawSubmesh(shader, draw.entity, draw.submeshIndex);
+      const auto *model = componentManager.getOrNil<Model>(draw.entity);
+      drawRange(shader, draw.entity, draw.indexStart, draw.indexCount, draw.materialHandle,
+                model ? model->opacity : 1.0f);
     }
     (renderer.*end)();
   };

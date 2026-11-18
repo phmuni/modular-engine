@@ -74,7 +74,10 @@ bool Mesh::loadOBJ(std::string filename) {
   std::vector<uint32_t> indices;
   std::unordered_map<Vertex, uint32_t> vertexCache;
 
-  for (const auto &shape : shapes) {
+  std::vector<PendingPart> parts;
+
+  for (size_t shapeIndex = 0; shapeIndex < shapes.size(); ++shapeIndex) {
+    const auto &shape = shapes[shapeIndex];
     const size_t numFaces = shape.mesh.num_face_vertices.size();
 
     std::vector<size_t> faceIndexOffset(numFaces);
@@ -84,13 +87,21 @@ bool Mesh::loadOBJ(std::string filename) {
         faceIndexOffset[f] = faceIndexOffset[f - 1] + shape.mesh.num_face_vertices[f - 1];
     }
 
-    std::unordered_map<int, std::vector<size_t>> matFaceGroups;
+    // One part per material used by this object/group, in order of first use
+    std::vector<int> shapeMaterials;
+    std::vector<std::vector<size_t>> facesByMaterial;
     for (size_t f = 0; f < numFaces; f++) {
       int matId = (f < shape.mesh.material_ids.size()) ? shape.mesh.material_ids[f] : -1;
-      matFaceGroups[matId].push_back(f);
+      auto it = std::find(shapeMaterials.begin(), shapeMaterials.end(), matId);
+      if (it == shapeMaterials.end()) {
+        shapeMaterials.push_back(matId);
+        facesByMaterial.emplace_back();
+        it = shapeMaterials.end() - 1;
+      }
+      facesByMaterial[static_cast<size_t>(it - shapeMaterials.begin())].push_back(f);
     }
 
-    auto emitVertex = [&](const tinyobj::index_t &idx) {
+    auto emitVertex = [&](const tinyobj::index_t &idx, std::vector<uint32_t> &target) {
       Vertex vertex{};
 
       if (idx.vertex_index >= 0) {
@@ -110,13 +121,21 @@ bool Mesh::loadOBJ(std::string filename) {
       auto [it, inserted] = vertexCache.emplace(vertex, static_cast<uint32_t>(vertices.size()));
       if (inserted)
         vertices.push_back(vertex);
-      indices.push_back(it->second);
+      target.push_back(it->second);
     };
 
-    for (auto &[matId, faceIndices] : matFaceGroups) {
-      uint32_t submeshStart = static_cast<uint32_t>(indices.size());
+    const std::string shapeName = shape.name.empty() ? "part " + std::to_string(shapeIndex) : shape.name;
+    for (size_t m = 0; m < shapeMaterials.size(); ++m) {
+      PendingPart part;
+      part.materialIndex = shapeMaterials[m];
+      part.name = shapeName;
+      if (shapeMaterials.size() > 1) {
+        const int matId = shapeMaterials[m];
+        part.name += "/" + (matId >= 0 && matId < static_cast<int>(materials.size()) ? materials[matId].name
+                                                                                     : std::string("default"));
+      }
 
-      for (size_t f : faceIndices) {
+      for (size_t f : facesByMaterial[m]) {
         size_t fv = shape.mesh.num_face_vertices[f];
         size_t offset = faceIndexOffset[f];
 
@@ -125,16 +144,18 @@ bool Mesh::loadOBJ(std::string filename) {
 
         const auto &first = shape.mesh.indices[offset + 0];
         for (size_t v = 1; v + 1 < fv; ++v) {
-          emitVertex(first);
-          emitVertex(shape.mesh.indices[offset + v]);
-          emitVertex(shape.mesh.indices[offset + v + 1]);
+          emitVertex(first, part.indices);
+          emitVertex(shape.mesh.indices[offset + v], part.indices);
+          emitVertex(shape.mesh.indices[offset + v + 1], part.indices);
         }
       }
 
-      uint32_t submeshCount = static_cast<uint32_t>(indices.size()) - submeshStart;
-      m_submeshes.push_back({submeshStart, submeshCount, matId});
+      if (!part.indices.empty())
+        parts.push_back(std::move(part));
     }
   }
+
+  layoutParts(parts, indices);
 
   // Faces without normals get smooth normals from the faces around them. Checked per vertex, not per file:
   // an OBJ can give normals to some faces only, and those vertices would otherwise stay (0, 0, 0) and render unlit.

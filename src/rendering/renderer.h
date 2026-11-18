@@ -66,11 +66,13 @@ public:
   // Mesh drawing
   void drawMesh(const Mesh &mesh) const;
   void drawSubmesh(const Mesh &mesh, const Submesh &submesh) const;
+  void drawIndexRange(const Mesh &mesh, uint32_t indexStart, uint32_t indexCount) const;
 
   // Instanced drawing: upload the instances, then draw them in one call
   void uploadInstances(const InstanceData *data, int count);
   void drawMeshInstanced(const Mesh &mesh, int count) const;
   void drawSubmeshInstanced(const Mesh &mesh, const Submesh &submesh, int count) const;
+  void drawIndexRangeInstanced(const Mesh &mesh, uint32_t indexStart, uint32_t indexCount, int count) const;
 
   // Shadow pass
   void beginShadowPass();

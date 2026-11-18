@@ -78,6 +78,8 @@ public:
   GLuint loadTexture(std::string_view path);
 
   // Entity API
+  // Index of the entity's part with this name, or -1 (with a warning)
+  int findSubmesh(Entity entity, std::string_view part);
   void setEmission(Entity entity, int submesh, const glm::vec3 &color, float strength);
   void setTexture(Entity entity, int submesh, TextureSlot slot, std::string_view path);
   void removeTexture(Entity entity, int submesh, TextureSlot slot);

@@ -288,6 +288,30 @@ void Engine::setSolidColor(Entity entity, glm::vec3 color, int submesh) {
   m_systemManager.getSystem<ResourceSystem>().setSolidColor(entity, submesh, color);
 }
 
+void Engine::setEmission(Entity entity, glm::vec3 color, float strength, std::string_view part) {
+  auto &resources = m_systemManager.getSystem<ResourceSystem>();
+  if (int submesh = resources.findSubmesh(entity, part); submesh >= 0)
+    resources.setEmission(entity, submesh, color, strength);
+}
+
+void Engine::setTexture(Entity entity, TextureSlot slot, std::string_view path, std::string_view part) {
+  auto &resources = m_systemManager.getSystem<ResourceSystem>();
+  if (int submesh = resources.findSubmesh(entity, part); submesh >= 0)
+    resources.setTexture(entity, submesh, slot, path);
+}
+
+void Engine::setShininess(Entity entity, float shininess, std::string_view part) {
+  auto &resources = m_systemManager.getSystem<ResourceSystem>();
+  if (int submesh = resources.findSubmesh(entity, part); submesh >= 0)
+    resources.setShininess(entity, submesh, shininess);
+}
+
+void Engine::setSolidColor(Entity entity, glm::vec3 color, std::string_view part) {
+  auto &resources = m_systemManager.getSystem<ResourceSystem>();
+  if (int submesh = resources.findSubmesh(entity, part); submesh >= 0)
+    resources.setSolidColor(entity, submesh, color);
+}
+
 SystemManager &Engine::getSystemManager() { return m_systemManager; }
 ComponentManager &Engine::getComponentManager() { return m_componentManager; }
 EntityManager &Engine::getEntityManager() { return m_entityManager; }

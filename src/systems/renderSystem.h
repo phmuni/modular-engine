@@ -19,13 +19,15 @@ public:
   int getCulledCount() const { return m_culledCount; }
 
 private:
-  using RenderBatch = std::vector<std::pair<Entity, size_t>>;
+  // Entities with at least one part whose material uses the batch's shader
+  using RenderBatch = std::vector<Entity>;
 
   // Draws sharing mesh, submesh and material, gathered every frame for instancing.
   // Grouped per frame, not per rebuild, because material handles can change without dirtying the batches.
   struct InstanceItem {
     uint32_t meshHandle;
-    uint32_t submeshIndex;
+    uint32_t indexStart; // a range of parts merged by material, see forEachDrawRange
+    uint32_t indexCount;
     uint32_t materialHandle;
     InstanceData instance;
   };

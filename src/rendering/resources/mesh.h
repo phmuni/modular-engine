@@ -4,6 +4,8 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 struct Vertex {
@@ -32,10 +34,21 @@ struct MtlMaterialData {
   float shininess = 16.0f;
 };
 
+// A named part of a mesh (an OBJ object/group or a glTF node primitive), kept in file order. Parts are what
+// materials are assigned to; in the index buffer they are laid out by material, so parts that share a material sit
+// next to each other and can be drawn with one call.
 struct Submesh {
   uint32_t indexStart;
   uint32_t indexCount;
   int materialIndex = -1;
+  std::string name;
+};
+
+// A part as a loader produces it, before Mesh::layoutParts places its indices
+struct PendingPart {
+  std::string name;
+  int materialIndex = -1;
+  std::vector<uint32_t> indices;
 };
 
 class Mesh {
@@ -51,7 +64,12 @@ private:
   glm::vec3 m_boundsCenter{0.0f};
   float m_boundsRadius = 0.0f;
 
+  std::vector<uint32_t> m_drawOrder; // submesh indices sorted by indexStart
+  uint32_t m_indexCount = 0;
+
   void resetMesh();
+  // Fills m_submeshes (in file order) and `indices` (grouped by material, in order of first use)
+  void layoutParts(std::vector<PendingPart> &parts, std::vector<uint32_t> &indices);
   void setupBuffers(std::vector<Vertex> &vertices, std::vector<uint32_t> &indices);
   bool loadOBJ(const std::string filename);
   bool loadGLB(const std::string filename);
@@ -68,7 +86,8 @@ public:
       : m_VAO(std::exchange(other.m_VAO, 0)), m_VBO(std::exchange(other.m_VBO, 0)),
         m_EBO(std::exchange(other.m_EBO, 0)), m_submeshes(std::move(other.m_submeshes)),
         m_mtlMaterials(std::move(other.m_mtlMaterials)), m_baseDir(std::move(other.m_baseDir)),
-        m_boundsCenter(other.m_boundsCenter), m_boundsRadius(other.m_boundsRadius) {}
+        m_boundsCenter(other.m_boundsCenter), m_boundsRadius(other.m_boundsRadius),
+        m_drawOrder(std::move(other.m_drawOrder)), m_indexCount(other.m_indexCount) {}
 
   Mesh &operator=(Mesh &&other) noexcept {
     if (this != &other) {
@@ -83,6 +102,8 @@ public:
       m_baseDir = std::move(other.m_baseDir);
       m_boundsCenter = other.m_boundsCenter;
       m_boundsRadius = other.m_boundsRadius;
+      m_drawOrder = std::move(other.m_drawOrder);
+      m_indexCount = other.m_indexCount;
     }
     return *this;
   }
@@ -90,6 +111,12 @@ public:
   GLuint getVAO() const { return m_VAO; }
   bool isLoaded() const { return m_VAO != 0; }
   const std::vector<Submesh> &getSubmeshes() const { return m_submeshes; }
+  // Submesh indices in index-buffer order: neighbors here are contiguous ranges that can be merged into one draw
+  const std::vector<uint32_t> &getDrawOrder() const { return m_drawOrder; }
+  // All parts together, for passes that ignore materials (shadows)
+  uint32_t getIndexCount() const { return m_indexCount; }
+  // Index of the first part with this name, or -1
+  int findSubmesh(std::string_view name) const;
   const std::vector<MtlMaterialData> &getMtlMaterials() const { return m_mtlMaterials; }
   std::string_view getBaseDir() const { return m_baseDir; }
   glm::vec3 getBoundsCenter() const { return m_boundsCenter; }

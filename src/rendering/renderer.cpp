@@ -21,26 +21,19 @@ void Renderer::beginFrame() const {
 
 void Renderer::endFrame() const { SDL_GL_SwapWindow(m_window); }
 
-void Renderer::drawMesh(const Mesh &mesh) const {
-  m_stats.drawCalls += static_cast<int>(mesh.getSubmeshes().size());
-  m_stats.meshesDrawn += 1;
-  glBindVertexArray(mesh.getVAO());
-
-  const auto &submeshes = mesh.getSubmeshes();
-  for (const auto &submesh : submeshes) {
-    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
-                   (void *)(submesh.indexStart * sizeof(uint32_t)));
-  }
-
-  glBindVertexArray(0);
-}
+// The whole index buffer in one call: the parts are laid out back to back
+void Renderer::drawMesh(const Mesh &mesh) const { drawIndexRange(mesh, 0, mesh.getIndexCount()); }
 
 void Renderer::drawSubmesh(const Mesh &mesh, const Submesh &submesh) const {
+  drawIndexRange(mesh, submesh.indexStart, submesh.indexCount);
+}
+
+void Renderer::drawIndexRange(const Mesh &mesh, uint32_t indexStart, uint32_t indexCount) const {
   m_stats.drawCalls += 1;
   m_stats.meshesDrawn += 1;
   glBindVertexArray(mesh.getVAO());
-  glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
-                 (void *)(submesh.indexStart * sizeof(uint32_t)));
+  glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indexCount), GL_UNSIGNED_INT,
+                 (void *)(static_cast<size_t>(indexStart) * sizeof(uint32_t)));
   glBindVertexArray(0);
 }
 
@@ -73,22 +66,19 @@ void Renderer::bindInstanceAttributes(const Mesh &mesh) const {
 }
 
 void Renderer::drawMeshInstanced(const Mesh &mesh, int count) const {
-  m_stats.drawCalls += static_cast<int>(mesh.getSubmeshes().size());
-  m_stats.meshesDrawn += count;
-  bindInstanceAttributes(mesh);
-  for (const auto &submesh : mesh.getSubmeshes()) {
-    glDrawElementsInstanced(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
-                            (void *)(submesh.indexStart * sizeof(uint32_t)), count);
-  }
-  glBindVertexArray(0);
+  drawIndexRangeInstanced(mesh, 0, mesh.getIndexCount(), count);
 }
 
 void Renderer::drawSubmeshInstanced(const Mesh &mesh, const Submesh &submesh, int count) const {
+  drawIndexRangeInstanced(mesh, submesh.indexStart, submesh.indexCount, count);
+}
+
+void Renderer::drawIndexRangeInstanced(const Mesh &mesh, uint32_t indexStart, uint32_t indexCount, int count) const {
   m_stats.drawCalls += 1;
   m_stats.meshesDrawn += count;
   bindInstanceAttributes(mesh);
-  glDrawElementsInstanced(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
-                          (void *)(submesh.indexStart * sizeof(uint32_t)), count);
+  glDrawElementsInstanced(GL_TRIANGLES, static_cast<GLsizei>(indexCount), GL_UNSIGNED_INT,
+                          (void *)(static_cast<size_t>(indexStart) * sizeof(uint32_t)), count);
   glBindVertexArray(0);
 }
 

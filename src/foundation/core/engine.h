@@ -125,6 +125,12 @@ public:
   void setShininess(Entity entity, float shininess, int submesh = -1);
   void setSolidColor(Entity entity, glm::vec3 color, int submesh = -1);
 
+  // Same, addressing a part by name (an OBJ object/group or glTF node); logs a warning if there is none
+  void setEmission(Entity entity, glm::vec3 color, float strength, std::string_view part);
+  void setTexture(Entity entity, TextureSlot slot, std::string_view path, std::string_view part);
+  void setShininess(Entity entity, float shininess, std::string_view part);
+  void setSolidColor(Entity entity, glm::vec3 color, std::string_view part);
+
 private:
   float m_screenWidth;
   float m_screenHeight;

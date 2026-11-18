@@ -638,7 +638,7 @@ bool UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
   const TextureSlot slots[4] = {TextureSlot::Diffuse, TextureSlot::Specular, TextureSlot::Normal,
                                 TextureSlot::Emission};
 
-  ImGui::Text("%zu submeshes", submeshes.size());
+  ImGui::Text("%zu parts", submeshes.size());
 
   // Global texture apply
   if (ImGui::TreeNode("Apply to All Submeshes")) {
@@ -697,7 +697,8 @@ bool UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
 
   for (size_t i = 0; i < model.materialHandles.size(); ++i) {
     ImGui::PushID(static_cast<int>(i));
-    if (ImGui::TreeNode((std::string("Submesh ") + std::to_string(i)).c_str())) {
+    const std::string &partName = i < submeshes.size() ? submeshes[i].name : std::string();
+    if (ImGui::TreeNode((std::to_string(i) + ": " + (partName.empty() ? "part" : partName)).c_str())) {
       uint32_t &handle = model.materialHandles[i];
       Material *matPtr = (handle != 0) ? &resourceSystem.getMaterial(handle) : nullptr;
       ImGui::Text("Material Handle: %u", handle);

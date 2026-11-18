@@ -551,7 +551,9 @@ bool Mesh::loadGLB(std::string filename) {
   vertices.reserve(4096);
   indices.reserve(4096);
 
-  auto appendPrimitive = [&](const tg3_primitive &primitive, const glm::mat4 &worldMatrix) {
+  std::vector<PendingPart> parts;
+
+  auto appendPrimitive = [&](const tg3_primitive &primitive, const glm::mat4 &worldMatrix, std::string name) {
     const tg3_accessor *positionAccessor = findAccessor(*gltf, primitive, "POSITION");
     if (!positionAccessor) {
       LOG_W("[Mesh] GLB primitive missing POSITION attribute");
@@ -601,11 +603,13 @@ bool Mesh::loadGLB(std::string filename) {
         primitiveIndices.push_back(i);
     }
 
-    uint32_t submeshStart = static_cast<uint32_t>(indices.size());
+    PendingPart part;
+    part.name = std::move(name);
+    part.materialIndex = primitive.material;
     auto emitTriangle = [&](uint32_t a, uint32_t b, uint32_t c) {
-      indices.push_back(static_cast<uint32_t>(primitiveBaseVertex) + a);
-      indices.push_back(static_cast<uint32_t>(primitiveBaseVertex) + b);
-      indices.push_back(static_cast<uint32_t>(primitiveBaseVertex) + c);
+      part.indices.push_back(static_cast<uint32_t>(primitiveBaseVertex) + a);
+      part.indices.push_back(static_cast<uint32_t>(primitiveBaseVertex) + b);
+      part.indices.push_back(static_cast<uint32_t>(primitiveBaseVertex) + c);
     };
 
     int32_t mode = primitive.mode >= 0 ? primitive.mode : TG3_MODE_TRIANGLES;
@@ -631,9 +635,8 @@ bool Mesh::loadGLB(std::string filename) {
       break;
     }
 
-    uint32_t submeshCount = static_cast<uint32_t>(indices.size()) - submeshStart;
-    if (submeshCount > 0)
-      m_submeshes.push_back({submeshStart, submeshCount, primitive.material});
+    if (!part.indices.empty())
+      parts.push_back(std::move(part));
   };
 
   std::vector<bool> childReferenced(gltf->nodes_count, false);
@@ -655,8 +658,16 @@ bool Mesh::loadGLB(std::string filename) {
 
     if (node.mesh >= 0 && node.mesh < static_cast<int32_t>(gltf->meshes_count)) {
       const tg3_mesh &mesh = gltf->meshes[node.mesh];
-      for (uint32_t primitiveIndex = 0; primitiveIndex < mesh.primitives_count; ++primitiveIndex)
-        appendPrimitive(mesh.primitives[primitiveIndex], worldMatrix);
+      // Part names: the node's name, else the mesh's, plus the primitive index when the mesh has several
+      std::string name = toStdString(node.name);
+      if (name.empty())
+        name = toStdString(mesh.name);
+      if (name.empty())
+        name = "node " + std::to_string(nodeIndex);
+      for (uint32_t primitiveIndex = 0; primitiveIndex < mesh.primitives_count; ++primitiveIndex) {
+        std::string partName = mesh.primitives_count > 1 ? name + "/" + std::to_string(primitiveIndex) : name;
+        appendPrimitive(mesh.primitives[primitiveIndex], worldMatrix, std::move(partName));
+      }
     }
 
     for (uint32_t c = 0; c < node.children_count; ++c) {
@@ -689,6 +700,8 @@ bool Mesh::loadGLB(std::string filename) {
         traverseNode(static_cast<int32_t>(i), glm::mat4(1.0f));
     }
   }
+
+  layoutParts(parts, indices);
 
   if (vertices.empty() || indices.empty()) {
     LOG_W("[Mesh] GLB produced no drawable geometry: %s", normalized.c_str());

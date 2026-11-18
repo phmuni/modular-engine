@@ -63,13 +63,20 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
     result.append(rel);
     return result;
   };
+  // Parts with the same source material share one handle, so they can be drawn together
+  std::unordered_map<int, uint32_t> handleForSourceMaterial;
   for (const auto &sub : submeshes) {
     if (sub.materialIndex < 0 || sub.materialIndex >= static_cast<int>(mtlMats.size())) {
       result.materialHandles.push_back(0);
       continue;
     }
+    if (auto existing = handleForSourceMaterial.find(sub.materialIndex); existing != handleForSourceMaterial.end()) {
+      result.materialHandles.push_back(existing->second);
+      continue;
+    }
     const auto &mtl = mtlMats[sub.materialIndex];
     uint32_t matHandle = createMaterial(shaderHandle);
+    handleForSourceMaterial[sub.materialIndex] = matHandle;
     Material &mat = getMaterial(matHandle);
 
     if (mtl.diffuseTextureId != 0) {
@@ -253,6 +260,14 @@ void ResourceSystem::setMaterialEmission(uint32_t &handle, const glm::vec3 &colo
 void ResourceSystem::setMaterialShininess(uint32_t &handle, float shininess) {
   ensureOwnMaterial(handle);
   getMaterial(handle).setShininess(shininess);
+}
+
+int ResourceSystem::findSubmesh(Entity entity, std::string_view part) {
+  const auto *model = m_componentManager.getOrNil<Model>(entity);
+  int index = model ? getMesh(model->meshHandle).findSubmesh(part) : -1;
+  if (index < 0)
+    LOG_W("[Resources] Entity %d has no part named \"%.*s\"", entity, static_cast<int>(part.size()), part.data());
+  return index;
 }
 
 void ResourceSystem::setEmission(Entity entity, int submesh, const glm::vec3 &color, float strength) {
