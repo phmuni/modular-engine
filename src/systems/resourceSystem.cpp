@@ -10,6 +10,7 @@
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "rendering/resources/shader.h"
+#include <SDL3/SDL_timer.h>
 #include <string_view>
 
 ResourceSystem::ResourceSystem(ComponentManager &cm) : m_componentManager(cm) {
@@ -24,7 +25,9 @@ uint32_t ResourceSystem::loadMesh(std::string_view path) {
   if (it != m_meshCache.end())
     return it->second;
   uint32_t handle = m_nextMesh++;
+  const uint64_t start = SDL_GetTicksNS();
   m_meshes[handle] = std::make_unique<Mesh>(normalized);
+  LOG_I("[Resources] Loaded %s in %.1f ms", normalized.c_str(), static_cast<double>(SDL_GetTicksNS() - start) / 1e6);
   m_meshCache[std::move(normalized)] = handle;
   return handle;
 }
