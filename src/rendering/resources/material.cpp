@@ -9,15 +9,26 @@
 
 static const std::vector<std::string> kSupportedExtensions = {".png", ".jpg", ".jpeg", ".bmp", ".tga"};
 
-Material::Material() {
-  std::array<unsigned char, 3> diffuseGray = {128, 128, 128};
-  std::array<unsigned char, 3> specularGray = {64, 64, 64};
-  std::array<unsigned char, 3> white = {255, 255, 255};
+namespace {
+struct DefaultTextures {
+  GLuint diffuse, specular, emission;
+};
 
-  m_diffuse = createSolidColorTexture(diffuseGray);
-  m_specular = createSolidColorTexture(specularGray);
+// Created once and shared by every material; each Material used to create three new 1x1 textures
+const DefaultTextures &defaultTextures() {
+  static const DefaultTextures textures{Material::createSolidColorTexture({128, 128, 128}),
+                                        Material::createSolidColorTexture({64, 64, 64}),
+                                        Material::createSolidColorTexture({255, 255, 255})};
+  return textures;
+}
+} // namespace
+
+Material::Material() {
+  const DefaultTextures &defaults = defaultTextures();
+  m_diffuse = defaults.diffuse;
+  m_specular = defaults.specular;
   m_normal = 0; // disabled until TBN is implemented
-  m_emission = createSolidColorTexture(white);
+  m_emission = defaults.emission;
   m_shininess = 16.0f;
   m_shaderHandle = 0;
   m_hasDiffuseTexture = false;

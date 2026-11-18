@@ -173,6 +173,9 @@ void UISystem::renderSettingsPanel(Engine &engine, EntityManager &entityManager,
       ImGui::SetTooltip("Includes the shadow pass; culled meshes were outside the camera");
     ImGui::Text("Particles: %d", stats.particles);
     ImGui::Text("Entities: %zu", entityManager.count());
+    auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
+    ImGui::Text("Materials: %zu  |  Cached textures: %zu", resourceSystem.getMaterialCount(),
+                resourceSystem.getTextureCount());
     toggleCheckbox("Performance overlay", Toggle::ShowStats);
     toggleCheckbox("VSync", Toggle::VSync, "Off shows how fast the engine can actually run");
   }

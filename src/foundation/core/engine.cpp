@@ -198,6 +198,9 @@ void Engine::update(bool &isRunning) {
     m_app->update(*this, timeSystem.getDeltaTime());
   }
 
+  // After the app had its chance to destroy entities this frame
+  m_systemManager.getSystem<ResourceSystem>().collectUnusedMaterials();
+
   bool screenshotKey = inputSystem.isKeyPressed(EngineConfig::SCREENSHOT_KEY);
   if (screenshotKey && !m_screenshotKeyDown)
     captureScreenshot(EngineConfig::resolvePath(EngineConfig::SCREENSHOT_PATH));

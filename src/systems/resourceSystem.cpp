@@ -43,6 +43,14 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
   ModelLoadResult result;
   result.meshHandle = loadMesh(path);
 
+  const uint64_t cacheKey = (static_cast<uint64_t>(result.meshHandle) << 32) | shaderHandle;
+  if (auto cached = m_modelMaterials.find(cacheKey); cached != m_modelMaterials.end()) {
+    result.materialHandles = cached->second;
+    for (uint32_t handle : result.materialHandles)
+      ++m_materialUses[handle];
+    return result;
+  }
+
   Mesh &mesh = getMesh(result.meshHandle);
   const auto &mtlMats = mesh.getMtlMaterials();
   const auto &submeshes = mesh.getSubmeshes();
@@ -101,6 +109,10 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
     result.materialHandles.push_back(matHandle);
   }
 
+  // One use for the cache and one for the caller
+  m_modelMaterials[cacheKey] = result.materialHandles;
+  for (uint32_t handle : result.materialHandles)
+    m_materialUses[handle] += 2;
   return result;
 }
 
@@ -145,19 +157,46 @@ Shader &ResourceSystem::getShader(uint32_t handle) {
   return *it->second;
 }
 
-void ResourceSystem::ensureOwnMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles) {
+void ResourceSystem::ensureOwnMaterial(uint32_t &handle) {
   if (handle == 0) {
     handle = createMaterial(getMaterial(0).getShaderHandle());
-  } else if (std::count(allHandles.begin(), allHandles.end(), handle) > 1) {
-    uint32_t newHandle = createMaterial(getMaterial(handle).getShaderHandle());
-    getMaterial(newHandle) = getMaterial(handle);
-    handle = newHandle;
+    m_materialUses[handle] = 1;
+    return;
+  }
+
+  auto uses = m_materialUses.find(handle);
+  if (uses == m_materialUses.end() || uses->second <= 1)
+    return;
+
+  uint32_t newHandle = createMaterial(getMaterial(handle).getShaderHandle());
+  getMaterial(newHandle) = getMaterial(handle);
+  --uses->second;
+  m_materialUses[newHandle] = 1;
+  handle = newHandle;
+}
+
+void ResourceSystem::collectUnusedMaterials() {
+  m_materialUses.clear();
+  for (const auto &[key, handles] : m_modelMaterials)
+    for (uint32_t handle : handles)
+      ++m_materialUses[handle];
+  m_componentManager.forEachComponent<Model>([&](Entity, Model &model) {
+    for (uint32_t handle : model.materialHandles)
+      ++m_materialUses[handle];
+  });
+
+  // Handle 0 is the default material and always stays
+  for (auto it = m_materials.begin(); it != m_materials.end();) {
+    if (it->first != 0 && m_materialUses.find(it->first) == m_materialUses.end())
+      it = m_materials.erase(it);
+    else
+      ++it;
   }
 }
 
-void ResourceSystem::setMaterialTexture(uint32_t &handle, const std::vector<uint32_t> &allHandles, TextureSlot slot,
+void ResourceSystem::setMaterialTexture(uint32_t &handle, TextureSlot slot,
                                         GLuint tex) {
-  ensureOwnMaterial(handle, allHandles);
+  ensureOwnMaterial(handle);
   Material &mat = getMaterial(handle);
   switch (slot) {
   case TextureSlot::Diffuse:
@@ -179,11 +218,10 @@ void ResourceSystem::setMaterialTexture(uint32_t &handle, const std::vector<uint
   }
 }
 
-void ResourceSystem::removeMaterialTexture(uint32_t &handle, const std::vector<uint32_t> &allHandles,
-                                           TextureSlot slot) {
+void ResourceSystem::removeMaterialTexture(uint32_t &handle, TextureSlot slot) {
   if (handle == 0)
     return;
-  ensureOwnMaterial(handle, allHandles);
+  ensureOwnMaterial(handle);
   Material &def = getMaterial(0);
   Material &mat = getMaterial(handle);
   switch (slot) {
@@ -205,16 +243,15 @@ void ResourceSystem::removeMaterialTexture(uint32_t &handle, const std::vector<u
   }
 }
 
-void ResourceSystem::setMaterialEmission(uint32_t &handle, const std::vector<uint32_t> &allHandles,
-                                         const glm::vec3 &color, float strength) {
-  ensureOwnMaterial(handle, allHandles);
+void ResourceSystem::setMaterialEmission(uint32_t &handle, const glm::vec3 &color, float strength) {
+  ensureOwnMaterial(handle);
   Material &mat = getMaterial(handle);
   mat.setEmissionColor(color);
   mat.setEmissionStrength(strength);
 }
 
-void ResourceSystem::setMaterialShininess(uint32_t &handle, const std::vector<uint32_t> &allHandles, float shininess) {
-  ensureOwnMaterial(handle, allHandles);
+void ResourceSystem::setMaterialShininess(uint32_t &handle, float shininess) {
+  ensureOwnMaterial(handle);
   getMaterial(handle).setShininess(shininess);
 }
 
@@ -227,9 +264,9 @@ void ResourceSystem::setEmission(Entity entity, int submesh, const glm::vec3 &co
   auto &model = *modelPtr;
   if (submesh < 0) {
     for (auto &h : model.materialHandles)
-      setMaterialEmission(h, model.materialHandles, color, strength);
+      setMaterialEmission(h, color, strength);
   } else if (submesh < static_cast<int>(model.materialHandles.size())) {
-    setMaterialEmission(model.materialHandles[submesh], model.materialHandles, color, strength);
+    setMaterialEmission(model.materialHandles[submesh], color, strength);
   }
 }
 
@@ -243,9 +280,9 @@ void ResourceSystem::setTexture(Entity entity, int submesh, TextureSlot slot, st
   GLuint tex = loadTexture(EngineConfig::resolvePath(path));
   if (submesh < 0) {
     for (auto &h : model.materialHandles)
-      setMaterialTexture(h, model.materialHandles, slot, tex);
+      setMaterialTexture(h, slot, tex);
   } else if (submesh < static_cast<int>(model.materialHandles.size())) {
-    setMaterialTexture(model.materialHandles[submesh], model.materialHandles, slot, tex);
+    setMaterialTexture(model.materialHandles[submesh], slot, tex);
   }
 }
 
@@ -258,9 +295,9 @@ void ResourceSystem::removeTexture(Entity entity, int submesh, TextureSlot slot)
   auto &model = *modelPtr;
   if (submesh < 0) {
     for (auto &h : model.materialHandles)
-      removeMaterialTexture(h, model.materialHandles, slot);
+      removeMaterialTexture(h, slot);
   } else if (submesh < static_cast<int>(model.materialHandles.size())) {
-    removeMaterialTexture(model.materialHandles[submesh], model.materialHandles, slot);
+    removeMaterialTexture(model.materialHandles[submesh], slot);
   }
 }
 
@@ -273,9 +310,9 @@ void ResourceSystem::setShininess(Entity entity, int submesh, float shininess) {
   auto &model = *modelPtr;
   if (submesh < 0) {
     for (auto &h : model.materialHandles)
-      setMaterialShininess(h, model.materialHandles, shininess);
+      setMaterialShininess(h, shininess);
   } else if (submesh < static_cast<int>(model.materialHandles.size())) {
-    setMaterialShininess(model.materialHandles[submesh], model.materialHandles, shininess);
+    setMaterialShininess(model.materialHandles[submesh], shininess);
   }
 }
 
@@ -299,9 +336,8 @@ GLuint ResourceSystem::getOrCreateSolidColorTexture(const glm::vec3 &color) {
   return tex;
 }
 
-void ResourceSystem::setSolidColorToMaterial(uint32_t &handle, const std::vector<uint32_t> &allHandles,
-                                             const glm::vec3 &color) {
-  ensureOwnMaterial(handle, allHandles);
+void ResourceSystem::setSolidColorToMaterial(uint32_t &handle, const glm::vec3 &color) {
+  ensureOwnMaterial(handle);
   Material &mat = getMaterial(handle);
   GLuint tex = getOrCreateSolidColorTexture(color);
   mat.setDiffuseTexture(tex);
@@ -318,8 +354,8 @@ void ResourceSystem::setSolidColor(Entity entity, int submesh, const glm::vec3 &
   auto &model = *modelPtr;
   if (submesh < 0) {
     for (auto &h : model.materialHandles)
-      setSolidColorToMaterial(h, model.materialHandles, color);
+      setSolidColorToMaterial(h, color);
   } else if (submesh < static_cast<int>(model.materialHandles.size())) {
-    setSolidColorToMaterial(model.materialHandles[submesh], model.materialHandles, color);
+    setSolidColorToMaterial(model.materialHandles[submesh], color);
   }
 }
