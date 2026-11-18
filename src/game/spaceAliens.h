@@ -9,6 +9,9 @@
 #include "systems/collisionSystem.h"
 #include "systems/inputSystem.h"
 #include "systems/sceneSystem.h"
+#include "systems/stateSystem.h"
+#include <RmlUi/Core.h>
+#include <cmath>
 #include <random>
 #include <unordered_set>
 
@@ -25,6 +28,27 @@ class SpaceAliens : public App {
   static constexpr const char *SOUND_EXPLOSION = "../assets/sounds/explosion.wav";
   static constexpr const char *SOUND_PLAYER_HIT = "../assets/sounds/player_hit.wav";
   static constexpr const char *MUSIC = "../assets/sounds/music.wav";
+  static constexpr const char *SOUND_UI_HOVER = "../assets/sounds/ui_hover.wav";
+  static constexpr const char *SOUND_UI_CLICK = "../assets/sounds/ui_click.wav";
+
+  // What the HUD document (assets/ui/aliens/hud.rml) shows, bound by name in createHud
+  struct Hud {
+    int score = 0;
+    int lives = 3;
+    int remaining = 0;
+    float progress = 100.0f; // invaders left, in percent
+    bool bump = false;       // briefly true when the score goes up
+    bool hintHidden = false;
+    bool paused = false;
+    bool gameOver = false;
+    bool won = false;
+    int restartIn = 0;
+  } hud;
+  Rml::DataModelHandle hudModel;
+  float bumpTimer = 0.0f;
+  float hintTimer = 6.0f;
+  bool restartRequested = false;
+  Engine *engine = nullptr;
   float bulletTTL = 5.0f;
 
   // Returns a color interpolated from purple (first row) to red (last row).
@@ -141,6 +165,76 @@ class SpaceAliens : public App {
                         .withEmission(friendly ? glm::vec3(0.15f, 1.0f, 0.75f) : glm::vec3(1.0f, 0.18f, 0.08f), 7.0f)
                         .withComponent<Bullet>(vel, bulletTTL, friendly)
                         .build();
+  }
+
+  void createHud(Engine &engine) {
+    Rml::Context *context = engine.getUIContext();
+    if (!context)
+      return;
+    Rml::DataModelConstructor model = context->CreateDataModel("hud");
+    if (!model)
+      return;
+    model.Bind("score", &hud.score);
+    model.Bind("lives", &hud.lives);
+    model.Bind("remaining", &hud.remaining);
+    model.Bind("progress", &hud.progress);
+    model.Bind("bump", &hud.bump);
+    model.Bind("hint_hidden", &hud.hintHidden);
+    model.Bind("paused", &hud.paused);
+    model.Bind("game_over", &hud.gameOver);
+    model.Bind("won", &hud.won);
+    model.Bind("restart_in", &hud.restartIn);
+    model.BindEventCallback("restart", [this](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &) {
+      restartRequested = true;
+      // Drop focus, so the next Space press fires instead of going to the button
+      if (Rml::Element *button = event.GetCurrentElement())
+        button->Blur();
+    });
+    model.BindEventCallback("hover", [this](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
+      this->engine->playSound(SOUND_UI_HOVER, 0.35f);
+    });
+    hudModel = model.GetModelHandle();
+
+    engine.loadUIDocument("../assets/ui/aliens/hud.rml");
+  }
+
+  // Copies the game state into the HUD, marking only what changed
+  template <typename T> void setHud(T &field, T value, const char *name) {
+    if (field == value)
+      return;
+    field = value;
+    if (hudModel)
+      hudModel.DirtyVariable(name);
+  }
+
+  void updateHud(Engine &engine, float deltaTime) {
+    auto &state = engine.getOrThrow<GameState>(gameManager);
+    auto &ig = engine.getOrThrow<InvaderGroup>(gameManager);
+
+    int alive = 0;
+    engine.getComponentManager().forEachComponent<Invader>([&](Entity, Invader &inv) {
+      if (inv.alive)
+        ++alive;
+    });
+    const int total = static_cast<int>(ig.invaderSlots.size());
+    const int remaining = alive + total - static_cast<int>(ig.nextInvaderIndex);
+
+    if (state.score > hud.score)
+      bumpTimer = 0.08f;
+    bumpTimer -= deltaTime;
+    hintTimer -= deltaTime;
+
+    setHud(hud.score, state.score, "score");
+    setHud(hud.lives, glm::max(state.lives, 0), "lives");
+    setHud(hud.remaining, remaining, "remaining");
+    setHud(hud.progress, total > 0 ? 100.0f * static_cast<float>(remaining) / static_cast<float>(total) : 0.0f,
+           "progress");
+    setHud(hud.bump, bumpTimer > 0.0f, "bump");
+    setHud(hud.hintHidden, hintTimer <= 0.0f, "hint_hidden");
+    setHud(hud.paused, engine.getSystemManager().getSystem<StateSystem>().isToggled(Toggle::Paused), "paused");
+    setHud(hud.gameOver, state.gameOver, "game_over");
+    setHud(hud.won, state.playerWon, "won");
+    setHud(hud.restartIn, static_cast<int>(std::ceil(glm::max(state.restartTimer, 0.0f))), "restart_in");
   }
 
   void initInvaderSlots(InvaderGroup &ig) {
@@ -449,18 +543,34 @@ public:
     for (const char *sound : {SOUND_LASER, SOUND_ENEMY_SHOT, SOUND_EXPLOSION, SOUND_PLAYER_HIT})
       engine.preloadSound(sound);
     engine.playMusic(MUSIC, 0.4f);
+    engine.preloadSound(SOUND_UI_HOVER);
+    engine.preloadSound(SOUND_UI_CLICK);
 
     createGameManager(engine);
     createStarfield(engine);
     createPlayer(engine);
 
     initInvaderSlots(engine.getOrThrow<InvaderGroup>(gameManager));
+
+    this->engine = &engine;
+    createHud(engine);
   }
 
   void update(Engine &engine, float deltaTime) override {
     updateExplosions(engine, deltaTime);
 
     auto &state = engine.getOrThrow<GameState>(gameManager);
+    updateHud(engine, deltaTime);
+
+    if (restartRequested) {
+      restartRequested = false;
+      if (state.gameOver) {
+        engine.playSound(SOUND_UI_CLICK, 0.6f);
+        resetGame(engine);
+        return;
+      }
+    }
+
     if (state.gameOver) {
       state.restartTimer -= deltaTime;
       if (state.playerWon) {

@@ -1,0 +1,45 @@
+<rml>
+<head>
+	<title>Space Aliens HUD</title>
+	<link type="text/rcss" href="hud.rcss"/>
+</head>
+<body data-model="hud">
+	<div id="topbar">
+		<div class="panel">
+			<div class="label">Score</div>
+			<div class="score" data-class-bump="bump">{{ score }}</div>
+		</div>
+
+		<div class="panel invaders">
+			<div class="label">Invaders <span class="count">{{ remaining }}</span></div>
+			<div class="bar"><div class="fill" data-style-width="progress + '%'"></div></div>
+		</div>
+
+		<div class="panel">
+			<div class="label">Lives</div>
+			<div class="lives">
+				<div class="life" data-class-lost="lives &lt; 1"></div>
+				<div class="life" data-class-lost="lives &lt; 2"></div>
+				<div class="life" data-class-lost="lives &lt; 3"></div>
+			</div>
+		</div>
+	</div>
+
+	<div id="hint" data-class-hidden="hint_hidden">A / D move &#183; SPACE fire &#183; F7 pause</div>
+
+	<div id="paused" data-class-show="paused">
+		<div class="title">Paused</div>
+		<div class="subtitle">Press F7 to resume</div>
+	</div>
+
+	<div id="end" data-class-show="game_over" data-class-won="won">
+		<div class="card">
+			<div class="title">{{ won ? 'Earth is safe' : 'Game over' }}</div>
+			<div class="subtitle">Final score</div>
+			<div class="final">{{ score }}</div>
+			<button data-event-click="restart" data-event-mouseover="hover">Play again</button>
+			<div class="countdown">Restarting in {{ restart_in }}</div>
+		</div>
+	</div>
+</body>
+</rml>

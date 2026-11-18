@@ -1,0 +1,202 @@
+/* RmlUi has no default style sheet: every element starts as inline, unstyled text */
+body, div { display: block; }
+span { display: inline; }
+
+body {
+	width: 100%;
+	height: 100%;
+	font-family: LatoLatin;
+	font-size: 16dp;
+	color: #e8f6ff;
+	/* The HUD never takes clicks; only the end-of-game card turns them back on */
+	pointer-events: none;
+}
+
+/* --- Top bar ------------------------------------------------------------------------------------------------- */
+
+#topbar {
+	position: absolute;
+	top: 18dp;
+	left: 24dp;
+	right: 24dp;
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+}
+
+.panel {
+	min-width: 140dp;
+	padding: 10dp 16dp 12dp;
+	background-color: #0a1428b0;
+	border: 1dp #3ee8ff40;
+	border-radius: 10dp;
+	box-shadow: #3ee8ff22 0 0 18dp 0;
+}
+
+.label {
+	font-size: 12dp;
+	font-weight: bold;
+	letter-spacing: 3dp;
+	color: #8fb4c8;
+	text-transform: uppercase;
+}
+
+.score {
+	font-size: 34dp;
+	font-weight: bold;
+	color: #ffffff;
+	font-effect: glow(0dp 6dp 0dp 0dp #3ee8ffaa);
+	transform-origin: left center;
+	transform: scale(1);
+	transition: transform 0.25s back-out;
+}
+.score.bump { transform: scale(1.18); transition: transform 0.06s cubic-out; }
+
+.invaders { width: 260dp; }
+.invaders .count { color: #ffffff; margin-left: 6dp; }
+
+.bar {
+	height: 8dp;
+	margin-top: 12dp;
+	border-radius: 4dp;
+	background-color: #ffffff14;
+	overflow: hidden;
+}
+.fill {
+	height: 100%;
+	border-radius: 4dp;
+	decorator: horizontal-gradient(#ff4d8d #ffb03e);
+	transition: width 0.3s cubic-out;
+}
+
+.lives { display: flex; margin-top: 12dp; gap: 12dp; }
+.life {
+	width: 20dp;
+	height: 20dp;
+	border-radius: 4dp;
+	decorator: vertical-gradient(#7ff5ff #1aa6d6);
+	box-shadow: #3ee8ff88 0 0 10dp 0;
+	transform: rotate(45deg) scale(1);
+	opacity: 1;
+	transition: opacity 0.4s cubic-out, transform 0.4s back-in;
+}
+.life.lost { opacity: 0.12; transform: rotate(45deg) scale(0.55); }
+
+/* --- Hint ---------------------------------------------------------------------------------------------------- */
+
+#hint {
+	position: absolute;
+	bottom: 26dp;
+	width: 100%;
+	text-align: center;
+	font-size: 14dp;
+	letter-spacing: 2dp;
+	color: #c9e6f5;
+	opacity: 0.85;
+	transition: opacity 1.2s cubic-in-out;
+}
+#hint.hidden { opacity: 0; }
+
+/* --- Pause ---------------------------------------------------------------------------------------------------- */
+
+#paused {
+	position: absolute;
+	top: 40%;
+	width: 100%;
+	text-align: center;
+	opacity: 0;
+	transition: opacity 0.25s cubic-out;
+}
+#paused.show { opacity: 1; }
+
+.title {
+	font-size: 46dp;
+	font-weight: bold;
+	letter-spacing: 6dp;
+	text-transform: uppercase;
+	font-effect: glow(0dp 10dp 0dp 0dp #3ee8ff99);
+}
+.subtitle {
+	font-size: 13dp;
+	letter-spacing: 3dp;
+	text-transform: uppercase;
+	color: #8fb4c8;
+	margin-top: 6dp;
+}
+
+/* --- End of game ------------------------------------------------------------------------------------------------ */
+
+#end {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background-color: #02040c00;
+	opacity: 0;
+	transition: opacity 0.5s cubic-out, background-color 0.5s cubic-out;
+}
+#end.show { opacity: 1; background-color: #02040c88; }
+
+.card {
+	width: 380dp;
+	padding: 30dp 32dp 26dp;
+	text-align: center;
+	background-color: #0b1630d8;
+	border: 1dp #ff4d8d66;
+	border-radius: 16dp;
+	box-shadow: #ff4d8d44 0 0 40dp 0;
+	backdrop-filter: blur(6dp);
+	transform: scale(0.85) translateY(30dp);
+	transition: transform 0.55s back-out;
+}
+#end.show .card { transform: scale(1) translateY(0dp); }
+#end .title { color: #ffd6e5; font-effect: glow(0dp 10dp 0dp 0dp #ff4d8daa); }
+#end.won .card { border-color: #5dffb066; box-shadow: #5dffb044 0 0 40dp 0; }
+#end.won .title { color: #dcffe9; font-effect: glow(0dp 10dp 0dp 0dp #5dffb0aa); }
+
+.final {
+	font-size: 56dp;
+	font-weight: bold;
+	margin: 2dp 0 18dp;
+	color: #ffffff;
+}
+
+button {
+	display: block;
+	margin: 0 auto;
+	width: 200dp;
+	padding: 12dp 0;
+	font-size: 16dp;
+	font-weight: bold;
+	letter-spacing: 3dp;
+	text-transform: uppercase;
+	text-align: center;
+	color: #0b1630;
+	border-radius: 24dp;
+	decorator: horizontal-gradient(#3ee8ff #8f7bff);
+	box-shadow: #3ee8ff55 0 4dp 18dp 0;
+	cursor: pointer;
+	transform: scale(1);
+	transition: transform 0.15s cubic-out;
+}
+#end.show button { pointer-events: auto; }
+button:hover { transform: scale(1.06); box-shadow: #3ee8ff99 0 4dp 26dp 0; }
+button:active { transform: scale(0.97); }
+
+.countdown {
+	margin-top: 14dp;
+	font-size: 12dp;
+	letter-spacing: 2dp;
+	color: #8fb4c8;
+	animation: 1.1s sine-in-out infinite alternate pulse;
+}
+
+/* Color, not opacity: in RmlUi a child's own opacity replaces its parent's, which would show it while #end is hidden */
+@keyframes pulse {
+	from { color: #8fb4c860; }
+	to { color: #8fb4c8; }
+}
