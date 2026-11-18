@@ -1,6 +1,7 @@
 #pragma once
 // PBR material with diffuse, specular, normal, and emission textures.
 
+#include "rendering/resources/decodedImage.h"
 #include <filesystem>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
@@ -15,6 +16,10 @@ public:
 
   static GLuint createSolidColorTexture(const std::array<unsigned char, 3> &color);
   static GLuint loadTexture(const std::filesystem::path &path);
+  // loadTexture in two steps: decoding is thread-safe, uploading needs the GL context (main thread).
+  // An empty image uploads as a 1x1 magenta texture, so missing textures stand out.
+  static DecodedImage decodeTexture(const std::filesystem::path &path);
+  static GLuint uploadTexture(const DecodedImage &image);
   static bool hasAlphaTexture(const std::filesystem::path &path);
 
   GLuint getDiffuse() const;

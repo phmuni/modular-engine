@@ -346,70 +346,50 @@ std::vector<uint8_t> extractImageBytes(const tg3_model &model, const tg3_image &
   return {};
 }
 
-GLuint uploadTextureFromPixels(const uint8_t *pixels, int width, int height, int components, int pixelType) {
-  GLenum format = GL_RGB;
-  switch (components) {
-  case 1: format = GL_RED; break;
-  case 2: format = GL_RG; break;
-  case 3: format = GL_RGB; break;
-  case 4: format = GL_RGBA; break;
-  default: return 0;
-  }
+// Decodes an embedded image (already decoded by tinygltf, or PNG/JPEG bytes) to bottom-row-first pixels, like every
+// other texture in the engine; texcoords get v -> 1 - v to match
+DecodedImage decodeImage(const tg3_model &model, const tg3_image &image) {
+  DecodedImage decoded;
 
-  GLenum type = GL_UNSIGNED_BYTE;
-  switch (pixelType) {
-  case TG3_COMPONENT_TYPE_UNSIGNED_BYTE: type = GL_UNSIGNED_BYTE; break;
-  case TG3_COMPONENT_TYPE_UNSIGNED_SHORT: type = GL_UNSIGNED_SHORT; break;
-  case TG3_COMPONENT_TYPE_FLOAT: type = GL_FLOAT; break;
-  default: return 0;
-  }
-
-  GLuint textureId = 0;
-  glGenTextures(1, &textureId);
-  glBindTexture(GL_TEXTURE_2D, textureId);
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-  glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, type, pixels);
-  glGenerateMipmap(GL_TEXTURE_2D);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  return textureId;
-}
-
-GLuint loadTextureFromImage(const tg3_model &model, const tg3_image &image) {
-  // Images are stored bottom row first, like every other texture in the engine; texcoords get v -> 1 - v to match
   if (image.image.data && image.image.count > 0 && image.as_is == 0) {
+    decoded.width = image.width;
+    decoded.height = image.height;
+    decoded.channels = image.component;
+    switch (image.pixel_type) {
+    case TG3_COMPONENT_TYPE_UNSIGNED_BYTE: decoded.type = GL_UNSIGNED_BYTE; break;
+    case TG3_COMPONENT_TYPE_UNSIGNED_SHORT: decoded.type = GL_UNSIGNED_SHORT; break;
+    case TG3_COMPONENT_TYPE_FLOAT: decoded.type = GL_FLOAT; break;
+    default: return {};
+    }
     const size_t rowBytes = image.image.count / static_cast<size_t>(std::max(image.height, 1));
-    std::vector<uint8_t> flipped(image.image.count);
+    decoded.pixels.resize(image.image.count);
     for (int y = 0; y < image.height; ++y)
-      std::memcpy(flipped.data() + static_cast<size_t>(y) * rowBytes,
+      std::memcpy(decoded.pixels.data() + static_cast<size_t>(y) * rowBytes,
                   image.image.data + static_cast<size_t>(image.height - 1 - y) * rowBytes, rowBytes);
-    return uploadTextureFromPixels(flipped.data(), image.width, image.height, image.component, image.pixel_type);
+    return decoded;
   }
 
   std::vector<uint8_t> encoded = extractImageBytes(model, image);
   if (encoded.empty())
-    return 0;
+    return decoded;
 
-  int decodedWidth = 0;
-  int decodedHeight = 0;
-  int decodedChannels = 0;
   stbi_set_flip_vertically_on_load_thread(1);
-  stbi_uc *decoded = stbi_load_from_memory(encoded.data(), static_cast<int>(encoded.size()), &decodedWidth, &decodedHeight,
-                                          &decodedChannels, 0);
-  if (!decoded)
-    return 0;
+  int width = 0, height = 0, channels = 0;
+  stbi_uc *pixels = stbi_load_from_memory(encoded.data(), static_cast<int>(encoded.size()), &width, &height, &channels, 0);
+  if (!pixels)
+    return decoded;
 
-  GLuint textureId = uploadTextureFromPixels(decoded, decodedWidth, decodedHeight, decodedChannels, TG3_COMPONENT_TYPE_UNSIGNED_BYTE);
-  stbi_image_free(decoded);
-  return textureId;
+  decoded.width = width;
+  decoded.height = height;
+  decoded.channels = channels;
+  decoded.pixels.assign(pixels, pixels + static_cast<size_t>(width) * height * channels);
+  stbi_image_free(pixels);
+  return decoded;
 }
 
 } // namespace
 
-bool Mesh::loadGLB(std::string filename) {
-  resetMesh();
+bool Mesh::parseGLB(std::string filename, MeshData &data) {
 
   std::string normalized = PathUtils::normalizeSeparators(std::move(filename));
   if (!PathUtils::hasExtension(normalized) || !std::filesystem::exists(normalized)) {
@@ -430,7 +410,7 @@ bool Mesh::loadGLB(std::string filename) {
 
   std::filesystem::path filePath(normalized);
   std::filesystem::path basePath = filePath.parent_path();
-  m_baseDir = basePath.empty() ? std::string("./") : PathUtils::normalizeSeparators(basePath.string()) + "/";
+  data.baseDir = basePath.empty() ? std::string("./") : PathUtils::normalizeSeparators(basePath.string()) + "/";
 
   std::ifstream file(normalized, std::ios::binary);
   if (!file) {
@@ -458,7 +438,7 @@ bool Mesh::loadGLB(std::string filename) {
   tg3_parse_options_init(&options);
 
   tg3_error_code parseResult = tg3_parse_auto(model.get(), errors.get(), fileData.data(), static_cast<uint64_t>(fileData.size()),
-                                              m_baseDir.c_str(), static_cast<uint32_t>(m_baseDir.size()), &options);
+                                              data.baseDir.c_str(), static_cast<uint32_t>(data.baseDir.size()), &options);
   if (parseResult != TG3_OK) {
     for (uint32_t i = 0; i < errors.count(); ++i) {
       const tg3_error_entry *entry = errors.entry(i);
@@ -492,12 +472,11 @@ bool Mesh::loadGLB(std::string filename) {
       LOG_W("[Mesh] %s uses the glTF extension %s, which is ignored", normalized.c_str(),
             toStdString(gltf->extensions_used[i]).c_str());
   }
-  std::vector<GLuint> imageTextureIds(gltf->images_count, 0);
-  for (uint32_t i = 0; i < gltf->images_count; ++i) {
-    imageTextureIds[i] = loadTextureFromImage(*gltf, gltf->images[i]);
-  }
+  data.images.resize(gltf->images_count);
+  for (uint32_t i = 0; i < gltf->images_count; ++i)
+    data.images[i] = decodeImage(*gltf, gltf->images[i]);
 
-  m_mtlMaterials.reserve(gltf->materials_count);
+  data.materials.reserve(gltf->materials_count);
   for (uint32_t i = 0; i < gltf->materials_count; ++i) {
     const tg3_material &source = gltf->materials[i];
     MtlMaterialData material;
@@ -512,24 +491,24 @@ bool Mesh::loadGLB(std::string filename) {
     if (source.pbr_metallic_roughness.base_color_texture.index >= 0 &&
         source.pbr_metallic_roughness.base_color_texture.index < static_cast<int32_t>(gltf->textures_count)) {
       const tg3_texture &texture = gltf->textures[source.pbr_metallic_roughness.base_color_texture.index];
-      if (texture.source >= 0 && texture.source < static_cast<int32_t>(imageTextureIds.size()) && imageTextureIds[texture.source] != 0) {
-        material.diffuseTextureId = imageTextureIds[texture.source];
+      if (texture.source >= 0 && texture.source < static_cast<int32_t>(data.images.size()) && !data.images[texture.source].empty()) {
+        material.diffuseImage = texture.source;
       } else {
         material.diffuseTexPath = textureFileUri(*gltf, source.pbr_metallic_roughness.base_color_texture.index);
       }
     }
     if (source.normal_texture.index >= 0 && source.normal_texture.index < static_cast<int32_t>(gltf->textures_count)) {
       const tg3_texture &texture = gltf->textures[source.normal_texture.index];
-      if (texture.source >= 0 && texture.source < static_cast<int32_t>(imageTextureIds.size()) && imageTextureIds[texture.source] != 0) {
-        material.normalTextureId = imageTextureIds[texture.source];
+      if (texture.source >= 0 && texture.source < static_cast<int32_t>(data.images.size()) && !data.images[texture.source].empty()) {
+        material.normalImage = texture.source;
       } else {
         material.normalTexPath = textureFileUri(*gltf, source.normal_texture.index);
       }
     }
     if (source.emissive_texture.index >= 0 && source.emissive_texture.index < static_cast<int32_t>(gltf->textures_count)) {
       const tg3_texture &texture = gltf->textures[source.emissive_texture.index];
-      if (texture.source >= 0 && texture.source < static_cast<int32_t>(imageTextureIds.size()) && imageTextureIds[texture.source] != 0) {
-        material.emissionTextureId = imageTextureIds[texture.source];
+      if (texture.source >= 0 && texture.source < static_cast<int32_t>(data.images.size()) && !data.images[texture.source].empty()) {
+        material.emissionImage = texture.source;
       } else {
         material.emissionTexPath = textureFileUri(*gltf, source.emissive_texture.index);
       }
@@ -540,19 +519,19 @@ bool Mesh::loadGLB(std::string filename) {
       int32_t specularTextureIndex = readNestedTextureIndex(specularValue, "specularTexture", -1);
       if (specularTextureIndex >= 0 && specularTextureIndex < static_cast<int32_t>(gltf->textures_count)) {
         const tg3_texture &texture = gltf->textures[specularTextureIndex];
-        if (texture.source >= 0 && texture.source < static_cast<int32_t>(imageTextureIds.size()) && imageTextureIds[texture.source] != 0) {
-          material.specularTextureId = imageTextureIds[texture.source];
+        if (texture.source >= 0 && texture.source < static_cast<int32_t>(data.images.size()) && !data.images[texture.source].empty()) {
+          material.specularImage = texture.source;
         } else {
           material.specularTexPath = textureFileUri(*gltf, specularTextureIndex);
         }
       }
     }
 
-    m_mtlMaterials.push_back(std::move(material));
+    data.materials.push_back(std::move(material));
   }
 
-  std::vector<Vertex> vertices;
-  std::vector<uint32_t> indices;
+  std::vector<Vertex> &vertices = data.vertices;
+  std::vector<uint32_t> &indices = data.indices;
   vertices.reserve(4096);
   indices.reserve(4096);
 
@@ -706,7 +685,7 @@ bool Mesh::loadGLB(std::string filename) {
     }
   }
 
-  layoutParts(parts, indices);
+  layoutParts(parts, data);
 
   if (vertices.empty() || indices.empty()) {
     LOG_W("[Mesh] GLB produced no drawable geometry: %s", normalized.c_str());
@@ -759,6 +738,5 @@ bool Mesh::loadGLB(std::string filename) {
     }
   }
 
-  setupBuffers(vertices, indices);
   return true;
 }

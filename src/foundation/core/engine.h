@@ -104,6 +104,9 @@ public:
   void createCameraEntity(std::string_view name, glm::vec3 position, float yaw = 0.0f, float pitch = 0.0f,
                           float fov = 90.0f, bool isActive = true);
 
+  // Reads a model on a worker thread so a later withModel/createModelEntity of it does not stall the frame
+  void preloadModel(std::string_view modelPath);
+
   Entity createModelEntity(std::string_view name, std::string_view modelPath, glm::vec3 position, glm::vec3 rotation,
                            glm::vec3 scale, uint32_t shaderHandle = 0);
 

@@ -1,10 +1,12 @@
 #pragma once
 // Mesh class for loading OBJ/GLB files and managing vertex/index buffers.
 
+#include "rendering/resources/decodedImage.h"
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -24,6 +26,11 @@ struct MtlMaterialData {
   std::string specularTexPath;
   std::string normalTexPath;
   std::string emissionTexPath;
+  // Embedded images (glTF), as indices into MeshData::images; Mesh::upload turns them into the texture ids below
+  int diffuseImage = -1;
+  int specularImage = -1;
+  int normalImage = -1;
+  int emissionImage = -1;
   GLuint diffuseTextureId = 0;
   GLuint specularTextureId = 0;
   GLuint normalTextureId = 0;
@@ -51,6 +58,20 @@ struct PendingPart {
   std::vector<uint32_t> indices;
 };
 
+// Everything a loader produces, without touching OpenGL, so it can be built on a worker thread
+struct MeshData {
+  std::vector<Vertex> vertices;
+  std::vector<uint32_t> indices; // parts laid out by material
+  std::vector<Submesh> submeshes;
+  std::vector<MtlMaterialData> materials;
+  std::vector<DecodedImage> images;                             // embedded images
+  std::unordered_map<std::string, DecodedImage> externalImages; // texture files, by baseDir + relative path
+  std::string baseDir;
+  glm::vec3 boundsCenter{0.0f};
+  float boundsRadius = 0.0f;
+  bool loaded = false;
+};
+
 class Mesh {
 private:
   GLuint m_VAO = 0;
@@ -68,15 +89,20 @@ private:
   uint32_t m_indexCount = 0;
 
   void resetMesh();
-  // Fills m_submeshes (in file order) and `indices` (grouped by material, in order of first use)
-  void layoutParts(std::vector<PendingPart> &parts, std::vector<uint32_t> &indices);
-  void setupBuffers(std::vector<Vertex> &vertices, std::vector<uint32_t> &indices);
-  bool loadOBJ(const std::string filename);
-  bool loadGLB(const std::string filename);
+  // Fills data.submeshes (in file order) and data.indices (grouped by material, in order of first use)
+  static void layoutParts(std::vector<PendingPart> &parts, MeshData &data);
+  static bool parseOBJ(std::string filename, MeshData &data);
+  static bool parseGLB(std::string filename, MeshData &data);
 
 public:
   Mesh() = default;
+  // Parses and uploads in one go, on the calling (main) thread
   explicit Mesh(const std::string filename);
+
+  // Reads the file and decodes its textures (embedded and external) without touching OpenGL; safe on any thread
+  static MeshData parse(std::string filename);
+  // Creates the GL buffers and textures; main thread only. Leaves data.externalImages for the texture cache.
+  void upload(MeshData &data);
   ~Mesh();
 
   Mesh(const Mesh &) = delete;

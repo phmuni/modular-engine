@@ -4,12 +4,13 @@
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
+#include "rendering/resources/mesh.h"
+#include <future>
 #include <glm/glm.hpp>
 #include <string_view>
 #include <vector>
 
 class Material;
-class Mesh;
 class Shader;
 struct MtlMaterialData;
 using GLuint = unsigned int;
@@ -29,6 +30,8 @@ private:
 
   std::unordered_map<std::string, GLuint> m_textures;
   std::unordered_map<std::string, uint32_t> m_meshCache;
+  // Meshes being read on worker threads (preloadModel), by normalized path
+  std::unordered_map<std::string, std::future<MeshData>> m_pendingMeshes;
 
   // Materials loaded with each (mesh, shader); entities created from the same file share them until one of them
   // changes its copy. Kept alive by the cache.
@@ -43,11 +46,19 @@ private:
 
   ComponentManager &m_componentManager;
 
+  // Uploads parsed data to the GPU and caches it; texture files decoded with it go into the texture cache
+  uint32_t storeMesh(const std::string &path, MeshData &data, uint64_t startNs, bool readInBackground);
+
 public:
   ResourceSystem(ComponentManager &cm);
   ~ResourceSystem();
 
   // Mesh / Model
+  // Starts reading a model (geometry and textures) on a worker thread; a later loadMesh/loadModel of the same path
+  // only uploads it, or waits for the read to finish
+  void preloadModel(std::string_view path);
+  // Uploads background reads that finished; call once per frame
+  void update();
   uint32_t loadMesh(std::string_view path);
   ModelLoadResult loadModel(std::string_view path, uint32_t shaderHandle);
   Mesh &getMesh(uint32_t handle);

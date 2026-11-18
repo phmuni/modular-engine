@@ -169,6 +169,9 @@ void Engine::update(bool &isRunning) {
   inputSystem.update(&isRunning, m_systemManager);
 
   auto &state = m_systemManager.getSystem<StateSystem>();
+  // Upload models whose background reads finished
+  m_systemManager.getSystem<ResourceSystem>().update();
+
   auto &timeSystem = m_systemManager.getSystem<TimeSystem>();
   timeSystem.setPaused(state.isToggled(Toggle::Paused));
   timeSystem.update();
@@ -248,6 +251,10 @@ Engine::EntityFactory Engine::entities() { return EntityFactory(*this); }
 void Engine::createCameraEntity(std::string_view name, glm::vec3 position, float yaw, float pitch, float fov,
                                 bool isActive) {
   m_systemManager.getSystem<SceneSystem>().createCameraEntity(std::string(name), position, yaw, pitch, fov, isActive);
+}
+
+void Engine::preloadModel(std::string_view modelPath) {
+  m_systemManager.getSystem<ResourceSystem>().preloadModel(EngineConfig::resolvePath(std::string(modelPath)));
 }
 
 Entity Engine::createModelEntity(std::string_view name, std::string_view modelPath, glm::vec3 position,

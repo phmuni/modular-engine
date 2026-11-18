@@ -28,8 +28,7 @@ template <> struct hash<Vertex> {
 };
 } // namespace std
 
-bool Mesh::loadOBJ(std::string filename) {
-  resetMesh();
+bool Mesh::parseOBJ(std::string filename, MeshData &data) {
 
   std::string normalized = PathUtils::normalizeSeparators(std::move(filename));
 
@@ -40,14 +39,14 @@ bool Mesh::loadOBJ(std::string filename) {
   }
 
   auto slash = normalized.rfind('/');
-  m_baseDir = (slash != std::string::npos) ? normalized.substr(0, slash + 1) : "./";
+  data.baseDir = (slash != std::string::npos) ? normalized.substr(0, slash + 1) : "./";
 
   tinyobj::attrib_t attrib;
   std::vector<tinyobj::shape_t> shapes;
   std::vector<tinyobj::material_t> materials;
   std::string err;
 
-  bool success = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, normalized.c_str(), m_baseDir.c_str());
+  bool success = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, normalized.c_str(), data.baseDir.c_str());
 
   if (!err.empty())
     LOG_W("[Mesh] %s", err.c_str());
@@ -55,7 +54,7 @@ bool Mesh::loadOBJ(std::string filename) {
   if (!success)
     return false;
 
-  m_mtlMaterials.reserve(materials.size());
+  data.materials.reserve(materials.size());
   for (const auto &mat : materials) {
     MtlMaterialData mtl;
     mtl.name = mat.name;
@@ -67,11 +66,11 @@ bool Mesh::loadOBJ(std::string filename) {
     mtl.specularColor = {mat.specular[0], mat.specular[1], mat.specular[2]};
     mtl.emissionColor = {mat.emission[0], mat.emission[1], mat.emission[2]};
     mtl.shininess = mat.shininess > 0.0f ? mat.shininess : 16.0f;
-    m_mtlMaterials.push_back(std::move(mtl));
+    data.materials.push_back(std::move(mtl));
   }
 
-  std::vector<Vertex> vertices;
-  std::vector<uint32_t> indices;
+  std::vector<Vertex> &vertices = data.vertices;
+  std::vector<uint32_t> &indices = data.indices;
   std::unordered_map<Vertex, uint32_t> vertexCache;
 
   std::vector<PendingPart> parts;
@@ -155,7 +154,7 @@ bool Mesh::loadOBJ(std::string filename) {
     }
   }
 
-  layoutParts(parts, indices);
+  layoutParts(parts, data);
 
   // Faces without normals get smooth normals from the faces around them. Checked per vertex, not per file:
   // an OBJ can give normals to some faces only, and those vertices would otherwise stay (0, 0, 0) and render unlit.
@@ -186,6 +185,5 @@ bool Mesh::loadOBJ(std::string filename) {
     }
   }
 
-  setupBuffers(vertices, indices);
   return true;
 }

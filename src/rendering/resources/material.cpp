@@ -97,61 +97,68 @@ std::string findTextureFile(const std::string &normalized) {
 }
 } // namespace
 
-GLuint Material::loadTexture(const std::filesystem::path &path) {
-  std::string normalized = PathUtils::normalizeSeparators(path.string());
-  std::string basePath = std::string(PathUtils::stripExtension(normalized));
-  std::string foundPath = findTextureFile(normalized);
+GLuint Material::loadTexture(const std::filesystem::path &path) { return uploadTexture(decodeTexture(path)); }
 
-  GLuint textureID = 0;
-  bool hasMipmap = false;
+DecodedImage Material::decodeTexture(const std::filesystem::path &path) {
+  std::string normalized = PathUtils::normalizeSeparators(path.string());
+  std::string foundPath = findTextureFile(normalized);
+  DecodedImage image;
+
+  if (foundPath.empty()) {
+    if (!PathUtils::stripExtension(normalized).empty())
+      LOG_W("[Material] File not found: %s", normalized.c_str());
+    return image;
+  }
+
   // Every image is stored bottom row first (OpenGL's convention). Set per call and per thread: the flag is
   // otherwise global, and other loaders decode images too.
   stbi_set_flip_vertically_on_load_thread(1);
 
-  if (!foundPath.empty()) {
-    int width, height, channels;
-    // Grayscale images are expanded: uploading 1 or 2 channels as RGB read past each row
-    int sourceChannels = 0;
-    stbi_info(foundPath.c_str(), &width, &height, &sourceChannels);
-    const int wanted = (sourceChannels == 2 || sourceChannels == 4) ? 4 : 3;
-    unsigned char *data = stbi_load(foundPath.c_str(), &width, &height, &channels, wanted);
-    channels = wanted;
-    if (data) {
-      glGenTextures(1, &textureID);
-      glBindTexture(GL_TEXTURE_2D, textureID);
-      GLenum format = (channels == 4 ? GL_RGBA : GL_RGB);
-      // Rows are tightly packed; the default 4-byte alignment skews RGB images whose width * 3 is not a multiple of 4
-      glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-      glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-      glGenerateMipmap(GL_TEXTURE_2D);
-      hasMipmap = true;
-      stbi_image_free(data);
-    } else {
-      LOG_E("[Material] Failed to load %s: %s", foundPath.c_str(), stbi_failure_reason());
-    }
-  } else if (!basePath.empty()) {
-    LOG_W("[Material] File not found: %s", normalized.c_str());
+  // Grayscale images are expanded: uploading 1 or 2 channels as RGB read past each row
+  int width = 0, height = 0, sourceChannels = 0;
+  stbi_info(foundPath.c_str(), &width, &height, &sourceChannels);
+  const int wanted = (sourceChannels == 2 || sourceChannels == 4) ? 4 : 3;
+
+  int channels = 0;
+  unsigned char *data = stbi_load(foundPath.c_str(), &width, &height, &channels, wanted);
+  if (!data) {
+    LOG_E("[Material] Failed to load %s: %s", foundPath.c_str(), stbi_failure_reason());
+    return image;
   }
 
-  // Fallback texture on failure
-  if (textureID == 0) {
+  image.width = width;
+  image.height = height;
+  image.channels = wanted;
+  image.pixels.assign(data, data + static_cast<size_t>(width) * height * wanted);
+  stbi_image_free(data);
+  return image;
+}
+
+GLuint Material::uploadTexture(const DecodedImage &image) {
+  static constexpr GLenum kFormats[] = {GL_RED, GL_RG, GL_RGB, GL_RGBA};
+  const bool valid = !image.empty() && image.channels >= 1 && image.channels <= 4;
+
+  GLuint textureID = 0;
+  glGenTextures(1, &textureID);
+  glBindTexture(GL_TEXTURE_2D, textureID);
+  // Rows are tightly packed; the default 4-byte alignment skews RGB images whose width * 3 is not a multiple of 4
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+  if (valid) {
+    GLenum format = kFormats[image.channels - 1];
+    glTexImage2D(GL_TEXTURE_2D, 0, format, image.width, image.height, 0, format, image.type, image.pixels.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  } else {
+    // Fallback for missing or unreadable images
     unsigned char fallbackColor[3] = {255, 0, 255};
-    glGenTextures(1, &textureID);
-    glBindTexture(GL_TEXTURE_2D, textureID);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, fallbackColor);
-    hasMipmap = false;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   }
 
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  if (hasMipmap) {
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  } else {
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  }
-
   return textureID;
 }
 

@@ -19,17 +19,58 @@ ResourceSystem::ResourceSystem(ComponentManager &cm) : m_componentManager(cm) {
 
 ResourceSystem::~ResourceSystem() = default;
 
+void ResourceSystem::preloadModel(std::string_view path) {
+  std::string normalized = PathUtils::normalizeSeparators(std::string(path));
+  if (m_meshCache.count(normalized) || m_pendingMeshes.count(normalized))
+    return;
+  m_pendingMeshes.emplace(normalized, std::async(std::launch::async, [normalized] { return Mesh::parse(normalized); }));
+}
+
+void ResourceSystem::update() {
+  for (auto it = m_pendingMeshes.begin(); it != m_pendingMeshes.end();) {
+    if (it->second.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+      ++it;
+      continue;
+    }
+    MeshData data = it->second.get();
+    std::string path = it->first;
+    it = m_pendingMeshes.erase(it);
+    storeMesh(path, data, SDL_GetTicksNS(), true);
+  }
+}
+
 uint32_t ResourceSystem::loadMesh(std::string_view path) {
   std::string normalized = PathUtils::normalizeSeparators(std::string(path));
   auto it = m_meshCache.find(normalized);
   if (it != m_meshCache.end())
     return it->second;
-  uint32_t handle = m_nextMesh++;
+
   const uint64_t start = SDL_GetTicksNS();
-  m_meshes[handle] = std::make_unique<Mesh>(normalized);
-  if (m_meshes[handle]->isLoaded())
-    LOG_I("[Resources] Loaded %s in %.1f ms", normalized.c_str(), static_cast<double>(SDL_GetTicksNS() - start) / 1e6);
-  m_meshCache[std::move(normalized)] = handle;
+  if (auto pending = m_pendingMeshes.find(normalized); pending != m_pendingMeshes.end()) {
+    MeshData data = pending->second.get(); // waits only if the read has not finished yet
+    m_pendingMeshes.erase(pending);
+    return storeMesh(normalized, data, start, true);
+  }
+
+  MeshData data = Mesh::parse(normalized);
+  return storeMesh(normalized, data, start, false);
+}
+
+uint32_t ResourceSystem::storeMesh(const std::string &path, MeshData &data, uint64_t startNs, bool readInBackground) {
+  uint32_t handle = m_nextMesh++;
+  auto mesh = std::make_unique<Mesh>();
+  mesh->upload(data);
+
+  for (auto &[texturePath, image] : data.externalImages)
+    if (m_textures.find(texturePath) == m_textures.end())
+      m_textures.emplace(texturePath, Material::uploadTexture(image));
+
+  if (mesh->isLoaded())
+    LOG_I("[Resources] Loaded %s in %.1f ms%s", path.c_str(), static_cast<double>(SDL_GetTicksNS() - startNs) / 1e6,
+          readInBackground ? " on the main thread (read in the background)" : "");
+
+  m_meshes[handle] = std::move(mesh);
+  m_meshCache[path] = handle;
   return handle;
 }
 

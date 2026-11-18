@@ -432,6 +432,9 @@ public:
                              glm::cos(glm::radians(85.0f)));
     engine.createCameraEntity("Camera", glm::vec3(0.0f, 14.0f, 18.0f), 0.0f, -35.0f, 55.0f);
 
+    // The aliens spawn during play; read their model now instead of on the first spawn
+    engine.preloadModel("../assets/models/alien/alien.glb");
+
     createGameManager(engine);
     createStarfield(engine);
     createPlayer(engine);
