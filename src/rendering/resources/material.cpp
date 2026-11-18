@@ -44,31 +44,6 @@ void Material::setSpecularTexture(GLuint texture) { m_specular = texture; }
 void Material::setNormalTexture(GLuint texture) { m_normal = texture; }
 void Material::setEmissionTexture(GLuint texture) { m_emission = texture; }
 
-void Material::setDiffuse(const std::string path) {
-  GLuint tex = loadTexture(path);
-  if (tex != 0)
-    m_diffuse = tex;
-  m_hasDiffuseTexture = (tex != 0);
-}
-
-void Material::setSpecular(const std::string path) {
-  GLuint tex = loadTexture(path);
-  if (tex != 0)
-    m_specular = tex;
-}
-
-void Material::setNormal(const std::string path) {
-  GLuint tex = loadTexture(path);
-  if (tex != 0)
-    m_normal = tex;
-}
-
-void Material::setEmission(const std::string path) {
-  GLuint tex = loadTexture(path);
-  if (tex != 0)
-    m_emission = tex;
-}
-
 void Material::setShininess(float shine) { m_shininess = shine; }
 void Material::setShaderHandle(uint32_t handle) { m_shaderHandle = handle; }
 void Material::setDiffuseColor(const glm::vec3 &color) { m_diffuseColor = color; }
@@ -91,20 +66,30 @@ GLuint Material::createSolidColorTexture(const std::array<unsigned char, 3> &col
   return textureID;
 }
 
+namespace {
+// The requested file if it exists; otherwise the same name with another supported extension
+std::string findTextureFile(const std::string &normalized) {
+  if (std::filesystem::is_regular_file(normalized))
+    return normalized;
+
+  std::string basePath = std::string(PathUtils::stripExtension(normalized));
+  if (basePath.empty())
+    return {};
+  for (const auto &ext : kSupportedExtensions) {
+    std::string candidate = basePath + ext;
+    if (std::filesystem::exists(candidate)) {
+      LOG_W("[Material] %s not found, using %s", normalized.c_str(), candidate.c_str());
+      return candidate;
+    }
+  }
+  return {};
+}
+} // namespace
+
 GLuint Material::loadTexture(const std::filesystem::path &path) {
   std::string normalized = PathUtils::normalizeSeparators(path.string());
   std::string basePath = std::string(PathUtils::stripExtension(normalized));
-  std::string foundPath;
-
-  if (!basePath.empty()) {
-    for (const auto &ext : kSupportedExtensions) {
-      std::string candidate = basePath + ext;
-      if (std::filesystem::exists(candidate)) {
-        foundPath = candidate;
-        break;
-      }
-    }
-  }
+  std::string foundPath = findTextureFile(normalized);
 
   GLuint textureID = 0;
   bool hasMipmap = false;
@@ -153,24 +138,9 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
 }
 
 bool Material::hasAlphaTexture(const std::filesystem::path &path) {
-  std::string normalized = PathUtils::normalizeSeparators(path.string());
-  std::string basePath = std::string(PathUtils::stripExtension(normalized));
-
-  if (basePath.empty())
-    return false;
-
-  for (const auto &ext : kSupportedExtensions) {
-    std::string candidate = basePath + ext;
-    if (!std::filesystem::exists(candidate))
-      continue;
-
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-    if (stbi_info(candidate.c_str(), &width, &height, &channels))
-      return channels == 4;
-    return false;
-  }
-
-  return false;
+  std::string found = findTextureFile(PathUtils::normalizeSeparators(path.string()));
+  int width = 0;
+  int height = 0;
+  int channels = 0;
+  return !found.empty() && stbi_info(found.c_str(), &width, &height, &channels) && channels == 4;
 }

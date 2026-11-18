@@ -33,11 +33,6 @@ public:
   void setNormalTexture(GLuint texture);
   void setEmissionTexture(GLuint texture);
 
-  void setDiffuse(std::string path);
-  void setSpecular(std::string path);
-  void setNormal(std::string path);
-  void setEmission(std::string path);
-
   void setShininess(float shine);
   void setShaderHandle(uint32_t handle);
   void setDiffuseColor(const glm::vec3 &color);

@@ -68,7 +68,8 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
       mat.setHasDiffuseTexture(true);
       mat.setDiffuseColor(mtl.diffuseColor);
     } else if (!mtl.diffuseTexPath.empty()) {
-      mat.setDiffuse(resolve(mtl.diffuseTexPath));
+      mat.setDiffuseTexture(loadTexture(resolve(mtl.diffuseTexPath)));
+      mat.setHasDiffuseTexture(true);
       mat.setDiffuseColor(mtl.diffuseColor);
     } else {
       mat.setDiffuseColor(mtl.diffuseColor);
@@ -78,17 +79,17 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
     if (mtl.specularTextureId != 0)
       mat.setSpecularTexture(mtl.specularTextureId);
     else if (!mtl.specularTexPath.empty())
-      mat.setSpecular(resolve(mtl.specularTexPath));
+      mat.setSpecularTexture(loadTexture(resolve(mtl.specularTexPath)));
 
     if (mtl.normalTextureId != 0)
       mat.setNormalTexture(mtl.normalTextureId);
     else if (!mtl.normalTexPath.empty())
-      mat.setNormal(resolve(mtl.normalTexPath));
+      mat.setNormalTexture(loadTexture(resolve(mtl.normalTexPath)));
 
     if (mtl.emissionTextureId != 0)
       mat.setEmissionTexture(mtl.emissionTextureId);
     else if (!mtl.emissionTexPath.empty())
-      mat.setEmission(resolve(mtl.emissionTexPath));
+      mat.setEmissionTexture(loadTexture(resolve(mtl.emissionTexPath)));
 
     mat.setShininess(mtl.shininess);
     mat.setEmissionColor(mtl.emissionColor);
@@ -102,15 +103,15 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
   return result;
 }
 
+// Cached by the full path: "rock.png" and "rock.jpg" are different textures
 GLuint ResourceSystem::loadTexture(std::string_view path) {
   std::string normalized = PathUtils::normalizeSeparators(std::string(path));
-  std::string key = std::string(PathUtils::stripExtension(normalized));
-  auto it = m_textures.find(key);
+  auto it = m_textures.find(normalized);
   if (it != m_textures.end())
     return it->second;
   GLuint tex = Material::loadTexture(normalized);
   if (tex != 0)
-    m_textures[std::move(key)] = tex;
+    m_textures[std::move(normalized)] = tex;
   return tex;
 }
 
