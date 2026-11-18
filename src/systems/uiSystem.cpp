@@ -183,6 +183,7 @@ void UISystem::renderSettingsPanel(Engine &engine, EntityManager &entityManager,
   if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) {
     toggleCheckbox("Wireframe", Toggle::Wireframe);
     toggleCheckbox("Shadows", Toggle::Shadows);
+    toggleCheckbox("Gamma-correct lighting", Toggle::GammaCorrect, "Lights in linear space; off is the old look");
   }
 
   if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) {

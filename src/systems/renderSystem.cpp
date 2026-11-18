@@ -183,6 +183,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
 
   auto &state = systemManager.getSystem<StateSystem>();
   bool shadowsEnabled = state.isToggled(Toggle::Shadows);
+  const bool gammaCorrect = state.isToggled(Toggle::GammaCorrect);
   const auto &lights = lightSystem.getLights();
 
   // Shadow pass
@@ -266,6 +267,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setInt("useShadows", useShadows ? 1 : 0);
     shader.setVec3("shadowLightDir", shadowLightDir);
     shader.setTex("shadowMap", renderer.getDepthMap(), 4);
+    shader.setInt("gammaCorrect", gammaCorrect ? 1 : 0);
 
     lightSystem.uploadLightsToShader(shader, componentManager);
   };

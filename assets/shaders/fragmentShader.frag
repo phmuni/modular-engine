@@ -49,6 +49,13 @@ uniform float alphaCutoff;
 uniform int doubleSided;
 uniform int unlit; // KHR_materials_unlit: base color only, no lights or shadows
 
+// Colors (textures, solid colors, light colors) are authored in sRGB. With gammaCorrect, lighting is computed on
+// linear values and converted back for display, which keeps midtones and light falloff from looking too dark.
+uniform int gammaCorrect;
+
+vec3 toLinear(vec3 c) { return gammaCorrect == 1 ? pow(c, vec3(2.2)) : c; }
+vec3 toDisplay(vec3 c) { return gammaCorrect == 1 ? pow(max(c, vec3(0.0)), vec3(1.0 / 2.2)) : c; }
+
 float calculateShadow(vec4 fragPosLightSpace)
 {
     if (useShadows == 0) return 0.0;
@@ -100,10 +107,10 @@ void main()
     if (diffuseSample.a < alphaCutoff)
         discard;
 #endif
-    vec3 diffuseTex  = diffuseSample.rgb;
+    vec3 diffuseTex  = toLinear(diffuseSample.rgb);
     vec3 specularTex = texture(material.specular, TexCoords).rgb;
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
-    vec3 emissionResult = material.emissionColor * material.emissionStrength * emissionTex;
+    vec3 emissionResult = toLinear(material.emissionColor) * material.emissionStrength * toLinear(emissionTex);
 
     vec4 fragPosLightSpace = lightSpaceMatrix * vec4(FragPos, 1.0);
     float shadow = calculateShadow(fragPosLightSpace);
@@ -118,6 +125,7 @@ void main()
         for (int i = 0; i < numLights; ++i) {
 
             Light light = lights[i];
+            light.color = toLinear(light.color);
 
             vec3 lightDir;
             if (light.type == 0)
@@ -163,5 +171,5 @@ void main()
 
     // Cut-out materials are opaque where they are not discarded
     float alpha = alphaMode == 1 ? 1.0 : diffuseSample.a;
-    FragColor = vec4(result, alpha * opacity);
+    FragColor = vec4(toDisplay(result), alpha * opacity);
 }
