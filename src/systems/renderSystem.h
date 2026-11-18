@@ -15,6 +15,8 @@ public:
   Renderer &getRenderer();
   void setShadowShaderHandle(uint32_t handle);
   void markBatchesDirty();
+  // Models skipped by frustum culling in the last rendered frame
+  int getCulledCount() const { return m_culledCount; }
 
 private:
   using RenderBatch = std::vector<std::pair<Entity, size_t>>;
@@ -32,6 +34,7 @@ private:
   std::vector<InstanceItem> m_instanceItems;
   std::vector<InstanceData> m_instanceData;
   bool m_batchesDirty = true;
+  int m_culledCount = 0;
   uint32_t m_shadowShaderHandle = 0;
   Renderer m_renderer;
   void setupLights();

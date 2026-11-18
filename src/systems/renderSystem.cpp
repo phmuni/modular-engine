@@ -130,6 +130,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   glm::mat4 projection = cameraSystem.getProjectionMatrix(camera);
   glm::vec3 viewPos = camera.position;
   const Frustum frustum(projection * view);
+  m_culledCount = 0;
 
   glm::mat4 lightSpaceMatrix = glm::mat4(1.0f);
   glm::vec3 shadowLightDir = glm::vec3(0.0f, -1.0f, 0.0f);
@@ -246,8 +247,10 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     const Material &material = resourceSystem.getMaterial(model.materialHandles[submeshIndex]);
 
     glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
-    if (!isMeshVisible(frustum, mesh, modelMatrix))
+    if (!isMeshVisible(frustum, mesh, modelMatrix)) {
+      ++m_culledCount;
       return;
+    }
 
     shader.setInt("useInstancing", 0);
     shader.setMat4("MVP", projection * view * modelMatrix);
@@ -278,8 +281,10 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
         continue;
 
       glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(*transform);
-      if (!isMeshVisible(frustum, resourceSystem.getMesh(model->meshHandle), modelMatrix))
+      if (!isMeshVisible(frustum, resourceSystem.getMesh(model->meshHandle), modelMatrix)) {
+        ++m_culledCount;
         continue;
+      }
 
       m_instanceItems.push_back({model->meshHandle, static_cast<uint32_t>(submeshIndex),
                                  model->materialHandles[submeshIndex],

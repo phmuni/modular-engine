@@ -43,7 +43,9 @@ private:
   float m_shownWorkMs = 0.0f;
   float m_shownMaxMs = 0.0f;
 
-  void renderStatsOverlay();
+  void renderStatsOverlay(float rightInset);
+  void renderSettingsPanel(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
+                           ComponentManager &componentManager);
   void renderSceneExplorer(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   void renderPropertiesPanel(SystemManager &systemManager, ComponentManager &componentManager);
 

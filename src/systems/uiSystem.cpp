@@ -16,6 +16,8 @@
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/sceneSystem.h"
+#include "systems/stateSystem.h"
+#include "systems/timeSystem.h"
 #include "systems/windowSystem.h"
 
 #include <algorithm>
@@ -82,6 +84,18 @@ void UISystem::update(SystemManager &systemManager) {
   m_showStats = state.isToggled(Toggle::ShowStats);
 }
 
+namespace {
+constexpr float kPropertiesWidth = 380.0f;
+
+// Name of the key bound to a toggle in the default keybinds, or nullptr
+const char *toggleKeyName(Toggle toggle) {
+  for (const auto &[scancode, bound] : EngineConfig::DEFAULT_TOGGLE_KEYBINDS)
+    if (bound == toggle)
+      return SDL_GetScancodeName(scancode);
+  return nullptr;
+}
+} // namespace
+
 void UISystem::recordFrame(float frameSeconds, float workSeconds) {
   m_statsElapsed += frameSeconds;
   m_statsWork += workSeconds;
@@ -100,10 +114,11 @@ void UISystem::recordFrame(float frameSeconds, float workSeconds) {
   m_statsFrames = 0;
 }
 
-void UISystem::renderStatsOverlay() {
+void UISystem::renderStatsOverlay(float rightInset) {
   const ImGuiViewport *viewport = ImGui::GetMainViewport();
   constexpr float kMargin = 10.0f;
-  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - kMargin, viewport->WorkPos.y + kMargin),
+  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - rightInset - kMargin,
+                                 viewport->WorkPos.y + kMargin),
                           ImGuiCond_Always, ImVec2(1.0f, 0.0f));
   ImGui::SetNextWindowBgAlpha(0.6f);
 
@@ -119,6 +134,93 @@ void UISystem::renderStatsOverlay() {
   ImGui::End();
 }
 
+void UISystem::renderSettingsPanel(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
+                                   ComponentManager &componentManager) {
+  auto &state = systemManager.getSystem<StateSystem>();
+  auto &timeSystem = systemManager.getSystem<TimeSystem>();
+  auto &renderSystem = systemManager.getSystem<RenderSystem>();
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+
+  // Starts next to the Scene Explorer; movable and collapsible
+  ImGui::SetNextWindowPos(ImVec2(290.0f, 10.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(340.0f, 0.0f), ImGuiCond_FirstUseEver);
+  if (!ImGui::Begin("Settings")) {
+    ImGui::End();
+    return;
+  }
+  // Leave room for slider labels
+  ImGui::PushItemWidth(-ImGui::GetFontSize() * 7.0f);
+
+  auto toggleCheckbox = [&](const char *label, Toggle toggle, const char *tooltip = nullptr) {
+    bool value = state.isToggled(toggle);
+    if (ImGui::Checkbox(label, &value))
+      state.setToggle(toggle, value);
+    if (tooltip && ImGui::IsItemHovered())
+      ImGui::SetTooltip("%s", tooltip);
+    if (const char *key = toggleKeyName(toggle)) {
+      ImGui::SameLine();
+      ImGui::TextDisabled("[%s]", key);
+    }
+  };
+
+  if (ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen)) {
+    const RenderStats &stats = renderSystem.getRenderer().getStats();
+    ImGui::Text("%.0f FPS  |  %.2f ms frame", m_shownFps, m_shownFrameMs);
+    ImGui::Text("Work before swap: %.2f ms", m_shownWorkMs);
+    ImGui::Text("Draw calls: %d", stats.drawCalls);
+    ImGui::Text("Meshes drawn: %d  (culled: %d)", stats.meshesDrawn, renderSystem.getCulledCount());
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Includes the shadow pass; culled meshes were outside the camera");
+    ImGui::Text("Particles: %d", stats.particles);
+    ImGui::Text("Entities: %zu", entityManager.count());
+    toggleCheckbox("Performance overlay", Toggle::ShowStats);
+    toggleCheckbox("VSync", Toggle::VSync, "Off shows how fast the engine can actually run");
+  }
+
+  if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) {
+    toggleCheckbox("Wireframe", Toggle::Wireframe);
+    toggleCheckbox("Shadows", Toggle::Shadows);
+  }
+
+  if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) {
+    toggleCheckbox("Paused", Toggle::Paused, "Freezes particles and game logic; the camera keeps moving");
+    float timeScale = timeSystem.getTimeScale();
+    if (ImGui::SliderFloat("Time scale", &timeScale, 0.0f, 4.0f, "%.2fx"))
+      timeSystem.setTimeScale(timeScale);
+    if (ImGui::SmallButton("Reset to 1x"))
+      timeSystem.setTimeScale(1.0f);
+  }
+
+  if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+    toggleCheckbox("Free camera", Toggle::CameraMovement, "WASD + mouse; some examples drive the camera themselves");
+    toggleCheckbox("Fly mode", Toggle::CameraFly, "Space and Shift move up and down");
+    toggleCheckbox("Cursor lock", Toggle::CursorLock);
+
+    Entity cameraEntity = cameraSystem.getActiveCamera();
+    if (auto *camera = cameraEntity != -1 ? componentManager.getOrNil<Camera>(cameraEntity) : nullptr) {
+      ImGui::SliderFloat("FOV", &camera->fov, 20.0f, 120.0f, "%.0f deg");
+      ImGui::SliderFloat("Move speed", &camera->moveSpeed, 0.5f, 50.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+      ImGui::SliderFloat("Sensitivity", &camera->mouseSensitivity, 0.1f, 5.0f, "%.2f");
+    } else {
+      ImGui::TextDisabled("No active camera");
+    }
+  }
+
+  if (ImGui::CollapsingHeader("Capture", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::Button("Take screenshot"))
+      engine.captureScreenshot(EngineConfig::resolvePath(EngineConfig::SCREENSHOT_PATH));
+    ImGui::SameLine();
+    ImGui::TextDisabled("[%s]", SDL_GetScancodeName(EngineConfig::SCREENSHOT_KEY));
+    ImGui::TextDisabled("Saved to bin/%s", EngineConfig::SCREENSHOT_PATH);
+  }
+
+  ImGui::Separator();
+  toggleCheckbox("Show debug UI", Toggle::ShowUI, "Hides these panels");
+
+  ImGui::PopItemWidth();
+  ImGui::End();
+}
+
 namespace {
 template <typename T> std::vector<Entity> entitiesWith(ComponentManager &componentManager) {
   std::vector<Entity> result;
@@ -127,14 +229,15 @@ template <typename T> std::vector<Entity> entitiesWith(ComponentManager &compone
 }
 } // namespace
 
-void UISystem::render(Engine &engine, EntityManager & /*entityManager*/, SystemManager &systemManager,
+void UISystem::render(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
                       ComponentManager &componentManager) {
   if (m_showStats)
-    renderStatsOverlay();
+    renderStatsOverlay(m_renderUI && selectedEntity != -1 ? kPropertiesWidth : 0.0f);
 
   if (!m_renderUI)
     return;
 
+  renderSettingsPanel(engine, entityManager, systemManager, componentManager);
   renderSceneExplorer(engine, systemManager, componentManager);
   if (selectedEntity != -1)
     renderPropertiesPanel(systemManager, componentManager);
@@ -206,7 +309,7 @@ void UISystem::renderPropertiesPanel(SystemManager &systemManager, ComponentMana
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
-  float propW = 380.0f;
+  float propW = kPropertiesWidth;
   ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - propW, 0));
   ImGui::SetNextWindowSize(ImVec2(propW, io.DisplaySize.y));
   bool propOpen = true;

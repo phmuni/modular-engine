@@ -60,8 +60,10 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
 | **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
 | **Performance Overlay**    | `F5` shows FPS, frame time, work time before the buffer swap and the worst frame |
+| **VSync & Pause**          | `F6` toggles vsync; `F7` pauses the simulation while the camera keeps moving |
 | **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
-| **UI Integration**         | ImGui-based editor with material inspector, light tweaks, and entity hierarchy |
+| **UI Integration**         | ImGui-based editor (`F2`) with material inspector, light tweaks, entity hierarchy and a settings panel |
+| **Settings Panel**         | Every toggle with its key (`F1`–`F7`), time scale, camera FOV/speed, screenshots and render stats (draw calls, culled meshes, particles) |
 | **Scene Management**       | Entity lifecycle management and component composition                          |
 
 ---

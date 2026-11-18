@@ -14,11 +14,16 @@ void Renderer::init(SDL_Window *window) {
   glGenBuffers(1, &m_instanceVBO);
 }
 
-void Renderer::beginFrame() const { glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); }
+void Renderer::beginFrame() const {
+  m_stats = {};
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
 
 void Renderer::endFrame() const { SDL_GL_SwapWindow(m_window); }
 
 void Renderer::drawMesh(const Mesh &mesh) const {
+  m_stats.drawCalls += static_cast<int>(mesh.getSubmeshes().size());
+  m_stats.meshesDrawn += 1;
   glBindVertexArray(mesh.getVAO());
 
   const auto &submeshes = mesh.getSubmeshes();
@@ -31,6 +36,8 @@ void Renderer::drawMesh(const Mesh &mesh) const {
 }
 
 void Renderer::drawSubmesh(const Mesh &mesh, const Submesh &submesh) const {
+  m_stats.drawCalls += 1;
+  m_stats.meshesDrawn += 1;
   glBindVertexArray(mesh.getVAO());
   glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
                  (void *)(submesh.indexStart * sizeof(uint32_t)));
@@ -66,6 +73,8 @@ void Renderer::bindInstanceAttributes(const Mesh &mesh) const {
 }
 
 void Renderer::drawMeshInstanced(const Mesh &mesh, int count) const {
+  m_stats.drawCalls += static_cast<int>(mesh.getSubmeshes().size());
+  m_stats.meshesDrawn += count;
   bindInstanceAttributes(mesh);
   for (const auto &submesh : mesh.getSubmeshes()) {
     glDrawElementsInstanced(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
@@ -75,6 +84,8 @@ void Renderer::drawMeshInstanced(const Mesh &mesh, int count) const {
 }
 
 void Renderer::drawSubmeshInstanced(const Mesh &mesh, const Submesh &submesh, int count) const {
+  m_stats.drawCalls += 1;
+  m_stats.meshesDrawn += count;
   bindInstanceAttributes(mesh);
   glDrawElementsInstanced(GL_TRIANGLES, static_cast<GLsizei>(submesh.indexCount), GL_UNSIGNED_INT,
                           (void *)(submesh.indexStart * sizeof(uint32_t)), count);
@@ -240,6 +251,8 @@ void Renderer::uploadParticles(const ParticleVertex *data, int count) {
 }
 
 void Renderer::drawParticles(int count, int images) {
+  m_stats.drawCalls += 1;
+  m_stats.particles += count;
   glBindVertexArray(m_particleVAO);
   glDrawArraysInstanced(GL_POINTS, 0, static_cast<GLsizei>(count), static_cast<GLsizei>(images));
   glBindVertexArray(0);

@@ -14,4 +14,5 @@ public:
   void destroyEntity(Entity entity);
 
   bool isAlive(Entity entity) const { return m_activeEntities.count(entity) > 0; }
+  size_t count() const { return m_activeEntities.size(); }
 };

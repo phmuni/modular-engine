@@ -23,8 +23,17 @@ struct ParticleVertex {
   float size;
 };
 
+// Counters for the current frame, reset by beginFrame()
+struct RenderStats {
+  int drawCalls = 0;
+  int meshesDrawn = 0; // mesh or submesh instances, shadow pass included
+  int particles = 0;
+};
+
 class Renderer {
 private:
+  mutable RenderStats m_stats;
+
   SDL_Window *m_window = nullptr;
 
   // Shadow mapping
@@ -51,6 +60,7 @@ public:
   void init(SDL_Window *window);
 
   void beginFrame() const;
+  const RenderStats &getStats() const { return m_stats; }
   void endFrame() const;
 
   // Mesh drawing
