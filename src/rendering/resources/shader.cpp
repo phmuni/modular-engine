@@ -22,12 +22,16 @@ bool Shader::load(std::string_view vertexFile, std::string_view fragmentFile) {
   return m_shaderID != 0;
 }
 
-GLint Shader::getUniformLocation(const char *name) const {
-  auto it = m_uniformCache.find(name);
-  if (it != m_uniformCache.end())
-    return it->second;
-  GLint loc = glGetUniformLocation(m_shaderID, name);
-  m_uniformCache[name] = loc;
+GLint Shader::getUniformLocation(std::string_view name) const {
+  const size_t key = std::hash<std::string_view>{}(name);
+  auto it = m_uniformCache.find(key);
+  if (it != m_uniformCache.end() && it->second.name == name)
+    return it->second.location;
+
+  std::string owned(name); // glGetUniformLocation needs a null-terminated string
+  GLint loc = glGetUniformLocation(m_shaderID, owned.c_str());
+  if (it == m_uniformCache.end())
+    m_uniformCache.emplace(key, CachedUniform{std::move(owned), loc});
   return loc;
 }
 
@@ -109,7 +113,7 @@ GLuint Shader::getShaderID() const { return m_shaderID; }
 void Shader::setTex(std::string_view name, GLuint textureID, int textureUnit) const {
   glActiveTexture(GL_TEXTURE0 + textureUnit);
   glBindTexture(GL_TEXTURE_2D, textureID);
-  GLint loc = getUniformLocation(name.data());
+  GLint loc = getUniformLocation(name);
   if (loc != -1)
     glUniform1i(loc, textureUnit);
   else
@@ -117,31 +121,31 @@ void Shader::setTex(std::string_view name, GLuint textureID, int textureUnit) co
 }
 
 void Shader::setInt(std::string_view name, int value) const {
-  GLint loc = getUniformLocation(name.data());
+  GLint loc = getUniformLocation(name);
   if (loc != -1)
     glUniform1i(loc, value);
 }
 
 void Shader::setFloat(std::string_view name, float value) const {
-  GLint loc = getUniformLocation(name.data());
+  GLint loc = getUniformLocation(name);
   if (loc != -1)
     glUniform1f(loc, value);
 }
 
 void Shader::setVec3(std::string_view name, glm::vec3 value) const {
-  GLint loc = getUniformLocation(name.data());
+  GLint loc = getUniformLocation(name);
   if (loc != -1)
     glUniform3fv(loc, 1, glm::value_ptr(value));
 }
 
 void Shader::setMat3(std::string_view name, glm::mat3 value) const {
-  GLint loc = getUniformLocation(name.data());
+  GLint loc = getUniformLocation(name);
   if (loc != -1)
     glUniformMatrix3fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 }
 
 void Shader::setMat4(std::string_view name, glm::mat4 value) const {
-  GLint loc = getUniformLocation(name.data());
+  GLint loc = getUniformLocation(name);
   if (loc != -1)
     glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 }

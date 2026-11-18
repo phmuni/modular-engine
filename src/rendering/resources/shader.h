@@ -3,20 +3,25 @@
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
-#include <map>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 class Shader {
 private:
   GLuint m_shaderID = 0;
-  mutable std::map<std::string, GLint> m_uniformCache;
+  struct CachedUniform {
+    std::string name;
+    GLint location;
+  };
+  // Keyed by the name's hash, so lookups never allocate; the stored name guards against collisions.
+  mutable std::unordered_map<size_t, CachedUniform> m_uniformCache;
 
   std::string readShaderFile(const char *filename) const;
   GLuint compileShader(GLenum type, const char *filename);
   GLuint createShaderProgram(const char *vertexFile, const char *fragmentFile);
-  GLint getUniformLocation(const char *name) const;
+  GLint getUniformLocation(std::string_view name) const;
 
 public:
   Shader() = default;
