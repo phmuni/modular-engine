@@ -153,7 +153,8 @@ modular-engine/
 **1. Generate build files:**
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build                              # Release (default)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug     # Debug, without optimizations
 ```
 
 **2. Compile the engine:**
