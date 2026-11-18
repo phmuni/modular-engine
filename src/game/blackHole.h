@@ -22,6 +22,8 @@ class BlackHole : public App {
   float distance = 30.0f;
   float orbitSpeed = 4.0f;
 
+  Entity hole = -1;
+
   // Particles that fall inside `resetRadius` respawn at the outer edge, so the disk keeps feeding itself.
   void configureDisk(ParticleEmitter &p, int count, float size, glm::vec4 outerColor, glm::vec4 innerColor) {
     p.emissionShape = EmissionShape::Ring;
@@ -87,12 +89,17 @@ class BlackHole : public App {
 
   void createBlackHole(Engine &engine) {
     // The black sphere is the shadow: it hides the images that fall inside the photon sphere
-    engine.entities()
-        .create("Black Hole")
-        .withModel(EngineConfig::MODEL_SPHERE, glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(kShadowRadius))
-        .withSolidColor(glm::vec3(0.0f))
-        .withComponent<GravityLens>(kSchwarzschildRadius)
-        .build();
+    // Its drone gets louder as the camera closes in
+    hole = engine.entities()
+               .create("Black Hole")
+               .withModel(EngineConfig::MODEL_SPHERE, glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(kShadowRadius))
+               .withSolidColor(glm::vec3(0.0f))
+               .withComponent<GravityLens>(kSchwarzschildRadius)
+               .withSound("../assets/sounds/blackhole.flac", true, 1.0f)
+               .build();
+    auto &hum = engine.getOrThrow<AudioSource>(hole);
+    hum.minDistance = 12.0f; // the closest the camera gets
+    hum.maxDistance = 40.0f;
 
     Entity disk = engine.entities()
                       .create("Accretion Disk")
@@ -148,6 +155,10 @@ class BlackHole : public App {
     cam.yaw = glm::degrees(std::atan2(dir.x, -dir.z));
     cam.pitch = glm::degrees(std::asin(dir.y));
     cameraSystem.updateFrontVector(cam);
+
+    // Redshift: the drone drops in pitch the deeper the camera sits in the well
+    if (auto *hum = engine.getOrNil<AudioSource>(hole))
+      hum->pitch = glm::mix(0.8f, 1.0f, (distance - 12.0f) / 28.0f);
   }
 
 public:
