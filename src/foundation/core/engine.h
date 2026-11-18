@@ -1,6 +1,7 @@
 #pragma once
 // Main engine class: initialization, game loop, and entity creation interface.
 
+#include "components/audioSource.h"
 #include "components/light.h"
 #include "components/transform.h"
 #include "foundation/core/app.h"
@@ -44,6 +45,10 @@ public:
 
     EntityBuilder &withEmission(const glm::vec3 &color, float strength);
     EntityBuilder &withSolidColor(const glm::vec3 &color);
+    // Plays from the entity's position; see AudioSource for the other settings
+    EntityBuilder &withSound(std::string_view path, bool loop = true, float volume = 1.0f) {
+      return withComponent<AudioSource>(std::string(path), volume, 1.0f, loop);
+    }
     Entity build();
 
   private:
@@ -114,6 +119,17 @@ public:
                            LightType type, float intensity, float cutOff, float outerCutOff);
 
   void setState(Toggle toggle, bool value);
+
+  // Audio (WAV, MP3, FLAC). Effects pause with the game and follow the time scale; music does not.
+  // Decodes a sound in the background, so its first play does not wait for the file
+  void preloadSound(std::string_view path);
+  // Fire-and-forget effect, heard the same anywhere
+  void playSound(std::string_view path, float volume = 1.0f, float pitch = 1.0f);
+  // Fire-and-forget effect placed in the world, panned and faded relative to the camera
+  void playSoundAt(std::string_view path, glm::vec3 position, float volume = 1.0f, float pitch = 1.0f);
+  // Streams from disk, replacing the music already playing
+  void playMusic(std::string_view path, float volume = 1.0f, bool loop = true);
+  void stopMusic();
 
   // Runs with vsync off for `seconds` (after a 1 s warm-up), logs frame-time statistics and closes the engine.
   void runBenchmark(float seconds);

@@ -7,6 +7,7 @@
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "rendering/resources/material.h"
+#include "systems/audioSystem.h"
 #include "systems/cameraSystem.h"
 #include "systems/collisionSystem.h"
 #include "systems/inputSystem.h"
@@ -203,6 +204,8 @@ void Engine::update(bool &isRunning) {
 
   // After the app had its chance to destroy entities this frame
   m_systemManager.getSystem<ResourceSystem>().collectUnusedMaterials();
+  m_systemManager.getSystem<AudioSystem>().update(m_systemManager, state.isToggled(Toggle::Paused),
+                                                  timeSystem.getTimeScale());
 
   bool screenshotKey = inputSystem.isKeyPressed(EngineConfig::SCREENSHOT_KEY);
   if (screenshotKey && !m_screenshotKeyDown)
@@ -275,6 +278,24 @@ void Engine::setState(Toggle toggle, bool value) {
   stateSystem.setToggle(toggle, value);
 }
 
+void Engine::preloadSound(std::string_view path) {
+  m_systemManager.getSystem<AudioSystem>().preload(std::string(path));
+}
+
+void Engine::playSound(std::string_view path, float volume, float pitch) {
+  m_systemManager.getSystem<AudioSystem>().playOneShot(std::string(path), std::nullopt, volume, pitch);
+}
+
+void Engine::playSoundAt(std::string_view path, glm::vec3 position, float volume, float pitch) {
+  m_systemManager.getSystem<AudioSystem>().playOneShot(std::string(path), position, volume, pitch);
+}
+
+void Engine::playMusic(std::string_view path, float volume, bool loop) {
+  m_systemManager.getSystem<AudioSystem>().playMusic(std::string(path), volume, loop);
+}
+
+void Engine::stopMusic() { m_systemManager.getSystem<AudioSystem>().stopMusic(); }
+
 void Engine::captureScreenshot(std::string path, float delaySeconds, bool quitAfter) {
   m_screenshot = ScreenshotRequest{std::move(path), delaySeconds, quitAfter};
 }
@@ -336,6 +357,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<SceneSystem>(m_entityManager, m_componentManager, m_systemManager);
   m_systemManager.insert<ParticleSystem>(m_componentManager);
   m_systemManager.insert<CollisionSystem>();
+  m_systemManager.insert<AudioSystem>(m_componentManager);
   m_systemManager.insert<UISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
                                    m_systemManager.getSystem<WindowSystem>().getContext());
 }

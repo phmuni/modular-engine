@@ -2,6 +2,7 @@
 // panel.
 
 #include "systems/uiSystem.h"
+#include "components/audioSource.h"
 #include "components/collision.h"
 #include "components/light.h"
 #include "components/model.h"
@@ -11,6 +12,7 @@
 #include "foundation/core/engine.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
+#include "systems/audioSystem.h"
 #include "systems/cameraSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/renderSystem.h"
@@ -207,6 +209,24 @@ void UISystem::renderSettingsPanel(Engine &engine, EntityManager &entityManager,
       ImGui::SliderFloat("Sensitivity", &camera->mouseSensitivity, 0.1f, 5.0f, "%.2f");
     } else {
       ImGui::TextDisabled("No active camera");
+    }
+  }
+
+  if (ImGui::CollapsingHeader("Audio", ImGuiTreeNodeFlags_DefaultOpen)) {
+    auto &audio = systemManager.getSystem<AudioSystem>();
+    if (!audio.isAvailable()) {
+      ImGui::TextDisabled("No audio device");
+    } else {
+      float master = audio.getMasterVolume();
+      if (ImGui::SliderFloat("Master", &master, 0.0f, 1.0f, "%.2f"))
+        audio.setMasterVolume(master);
+      float effects = audio.getBusVolume(AudioSystem::Bus::Effects);
+      if (ImGui::SliderFloat("Effects", &effects, 0.0f, 1.0f, "%.2f"))
+        audio.setBusVolume(AudioSystem::Bus::Effects, effects);
+      float music = audio.getBusVolume(AudioSystem::Bus::Music);
+      if (ImGui::SliderFloat("Music", &music, 0.0f, 1.0f, "%.2f"))
+        audio.setBusVolume(AudioSystem::Bus::Music, music);
+      ImGui::Text("Voices: %zu", audio.getVoiceCount());
     }
   }
 
@@ -434,6 +454,50 @@ void UISystem::renderPropertiesPanel(SystemManager &systemManager, ComponentMana
     }
   }
 
+  // Audio source
+  if (!earlyOut && componentManager.containsComponent<AudioSource>(selectedEntity)) {
+    bool open = ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen);
+    if (open) {
+      if (ImGui::SmallButton("Remove##audio")) {
+        componentManager.removeComponent<AudioSource>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        auto &src = componentManager.getOrThrow<AudioSource>(selectedEntity);
+        // Static: the file dialog fills it after this frame. Applied on Enter or Load, not on every keystroke.
+        static char audioPath[256] = "";
+        static Entity audioPathEntity = -1;
+        if (audioPathEntity != selectedEntity) {
+          audioPathEntity = selectedEntity;
+          std::strncpy(audioPath, src.path.c_str(), sizeof(audioPath) - 1);
+          audioPath[sizeof(audioPath) - 1] = '\0';
+        }
+        ImGui::SetNextItemWidth(140.0f);
+        bool apply = ImGui::InputText("##audioPath", audioPath, sizeof(audioPath),
+                                      ImGuiInputTextFlags_EnterReturnsTrue);
+        pickFileButton("pick_audio", audioPath, sizeof(audioPath), window);
+        ImGui::SameLine();
+        if ((ImGui::Button("Load##audio") || apply) && src.path != audioPath) {
+          src.path = audioPath;
+          src.playing = true;
+        }
+        ImGui::Checkbox("Playing##audio", &src.playing);
+        ImGui::SameLine();
+        ImGui::Checkbox("Loop##audio", &src.loop);
+        ImGui::SameLine();
+        ImGui::Checkbox("Spatial##audio", &src.spatial);
+        ImGui::SliderFloat("Volume##audio", &src.volume, 0.0f, 2.0f, "%.2f");
+        ImGui::SliderFloat("Pitch##audio", &src.pitch, 0.1f, 3.0f, "%.2f");
+        if (src.spatial) {
+          ImGui::DragFloat("Min distance##audio", &src.minDistance, 0.1f, 0.01f, src.maxDistance);
+          ImGui::DragFloat("Max distance##audio", &src.maxDistance, 0.5f, src.minDistance, 1000.0f);
+          ImGui::DragFloat("Rolloff##audio", &src.rolloff, 0.05f, 0.0f, 10.0f);
+        }
+      }
+    }
+  }
+
   // Add Component section
   if (!earlyOut) {
     ImGui::Separator();
@@ -457,6 +521,13 @@ void UISystem::renderPropertiesPanel(SystemManager &systemManager, ComponentMana
       if (!componentManager.containsComponent<Collision>(selectedEntity)) {
         if (ImGui::Button("+ Collision (AABB)", ImVec2(-1, 0))) {
           componentManager.addInPlace<Collision>(selectedEntity);
+        }
+      }
+      if (!componentManager.containsComponent<AudioSource>(selectedEntity)) {
+        if (ImGui::Button("+ Audio Source", ImVec2(-1, 0))) {
+          // Stopped until a file is chosen
+          auto &src = componentManager.addInPlace<AudioSource>(selectedEntity);
+          src.playing = false;
         }
       }
       if (!componentManager.containsComponent<Model>(selectedEntity)) {

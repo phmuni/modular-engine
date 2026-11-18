@@ -32,6 +32,13 @@ CPMAddPackage(
   VERSION 3.11.3
   OPTIONS "JSON_BuildTests OFF"
 )
+# Audio: only the sources are used; miniaudio.c is compiled into the engine below
+CPMAddPackage(
+  NAME miniaudio
+  GITHUB_REPOSITORY mackron/miniaudio
+  GIT_TAG 0.11.26
+  DOWNLOAD_ONLY YES
+)
 
 # --- Directories ---
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
@@ -46,15 +53,17 @@ file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp"
 file(GLOB GLAD_SOURCE "${EXTERNAL_DIR}/glad/*.cpp")
 file(GLOB IMGUI_SOURCE "${EXTERNAL_DIR}/imgui/*.cpp")
 list(FILTER IMGUI_SOURCE EXCLUDE REGEX "imgui_demo\\.cpp$")
+set(MINIAUDIO_SOURCE "${miniaudio_SOURCE_DIR}/miniaudio.c")
 
 # --- Executable ---
-add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE})
+add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE})
 
 # --- Include directories ---
 target_include_directories(engine PRIVATE
   ${CMAKE_SOURCE_DIR}/src
   ${EXTERNAL_DIR}
 )
+target_include_directories(engine SYSTEM PRIVATE ${miniaudio_SOURCE_DIR})
 
 # --- Link libraries ---
 target_link_libraries(engine
@@ -72,7 +81,9 @@ if(WIN32)
     target_link_libraries(engine opengl32)
 elseif(UNIX AND NOT APPLE)
     find_package(OpenGL REQUIRED)
-    target_link_libraries(engine OpenGL::GL ${CMAKE_DL_LIBS})
+    find_package(Threads REQUIRED)
+    # miniaudio needs threads and libm, and loads the audio backends (ALSA, PulseAudio...) at runtime
+    target_link_libraries(engine OpenGL::GL Threads::Threads m ${CMAKE_DL_LIBS})
 elseif(APPLE)
     find_library(OPENGL_LIBRARY OpenGL REQUIRED)
     target_link_libraries(engine ${OPENGL_LIBRARY})
