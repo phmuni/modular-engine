@@ -180,36 +180,44 @@ const uint8_t *getAccessorBase(const tg3_model &model, const tg3_accessor &acces
   return buffer.data.data + baseOffset;
 }
 
-glm::vec2 readAccessorVec2(const tg3_model &model, const tg3_accessor &accessor, size_t elementIndex) {
-  glm::vec2 value(0.0f);
+// An accessor resolved and bounds-checked once, so per-element reads are plain pointer arithmetic
+struct AccessorView {
+  const uint8_t *base = nullptr;
   size_t stride = 0;
   size_t componentCount = 0;
-  const uint8_t *base = getAccessorBase(model, accessor, stride, componentCount);
-  if (!base || elementIndex >= static_cast<size_t>(accessor.count))
+  size_t componentSize = 0;
+  int32_t componentType = 0;
+  bool normalized = false;
+  size_t count = 0;
+
+  bool valid() const { return base != nullptr; }
+
+  template <int N> glm::vec<N, float> read(size_t elementIndex) const {
+    glm::vec<N, float> value(0.0f);
+    if (!base || elementIndex >= count)
+      return value;
+    const uint8_t *element = base + elementIndex * stride;
+    if (componentType == TG3_COMPONENT_TYPE_FLOAT) {
+      for (size_t c = 0; c < static_cast<size_t>(N) && c < componentCount; ++c)
+        value[c] = readPod<float>(element + c * sizeof(float));
+      return value;
+    }
+    for (size_t c = 0; c < static_cast<size_t>(N) && c < componentCount; ++c)
+      value[c] = readComponentAsFloat(element + c * componentSize, componentType, normalized);
     return value;
-
-  size_t componentSize = static_cast<size_t>(tg3_component_size(accessor.component_type));
-  for (size_t c = 0; c < 2 && c < componentCount; ++c) {
-    const uint8_t *component = base + elementIndex * stride + c * componentSize;
-    value[c] = readComponentAsFloat(component, accessor.component_type, accessor.normalized != 0);
   }
-  return value;
-}
+};
 
-glm::vec3 readAccessorVec3(const tg3_model &model, const tg3_accessor &accessor, size_t elementIndex) {
-  glm::vec3 value(0.0f);
-  size_t stride = 0;
-  size_t componentCount = 0;
-  const uint8_t *base = getAccessorBase(model, accessor, stride, componentCount);
-  if (!base || elementIndex >= static_cast<size_t>(accessor.count))
-    return value;
-
-  size_t componentSize = static_cast<size_t>(tg3_component_size(accessor.component_type));
-  for (size_t c = 0; c < 3 && c < componentCount; ++c) {
-    const uint8_t *component = base + elementIndex * stride + c * componentSize;
-    value[c] = readComponentAsFloat(component, accessor.component_type, accessor.normalized != 0);
-  }
-  return value;
+AccessorView makeAccessorView(const tg3_model &model, const tg3_accessor *accessor) {
+  AccessorView view;
+  if (!accessor)
+    return view;
+  view.base = getAccessorBase(model, *accessor, view.stride, view.componentCount);
+  view.componentSize = static_cast<size_t>(tg3_component_size(accessor->component_type));
+  view.componentType = accessor->component_type;
+  view.normalized = accessor->normalized != 0;
+  view.count = static_cast<size_t>(accessor->count);
+  return view;
 }
 
 std::vector<uint32_t> readAccessorIndices(const tg3_model &model, const tg3_accessor &accessor) {
@@ -554,8 +562,9 @@ bool Mesh::loadGLB(std::string filename) {
     if (vertexCount == 0)
       return;
 
-    const tg3_accessor *normalAccessor = findAccessor(*gltf, primitive, "NORMAL");
-    const tg3_accessor *texcoordAccessor = findAccessor(*gltf, primitive, "TEXCOORD_0");
+    const AccessorView positions = makeAccessorView(*gltf, positionAccessor);
+    const AccessorView normals = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "NORMAL"));
+    const AccessorView texcoords = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "TEXCOORD_0"));
 
     glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(worldMatrix)));
     size_t primitiveBaseVertex = vertices.size();
@@ -563,20 +572,19 @@ bool Mesh::loadGLB(std::string filename) {
 
     for (size_t i = 0; i < vertexCount; ++i) {
       Vertex vertex{};
-      vertex.position = readAccessorVec3(*gltf, *positionAccessor, i);
-      vertex.position = glm::vec3(worldMatrix * glm::vec4(vertex.position, 1.0f));
+      vertex.position = glm::vec3(worldMatrix * glm::vec4(positions.read<3>(i), 1.0f));
 
-      if (normalAccessor) {
-        vertex.normal = readAccessorVec3(*gltf, *normalAccessor, i);
+      if (normals.valid()) {
+        vertex.normal = normals.read<3>(i);
         float normalLength = glm::length(vertex.normal);
         if (normalLength > 0.0f) {
           vertex.normal = glm::normalize(normalMatrix * vertex.normal);
         }
       }
 
-      if (texcoordAccessor) {
+      if (texcoords.valid()) {
         // glTF puts the UV origin at the top-left of the image; the engine's images start at the bottom
-        vertex.texCoord = readAccessorVec2(*gltf, *texcoordAccessor, i);
+        vertex.texCoord = texcoords.read<2>(i);
         vertex.texCoord.y = 1.0f - vertex.texCoord.y;
       }
 
