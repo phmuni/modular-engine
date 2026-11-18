@@ -4,6 +4,8 @@
 #include "rendering/renderer.h"
 #include "foundation/core/logger.h"
 #include "rendering/resources/mesh.h"
+#include <algorithm>
+#include <vector>
 
 void Renderer::init(SDL_Window *window) {
   m_window = window;
@@ -77,6 +79,42 @@ GLuint Renderer::getDepthMap() const { return m_depthMap; }
 
 GLuint Renderer::getDepthMapFBO() const { return m_depthMapFBO; }
 
+bool Renderer::saveScreenshot(const std::string &path) const {
+  const int width = m_screenWidth;
+  const int height = m_screenHeight;
+  const int stride = width * 4;
+  std::vector<uint8_t> pixels(static_cast<size_t>(stride) * height);
+
+  glPixelStorei(GL_PACK_ALIGNMENT, 1);
+  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+  // The back buffer's alpha is not meaningful (blending writes into it); screenshots are opaque
+  for (size_t i = 3; i < pixels.size(); i += 4)
+    pixels[i] = 255;
+
+  // OpenGL rows start at the bottom; images start at the top
+  std::vector<uint8_t> flipped(pixels.size());
+  for (int y = 0; y < height; ++y)
+    std::copy_n(pixels.begin() + static_cast<size_t>(height - 1 - y) * stride, stride,
+                flipped.begin() + static_cast<size_t>(y) * stride);
+
+  SDL_Surface *surface = SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_RGBA32, flipped.data(), stride);
+  if (!surface) {
+    LOG_E("[Renderer] Failed to create screenshot surface: %s", SDL_GetError());
+    return false;
+  }
+
+  bool saved = SDL_SaveBMP(surface, path.c_str());
+  SDL_DestroySurface(surface);
+  if (!saved) {
+    LOG_E("[Renderer] Failed to save screenshot to %s: %s", path.c_str(), SDL_GetError());
+    return false;
+  }
+
+  LOG_I("[Renderer] Screenshot saved to %s", path.c_str());
+  return true;
+}
+
 void Renderer::setWireframe(bool enabled) { glPolygonMode(GL_FRONT_AND_BACK, enabled ? GL_LINE : GL_FILL); }
 
 void Renderer::setViewportSize(int width, int height) {
@@ -147,9 +185,9 @@ void Renderer::uploadParticles(const ParticleVertex *data, int count) {
   glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(count * sizeof(ParticleVertex)), data, GL_DYNAMIC_DRAW);
 }
 
-void Renderer::drawParticles(int count) {
+void Renderer::drawParticles(int count, int images) {
   glBindVertexArray(m_particleVAO);
-  glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(count));
+  glDrawArraysInstanced(GL_POINTS, 0, static_cast<GLsizei>(count), static_cast<GLsizei>(images));
   glBindVertexArray(0);
 }
 

@@ -16,6 +16,7 @@ assets/models/*
 !assets/models/box/
 !assets/models/spaceship/
 !assets/models/alien/
+!assets/models/sphere/
 
 # Temporary files
 *.log
@@ -23,6 +24,7 @@ assets/models/*
 !assets/models/box/*.obj
 !assets/models/spaceship/*.obj
 !assets/models/alien/*.glb
+!assets/models/sphere/*.obj
 
 # IDEs
 .vscode/

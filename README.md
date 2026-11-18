@@ -13,6 +13,12 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 
 [Features](#features) · [Architecture](#architecture) · [Installation](#installation) · [Usage](#usage) · [Contributing](#contributing)
 
+<br/>
+
+<img src="docs/images/black-hole.png" alt="Black hole example: a lensed particle accretion disk" width="100%"/>
+
+<sub>The black hole example: 86k particles on Keplerian orbits, bent by a point-mass gravitational lens.</sub>
+
 </div>
 
 ---
@@ -51,7 +57,9 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Input System**           | Keyboard and mouse handling via SDL3                                           |
 | **Lighting System**        | Directional, point, and spotlight types with intensity and cutoff controls     |
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
-| **Particle System**        | Advanced emitter with cone/sphere/box shapes, attraction, and recycling        |
+| **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
+| **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
+| **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
 | **UI Integration**         | ImGui-based editor with material inspector, light tweaks, and entity hierarchy |
 | **Scene Management**       | Entity lifecycle management and component composition                          |
 
@@ -125,7 +133,7 @@ modular-engine/
 ├── src/                        # Source and header files
 │   ├── components/             # ECS component definitions
 │   ├── foundation/             # Core engine and ECS functionality
-│   ├── game/                   # Space Aliens example game
+│   ├── game/                   # Example apps: Space Aliens and Black Hole
 │   ├── rendering/              # Renderer and resource implementations
 │   └── systems/                # ECS system implementations
 ├── cmake/                      # CPM package manager script
@@ -157,8 +165,21 @@ cmake --build build
 **3. Run:**
 
 ```bash
-./bin/engine
+./bin/engine              # Space Aliens
+./bin/engine blackhole    # Black hole
 ```
+
+In the black hole example the camera orbits on its own: `←` `→` orbit, `↑` `↓` change the elevation and `W` `S` zoom.
+
+To save a frame without a window manager screenshot, pass `--screenshot <file.bmp> [seconds]`; the engine waits that long (3 seconds by default), saves the frame and exits:
+
+```bash
+./bin/engine blackhole --screenshot black-hole.bmp 4
+```
+
+| Space Aliens | Black Hole |
+| --- | --- |
+| <img src="docs/images/space-aliens.png" alt="Space Aliens example"/> | <img src="docs/images/black-hole.png" alt="Black hole example"/> |
 
 ---
 
@@ -166,7 +187,7 @@ cmake --build build
 
 ## Usage
 
-The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains a complete example game (Space Aliens), launched from [`src/main.cpp`](src/main.cpp).
+The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains two examples, a complete game (Space Aliens) and a black hole scene, both launched from [`src/main.cpp`](src/main.cpp).
 
 ### Quick Start
 

@@ -112,6 +112,9 @@ public:
 
   void setState(Toggle toggle, bool value);
 
+  // Saves a BMP of the next frame. With a delay, waits that long after start-up; `quitAfter` closes the engine.
+  void captureScreenshot(std::string path, float delaySeconds = 0.0f, bool quitAfter = false);
+
   // Material utilities
   // `submesh` of -1 applies to every submesh of the entity.
   void setEmission(Entity entity, glm::vec3 color, float strength, int submesh = -1);
@@ -135,6 +138,15 @@ private:
 
   App *m_app = nullptr;
   bool m_shutdown = false;
+
+  struct ScreenshotRequest {
+    std::string path;
+    float delay = 0.0f;
+    bool quitAfter = false;
+  };
+  std::optional<ScreenshotRequest> m_screenshot;
+  bool m_screenshotKeyDown = false;
+  bool m_quitRequested = false;
 
   void registerSystems();
   bool loadResources();

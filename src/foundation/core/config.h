@@ -75,6 +75,11 @@ constexpr const char *SHADER_FRAGMENT_PARTICLE = "../assets/shaders/fragmentPart
 
 // Models
 constexpr const char *MODEL_BOX = "../assets/models/box/box.obj";
+constexpr const char *MODEL_SPHERE = "../assets/models/sphere/sphere.obj";
+
+// Screenshots (F12), saved next to the executable
+constexpr SDL_Scancode SCREENSHOT_KEY = SDL_SCANCODE_F12;
+constexpr const char *SCREENSHOT_PATH = "screenshot.bmp";
 
 // Default toggle states
 inline const std::pair<Toggle, bool> DEFAULT_TOGGLES[] = {

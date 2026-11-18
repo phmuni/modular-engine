@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
+#include <string>
 
 class Mesh;
 struct Submesh;
@@ -57,11 +58,15 @@ public:
   void endSoftTransparentPass();
   void beginParticlePass(bool additiveBlending);
   void uploadParticles(const ParticleVertex *data, int count);
-  void drawParticles(int count);
+  // `images` > 1 draws each particle that many times (gl_InstanceID picks the image, e.g. for lensing)
+  void drawParticles(int count, int images = 1);
   void endParticlePass();
 
   GLuint getDepthMap() const;
   GLuint getDepthMapFBO() const;
+
+  // Saves the current back buffer as a BMP; call before endFrame()
+  bool saveScreenshot(const std::string &path) const;
 
   void setWireframe(bool enabled);
   void setViewportSize(int width, int height);

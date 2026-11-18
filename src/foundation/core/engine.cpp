@@ -151,6 +151,17 @@ void Engine::update(bool &isRunning) {
   if (m_app) {
     m_app->update(*this, timeSystem.getDeltaTime());
   }
+
+  bool screenshotKey = inputSystem.isKeyPressed(EngineConfig::SCREENSHOT_KEY);
+  if (screenshotKey && !m_screenshotKeyDown)
+    captureScreenshot(EngineConfig::resolvePath(EngineConfig::SCREENSHOT_PATH));
+  m_screenshotKeyDown = screenshotKey;
+
+  if (m_screenshot)
+    m_screenshot->delay -= timeSystem.getDeltaTime();
+
+  if (m_quitRequested)
+    isRunning = false;
 }
 
 void Engine::render() {
@@ -167,6 +178,12 @@ void Engine::render() {
   uiSystem.render(*this, m_entityManager, m_systemManager, m_componentManager);
 
   uiSystem.endFrame();
+
+  if (m_screenshot && m_screenshot->delay <= 0.0f) {
+    renderer.saveScreenshot(m_screenshot->path);
+    m_quitRequested = m_screenshot->quitAfter;
+    m_screenshot.reset();
+  }
 
   renderer.endFrame();
 }
@@ -196,6 +213,10 @@ Entity Engine::createLightEntity(std::string_view name, glm::vec3 position, glm:
 void Engine::setState(Toggle toggle, bool value) {
   auto &stateSystem = m_systemManager.getSystem<StateSystem>();
   stateSystem.setToggle(toggle, value);
+}
+
+void Engine::captureScreenshot(std::string path, float delaySeconds, bool quitAfter) {
+  m_screenshot = ScreenshotRequest{std::move(path), delaySeconds, quitAfter};
 }
 
 void Engine::setEmission(Entity entity, glm::vec3 color, float strength, int submesh) {

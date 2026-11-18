@@ -2,6 +2,8 @@
 // Particle system implementation for managing particle emitters, updating particle states, and rendering them.
 
 #include "systems/particleSystem.h"
+#include "components/gravityLens.h"
+#include "components/hidden.h"
 #include "components/transform.h"
 #include "rendering/resources/shader.h"
 #include "systems/cameraSystem.h"
@@ -69,8 +71,19 @@ void ParticleSystem::emitParticles(ParticleEmitter &emitter, Entity entity, cons
     case EmissionShape::Sphere: {
       glm::vec3 unit = randomUnitVector();
       float radius = glm::max(emitter.sphereRadius, 0.0f);
-      float radial = radius * std::cbrt(dist01(rng));
+      float radial = emitter.sphereSurfaceOnly ? radius : radius * std::cbrt(dist01(rng));
       spawnPos = origin + unit * radial;
+      emitDir = unit;
+      break;
+    }
+    case EmissionShape::Ring: {
+      float inner = glm::max(emitter.ringInnerRadius, 0.0f);
+      float outer = glm::max(emitter.ringOuterRadius, inner);
+      // sqrt keeps the density uniform over the annulus area
+      float radial = std::sqrt(glm::mix(inner * inner, outer * outer, dist01(rng)));
+      float angle = dist01(rng) * glm::two_pi<float>();
+      glm::vec3 unit(std::cos(angle), 0.0f, std::sin(angle));
+      spawnPos = origin + unit * radial + glm::vec3(0.0f, distSym(rng) * emitter.ringThickness, 0.0f);
       emitDir = unit;
       break;
     }
@@ -234,11 +247,30 @@ void ParticleSystem::render(SystemManager &systemManager) {
   shader.setMat4("view", view);
   shader.setMat4("projection", projection);
 
+  // The first visible GravityLens bends every particle behind it; each particle then has two images
+  const GravityLens *lens = nullptr;
+  glm::vec3 lensPosition(0.0f);
+  m_componentManager.forEachComponent<GravityLens>([&](Entity entity, GravityLens &candidate) {
+    auto *transform = m_componentManager.getOrNil<Transform>(entity);
+    if (lens || !transform || m_componentManager.containsComponent<Hidden>(entity))
+      return;
+    lens = &candidate;
+    lensPosition = transform->position;
+  });
+
+  const int images = lens ? 2 : 1;
+  shader.setInt("lensActive", lens ? 1 : 0);
+  if (lens) {
+    shader.setVec3("lensPosition", lensPosition);
+    shader.setFloat("lensRadius", lens->schwarzschildRadius);
+    shader.setFloat("lensMaxMagnification", lens->maxMagnification);
+  }
+
   if (!additiveVertices.empty()) {
     int count = static_cast<int>(additiveVertices.size());
     renderer.beginParticlePass(true);
     renderer.uploadParticles(additiveVertices.data(), count);
-    renderer.drawParticles(count);
+    renderer.drawParticles(count, images);
     renderer.endParticlePass();
   }
 
@@ -246,7 +278,7 @@ void ParticleSystem::render(SystemManager &systemManager) {
     int count = static_cast<int>(alphaVertices.size());
     renderer.beginParticlePass(false);
     renderer.uploadParticles(alphaVertices.data(), count);
-    renderer.drawParticles(count);
+    renderer.drawParticles(count, images);
     renderer.endParticlePass();
   }
 }

@@ -19,6 +19,7 @@ enum class EmissionShape {
   Cone = 0,
   Sphere = 1,
   Box = 2,
+  Ring = 3, // flat annulus on the XZ plane (accretion disks, planetary rings)
 };
 
 struct ParticleEmitter {
@@ -38,6 +39,10 @@ struct ParticleEmitter {
   glm::vec3 offset = glm::vec3(0.0f);
   float spread = 0.5f;
   float sphereRadius = 1.0f;
+  bool sphereSurfaceOnly = false; // spawn on the sphere's surface instead of inside it
+  float ringInnerRadius = 1.0f;
+  float ringOuterRadius = 2.0f;
+  float ringThickness = 0.0f; // half-height of the ring along Y
   glm::vec3 boxHalfExtents = glm::vec3(1.0f);
   int maxParticles = 500;
   bool active = true;
