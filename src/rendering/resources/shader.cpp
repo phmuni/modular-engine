@@ -8,8 +8,8 @@
 #include <sstream>
 #include <vector>
 
-Shader::Shader(std::string_view vertexFile, std::string_view fragmentFile) {
-  m_shaderID = createShaderProgram(vertexFile.data(), fragmentFile.data());
+Shader::Shader(std::string_view vertexFile, std::string_view fragmentFile, std::string_view defines) {
+  m_shaderID = createShaderProgram(vertexFile.data(), fragmentFile.data(), defines);
 }
 
 bool Shader::load(std::string_view vertexFile, std::string_view fragmentFile) {
@@ -19,7 +19,7 @@ bool Shader::load(std::string_view vertexFile, std::string_view fragmentFile) {
     m_uniformCache.clear();
     m_instancingSupport = -1;
   }
-  m_shaderID = createShaderProgram(vertexFile.data(), fragmentFile.data());
+  m_shaderID = createShaderProgram(vertexFile.data(), fragmentFile.data(), {});
   return m_shaderID != 0;
 }
 
@@ -47,10 +47,15 @@ std::string Shader::readShaderFile(const char *filename) const {
   return buffer.str();
 }
 
-GLuint Shader::compileShader(GLenum type, const char *filename) {
+GLuint Shader::compileShader(GLenum type, const char *filename, std::string_view defines) {
   std::string source = readShaderFile(filename);
   if (source.empty())
     return 0;
+
+  if (!defines.empty()) {
+    size_t afterVersion = source.find('\n', source.find("#version"));
+    source.insert(afterVersion == std::string::npos ? 0 : afterVersion + 1, defines);
+  }
 
   const char *src = source.c_str();
   GLuint shader = glCreateShader(type);
@@ -71,9 +76,9 @@ GLuint Shader::compileShader(GLenum type, const char *filename) {
   return shader;
 }
 
-GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentFile) {
-  GLuint vert = compileShader(GL_VERTEX_SHADER, vertexFile);
-  GLuint frag = compileShader(GL_FRAGMENT_SHADER, fragmentFile);
+GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentFile, std::string_view defines) {
+  GLuint vert = compileShader(GL_VERTEX_SHADER, vertexFile, defines);
+  GLuint frag = compileShader(GL_FRAGMENT_SHADER, fragmentFile, defines);
 
   if (!vert || !frag) {
     if (vert)
@@ -143,6 +148,12 @@ void Shader::setVec3(std::string_view name, glm::vec3 value) const {
   GLint loc = getUniformLocation(name);
   if (loc != -1)
     glUniform3fv(loc, 1, glm::value_ptr(value));
+}
+
+void Shader::setVec4(std::string_view name, glm::vec4 value) const {
+  GLint loc = getUniformLocation(name);
+  if (loc != -1)
+    glUniform4fv(loc, 1, glm::value_ptr(value));
 }
 
 void Shader::setMat3(std::string_view name, glm::mat3 value) const {

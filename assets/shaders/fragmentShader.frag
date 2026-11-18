@@ -42,6 +42,12 @@ uniform float opacity;
 uniform int useSolidDiffuseColor;
 uniform vec3 solidDiffuseColor;
 
+// glTF-style material inputs (see AlphaMode)
+uniform vec4 baseColorFactor; // tints the diffuse texture; alpha multiplies its alpha
+uniform int alphaMode;        // 0 opaque, 1 mask, 2 blend
+uniform float alphaCutoff;
+uniform int doubleSided;
+
 float calculateShadow(vec4 fragPosLightSpace)
 {
     if (useShadows == 0) return 0.0;
@@ -76,10 +82,23 @@ float calculateShadow(vec4 fragPosLightSpace)
 void main()
 {
     vec3 normal = normalize(Normal);
+    // Back faces of double-sided materials are lit as the front
+    if (doubleSided == 1 && !gl_FrontFacing)
+        normal = -normal;
 
     vec3 viewDir = normalize(viewPos - FragPos);
 
-    vec4 diffuseSample = useSolidDiffuseColor == 1 ? vec4(solidDiffuseColor, 1.0) : texture(material.diffuse, TexCoords);
+    // Sampled unconditionally: texture lookups in a branch get unreliable derivatives at triangle edges
+    vec4 diffuseTexel = texture(material.diffuse, TexCoords);
+    vec4 diffuseSample = useSolidDiffuseColor == 1 ? vec4(solidDiffuseColor, 1.0)
+                                                   : diffuseTexel * vec4(baseColorFactor.rgb, 1.0);
+    diffuseSample.a *= baseColorFactor.a;
+#ifdef ALPHA_MASK
+    // Only in the mask variant: any discard in a shader turns off hidden surface removal on tile-based GPUs,
+    // which slows down every opaque draw that uses it
+    if (diffuseSample.a < alphaCutoff)
+        discard;
+#endif
     vec3 diffuseTex  = diffuseSample.rgb;
     vec3 specularTex = texture(material.specular, TexCoords).rgb;
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
@@ -139,5 +158,7 @@ void main()
         }
     }
 
-    FragColor = vec4(result, diffuseSample.a * opacity);
+    // Cut-out materials are opaque where they are not discarded
+    float alpha = alphaMode == 1 ? 1.0 : diffuseSample.a;
+    FragColor = vec4(result, alpha * opacity);
 }

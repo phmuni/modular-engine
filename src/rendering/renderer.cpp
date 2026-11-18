@@ -164,6 +164,16 @@ bool Renderer::saveScreenshot(const std::string &path) const {
   return true;
 }
 
+void Renderer::setFaceCulling(bool enabled) const {
+  if (enabled == m_faceCulling)
+    return;
+  m_faceCulling = enabled;
+  if (enabled)
+    glEnable(GL_CULL_FACE);
+  else
+    glDisable(GL_CULL_FACE);
+}
+
 void Renderer::setWireframe(bool enabled) { glPolygonMode(GL_FRONT_AND_BACK, enabled ? GL_LINE : GL_FILL); }
 
 void Renderer::setViewportSize(int width, int height) {

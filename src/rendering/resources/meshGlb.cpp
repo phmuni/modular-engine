@@ -488,6 +488,15 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
     material.emissionColor = {static_cast<float>(source.emissive_factor[0]), static_cast<float>(source.emissive_factor[1]),
                               static_cast<float>(source.emissive_factor[2])};
     material.shininess = 16.0f;
+    const double *factor = source.pbr_metallic_roughness.base_color_factor;
+    material.baseColorFactor = {static_cast<float>(factor[0]), static_cast<float>(factor[1]),
+                                static_cast<float>(factor[2]), static_cast<float>(factor[3])};
+    if (tg3_str_equals_cstr(source.alpha_mode, "MASK"))
+      material.alphaMode = AlphaMode::Mask;
+    else if (tg3_str_equals_cstr(source.alpha_mode, "BLEND"))
+      material.alphaMode = AlphaMode::Blend;
+    material.alphaCutoff = static_cast<float>(source.alpha_cutoff);
+    material.doubleSided = source.double_sided != 0;
     if (source.pbr_metallic_roughness.base_color_texture.index >= 0 &&
         source.pbr_metallic_roughness.base_color_texture.index < static_cast<int32_t>(gltf->textures_count)) {
       const tg3_texture &texture = gltf->textures[source.pbr_metallic_roughness.base_color_texture.index];

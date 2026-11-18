@@ -39,6 +39,8 @@ private:
 
   // How many model slots use each material, recounted every frame by collectUnusedMaterials()
   std::unordered_map<uint32_t, uint32_t> m_materialUses;
+  bool m_hasBlendMaterials = false;
+  std::unordered_map<uint32_t, uint32_t> m_maskVariants;
 
   uint32_t m_nextMesh = 0;
   uint32_t m_nextMaterial = 0;
@@ -64,7 +66,9 @@ public:
   Mesh &getMesh(uint32_t handle);
 
   // Shader
-  uint32_t loadShader(std::string_view vertexPath, std::string_view fragmentPath);
+  uint32_t loadShader(std::string_view vertexPath, std::string_view fragmentPath, std::string_view defines = {});
+  // Variant of `shaderHandle` used by alpha-masked (cut-out) materials; without one, masks render opaque
+  void setMaskVariant(uint32_t shaderHandle, uint32_t maskShaderHandle) { m_maskVariants[shaderHandle] = maskShaderHandle; }
   Shader &getShader(uint32_t handle);
 
   // Material
@@ -72,6 +76,8 @@ public:
   Material &getMaterial(uint32_t handle);
 
   size_t getMaterialCount() const { return m_materials.size(); }
+  // Whether any live material blends; lets the renderer skip per-part alpha checks when none does
+  bool hasBlendMaterials() const { return m_hasBlendMaterials; }
   size_t getTextureCount() const { return m_textures.size(); }
 
   // Copy-on-write: gives `handle` a material of its own if it is the default or used by another slot

@@ -150,6 +150,14 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
 
     mat.setShininess(mtl.shininess);
     mat.setEmissionColor(mtl.emissionColor);
+    mat.setBaseColorFactor(mtl.baseColorFactor);
+    mat.setAlphaMode(mtl.alphaMode);
+    if (mtl.alphaMode == AlphaMode::Mask)
+      if (auto variant = m_maskVariants.find(shaderHandle); variant != m_maskVariants.end())
+        mat.setShaderHandle(variant->second);
+    mat.setAlphaCutoff(mtl.alphaCutoff);
+    mat.setDoubleSided(mtl.doubleSided);
+    m_hasBlendMaterials = m_hasBlendMaterials || mtl.alphaMode == AlphaMode::Blend;
 
     if (glm::length(mtl.emissionColor) > 0.0f)
       mat.setEmissionStrength(1.0f);
@@ -189,8 +197,9 @@ Material &ResourceSystem::getMaterial(uint32_t handle) {
   return *it->second;
 }
 
-uint32_t ResourceSystem::loadShader(std::string_view vertexPath, std::string_view fragmentPath) {
-  auto shader = std::make_unique<Shader>(vertexPath, fragmentPath);
+uint32_t ResourceSystem::loadShader(std::string_view vertexPath, std::string_view fragmentPath,
+                                    std::string_view defines) {
+  auto shader = std::make_unique<Shader>(vertexPath, fragmentPath, defines);
   if (shader->getShaderID() == 0)
     return 0;
 
@@ -234,11 +243,14 @@ void ResourceSystem::collectUnusedMaterials() {
   });
 
   // Handle 0 is the default material and always stays
+  m_hasBlendMaterials = false;
   for (auto it = m_materials.begin(); it != m_materials.end();) {
-    if (it->first != 0 && m_materialUses.find(it->first) == m_materialUses.end())
+    if (it->first != 0 && m_materialUses.find(it->first) == m_materialUses.end()) {
       it = m_materials.erase(it);
-    else
+    } else {
+      m_hasBlendMaterials = m_hasBlendMaterials || it->second->getAlphaMode() == AlphaMode::Blend;
       ++it;
+    }
   }
 }
 
@@ -396,6 +408,8 @@ void ResourceSystem::setSolidColorToMaterial(uint32_t &handle, const glm::vec3 &
   ensureOwnMaterial(handle);
   Material &mat = getMaterial(handle);
   GLuint tex = getOrCreateSolidColorTexture(color);
+  // The color replaces the base color entirely, keeping only its alpha
+  mat.setBaseColorFactor(glm::vec4(1.0f, 1.0f, 1.0f, mat.getBaseColorFactor().a));
   mat.setDiffuseTexture(tex);
   mat.setHasDiffuseTexture(true);
   mat.setDiffuseColor(color);

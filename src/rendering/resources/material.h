@@ -1,6 +1,7 @@
 #pragma once
 // PBR material with diffuse, specular, normal, and emission textures.
 
+#include "rendering/resources/alphaMode.h"
 #include "rendering/resources/decodedImage.h"
 #include <filesystem>
 #include <glad/glad.h>
@@ -32,6 +33,10 @@ public:
   glm::vec3 getDiffuseColor() const;
   glm::vec3 getEmissionColor() const;
   float getEmissionStrength() const;
+  glm::vec4 getBaseColorFactor() const { return m_baseColorFactor; }
+  AlphaMode getAlphaMode() const { return m_alphaMode; }
+  float getAlphaCutoff() const { return m_alphaCutoff; }
+  bool isDoubleSided() const { return m_doubleSided; }
 
   void setDiffuseTexture(GLuint texture);
   void setSpecularTexture(GLuint texture);
@@ -44,6 +49,10 @@ public:
   void setHasDiffuseTexture(bool value);
   void setEmissionColor(const glm::vec3 &color);
   void setEmissionStrength(float strength);
+  void setBaseColorFactor(const glm::vec4 &factor) { m_baseColorFactor = factor; }
+  void setAlphaMode(AlphaMode mode) { m_alphaMode = mode; }
+  void setAlphaCutoff(float cutoff) { m_alphaCutoff = cutoff; }
+  void setDoubleSided(bool doubleSided) { m_doubleSided = doubleSided; }
 
 private:
   GLuint m_diffuse = 0;
@@ -56,4 +65,8 @@ private:
   glm::vec3 m_diffuseColor{0.8f};
   glm::vec3 m_emissionColor{0.0f};
   float m_emissionStrength = 0.0f;
+  glm::vec4 m_baseColorFactor{1.0f};
+  AlphaMode m_alphaMode = AlphaMode::Opaque;
+  float m_alphaCutoff = 0.5f;
+  bool m_doubleSided = false;
 };

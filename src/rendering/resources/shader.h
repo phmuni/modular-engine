@@ -20,13 +20,14 @@ private:
   mutable int m_instancingSupport = -1; // -1 unknown, 0 no, 1 yes
 
   std::string readShaderFile(const char *filename) const;
-  GLuint compileShader(GLenum type, const char *filename);
-  GLuint createShaderProgram(const char *vertexFile, const char *fragmentFile);
+  GLuint compileShader(GLenum type, const char *filename, std::string_view defines);
+  GLuint createShaderProgram(const char *vertexFile, const char *fragmentFile, std::string_view defines);
   GLint getUniformLocation(std::string_view name) const;
 
 public:
   Shader() = default;
-  Shader(std::string_view vertexFile, std::string_view fragmentFile);
+  // `defines` (e.g. "#define ALPHA_MASK\n") is inserted after each file's #version line, to build shader variants
+  Shader(std::string_view vertexFile, std::string_view fragmentFile, std::string_view defines = {});
   ~Shader() {
     if (m_shaderID)
       glDeleteProgram(m_shaderID);
@@ -56,6 +57,7 @@ public:
   void setInt(std::string_view name, int value) const;
   void setFloat(std::string_view name, float value) const;
   void setVec3(std::string_view name, glm::vec3 value) const;
+  void setVec4(std::string_view name, glm::vec4 value) const;
   void setMat3(std::string_view name, glm::mat3 value) const;
   void setMat4(std::string_view name, glm::mat4 value) const;
   void setTex(std::string_view name, GLuint, int) const;

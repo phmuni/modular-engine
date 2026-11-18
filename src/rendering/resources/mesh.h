@@ -1,6 +1,7 @@
 #pragma once
 // Mesh class for loading OBJ/GLB files and managing vertex/index buffers.
 
+#include "rendering/resources/alphaMode.h"
 #include "rendering/resources/decodedImage.h"
 #include <glad/glad.h>
 #include <glm/glm.hpp>
@@ -39,6 +40,10 @@ struct MtlMaterialData {
   glm::vec3 specularColor{0.0f};
   glm::vec3 emissionColor{0.0f};
   float shininess = 16.0f;
+  glm::vec4 baseColorFactor{1.0f}; // multiplies the diffuse texture (glTF); alpha multiplies its alpha
+  AlphaMode alphaMode = AlphaMode::Opaque;
+  float alphaCutoff = 0.5f;
+  bool doubleSided = false;
 };
 
 // A named part of a mesh (an OBJ object/group or a glTF node primitive), kept in file order. Parts are what

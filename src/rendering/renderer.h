@@ -33,6 +33,7 @@ struct RenderStats {
 class Renderer {
 private:
   mutable RenderStats m_stats;
+  mutable bool m_faceCulling = true;
 
   SDL_Window *m_window = nullptr;
 
@@ -96,6 +97,8 @@ public:
   bool saveScreenshot(const std::string &path) const;
 
   void setWireframe(bool enabled);
+  // Back-face culling, on by default; double-sided materials turn it off while they draw
+  void setFaceCulling(bool enabled) const;
   void setViewportSize(int width, int height);
   void shutdown();
 };

@@ -353,12 +353,16 @@ bool Engine::loadResources() {
   uint32_t particleShader =
       resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_PARTICLE),
                                 EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_PARTICLE));
-  if (!baseShader || !shadowShader || !particleShader) {
+  uint32_t maskShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
+                                                  EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT),
+                                                  "#define ALPHA_MASK\n");
+  if (!baseShader || !shadowShader || !particleShader || !maskShader) {
     LOG_E("[Engine] Failed to load shaders.");
     return false;
   }
 
   m_baseShaderHandle = baseShader;
+  resourceSystem.setMaskVariant(baseShader, maskShader);
   resourceSystem.getMaterial(0).setShaderHandle(baseShader);
   m_systemManager.getSystem<RenderSystem>().setShadowShaderHandle(shadowShader);
 

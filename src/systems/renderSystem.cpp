@@ -24,20 +24,19 @@ struct TransparentDraw {
   uint32_t shaderHandle;
 };
 
-constexpr uint32_t kAnyShader = UINT32_MAX;
-
 // Calls fn(indexStart, indexCount, materialHandle) for each run of parts that are contiguous in the index buffer and
-// currently use the same material, among the parts whose material uses `shaderHandle` (or all parts with
-// kAnyShader). Parts sharing a material are laid out together, so this is usually one draw per material; a part
-// given a material of its own just becomes its own run.
-template <typename Fn>
-void forEachDrawRange(const Mesh &mesh, const Model &model, ResourceSystem &resourceSystem, uint32_t shaderHandle,
-                      Fn &&fn) {
+// currently use the same material, among the parts whose material handle passes `include`. Parts sharing a material
+// are laid out together, so this is usually one draw per material; a part given a material of its own just becomes
+// its own run. With `singlePartIncluded`, a single-part mesh skips `include` (it saves a material lookup per entity
+// when the caller knows the answer).
+template <typename Include, typename Fn>
+void forEachDrawRange(const Mesh &mesh, const Model &model, bool singlePartIncluded, Include &&include, Fn &&fn) {
   const auto &submeshes = mesh.getSubmeshes();
+  auto materialOf = [&](uint32_t part) { return part < model.materialHandles.size() ? model.materialHandles[part] : 0; };
 
-  // A single part is only in the batches of its own shader, so it needs no filtering
   if (submeshes.size() == 1) {
-    fn(submeshes[0].indexStart, submeshes[0].indexCount, model.materialHandles.empty() ? 0 : model.materialHandles[0]);
+    if (singlePartIncluded || include(materialOf(0)))
+      fn(submeshes[0].indexStart, submeshes[0].indexCount, materialOf(0));
     return;
   }
 
@@ -46,8 +45,8 @@ void forEachDrawRange(const Mesh &mesh, const Model &model, ResourceSystem &reso
 
   for (uint32_t index : mesh.getDrawOrder()) {
     const Submesh &part = submeshes[index];
-    const uint32_t partMaterial = index < model.materialHandles.size() ? model.materialHandles[index] : 0;
-    if (shaderHandle != kAnyShader && resourceSystem.getMaterial(partMaterial).getShaderHandle() != shaderHandle) {
+    const uint32_t partMaterial = materialOf(index);
+    if (!include(partMaterial)) {
       if (open)
         fn(start, end - start, material);
       open = false;
@@ -282,6 +281,17 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);
     shader.setVec3("solidDiffuseColor", material.getDiffuseColor());
     shader.setFloat("opacity", opacity);
+    shader.setVec4("baseColorFactor", material.getBaseColorFactor());
+    shader.setInt("alphaMode", static_cast<int>(material.getAlphaMode()));
+    shader.setFloat("alphaCutoff", material.getAlphaCutoff());
+    shader.setInt("doubleSided", material.isDoubleSided() ? 1 : 0);
+    renderer.setFaceCulling(!material.isDoubleSided());
+  };
+
+  // Blending parts are left to the transparent pass, even on opaque models
+  const bool anyBlend = resourceSystem.hasBlendMaterials();
+  auto isBlend = [&](uint32_t material) {
+    return resourceSystem.getMaterial(material).getAlphaMode() == AlphaMode::Blend;
   };
 
   // Per-draw path: shaders without instancing support and transparent models
@@ -313,12 +323,20 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.use();
     configureShader(shader);
 
+    // Parts drawn by this batch: same shader, not blending. A single-part entity is only in its shader's batch,
+    // so it needs no check unless some material blends.
+    const uint32_t batchShader = shaderHandle;
+    auto includeOpaque = [&](uint32_t material) {
+      const Material &m = resourceSystem.getMaterial(material);
+      return m.getShaderHandle() == batchShader && m.getAlphaMode() != AlphaMode::Blend;
+    };
+
     if (!shader.supportsInstancing()) {
       for (Entity entity : batch) {
         const auto *model = componentManager.getOrNil<Model>(entity);
         if (!model)
           continue;
-        forEachDrawRange(resourceSystem.getMesh(model->meshHandle), *model, resourceSystem, shaderHandle,
+        forEachDrawRange(resourceSystem.getMesh(model->meshHandle), *model, !anyBlend, includeOpaque,
                          [&](uint32_t start, uint32_t count, uint32_t material) {
                            drawRange(shader, entity, start, count, material, 1.0f);
                          });
@@ -342,7 +360,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       }
 
       const InstanceData instance{modelMatrix, calculateNormalMatrix(modelMatrix)};
-      forEachDrawRange(mesh, *model, resourceSystem, shaderHandle,
+      forEachDrawRange(mesh, *model, !anyBlend, includeOpaque,
                        [&](uint32_t start, uint32_t count, uint32_t material) {
                          m_instanceItems.push_back({model->meshHandle, start, count, material, instance});
                        });
@@ -365,17 +383,20 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   std::vector<TransparentDraw> transparentDraws;
 
   componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
-    if (isHidden(componentManager, entity) || model.opacity >= kSoftOpacityEnter)
+    const bool transparentModel = model.opacity < kSoftOpacityEnter;
+    if (isHidden(componentManager, entity) || (!transparentModel && !anyBlend))
       return;
 
     const auto &transform = componentManager.getOrThrow<Transform>(entity);
     const float distance = glm::length(camera.position - transform.position);
-    auto &draws = model.opacity >= kSoftOpacityExit ? softDraws : transparentDraws;
+    auto &draws = transparentModel && model.opacity >= kSoftOpacityExit ? softDraws : transparentDraws;
 
-    forEachDrawRange(resourceSystem.getMesh(model.meshHandle), model, resourceSystem, kAnyShader,
+    // Transparent models draw every part here; opaque models only their blending parts
+    auto include = [&](uint32_t material) { return transparentModel || isBlend(material); };
+    forEachDrawRange(resourceSystem.getMesh(model.meshHandle), model, transparentModel, include,
                      [&](uint32_t start, uint32_t count, uint32_t material) {
-                       draws.push_back(
-                           {entity, start, count, material, distance, resourceSystem.getMaterial(material).getShaderHandle()});
+                       draws.push_back({entity, start, count, material, distance,
+                                        resourceSystem.getMaterial(material).getShaderHandle()});
                      });
   });
 
@@ -400,6 +421,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
 
   renderSorted(softDraws, &Renderer::beginSoftTransparentPass, &Renderer::endSoftTransparentPass);
   renderSorted(transparentDraws, &Renderer::beginTransparentPass, &Renderer::endTransparentPass);
+  renderer.setFaceCulling(true); // a double-sided material may have turned it off
 
   // Transparent / Particles pass
   if (systemManager.hasSystem<ParticleSystem>()) {

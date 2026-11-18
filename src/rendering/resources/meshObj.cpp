@@ -66,6 +66,11 @@ bool Mesh::parseOBJ(std::string filename, MeshData &data) {
     mtl.specularColor = {mat.specular[0], mat.specular[1], mat.specular[2]};
     mtl.emissionColor = {mat.emission[0], mat.emission[1], mat.emission[2]};
     mtl.shininess = mat.shininess > 0.0f ? mat.shininess : 16.0f;
+    // d (dissolve) below 1 makes the material translucent
+    if (mat.dissolve < 1.0f) {
+      mtl.alphaMode = AlphaMode::Blend;
+      mtl.baseColorFactor.a = mat.dissolve;
+    }
     data.materials.push_back(std::move(mtl));
   }
 
