@@ -457,6 +457,28 @@ bool Mesh::loadGLB(std::string filename) {
   }
 
   const tg3_model *gltf = model.get();
+
+  // Extensions this loader understands; anything else in extensionsRequired would load as broken geometry or
+  // materials (e.g. Draco- or meshopt-compressed buffers), so refuse those files with a clear message.
+  static constexpr const char *kSupportedExtensions[] = {"KHR_materials_specular", "KHR_mesh_quantization"};
+  auto isSupported = [](const tg3_str &name) {
+    for (const char *supported : kSupportedExtensions)
+      if (tg3_str_equals_cstr(name, supported))
+        return true;
+    return false;
+  };
+  for (uint32_t i = 0; i < gltf->extensions_required_count; ++i) {
+    if (!isSupported(gltf->extensions_required[i])) {
+      LOG_E("[Mesh] %s requires the unsupported glTF extension %s", normalized.c_str(),
+            toStdString(gltf->extensions_required[i]).c_str());
+      return false;
+    }
+  }
+  for (uint32_t i = 0; i < gltf->extensions_used_count; ++i) {
+    if (!isSupported(gltf->extensions_used[i]))
+      LOG_W("[Mesh] %s uses the glTF extension %s, which is ignored", normalized.c_str(),
+            toStdString(gltf->extensions_used[i]).c_str());
+  }
   std::vector<GLuint> imageTextureIds(gltf->images_count, 0);
   for (uint32_t i = 0; i < gltf->images_count; ++i) {
     imageTextureIds[i] = loadTextureFromImage(*gltf, gltf->images[i]);

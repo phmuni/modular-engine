@@ -88,6 +88,7 @@ public:
   }
 
   GLuint getVAO() const { return m_VAO; }
+  bool isLoaded() const { return m_VAO != 0; }
   const std::vector<Submesh> &getSubmeshes() const { return m_submeshes; }
   const std::vector<MtlMaterialData> &getMtlMaterials() const { return m_mtlMaterials; }
   std::string_view getBaseDir() const { return m_baseDir; }

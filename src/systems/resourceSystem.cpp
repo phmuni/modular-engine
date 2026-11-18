@@ -27,7 +27,8 @@ uint32_t ResourceSystem::loadMesh(std::string_view path) {
   uint32_t handle = m_nextMesh++;
   const uint64_t start = SDL_GetTicksNS();
   m_meshes[handle] = std::make_unique<Mesh>(normalized);
-  LOG_I("[Resources] Loaded %s in %.1f ms", normalized.c_str(), static_cast<double>(SDL_GetTicksNS() - start) / 1e6);
+  if (m_meshes[handle]->isLoaded())
+    LOG_I("[Resources] Loaded %s in %.1f ms", normalized.c_str(), static_cast<double>(SDL_GetTicksNS() - start) / 1e6);
   m_meshCache[std::move(normalized)] = handle;
   return handle;
 }
