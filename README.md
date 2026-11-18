@@ -54,10 +54,11 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Solid Color Fallback**   | Centralized solid color texture generation and caching for simple rendering    |
 | **Resource Caching**       | Automatic texture caching with handle-based resource management                |
 | **Shadow Mapping**         | Real-time shadows with hardware-filtered PCF                                   |
-| **Asset Loading**          | OBJ (Tiny_Obj) and GLB (tinygltf) support with automated resource management                    |
+| **Asset Loading**          | OBJ (Tiny_Obj) and glTF/GLB (tinygltf) with named parts, shared materials and background loading (`preloadModel`) |
+| **glTF Materials**         | Base color tint, alpha modes (opaque, mask, blend), double-sided and unlit (`KHR_materials_unlit`) materials |
 | **Camera System**          | Flexible camera control with quaternion-based rotations                        |
 | **Input System**           | Keyboard and mouse handling via SDL3                                           |
-| **Lighting System**        | Directional, point, and spotlight types with intensity and cutoff controls     |
+| **Lighting System**        | Directional, point, and spotlight types with intensity and cutoff controls; gamma-correct by default |
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
 | **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
@@ -65,7 +66,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **VSync & Pause**          | `F6` toggles vsync; `F7` pauses the simulation while the camera keeps moving |
 | **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
 | **UI Integration**         | ImGui-based editor (`F2`) with material inspector, light tweaks, entity hierarchy and a settings panel |
-| **Settings Panel**         | Every toggle with its key (`F1`–`F7`), time scale, camera FOV/speed, screenshots and render stats (draw calls, culled meshes, particles) |
+| **Settings Panel**         | Every toggle with its key (`F1`–`F8`), time scale, camera FOV/speed, screenshots and render stats (draw calls, culled meshes, particles) |
 | **Scene Management**       | Entity lifecycle management and component composition                          |
 
 ---
@@ -138,7 +139,7 @@ modular-engine/
 ├── src/                        # Source and header files
 │   ├── components/             # ECS component definitions
 │   ├── foundation/             # Core engine and ECS functionality
-│   ├── game/                   # Example apps: Space Aliens, Black Hole and Stress
+│   ├── game/                   # Example apps: Space Aliens, Black Hole, Stress and a model viewer
 │   ├── rendering/              # Renderer and resource implementations
 │   └── systems/                # ECS system implementations
 ├── cmake/                      # CPM package manager script
@@ -174,9 +175,10 @@ cmake --build build
 ./bin/engine              # Space Aliens
 ./bin/engine blackhole    # Black hole
 ./bin/engine stress       # 2500 lit, shadowed boxes (for benchmarking)
+./bin/engine view path/to/model.glb   # any OBJ or glTF/GLB, framed automatically
 ```
 
-In the black hole example the camera orbits on its own: `←` `→` orbit, `↑` `↓` change the elevation and `W` `S` zoom.
+In the black hole example and the model viewer the camera orbits on its own: `←` `→` orbit, `↑` `↓` change the elevation and `W` `S` zoom.
 
 **Controls (all examples):**
 
@@ -189,6 +191,7 @@ In the black hole example the camera orbits on its own: `←` `→` orbit, `↑`
 | `F5` | Performance overlay |
 | `F6` | VSync |
 | `F7` | Pause the simulation |
+| `F8` | Gamma-correct lighting |
 | `F12` | Screenshot (`bin/screenshot.bmp`) |
 | `Right Alt` / `Right Option` | Cursor lock |
 | `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled |
@@ -228,7 +231,7 @@ The optimizations are instanced drawing for opaque models and shadows, sparse-se
 
 ## Usage
 
-The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains three examples, a complete game (Space Aliens), a black hole scene and a stress scene for benchmarking, all launched from [`src/main.cpp`](src/main.cpp).
+The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains four examples, a complete game (Space Aliens), a black hole scene, a stress scene for benchmarking and a model viewer, all launched from [`src/main.cpp`](src/main.cpp).
 
 ### Quick Start
 
@@ -352,6 +355,22 @@ engine.setTexture(entity, TextureSlot::Diffuse, "path/to/texture.png", 0);
 
 // Set shininess
 engine.setShininess(entity, 32.0f);
+
+// Address a part by name: an OBJ object/group or a glTF node, as named in the file
+engine.setSolidColor(car, glm::vec3(0.9f, 0.1f, 0.1f), "wheel_2");
+```
+
+Entities created from the same file share their materials; changing one gives that entity (or part) its own copy, and materials nobody uses anymore are freed. Parts that share a material are drawn together, so a model costs about one draw call per material.
+
+Large models can be read on a worker thread ahead of time, so creating the entity later does not stall the frame:
+
+```cpp
+void setup(Engine& engine) override {
+    engine.preloadModel("../assets/models/castle/castle.glb");
+}
+
+// later, when it is needed: only the GPU upload is left
+engine.entities().create("Castle").withModel("../assets/models/castle/castle.glb", pos, rot, scale).build();
 ```
 
 For direct ResourceSystem access and full API reference, explore [`src/systems/resourceSystem.h`](src/systems/resourceSystem.h).
