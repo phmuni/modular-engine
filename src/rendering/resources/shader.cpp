@@ -113,7 +113,7 @@ void Shader::setTex(std::string_view name, GLuint textureID, int textureUnit) co
   if (loc != -1)
     glUniform1i(loc, textureUnit);
   else
-    LOG_W("[Shader] Uniform not found: %s", name);
+    LOG_W("[Shader] Uniform not found: %.*s", static_cast<int>(name.size()), name.data());
 }
 
 void Shader::setInt(std::string_view name, int value) const {
