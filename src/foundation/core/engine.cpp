@@ -126,7 +126,7 @@ void Engine::loop(bool &isRunning) {
 void Engine::runBenchmark(float seconds) {
   m_benchmark = Benchmark{};
   m_benchmark->duration = seconds;
-  SDL_GL_SetSwapInterval(0);
+  setState(Toggle::VSync, false);
 }
 
 void Engine::recordBenchmarkFrame() {
@@ -174,10 +174,11 @@ void Engine::update(bool &isRunning) {
   auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
   cameraSystem.update(timeSystem.getDeltaTime(), m_systemManager);
 
-  // Apply wireframe toggle
+  // Apply wireframe and vsync toggles
   auto &renderer = m_systemManager.getSystem<RenderSystem>().getRenderer();
   auto &state = m_systemManager.getSystem<StateSystem>();
   renderer.setWireframe(state.isToggled(Toggle::Wireframe));
+  m_systemManager.getSystem<WindowSystem>().setVSync(state.isToggled(Toggle::VSync));
 
   // Particle simulation (update phase, not render)
   auto &particleSystem = m_systemManager.getSystem<ParticleSystem>();

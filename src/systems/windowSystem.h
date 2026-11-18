@@ -8,6 +8,7 @@ class WindowSystem : public BaseSystem {
 private:
   SDL_Window *m_window;
   SDL_GLContext m_glContext;
+  bool m_vsync = true;
 
 public:
   WindowSystem(float screenWidth, float screenHeight);
@@ -16,4 +17,6 @@ public:
   SDL_Window *getWindow() const;
   SDL_GLContext getContext() const;
   void setCursor(bool boolean);
+  // No-op when the value is already applied
+  void setVSync(bool enabled);
 };

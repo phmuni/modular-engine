@@ -43,7 +43,7 @@ bool WindowSystem::initialize(float screenWidth, float screenHeight) {
   glEnable(GL_CULL_FACE);
   glCullFace(GL_BACK);
   glFrontFace(GL_CCW);
-  SDL_GL_SetSwapInterval(1);
+  SDL_GL_SetSwapInterval(m_vsync ? 1 : 0);
   SDL_SetWindowRelativeMouseMode(m_window, true);
 
   return true;
@@ -55,5 +55,14 @@ void WindowSystem::onResize(int newWidth, int newHeight, Renderer &renderer) {
 
 SDL_Window *WindowSystem::getWindow() const { return m_window; }
 SDL_GLContext WindowSystem::getContext() const { return m_glContext; }
+
+void WindowSystem::setVSync(bool enabled) {
+  if (enabled == m_vsync)
+    return;
+  if (SDL_GL_SetSwapInterval(enabled ? 1 : 0))
+    m_vsync = enabled;
+  else
+    LOG_W("[Window System] Failed to set vsync: %s", SDL_GetError());
+}
 
 void WindowSystem::setCursor(bool boolean) { SDL_SetWindowRelativeMouseMode(m_window, boolean); }

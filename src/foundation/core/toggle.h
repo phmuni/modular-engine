@@ -9,4 +9,5 @@ enum class Toggle {
   ShowUI,
   Shadows,
   ShowStats,
+  VSync,
 };
