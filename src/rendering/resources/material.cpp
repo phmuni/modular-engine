@@ -110,11 +110,18 @@ GLuint Material::loadTexture(const std::filesystem::path &path) {
 
   if (!foundPath.empty()) {
     int width, height, channels;
-    unsigned char *data = stbi_load(foundPath.c_str(), &width, &height, &channels, 0);
+    // Grayscale images are expanded: uploading 1 or 2 channels as RGB read past each row
+    int sourceChannels = 0;
+    stbi_info(foundPath.c_str(), &width, &height, &sourceChannels);
+    const int wanted = (sourceChannels == 2 || sourceChannels == 4) ? 4 : 3;
+    unsigned char *data = stbi_load(foundPath.c_str(), &width, &height, &channels, wanted);
+    channels = wanted;
     if (data) {
       glGenTextures(1, &textureID);
       glBindTexture(GL_TEXTURE_2D, textureID);
       GLenum format = (channels == 4 ? GL_RGBA : GL_RGB);
+      // Rows are tightly packed; the default 4-byte alignment skews RGB images whose width * 3 is not a multiple of 4
+      glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
       glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
       glGenerateMipmap(GL_TEXTURE_2D);
       hasMipmap = true;
