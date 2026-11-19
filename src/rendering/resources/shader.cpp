@@ -144,6 +144,12 @@ void Shader::setFloat(std::string_view name, float value) const {
     glUniform1f(loc, value);
 }
 
+void Shader::setVec2(std::string_view name, glm::vec2 value) const {
+  GLint loc = getUniformLocation(name);
+  if (loc != -1)
+    glUniform2fv(loc, 1, glm::value_ptr(value));
+}
+
 void Shader::setVec3(std::string_view name, glm::vec3 value) const {
   GLint loc = getUniformLocation(name);
   if (loc != -1)

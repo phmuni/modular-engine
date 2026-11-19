@@ -97,6 +97,16 @@ constexpr const char *SHADER_VERTEX_SHADOW = "../assets/shaders/vertexShadowShad
 constexpr const char *SHADER_FRAGMENT_SHADOW = "../assets/shaders/fragmentShadowShader.frag";
 constexpr const char *SHADER_VERTEX_PARTICLE = "../assets/shaders/vertexParticle.vert";
 constexpr const char *SHADER_FRAGMENT_PARTICLE = "../assets/shaders/fragmentParticle.frag";
+constexpr const char *SHADER_VERTEX_FULLSCREEN = "../assets/shaders/fullscreen.vert";
+constexpr const char *SHADER_FRAGMENT_BLOOM_DOWNSAMPLE = "../assets/shaders/bloomDownsample.frag";
+constexpr const char *SHADER_FRAGMENT_BLOOM_UPSAMPLE = "../assets/shaders/bloomUpsample.frag";
+constexpr const char *SHADER_FRAGMENT_TONEMAP = "../assets/shaders/tonemap.frag";
+constexpr const char *SHADER_FRAGMENT_COMPOSITE = "../assets/shaders/composite.frag";
+
+// Bloom (F10): light brighter than the threshold (emission, strong highlights) glows; strength scales the glow.
+// Above 1.0, so surfaces that are merely well lit do not glow.
+constexpr float BLOOM_THRESHOLD = 1.5f;
+constexpr float BLOOM_STRENGTH = 0.08f;
 
 // Models
 constexpr const char *MODEL_BOX = "../assets/models/box/box.obj";
@@ -124,6 +134,7 @@ inline const std::pair<Toggle, bool> DEFAULT_TOGGLES[] = {
     {Toggle::Wireframe, false},     {Toggle::ShowUI, false},   {Toggle::Shadows, true},
     {Toggle::ShowStats, false},     {Toggle::VSync, true},     {Toggle::Paused, false},
     {Toggle::GammaCorrect, true},   {Toggle::UIDebugger, false},
+    {Toggle::Bloom, true},
 };
 constexpr int DEFAULT_TOGGLES_COUNT = std::size(DEFAULT_TOGGLES);
 
@@ -133,7 +144,7 @@ inline const std::pair<SDL_Scancode, Toggle> DEFAULT_TOGGLE_KEYBINDS[] = {
     {SDL_SCANCODE_F3, Toggle::Shadows},      {SDL_SCANCODE_F4, Toggle::CameraFly},
     {SDL_SCANCODE_F5, Toggle::ShowStats},    {SDL_SCANCODE_F6, Toggle::VSync},
     {SDL_SCANCODE_F7, Toggle::Paused},       {SDL_SCANCODE_F8, Toggle::GammaCorrect},
-    {SDL_SCANCODE_F9, Toggle::UIDebugger},
+    {SDL_SCANCODE_F9, Toggle::UIDebugger},  {SDL_SCANCODE_F10, Toggle::Bloom},
 };
 
 constexpr int DEFAULT_TOGGLE_KEYBINDS_COUNT = std::size(DEFAULT_TOGGLE_KEYBINDS);

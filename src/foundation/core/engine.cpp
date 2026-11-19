@@ -476,7 +476,16 @@ bool Engine::loadResources() {
   uint32_t maskShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
                                                   EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT),
                                                   "#define ALPHA_MASK\n");
-  if (!baseShader || !shadowShader || !particleShader || !maskShader) {
+  auto fullscreen = [&](const char *fragment) {
+    return resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_FULLSCREEN),
+                                     EngineConfig::resolvePath(fragment));
+  };
+  uint32_t tonemap = fullscreen(EngineConfig::SHADER_FRAGMENT_TONEMAP);
+  uint32_t bloomDownsample = fullscreen(EngineConfig::SHADER_FRAGMENT_BLOOM_DOWNSAMPLE);
+  uint32_t bloomUpsample = fullscreen(EngineConfig::SHADER_FRAGMENT_BLOOM_UPSAMPLE);
+  uint32_t composite = fullscreen(EngineConfig::SHADER_FRAGMENT_COMPOSITE);
+  if (!baseShader || !shadowShader || !particleShader || !maskShader || !tonemap || !bloomDownsample ||
+      !bloomUpsample || !composite) {
     LOG_E("[Engine] Failed to load shaders.");
     return false;
   }
@@ -485,6 +494,7 @@ bool Engine::loadResources() {
   resourceSystem.setMaskVariant(baseShader, maskShader);
   resourceSystem.getMaterial(0).setShaderHandle(baseShader);
   m_systemManager.getSystem<RenderSystem>().setShadowShaderHandle(shadowShader);
+  m_systemManager.getSystem<RenderSystem>().setPostProcessShaders(tonemap, bloomDownsample, bloomUpsample, composite);
 
   auto &particleSystem = m_systemManager.getSystem<ParticleSystem>();
   particleSystem.setShaderHandle(particleShader);

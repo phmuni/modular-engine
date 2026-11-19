@@ -9,6 +9,8 @@
 
 void Renderer::init(SDL_Window *window) {
   m_window = window;
+  SDL_GetWindowSizeInPixels(window, &m_screenWidth, &m_screenHeight);
+  m_postProcess.resize(m_screenWidth, m_screenHeight);
   initShadowMapping();
   initParticleBuffers();
   // Point shadows are filtered across cube faces instead of showing seams at the edges
@@ -91,8 +93,20 @@ void Renderer::beginShadowPass(int cascade) {
   glClear(GL_DEPTH_BUFFER_BIT);
 }
 
+void Renderer::beginScene() { m_postProcess.beginScene(); }
+
+void Renderer::resolveScene(Shader &tonemap, const PostProcess::Settings &settings) {
+  m_postProcess.resolveToDisplay(tonemap, settings);
+}
+
+void Renderer::finishScene(Shader &bloomDownsample, Shader &bloomUpsample, Shader &composite,
+                           const PostProcess::Settings &settings) {
+  m_postProcess.finish(bloomDownsample, bloomUpsample, composite, settings);
+}
+
 void Renderer::endShadowPass() {
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  // Back to the scene target, which the shadow passes interrupted
+  glBindFramebuffer(GL_FRAMEBUFFER, m_postProcess.sceneFramebuffer());
   glViewport(0, 0, m_screenWidth, m_screenHeight);
 }
 
@@ -185,6 +199,7 @@ bool Renderer::saveScreenshot(const std::string &path) const {
   std::vector<uint8_t> pixels(static_cast<size_t>(stride) * height);
 
   glPixelStorei(GL_PACK_ALIGNMENT, 1);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, 0); // the screen, where the scene was composited
   glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
   // The back buffer's alpha is not meaningful (blending writes into it); screenshots are opaque
@@ -229,6 +244,7 @@ void Renderer::setWireframe(bool enabled) { glPolygonMode(GL_FRONT_AND_BACK, ena
 void Renderer::setViewportSize(int width, int height) {
   m_screenWidth = width;
   m_screenHeight = height;
+  m_postProcess.resize(width, height);
   glViewport(0, 0, m_screenWidth, m_screenHeight);
 }
 
@@ -315,6 +331,7 @@ void Renderer::endParticlePass() {
 }
 
 void Renderer::shutdown() {
+  m_postProcess.shutdown();
   if (m_instanceVBO) {
     glDeleteBuffers(1, &m_instanceVBO);
     m_instanceVBO = 0;

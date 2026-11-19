@@ -13,4 +13,5 @@ enum class Toggle {
   Paused,
   GammaCorrect,
   UIDebugger,
+  Bloom,
 };

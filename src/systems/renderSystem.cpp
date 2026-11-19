@@ -429,6 +429,9 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       lightSystem.updatePointShadows(componentManager, shadowsEnabled, EngineConfig::MAX_POINT_SHADOWS);
   renderPointShadows(componentManager, resourceSystem, transformSystem, pointShadows);
 
+  // Everything from here draws into the HDR scene target
+  renderer.beginScene();
+
   // Main pass - grouped by shader
   if (m_batchesDirty) {
     rebuildRenderBatches(componentManager, resourceSystem);
@@ -612,10 +615,21 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   renderSorted(transparentDraws, &Renderer::beginTransparentPass, &Renderer::endTransparentPass);
   renderer.setFaceCulling(true); // a double-sided material may have turned it off
 
-  // Transparent / Particles pass
+  // Lit geometry is done: tone mapped into the display target, where particles draw in display space
+  PostProcess::Settings post;
+  post.bloom = state.isToggled(Toggle::Bloom);
+  post.bloomStrength = EngineConfig::BLOOM_STRENGTH;
+  post.bloomThreshold = EngineConfig::BLOOM_THRESHOLD;
+  post.gammaCorrect = gammaCorrect;
+  renderer.resolveScene(resourceSystem.getShader(m_tonemapShader), post);
+
   if (systemManager.hasSystem<ParticleSystem>()) {
     systemManager.getSystem<ParticleSystem>().render(systemManager);
   }
+
+  // Bloom of the HDR scene added onto the screen
+  renderer.finishScene(resourceSystem.getShader(m_bloomDownsampleShader), resourceSystem.getShader(m_bloomUpsampleShader),
+                       resourceSystem.getShader(m_compositeShader), post);
 }
 
 Renderer &RenderSystem::getRenderer() { return m_renderer; }

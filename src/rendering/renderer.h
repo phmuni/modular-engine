@@ -2,6 +2,7 @@
 // Renderer class for managing OpenGL context, drawing meshes, and handling shadow/particle passes.
 
 #include "foundation/core/config.h"
+#include "rendering/postProcess.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
@@ -51,6 +52,9 @@ private:
   int m_screenWidth = 1280;
   int m_screenHeight = 720;
 
+  // The scene renders into an HDR target; finishScene brings it to the screen
+  PostProcess m_postProcess;
+
   GLuint m_instanceVBO = 0;
   void bindInstanceAttributes(const Mesh &mesh) const;
 
@@ -66,6 +70,12 @@ public:
   void init(SDL_Window *window);
 
   void beginFrame() const;
+  // The scene's passes draw into the HDR target between these; finishScene adds bloom and tone maps onto the screen
+  void beginScene();
+  // Lit passes done: tone maps into the display target, where particles draw next
+  void resolveScene(Shader &tonemap, const PostProcess::Settings &settings);
+  void finishScene(Shader &bloomDownsample, Shader &bloomUpsample, Shader &composite,
+                   const PostProcess::Settings &settings);
   const RenderStats &getStats() const { return m_stats; }
   void endFrame() const;
 

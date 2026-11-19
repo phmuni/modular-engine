@@ -66,11 +66,11 @@ uniform int doubleSided;
 uniform int unlit; // KHR_materials_unlit: base color only, no lights or shadows
 
 // Colors (textures, solid colors, light colors) are authored in sRGB. With gammaCorrect, lighting is computed on
-// linear values and converted back for display, which keeps midtones and light falloff from looking too dark.
+// linear values, which keeps midtones and light falloff from looking too dark. The output is HDR: the composite pass
+// (composite.frag) tone maps it and converts it for display.
 uniform int gammaCorrect;
 
 vec3 toLinear(vec3 c) { return gammaCorrect == 1 ? pow(c, vec3(2.2)) : c; }
-vec3 toDisplay(vec3 c) { return gammaCorrect == 1 ? pow(max(c, vec3(0.0)), vec3(1.0 / 2.2)) : c; }
 
 float calculateShadow(vec3 normal)
 {
@@ -247,5 +247,5 @@ void main()
 
     // Cut-out materials are opaque where they are not discarded
     float alpha = alphaMode == 1 ? 1.0 : diffuseSample.a;
-    FragColor = vec4(toDisplay(result), alpha * opacity);
+    FragColor = vec4(max(result, vec3(0.0)), alpha * opacity);
 }

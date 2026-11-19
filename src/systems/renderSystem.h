@@ -19,6 +19,12 @@ public:
   void renderPipeline(SystemManager &systemManager, ComponentManager &componentManager);
   Renderer &getRenderer();
   void setShadowShaderHandle(uint32_t handle);
+  void setPostProcessShaders(uint32_t tonemap, uint32_t bloomDownsample, uint32_t bloomUpsample, uint32_t composite) {
+    m_tonemapShader = tonemap;
+    m_bloomDownsampleShader = bloomDownsample;
+    m_bloomUpsampleShader = bloomUpsample;
+    m_compositeShader = composite;
+  }
   void markBatchesDirty();
   // Models skipped by frustum culling in the last rendered frame
   int getCulledCount() const { return m_culledCount; }
@@ -46,6 +52,10 @@ private:
   bool m_batchesDirty = true;
   int m_culledCount = 0;
   uint32_t m_shadowShaderHandle = 0;
+  uint32_t m_tonemapShader = 0;
+  uint32_t m_bloomDownsampleShader = 0;
+  uint32_t m_bloomUpsampleShader = 0;
+  uint32_t m_compositeShader = 0;
   Renderer m_renderer;
   void rebuildRenderBatches(ComponentManager &componentManager, ResourceSystem &resourceSystem);
 

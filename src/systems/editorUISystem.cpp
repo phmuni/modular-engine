@@ -193,6 +193,7 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     toggleCheckbox("Wireframe", Toggle::Wireframe);
     toggleCheckbox("Shadows", Toggle::Shadows);
     toggleCheckbox("Gamma-correct lighting", Toggle::GammaCorrect, "Lights in linear space; off is the old look");
+    toggleCheckbox("Bloom", Toggle::Bloom, "Glow around light brighter than white (emission, highlights)");
     toggleCheckbox("Game UI debugger", Toggle::UIDebugger, "RmlUi's element inspector and log for the game UI");
   }
 
