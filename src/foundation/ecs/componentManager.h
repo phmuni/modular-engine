@@ -8,6 +8,7 @@
 
 #include "entityManager.h"
 #include "foundation/core/logger.h"
+#include "foundation/core/typeName.h"
 #include <cstdint>
 #include <memory>
 #include <new>
@@ -179,7 +180,7 @@ public:
   template <typename T> T &getOrThrow(Entity entity) {
     if (T *component = getOrNil<T>(entity))
       return *component;
-    LOG_E("[ComponentManager] Missing component %s for entity %d", typeid(T).name(), entity);
+    LOG_E("[ComponentManager] Entity %d has no %s component", entity, typeName(typeid(T)).c_str());
     throw std::runtime_error("Component not found for entity");
   }
 

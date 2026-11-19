@@ -24,6 +24,40 @@ struct Light {
   float shadowRange = 25.0f; // world units; nothing beyond it casts or receives this light's shadow
 
   Light() = default;
+
+  // Named constructors, so a light reads as what it is. Spot angles are in degrees (the half-angles where the light
+  // starts to fade and where it ends); chain withShadows() on point and spot lights for a cube shadow map.
+  static Light directional(glm::vec3 direction, glm::vec3 color = glm::vec3(1.0f), float intensity = 1.0f) {
+    Light light;
+    light.type = LightType::Directional;
+    light.direction = direction;
+    light.color = color;
+    light.intensity = intensity;
+    return light;
+  }
+  static Light point(glm::vec3 color = glm::vec3(1.0f), float intensity = 1.0f) {
+    Light light;
+    light.type = LightType::Point;
+    light.color = color;
+    light.intensity = intensity;
+    return light;
+  }
+  static Light spot(glm::vec3 direction, glm::vec3 color, float intensity, float innerDegrees, float outerDegrees) {
+    Light light;
+    light.type = LightType::Spot;
+    light.direction = direction;
+    light.color = color;
+    light.intensity = intensity;
+    light.cutOff = glm::cos(glm::radians(innerDegrees));
+    light.outerCutOff = glm::cos(glm::radians(outerDegrees));
+    return light;
+  }
+  Light withShadows(float range = 25.0f) const {
+    Light light = *this;
+    light.castShadows = true;
+    light.shadowRange = range;
+    return light;
+  }
   Light(LightType type, glm::vec3 position, glm::vec3 direction, glm::vec3 color, float intensity = 1.0f,
         float cutOff = glm::cos(glm::radians(12.5f)), float outerCutOff = glm::cos(glm::radians(17.5f)))
       : type(type), position(position), direction(direction), color(color), intensity(intensity), cutOff(cutOff),

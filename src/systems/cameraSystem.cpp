@@ -44,12 +44,7 @@ glm::mat4 CameraSystem::getProjectionMatrix(const Camera &cam) const {
   return glm::perspective(glm::radians(cam.fov), cam.aspectRatio, EngineConfig::CAMERA_NEAR, EngineConfig::CAMERA_FAR);
 }
 
-void CameraSystem::updateFrontVector(Camera &cam) {
-  float pitchRad = glm::radians(cam.pitch);
-  float yawRad = glm::radians(cam.yaw);
-
-  cam.front = glm::normalize(glm::vec3(cos(pitchRad) * sin(yawRad), sin(pitchRad), -cos(pitchRad) * cos(yawRad)));
-}
+void CameraSystem::updateFrontVector(Camera &cam) { cam.updateFront(); }
 
 void CameraSystem::updateOrientation(Camera &cam) {
   float xoffset = m_input.getMouseXOffset() * cam.mouseSensitivity / cam.smoothFactor;

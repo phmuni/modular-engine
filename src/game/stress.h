@@ -19,14 +19,15 @@ public:
     engine.setState(Toggle::CameraMovement, false);
     engine.setState(Toggle::CursorLock, false);
 
-    engine.createLightEntity("Sun", glm::vec3(0.0f), glm::vec3(-0.5f, -1.0f, -0.3f), glm::vec3(1.0f, 0.95f, 0.9f),
-                             LightType::Directional, 1.0f, 0.0f, 0.0f);
+    engine.entities().create("Sun").withLight(Light::directional({-0.5f, -1.0f, -0.3f}, {1.0f, 0.95f, 0.9f})).build();
     for (int i = 0; i < 4; ++i) {
       float angle = glm::radians(90.0f * static_cast<float>(i));
       glm::vec3 color(0.5f + 0.5f * std::cos(angle), 0.5f + 0.5f * std::sin(angle), 1.0f - 0.25f * i);
-      engine.createLightEntity("Point " + std::to_string(i),
-                               glm::vec3(std::cos(angle) * 15.0f, 4.0f, std::sin(angle) * 15.0f), glm::vec3(0.0f),
-                               color, LightType::Point, 3.0f, 0.0f, 0.0f);
+      engine.entities()
+          .create("Point " + std::to_string(i))
+          .withTransform({std::cos(angle) * 15.0f, 4.0f, std::sin(angle) * 15.0f}, glm::vec3(0.0f), glm::vec3(1.0f))
+          .withLight(Light::point(color, 3.0f))
+          .build();
     }
 
     engine.createCameraEntity("Camera", glm::vec3(0.0f, 30.0f, 48.0f), 0.0f, -35.0f, 60.0f);

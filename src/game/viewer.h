@@ -1,10 +1,10 @@
 #pragma once
 // Model viewer: loads any OBJ/GLB given on the command line and orbits a camera around it.
 
+#include "components/camera.h"
 #include "components/model.h"
 #include "foundation/core/engine.h"
 #include "rendering/resources/mesh.h"
-#include "systems/cameraSystem.h"
 #include "systems/inputSystem.h"
 #include "systems/resourceSystem.h"
 #include <cmath>
@@ -22,40 +22,33 @@ class Viewer : public App {
   float orbitSpeed = 10.0f;
 
   void updateCamera(Engine &engine, float deltaTime) {
-    auto &input = engine.getSystemManager().getSystem<InputSystem>();
-    auto &cameraSystem = engine.getSystemManager().getSystem<CameraSystem>();
+    auto &input = engine.input();
 
-    if (input.isKeyPressed(SDL_SCANCODE_UP))
+    if (input.isKeyDown(SDL_SCANCODE_UP))
       elevation += 30.0f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_DOWN))
+    if (input.isKeyDown(SDL_SCANCODE_DOWN))
       elevation -= 30.0f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_LEFT))
+    if (input.isKeyDown(SDL_SCANCODE_LEFT))
       azimuth -= 60.0f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_RIGHT))
+    if (input.isKeyDown(SDL_SCANCODE_RIGHT))
       azimuth += 60.0f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_W))
+    if (input.isKeyDown(SDL_SCANCODE_W))
       distance *= 1.0f - 0.8f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_S))
+    if (input.isKeyDown(SDL_SCANCODE_S))
       distance *= 1.0f + 0.8f * deltaTime;
 
     elevation = glm::clamp(elevation, -85.0f, 85.0f);
     distance = glm::clamp(distance, m_radius * 0.2f, m_radius * 20.0f);
     azimuth += orbitSpeed * deltaTime;
 
-    Entity camEntity = cameraSystem.getActiveCamera();
-    if (camEntity == -1)
+    Camera *camera = engine.getActiveCamera();
+    if (!camera)
       return;
 
-    auto &cam = engine.getOrThrow<Camera>(camEntity);
     float az = glm::radians(azimuth);
     float el = glm::radians(elevation);
     glm::vec3 offset = distance * glm::vec3(glm::cos(el) * glm::sin(az), glm::sin(el), glm::cos(el) * glm::cos(az));
-    glm::vec3 dir = -glm::normalize(offset);
-
-    cam.position = m_target + offset;
-    cam.yaw = glm::degrees(std::atan2(dir.x, -dir.z));
-    cam.pitch = glm::degrees(std::asin(dir.y));
-    cameraSystem.updateFrontVector(cam);
+    camera->lookAt(m_target + offset, m_target);
   }
 
 public:
@@ -65,10 +58,11 @@ public:
     engine.setState(Toggle::CameraMovement, false);
     engine.setState(Toggle::CursorLock, false);
 
-    engine.createLightEntity("Sun", glm::vec3(0.0f), glm::vec3(-0.4f, -1.0f, -0.6f), glm::vec3(1.0f),
-                             LightType::Directional, 1.0f, 0.0f, 0.0f);
-    engine.createLightEntity("Fill", glm::vec3(0.0f), glm::vec3(0.6f, -0.3f, 0.7f), glm::vec3(0.55f, 0.6f, 0.7f),
-                             LightType::Directional, 0.5f, 0.0f, 0.0f);
+    engine.entities().create("Sun").withLight(Light::directional({-0.4f, -1.0f, -0.6f})).build();
+    engine.entities()
+        .create("Fill")
+        .withLight(Light::directional({0.6f, -0.3f, 0.7f}, {0.55f, 0.6f, 0.7f}, 0.5f))
+        .build();
 
     Entity model = engine.entities()
                        .create("Model")

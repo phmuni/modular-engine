@@ -12,6 +12,7 @@
 #include "systems/stateSystem.h"
 #include <functional>
 #include <glm/glm.hpp>
+#include <typeinfo>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -24,6 +25,8 @@ class Context;
 class ElementDocument;
 } // namespace Rml
 class SceneSerializer;
+class InputSystem;
+struct Camera;
 
 class Engine {
 public:
@@ -51,6 +54,9 @@ public:
 
     EntityBuilder &withEmission(const glm::vec3 &color, float strength);
     EntityBuilder &withSolidColor(const glm::vec3 &color);
+    // A light, registered with the light system: Light::directional(...), Light::point(...) or Light::spot(...).
+    // Point and spot lights sit at the entity's Transform (add withTransform), plus Light::position as an offset.
+    EntityBuilder &withLight(const Light &light);
     // Plays from the entity's position; see AudioSource for the other settings
     EntityBuilder &withSound(std::string_view path, bool loop = true, float volume = 1.0f) {
       return withComponent<AudioSource>(std::string(path), volume, 1.0f, loop);
@@ -96,9 +102,19 @@ public:
 
   Entity createEntity();
   EntityFactory entities();
+  // Removes an entity and all its components, unregistering its light or camera. Not while iterating the
+  // components of that entity's type (forEachComponent): collect the entities first, then destroy them.
+  void destroyEntity(Entity entity);
+  // Whether the entity exists: handles of destroyed entities (or of a scene that loadScene replaced) do not
+  bool isAlive(Entity entity) const;
 
-  // Component access
-  template <typename T> T &getOrThrow(Entity entity) { return m_componentManager.getOrThrow<T>(entity); }
+  // Component access. getOrThrow throws, with a message saying whether the entity lacks the component or no longer
+  // exists; getOrNil returns null instead.
+  template <typename T> T &getOrThrow(Entity entity) {
+    if (T *component = m_componentManager.getOrNil<T>(entity))
+      return *component;
+    throwMissingComponent(entity, typeid(T));
+  }
 
   template <typename T> T *getOrNil(Entity entity) { return m_componentManager.getOrNil<T>(entity); }
 
@@ -112,8 +128,13 @@ public:
   friend class EntityBuilder;
 
   // Entity creation utilities
-  void createCameraEntity(std::string_view name, glm::vec3 position, float yaw = 0.0f, float pitch = 0.0f,
-                          float fov = 90.0f, bool isActive = true);
+  Entity createCameraEntity(std::string_view name, glm::vec3 position, float yaw = 0.0f, float pitch = 0.0f,
+                            float fov = 90.0f, bool isActive = true);
+  // The camera the scene renders from, or null; set it with Camera::lookAt, or its yaw/pitch then Camera::updateFront
+  Camera *getActiveCamera();
+
+  // Keyboard and mouse: isKeyDown while held, wasKeyPressed on the frame it went down, mouse buttons and position
+  InputSystem &input();
 
   // Reads a model on a worker thread so a later withModel/createModelEntity of it does not stall the frame
   void preloadModel(std::string_view modelPath);
@@ -121,10 +142,12 @@ public:
   Entity createModelEntity(std::string_view name, std::string_view modelPath, glm::vec3 position, glm::vec3 rotation,
                            glm::vec3 scale, uint32_t shaderHandle = 0);
 
+  // Prefer entities().create(name).withLight(Light::...): cutOff and outerCutOff here are cosines, used by spots only
   Entity createLightEntity(std::string_view name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,
                            LightType type, float intensity, float cutOff, float outerCutOff);
 
   void setState(Toggle toggle, bool value);
+  bool getState(Toggle toggle);
 
   // Audio (WAV, MP3, FLAC). Effects pause with the game and follow the time scale; music does not.
   // Decodes a sound in the background, so its first play does not wait for the file
@@ -227,6 +250,7 @@ private:
 
   // Shows an error that is about to close the engine, so it does not just vanish
   void reportFatalError(const std::string &message);
+  [[noreturn]] void throwMissingComponent(Entity entity, const std::type_info &type) const;
   void registerSystems();
   bool loadResources();
 

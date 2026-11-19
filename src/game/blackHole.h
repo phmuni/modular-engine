@@ -1,11 +1,11 @@
 #pragma once
 // Black hole example: an orbiting particle accretion disk and a starfield, both bent by a gravitational lens.
 
+#include "components/camera.h"
 #include "components/gravityLens.h"
 #include "components/particleEmitter.h"
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
-#include "systems/cameraSystem.h"
 #include "systems/inputSystem.h"
 #include <cmath>
 
@@ -120,41 +120,33 @@ class BlackHole : public App {
   }
 
   void updateCamera(Engine &engine, float deltaTime) {
-    auto &input = engine.getSystemManager().getSystem<InputSystem>();
-    auto &cameraSystem = engine.getSystemManager().getSystem<CameraSystem>();
+    auto &input = engine.input();
 
-    if (input.isKeyPressed(SDL_SCANCODE_UP))
+    if (input.isKeyDown(SDL_SCANCODE_UP))
       elevation += 20.0f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_DOWN))
+    if (input.isKeyDown(SDL_SCANCODE_DOWN))
       elevation -= 20.0f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_W))
+    if (input.isKeyDown(SDL_SCANCODE_W))
       distance -= 8.0f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_S))
+    if (input.isKeyDown(SDL_SCANCODE_S))
       distance += 8.0f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_LEFT))
+    if (input.isKeyDown(SDL_SCANCODE_LEFT))
       azimuth -= 40.0f * deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_RIGHT))
+    if (input.isKeyDown(SDL_SCANCODE_RIGHT))
       azimuth += 40.0f * deltaTime;
 
     elevation = glm::clamp(elevation, -80.0f, 80.0f);
     distance = glm::clamp(distance, 12.0f, 40.0f);
     azimuth += orbitSpeed * deltaTime;
 
-    Entity camEntity = cameraSystem.getActiveCamera();
-    if (camEntity == -1)
+    Camera *camera = engine.getActiveCamera();
+    if (!camera)
       return;
 
-    auto &cam = engine.getOrThrow<Camera>(camEntity);
     float az = glm::radians(azimuth);
     float el = glm::radians(elevation);
     glm::vec3 offset = distance * glm::vec3(glm::cos(el) * glm::sin(az), glm::sin(el), glm::cos(el) * glm::cos(az));
-
-    // Look at the origin: invert the yaw/pitch convention used by CameraSystem::updateFrontVector
-    glm::vec3 dir = -glm::normalize(offset);
-    cam.position = offset;
-    cam.yaw = glm::degrees(std::atan2(dir.x, -dir.z));
-    cam.pitch = glm::degrees(std::asin(dir.y));
-    cameraSystem.updateFrontVector(cam);
+    camera->lookAt(offset, glm::vec3(0.0f));
 
     // Redshift: the drone drops in pitch the deeper the camera sits in the well
     if (auto *hum = engine.getOrNil<AudioSource>(hole))

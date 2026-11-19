@@ -2,6 +2,7 @@
 // Type-erased system container with insert/get interface.
 
 #include "foundation/core/logger.h"
+#include "foundation/core/typeName.h"
 #include <memory>
 #include <stdexcept>
 #include <typeindex>
@@ -33,7 +34,7 @@ template <typename T> T &SystemManager::getSystem() const {
   if (it != m_systems.end()) {
     return *static_cast<T *>(it->second.get());
   }
-  LOG_E("[SystemManager] Missing system %s", typeid(T).name());
+  LOG_E("[SystemManager] No %s is registered", typeName(typeid(T)).c_str());
   throw std::runtime_error("System not found");
 }
 

@@ -8,7 +8,6 @@
 #include "game/components.h"
 #include "systems/collisionSystem.h"
 #include "systems/inputSystem.h"
-#include "systems/sceneSystem.h"
 #include "systems/stateSystem.h"
 #include <RmlUi/Core.h>
 #include <cmath>
@@ -261,7 +260,6 @@ class SpaceAliens : public App {
   }
 
   void resetGame(Engine &engine) {
-    auto &scene = engine.getSystemManager().getSystem<SceneSystem>();
     auto &cm = engine.getComponentManager();
 
     std::vector<Entity> toDestroy;
@@ -269,7 +267,7 @@ class SpaceAliens : public App {
     cm.forEachComponent<Bullet>([&](Entity e, Bullet &) { toDestroy.push_back(e); });
     cm.forEachComponent<Explosion>([&](Entity e, Explosion &) { toDestroy.push_back(e); });
     for (Entity e : toDestroy)
-      scene.destroyEntity(e);
+      engine.destroyEntity(e);
 
     auto &state = engine.getOrThrow<GameState>(gameManager);
     auto &ig = engine.getOrThrow<InvaderGroup>(gameManager);
@@ -291,14 +289,14 @@ class SpaceAliens : public App {
   }
 
   void updatePlayer(Engine &engine, float deltaTime) {
-    auto &input = engine.getSystemManager().getSystem<InputSystem>();
+    auto &input = engine.input();
     auto &tf = engine.getOrThrow<Transform>(player);
     auto &pData = engine.getOrThrow<Player>(player);
 
     float axis = 0.0f;
-    if (input.isKeyPressed(SDL_SCANCODE_A) || input.isKeyPressed(SDL_SCANCODE_LEFT))
+    if (input.isKeyDown(SDL_SCANCODE_A) || input.isKeyDown(SDL_SCANCODE_LEFT))
       axis -= 1.0f;
-    if (input.isKeyPressed(SDL_SCANCODE_D) || input.isKeyPressed(SDL_SCANCODE_RIGHT))
+    if (input.isKeyDown(SDL_SCANCODE_D) || input.isKeyDown(SDL_SCANCODE_RIGHT))
       axis += 1.0f;
 
     if (axis != 0.0f) {
@@ -318,7 +316,7 @@ class SpaceAliens : public App {
     tf.rotation.z = pData.tilt;
 
     pData.shootTimer -= deltaTime;
-    if (input.isKeyPressed(SDL_SCANCODE_SPACE) && pData.shootTimer <= 0.0f) {
+    if (input.isKeyDown(SDL_SCANCODE_SPACE) && pData.shootTimer <= 0.0f) {
       spawnBullet(engine, tf.position + glm::vec3(0.0f, 0.0f, -1.0f), {0.0f, 0.0f, -pData.bulletSpeed}, true);
       engine.playSound(SOUND_LASER, 0.35f, pitchJitter(rng));
       pData.shootTimer = pData.shootCooldown;
@@ -428,7 +426,6 @@ class SpaceAliens : public App {
   }
 
   void updateBullets(Engine &engine, float deltaTime) {
-    auto &scene = engine.getSystemManager().getSystem<SceneSystem>();
     auto &collisionSystem = engine.getSystemManager().getSystem<CollisionSystem>();
     auto &cm = engine.getComponentManager();
     auto &state = engine.getOrThrow<GameState>(gameManager);
@@ -472,7 +469,7 @@ class SpaceAliens : public App {
     });
 
     for (Entity e : destroySet)
-      scene.destroyEntity(e);
+      engine.destroyEntity(e);
   }
 
   void checkInvaderReach(Engine &engine) {
@@ -494,7 +491,6 @@ class SpaceAliens : public App {
   }
 
   void updateExplosions(Engine &engine, float deltaTime) {
-    auto &scene = engine.getSystemManager().getSystem<SceneSystem>();
     auto &cm = engine.getComponentManager();
     std::vector<Entity> toDestroy;
 
@@ -509,7 +505,7 @@ class SpaceAliens : public App {
     });
 
     for (Entity e : toDestroy)
-      scene.destroyEntity(e);
+      engine.destroyEntity(e);
   }
 
   void updatePlayerEmission(Engine &engine, float deltaTime) {
@@ -531,15 +527,20 @@ public:
     engine.setState(Toggle::CameraMovement, false);
     engine.setState(Toggle::CursorLock, false);
 
-    engine.createLightEntity("Sun", glm::vec3(0.0f), glm::vec3(-0.8f, -0.25f, 0.1f), glm::vec3(1.0f, 0.0f, 0.0f),
-                             LightType::Directional, 1.4f, 0.0f, 0.0f);
-
-    engine.createLightEntity("Fill", glm::vec3(0.0f), glm::vec3(0.8f, -0.22f, 0.15f), glm::vec3(0.0f, 0.0f, 1.0f),
-                             LightType::Directional, 0.95f, 0.0f, 0.0f);
-
-    engine.createLightEntity("Overhead", glm::vec3(0.0f, 12.0f, -15.0f), glm::vec3(0.0f, -1.0f, 0.5f),
-                             glm::vec3(1.0f, 1.0f, 1.0f), LightType::Spot, 10.0f, glm::cos(glm::radians(80.0f)),
-                             glm::cos(glm::radians(85.0f)));
+    // A red and a blue sun from either side, and a wide spot from above
+    engine.entities()
+        .create("Sun")
+        .withLight(Light::directional({-0.8f, -0.25f, 0.1f}, {1.0f, 0.0f, 0.0f}, 1.4f))
+        .build();
+    engine.entities()
+        .create("Fill")
+        .withLight(Light::directional({0.8f, -0.22f, 0.15f}, {0.0f, 0.0f, 1.0f}, 0.95f))
+        .build();
+    engine.entities()
+        .create("Overhead")
+        .withTransform({0.0f, 12.0f, -15.0f}, glm::vec3(0.0f), glm::vec3(1.0f))
+        .withLight(Light::spot({0.0f, -1.0f, 0.5f}, glm::vec3(1.0f), 10.0f, 80.0f, 85.0f))
+        .build();
     engine.createCameraEntity("Camera", glm::vec3(0.0f, 14.0f, 18.0f), 0.0f, -35.0f, 55.0f);
 
     // The aliens spawn during play; read their model now instead of on the first spawn

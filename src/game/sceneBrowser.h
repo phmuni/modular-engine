@@ -14,8 +14,6 @@ class SceneBrowser : public App {
   std::string m_first;
   std::vector<std::string> m_scenes;
   size_t m_current = 0;
-  bool m_prevKey = false;
-  bool m_nextKey = false;
 
   void refresh(Engine &engine) {
     m_scenes = engine.getSceneSerializer().listScenes(EngineConfig::SCENES_DIR);
@@ -53,14 +51,9 @@ public:
   }
 
   void update(Engine &engine, float) override {
-    auto &input = engine.getSystemManager().getSystem<InputSystem>();
-    bool prev = input.isKeyPressed(SDL_SCANCODE_LEFTBRACKET);
-    bool next = input.isKeyPressed(SDL_SCANCODE_RIGHTBRACKET);
-    if (prev && !m_prevKey)
+    if (engine.input().wasKeyPressed(SDL_SCANCODE_LEFTBRACKET))
       step(engine, -1);
-    if (next && !m_nextKey)
+    if (engine.input().wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET))
       step(engine, +1);
-    m_prevKey = prev;
-    m_nextKey = next;
   }
 };

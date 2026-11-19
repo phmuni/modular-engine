@@ -1,6 +1,7 @@
 #pragma once
 // Camera component data for view and projection.
 
+#include <cmath>
 #include <glm/glm.hpp>
 
 struct Camera {
@@ -20,4 +21,20 @@ struct Camera {
   float aspectRatio = 16.0f / 9.0f;
 
   Camera() = default;
+
+  // After changing yaw or pitch by hand: points front along them (yaw 0 looks down -Z, positive pitch looks up)
+  void updateFront() {
+    float pitchRad = glm::radians(pitch);
+    float yawRad = glm::radians(yaw);
+    front = glm::normalize(glm::vec3(cos(pitchRad) * sin(yawRad), sin(pitchRad), -cos(pitchRad) * cos(yawRad)));
+  }
+
+  // Places the camera at `from`, facing `target` (yaw and pitch follow, so the free camera continues from there)
+  void lookAt(const glm::vec3 &from, const glm::vec3 &target) {
+    const glm::vec3 direction = glm::normalize(target - from);
+    position = from;
+    yaw = glm::degrees(std::atan2(direction.x, -direction.z));
+    pitch = glm::degrees(std::asin(direction.y));
+    updateFront();
+  }
 };

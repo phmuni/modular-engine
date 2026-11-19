@@ -32,8 +32,8 @@ void SceneSystem::destroyEntity(Entity entity) {
   }
 }
 
-void SceneSystem::createCameraEntity(std::string name, glm::vec3 position, float yaw, float pitch, float fov,
-                                     bool isActive, bool isRelative) {
+Entity SceneSystem::createCameraEntity(std::string name, glm::vec3 position, float yaw, float pitch, float fov,
+                                       bool isActive, bool isRelative) {
   auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
   Entity newCamera = m_entityManager.createEntity();
 
@@ -52,6 +52,7 @@ void SceneSystem::createCameraEntity(std::string name, glm::vec3 position, float
 
   if (isActive)
     cameraSystem.setActiveCamera(newCamera);
+  return newCamera;
 }
 
 Entity SceneSystem::createModelEntity(std::string name, std::string modelPath, uint32_t shaderHandle,

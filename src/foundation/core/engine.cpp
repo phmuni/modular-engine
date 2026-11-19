@@ -7,6 +7,7 @@
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "foundation/core/random.h"
+#include "foundation/core/typeName.h"
 #include <cstdint>
 #include "rendering/resources/material.h"
 #include "rendering/resources/textureProcessing.h"
@@ -53,6 +54,14 @@ Engine::EntityBuilder &Engine::EntityBuilder::withCollision(const glm::vec3 &sca
 Engine::EntityBuilder &Engine::EntityBuilder::withEmission(const glm::vec3 &color, float strength) {
   m_actions.emplace_back(
       [&engine = m_engine, color, strength](Entity entity) { engine.setEmission(entity, color, strength); });
+  return *this;
+}
+
+Engine::EntityBuilder &Engine::EntityBuilder::withLight(const Light &light) {
+  m_actions.emplace_back([&engine = m_engine, light](Entity entity) {
+    engine.addComponent<Light>(entity, light);
+    engine.m_systemManager.getSystem<LightSystem>().createLight(entity);
+  });
   return *this;
 }
 
@@ -249,7 +258,7 @@ void Engine::update(bool &isRunning) {
   m_systemManager.getSystem<GameUISystem>().update(state.isToggled(Toggle::UIDebugger),
                                                    timeSystem.getUnscaledDeltaTime());
 
-  bool screenshotKey = inputSystem.isKeyPressed(EngineConfig::SCREENSHOT_KEY);
+  bool screenshotKey = inputSystem.isKeyDown(EngineConfig::SCREENSHOT_KEY);
   if (screenshotKey && !m_screenshotKeyDown)
     captureScreenshot(EngineConfig::resolvePath(EngineConfig::SCREENSHOT_PATH));
   m_screenshotKeyDown = screenshotKey;
@@ -296,9 +305,34 @@ Entity Engine::createEntity() { return m_entityManager.createEntity(); }
 
 Engine::EntityFactory Engine::entities() { return EntityFactory(*this); }
 
-void Engine::createCameraEntity(std::string_view name, glm::vec3 position, float yaw, float pitch, float fov,
-                                bool isActive) {
-  m_systemManager.getSystem<SceneSystem>().createCameraEntity(std::string(name), position, yaw, pitch, fov, isActive);
+void Engine::destroyEntity(Entity entity) { m_systemManager.getSystem<SceneSystem>().destroyEntity(entity); }
+
+bool Engine::isAlive(Entity entity) const { return m_entityManager.isAlive(entity); }
+
+void Engine::throwMissingComponent(Entity entity, const std::type_info &type) const {
+  std::string message;
+  if (!m_entityManager.isAlive(entity))
+    message = "entity " + std::to_string(entity) + " no longer exists (destroyed, or its scene was replaced), so it " +
+              "has no " + typeName(type);
+  else
+    message = "entity " + std::to_string(entity) + " has no " + typeName(type) + " component";
+  LOG_E("[Engine] getOrThrow: %s", message.c_str());
+  throw std::runtime_error(message);
+}
+
+Camera *Engine::getActiveCamera() {
+  Entity camera = m_systemManager.getSystem<CameraSystem>().getActiveCamera();
+  return camera == -1 ? nullptr : m_componentManager.getOrNil<Camera>(camera);
+}
+
+InputSystem &Engine::input() { return m_systemManager.getSystem<InputSystem>(); }
+
+bool Engine::getState(Toggle toggle) { return m_systemManager.getSystem<StateSystem>().isToggled(toggle); }
+
+Entity Engine::createCameraEntity(std::string_view name, glm::vec3 position, float yaw, float pitch, float fov,
+                                  bool isActive) {
+  return m_systemManager.getSystem<SceneSystem>().createCameraEntity(std::string(name), position, yaw, pitch, fov,
+                                                                     isActive);
 }
 
 void Engine::preloadModel(std::string_view modelPath) {
