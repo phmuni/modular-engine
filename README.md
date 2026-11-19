@@ -65,6 +65,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
+| **Collisions**             | Axis-aligned boxes (`withCollision`), queried by component pair: `forEachCollision<Bullet, Enemy>` |
 | **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
 | **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
 | **Performance Overlay**    | `F5` shows FPS, frame time, work time before the buffer swap and the worst frame |
@@ -359,19 +360,19 @@ Entity e = engine.entities()
     .build();
 
 // Query and modify components
-auto& health = engine.getOrThrow<Health>(e);
+auto& health = engine.get<Health>(e);
 health.current -= 1;
 
-// getOrThrow's error says whether the entity lacks the component or no longer exists:
+// get's error says whether the entity lacks the component or no longer exists:
 //   "entity 8 no longer exists (destroyed, or its scene was replaced), so it has no Health"
 
 // Safe query (returns nullptr if component doesn't exist)
-if (auto* vel = engine.getOrNil<Velocity>(e)) {
+if (auto* vel = engine.tryGet<Velocity>(e)) {
     vel->speed *= 1.5f;
 }
 
 // Check if component exists
-if (engine.containsComponent<Health>(e)) {
+if (engine.has<Health>(e)) {
     // Do something
 }
 
@@ -382,6 +383,22 @@ engine.removeComponent<Velocity>(e);
 engine.destroyEntity(e);
 engine.isAlive(e);  // false: handles of destroyed entities, or of a scene that loadScene replaced
 ```
+
+### Collisions
+
+Entities with a `Collision` box (`withCollision(size)`, centered on their Transform position) can be asked what they touch. Positions are read when you ask, so move things first and then query; each pair comes once, already split by component type:
+
+```cpp
+engine.forEachCollision<Bullet, Enemy>([&](Entity shot, Bullet& bullet, Entity enemy, Enemy& data) {
+    data.health -= bullet.damage;
+    toDestroy.push_back(shot);  // destroy after the loop, or right away: later pairs with it are skipped
+});
+
+if (engine.isColliding(player, door))
+    openDoor();
+```
+
+Two static boxes (`Collision::isStatic`) are never reported. Pairs are found by sorting the boxes along one axis, not by testing every pair.
 
 ### Material & Resource Management
 
@@ -451,7 +468,7 @@ Entity fan = engine.entities()
                  .withModel("../assets/models/box/box.obj", pos, rot, scale)
                  .withSound("../assets/sounds/hum.wav", /*loop*/ true, /*volume*/ 0.6f)
                  .build();
-engine.getOrThrow<AudioSource>(fan).playing = false; // stop it; true starts it again
+engine.get<AudioSource>(fan).playing = false; // stop it; true starts it again
 ```
 
 `AudioSource` also sets pitch, whether it is spatial, and how it fades with distance (`minDistance`, `maxDistance`, `rolloff`). Effects (sources and one-shots) pause with `F7` and follow the time scale; music keeps playing. The Settings panel has master, effects and music volumes, and the Properties panel edits an entity's `AudioSource`. Without an audio device the engine runs silently. See [`src/systems/audioSystem.h`](src/systems/audioSystem.h).
