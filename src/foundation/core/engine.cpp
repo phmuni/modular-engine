@@ -7,6 +7,7 @@
 #include "components/camera.h"
 #include "components/model.h"
 #include "components/name.h"
+#include "components/parent.h"
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "foundation/core/random.h"
@@ -99,6 +100,16 @@ Entity Engine::EntityBuilder::build() {
   for (auto &action : m_actions)
     action(*m_entity);
   m_actions.clear();
+
+  // Last, once it has its Transform: what it was given becomes its place relative to the parent
+  if (m_parent != -1) {
+    if (const Transform *given = m_engine.tryGet<Transform>(*m_entity)) {
+      const Transform local = *given;
+      if (m_engine.setParent(*m_entity, m_parent))
+        m_engine.setLocalTransform(*m_entity, local);
+    }
+    m_parent = -1;
+  }
 
   return *m_entity;
 }
@@ -250,6 +261,9 @@ void Engine::update(bool &isRunning) {
 
   // Scene switches wait until the app is done with this frame's entities
   applyPendingScene();
+
+  // Children follow where their parents went this frame
+  m_systemManager.getSystem<TransformSystem>().updateHierarchy(m_componentManager);
 
   if (m_sceneSave) {
     m_sceneSave->delay -= timeSystem.getUnscaledDeltaTime();
@@ -557,6 +571,44 @@ void Engine::applyCommandLine(const CommandLine &commandLine) {
     saveSceneAfter(commandLine.saveScenePath, commandLine.saveSceneDelay, true);
   if (commandLine.benchmarkSeconds > 0.0f)
     runBenchmark(commandLine.benchmarkSeconds);
+}
+
+bool Engine::setParent(Entity child, Entity parent) {
+  return m_systemManager.getSystem<TransformSystem>().setParent(m_componentManager, child, parent);
+}
+
+Entity Engine::getParent(Entity entity) {
+  return m_systemManager.getSystem<TransformSystem>().getParent(m_componentManager, entity);
+}
+
+std::vector<Entity> Engine::getChildren(Entity entity) {
+  return m_systemManager.getSystem<TransformSystem>().getChildren(m_componentManager, entity);
+}
+
+void Engine::setLocalTransform(Entity entity, const Transform &local) {
+  m_systemManager.getSystem<TransformSystem>().setLocalTransform(m_componentManager, entity, local);
+}
+
+bool Engine::savePrefab(Entity root, std::string_view path) {
+  return getSceneSerializer().savePrefab(root, EngineConfig::resolvePath(std::string(path)));
+}
+
+Entity Engine::instantiate(std::string_view path, glm::vec3 position, glm::vec3 rotation) {
+  const std::vector<Entity> created = getSceneSerializer().instantiate(EngineConfig::resolvePath(std::string(path)));
+  // The file's roots (a prefab has one) move to `position`; their children follow below
+  Entity first = -1;
+  for (Entity entity : created) {
+    if (has<Parent>(entity))
+      continue;
+    if (Transform *transform = tryGet<Transform>(entity)) {
+      transform->position += position;
+      transform->rotation += rotation;
+    }
+    if (first == -1)
+      first = entity;
+  }
+  m_systemManager.getSystem<TransformSystem>().updateHierarchy(m_componentManager);
+  return first;
 }
 
 Entity Engine::findEntity(std::string_view name) {

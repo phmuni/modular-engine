@@ -4,6 +4,7 @@
 #include "foundation/ecs/systemManager.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
+#include <string>
 #include "components/transform.h"
 
 class EntityManager;
@@ -94,6 +95,13 @@ private:
   void renderSettingsPanel(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
                            ComponentManager &componentManager);
   void renderSceneExplorer(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  // Hierarchy: the families (entities with a parent or children) as trees; drag an entity onto another to attach it,
+  // onto the empty space below to detach it
+  void renderHierarchy(SystemManager &systemManager, ComponentManager &componentManager);
+  void dragToParent(SystemManager &systemManager, ComponentManager &componentManager, Entity entity,
+                    const std::string &label);
+  // In the Properties panel: the entity's parent, and saving it with its children as a prefab
+  void renderParentAndPrefab(SystemManager &systemManager, ComponentManager &componentManager);
   void renderPropertiesPanel(SystemManager &systemManager, ComponentManager &componentManager);
 
   static void fileDialogCallback(void *userdata, const char *const *filelist, int filter);

@@ -68,6 +68,12 @@ public:
     EntityBuilder &withSound(std::string_view path, bool loop = true, float volume = 1.0f) {
       return withComponent<AudioSource>(std::string(path), volume, 1.0f, loop);
     }
+    // Follows `parent` (see components/parent.h); the position, rotation and scale given to withModel or
+    // withTransform are then relative to the parent
+    EntityBuilder &withParent(Entity parent) {
+      m_parent = parent;
+      return *this;
+    }
     // A panorama behind the scene (see Skybox); the first one in the scene is drawn
     EntityBuilder &withSkybox(std::string_view path, float intensity = 1.0f, float rotationDegrees = 0.0f) {
       return withComponent<Skybox>(std::string(path), intensity, rotationDegrees);
@@ -88,6 +94,7 @@ public:
     std::optional<ModelConfig> m_model;
     std::vector<std::function<void(Entity)>> m_actions;
     std::optional<Entity> m_entity;
+    Entity m_parent = -1;
   };
 
   class EntityFactory {
@@ -116,6 +123,14 @@ public:
   // Removes an entity and all its components, unregistering its light or camera. Not while iterating the
   // components of that entity's type (forEachComponent): collect the entities first, then destroy them.
   void destroyEntity(Entity entity);
+  // Hierarchy (see components/parent.h). setParent keeps the child where it is in the world (parent -1: follows
+  // nothing any more) and returns false for a loop; setLocalTransform places a child relative to its parent (an
+  // entity without one: in the world).
+  bool setParent(Entity child, Entity parent);
+  Entity getParent(Entity entity);
+  std::vector<Entity> getChildren(Entity entity);
+  void setLocalTransform(Entity entity, const Transform &local);
+
   // The first entity with this Name (as the scene file and the editor show it), or -1. A linear search: look entities
   // up once (in setup or onSceneLoaded) and keep the handles.
   Entity findEntity(std::string_view name);
@@ -236,6 +251,13 @@ public:
   SceneSerializer &getSceneSerializer();
   // Saves the scene after `delaySeconds` of running; `quitAfter` closes the engine
   void saveSceneAfter(std::string path, float delaySeconds, bool quitAfter = false);
+
+  // Prefabs: an entity and its children saved to a file (the same format as scenes, with the entity at the origin)
+  // and copied into the scene as often as needed. instantiate puts the copy's root at `position`, turned `rotation`
+  // degrees, and returns it (-1 if the file cannot be read). Its models load on the spot: preloadModel them for a
+  // prefab spawned during play.
+  bool savePrefab(Entity root, std::string_view path);
+  Entity instantiate(std::string_view path, glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f));
 
   // Game UI (RmlUi). Create data models on the context before loading the documents that bind to them.
   Rml::Context *getUIContext();

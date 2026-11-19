@@ -5,6 +5,7 @@
 #include "components/hidden.h"
 #include "components/model.h"
 #include "components/name.h"
+#include "components/parent.h"
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "rendering/resources/material.h"
@@ -14,6 +15,7 @@
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/sceneSystem.h"
+#include "systems/transformSystem.h"
 #include <algorithm>
 #include <filesystem>
 #include <cstdio>
@@ -218,11 +220,10 @@ void SceneSerializer::loadModel(Entity entity, const json &data) {
   }
 }
 
-bool SceneSerializer::save(const std::string &path) const {
-  std::vector<Entity> entities(m_entityManager.entities().begin(), m_entityManager.entities().end());
-  std::sort(entities.begin(), entities.end()); // creation order, so saving twice gives the same file
-
-  json list = json::array();
+SceneSerializer::json SceneSerializer::entitiesToJson(const std::vector<Entity> &entities, Entity root) const {
+  // Parents are written as their place in this list, since entity numbers change from run to run
+  std::vector<Entity> saved;
+  std::vector<json> entries;
   for (Entity entity : entities) {
     json components = json::object();
     for (const Serializer &serializer : m_serializers) {
@@ -235,15 +236,32 @@ bool SceneSerializer::save(const std::string &path) const {
     }
     if (components.empty())
       continue; // nothing that can be saved, e.g. only game components without a serializer
+    if (entity == root && components.contains("Transform"))
+      components["Transform"]["position"] = {0.0f, 0.0f, 0.0f}; // a prefab's root sits where it is instantiated
 
     json entry;
     if (const Name *name = m_componentManager.tryGet<Name>(entity))
       entry["name"] = name->name;
     entry["components"] = std::move(components);
-    list.push_back(std::move(entry));
+    saved.push_back(entity);
+    entries.push_back(std::move(entry));
   }
+  for (size_t i = 0; i < saved.size(); ++i) {
+    const Parent *parent = saved[i] == root ? nullptr : m_componentManager.tryGet<Parent>(saved[i]);
+    if (!parent)
+      continue;
+    auto it = std::find(saved.begin(), saved.end(), parent->entity);
+    if (it != saved.end())
+      entries[i]["components"]["Parent"] = {{"parent", it - saved.begin()}, {"local", parent->local}};
+  }
+  json list = json::array();
+  for (json &entry : entries)
+    list.push_back(std::move(entry));
+  return list;
+}
 
-  json scene = {{"format", kFormat}, {"version", kVersion}, {"entities", std::move(list)}};
+bool SceneSerializer::writeFile(const std::string &path, json entities) const {
+  json scene = {{"format", kFormat}, {"version", kVersion}, {"entities", std::move(entities)}};
   roundFloats(scene);
 
   std::string resolved = EngineConfig::resolvePath(path);
@@ -259,34 +277,60 @@ bool SceneSerializer::save(const std::string &path) const {
   return static_cast<bool>(file);
 }
 
-bool SceneSerializer::load(const std::string &path) {
+bool SceneSerializer::save(const std::string &path) const {
+  std::vector<Entity> entities(m_entityManager.entities().begin(), m_entityManager.entities().end());
+  std::sort(entities.begin(), entities.end()); // creation order, so saving twice gives the same file
+  return writeFile(path, entitiesToJson(entities, -1));
+}
+
+bool SceneSerializer::savePrefab(Entity root, const std::string &path) const {
+  if (!m_entityManager.isAlive(root)) {
+    LOG_E("[Scene] savePrefab: entity %d does not exist", root);
+    return false;
+  }
+  std::vector<Entity> entities{root};
+  const auto descendants = m_systemManager.getSystem<TransformSystem>().getDescendants(m_componentManager, root);
+  entities.insert(entities.end(), descendants.begin(), descendants.end());
+  return writeFile(path, entitiesToJson(entities, root));
+}
+
+std::optional<SceneSerializer::json> SceneSerializer::readFile(const std::string &path) const {
   std::string resolved = EngineConfig::resolvePath(path);
   std::ifstream file(resolved);
   if (!file) {
     LOG_E("[Scene] Could not open %s", resolved.c_str());
-    return false;
+    return std::nullopt;
   }
-
   json scene;
   try {
     scene = json::parse(file);
   } catch (const json::parse_error &error) {
     LOG_E("[Scene] %s is not valid JSON: %s", resolved.c_str(), error.what());
-    return false;
+    return std::nullopt;
   }
   if (!scene.is_object() || scene.value("format", "") != kFormat || !scene.contains("entities") ||
       !scene["entities"].is_array()) {
     LOG_E("[Scene] %s is not a scene file", resolved.c_str());
-    return false;
+    return std::nullopt;
   }
   if (scene.value("version", 0) > kVersion)
     LOG_W("[Scene] %s is from a newer engine (version %d); loading what this one knows", resolved.c_str(),
           scene.value("version", 0));
+  return scene;
+}
 
-  clear();
+std::vector<Entity> SceneSerializer::createEntities(const json &entries) {
+  std::vector<Entity> created;
+  struct Link {
+    Entity child;
+    size_t parentIndex;
+    Transform local;
+  };
+  std::vector<Link> links;
 
-  for (const json &entry : scene["entities"]) {
+  for (const json &entry : entries) {
     Entity entity = m_entityManager.createEntity();
+    created.push_back(entity);
     if (entry.contains("name"))
       m_componentManager.addInPlace<Name>(entity, entry["name"].get<std::string>());
 
@@ -300,17 +344,58 @@ bool SceneSerializer::load(const std::string &path) {
         LOG_W("[Scene] Could not load %s of entity %d: %s", serializer.key.c_str(), entity, error.what());
       }
     }
+    // Parents can come later in the file: linked once every entity exists
+    if (components.contains("Parent")) {
+      try {
+        const json &parent = components["Parent"];
+        links.push_back({entity, parent.at("parent").get<size_t>(), parent.value("local", Transform())});
+      } catch (const std::exception &error) {
+        LOG_W("[Scene] Could not load Parent of entity %d: %s", entity, error.what());
+      }
+    }
     for (const auto &item : components.items()) {
       const std::string &key = item.key();
-      bool known = std::any_of(m_serializers.begin(), m_serializers.end(),
-                               [&](const Serializer &serializer) { return serializer.key == key; });
+      bool known = key == "Parent" || std::any_of(m_serializers.begin(), m_serializers.end(),
+                                                  [&](const Serializer &serializer) { return serializer.key == key; });
       if (!known && m_warnedKeys.insert(key).second)
         LOG_W("[Scene] No serializer for component \"%s\"; it is skipped", key.c_str());
     }
   }
 
-  LOG_I("[Scene] Loaded %zu entities from %s", scene["entities"].size(), resolved.c_str());
+  for (const Link &link : links) {
+    if (link.parentIndex >= created.size()) {
+      LOG_W("[Scene] Entity %d names parent %zu, past the end of the file", link.child, link.parentIndex);
+      continue;
+    }
+    // The file holds both the child's place in the world and relative to its parent; the parent's says where the
+    // parent was, so nothing moves until one of them does
+    Parent &parent = m_componentManager.addInPlace<Parent>(link.child);
+    parent.entity = created[link.parentIndex];
+    parent.local = link.local;
+    parent.lastLocal = link.local;
+    if (const Transform *world = m_componentManager.tryGet<Transform>(link.child))
+      parent.lastWorld = *world;
+    if (const Transform *parentWorld = m_componentManager.tryGet<Transform>(parent.entity))
+      parent.lastParent = *parentWorld;
+  }
+  return created;
+}
+
+bool SceneSerializer::load(const std::string &path) {
+  const std::optional<json> scene = readFile(path);
+  if (!scene)
+    return false;
+  clear();
+  createEntities((*scene)["entities"]);
+  LOG_I("[Scene] Loaded %zu entities from %s", (*scene)["entities"].size(), EngineConfig::resolvePath(path).c_str());
   return true;
+}
+
+std::vector<Entity> SceneSerializer::instantiate(const std::string &path) {
+  const std::optional<json> prefab = readFile(path);
+  if (!prefab)
+    return {};
+  return createEntities((*prefab)["entities"]);
 }
 
 std::vector<std::string> SceneSerializer::modelPaths(const std::string &path) const {

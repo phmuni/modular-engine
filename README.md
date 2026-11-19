@@ -66,6 +66,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
+| **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
 | **Collisions**             | Axis-aligned boxes (`withCollision`, or fitted to the model with `withModelCollision`), queried by component pair (`forEachCollision<Bullet, Enemy>`) and by ray (`raycast<Enemy>`) |
 | **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
 | **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
@@ -410,6 +411,35 @@ engine.removeComponent<Velocity>(e);
 engine.destroyEntity(e);
 engine.isAlive(e);  // false: handles of destroyed entities, or of a scene that loadScene replaced
 ```
+
+### Hierarchy and prefabs
+
+An entity can follow another: a lamp on a post, a wheel on a car. Its `Transform` stays its place in the world (so
+rendering, lights, audio and collisions treat it like any entity), kept at the parent's transform combined with a
+local one each frame. Moving the child itself (game code, the editor's gizmo) updates the local transform instead.
+Destroying a parent destroys its children, and scene files save the links.
+
+```cpp
+Entity car = engine.entities().create("Car").withModel("../assets/models/car.glb", {0, 0, 0}).build();
+engine.entities().create("Light").withParent(car)          // positions given here are relative to the parent
+    .withTransform({0, 1.2f, -2.0f}).withLight(Light::spot({0, -0.3f, -1}, glm::vec3(1), 8.0f)).build();
+
+engine.setParent(child, parent);        // keeps the child where it is; -1 detaches it
+engine.setLocalTransform(child, local); // place it relative to the parent
+engine.getParent(child); engine.getChildren(parent);
+```
+
+A prefab is an entity and its children saved to a file (the scene format, with the entity at the origin), placed in
+the scene as often as needed:
+
+```cpp
+engine.savePrefab(car, "../assets/prefabs/car.json");
+Entity another = engine.instantiate("../assets/prefabs/car.json", {5, 0, 0}, {0, 90, 0}); // position, rotation
+```
+
+In the editor, the Scene Explorer's Hierarchy shows the families: drag an entity onto another to attach it, or onto
+the empty space to detach it; the Properties panel has a Parent field and **Save as prefab**, and **Add Entity** places
+a prefab in front of the camera.
 
 ### Collisions
 

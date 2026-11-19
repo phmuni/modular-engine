@@ -2,6 +2,7 @@
 // rendering and lighting.
 
 #include "systems/sceneSystem.h"
+#include "systems/transformSystem.h"
 #include "components/model.h"
 #include "components/name.h"
 #include "components/transform.h"
@@ -11,6 +12,15 @@
 #include "systems/resourceSystem.h"
 
 void SceneSystem::destroyEntity(Entity entity) {
+  // Children go with their parent, the deepest first
+  const std::vector<Entity> descendants =
+      m_systemManager.getSystem<TransformSystem>().getDescendants(m_componentManager, entity);
+  for (auto it = descendants.rbegin(); it != descendants.rend(); ++it)
+    destroySingle(*it);
+  destroySingle(entity);
+}
+
+void SceneSystem::destroySingle(Entity entity) {
   const bool hadModel = m_componentManager.has<Model>(entity);
 
   if (m_componentManager.has<Light>(entity)) {

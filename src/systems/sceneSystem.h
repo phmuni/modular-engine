@@ -11,11 +11,13 @@ private:
   EntityManager &m_entityManager;
   ComponentManager &m_componentManager;
   SystemManager &m_systemManager;
+  void destroySingle(Entity entity);
 
 public:
   SceneSystem(EntityManager &em, ComponentManager &cm, SystemManager &sm)
       : m_entityManager(em), m_componentManager(cm), m_systemManager(sm) {}
 
+  // Also destroys its children (see components/parent.h)
   void destroyEntity(Entity entity);
   Entity createCameraEntity(const std::string name, glm::vec3 position, float yaw, float pitch, float fov,
                             bool isActive = false, bool isRelative = false);

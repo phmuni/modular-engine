@@ -42,6 +42,11 @@ public:
   bool save(const std::string &path) const;
   // Reads the whole file first; if it cannot be read, the current scene stays
   bool load(const std::string &path);
+
+  // Prefabs: an entity and its descendants in a file of the same format, the root at the origin
+  bool savePrefab(Entity root, const std::string &path) const;
+  // Adds a file's entities to the scene, keeping what is there; returns them in file order (empty if unreadable)
+  std::vector<Entity> instantiate(const std::string &path);
   // Destroys every entity
   void clear();
 
@@ -65,6 +70,11 @@ private:
   mutable std::unordered_set<std::string> m_warnedKeys;
 
   void registerBuiltIns();
+  // entities as a file's "entities" list; `root` (a prefab's) is written without its parent, at the origin
+  json entitiesToJson(const std::vector<Entity> &entities, Entity root) const;
+  bool writeFile(const std::string &path, json entities) const;
+  std::optional<json> readFile(const std::string &path) const;
+  std::vector<Entity> createEntities(const json &entries);
   std::optional<json> saveModel(Entity entity) const;
   void loadModel(Entity entity, const json &data);
 };

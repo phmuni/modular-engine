@@ -8,6 +8,7 @@
 #include "components/light.h"
 #include "components/model.h"
 #include "components/name.h"
+#include "components/parent.h"
 #include "components/particleEmitter.h"
 #include "components/skybox.h"
 #include "components/transform.h"
@@ -29,6 +30,7 @@
 #include "systems/windowSystem.h"
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <array>
 #include <glm/glm.hpp>
@@ -811,6 +813,133 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   return true;
 }
 
+namespace {
+std::string displayName(ComponentManager &componentManager, Entity entity) {
+  const Name *name = componentManager.tryGet<Name>(entity);
+  return name && !name->name.empty() ? name->name : "Entity " + std::to_string(entity);
+}
+} // namespace
+
+void EditorUISystem::dragToParent(SystemManager &systemManager, ComponentManager &componentManager, Entity entity,
+                                  const std::string &label) {
+  // Drag an entity onto another to make it a child of it
+  if (ImGui::BeginDragDropSource()) {
+    ImGui::SetDragDropPayload("ENTITY", &entity, sizeof(Entity));
+    ImGui::Text("Attach %s to...", displayName(componentManager, entity).c_str());
+    ImGui::EndDragDropSource();
+  }
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY")) {
+      const Entity dragged = *static_cast<const Entity *>(payload->Data);
+      if (dragged != entity)
+        systemManager.getSystem<TransformSystem>().setParent(componentManager, dragged, entity);
+    }
+    ImGui::EndDragDropTarget();
+  }
+  (void)label;
+}
+
+void EditorUISystem::renderHierarchy(SystemManager &systemManager, ComponentManager &componentManager) {
+  if (!ImGui::CollapsingHeader("Hierarchy", ImGuiTreeNodeFlags_DefaultOpen))
+    return;
+  auto &transformSystem = systemManager.getSystem<TransformSystem>();
+  ImGui::BeginChild("Hierarchy", ImVec2(0, 120.0f), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
+
+  // Families only: the entities that have a parent or children, from their roots down
+  std::vector<Entity> roots;
+  componentManager.forEachComponent<Parent>([&](Entity entity, Parent &) {
+    Entity root = entity;
+    for (int guard = 0; guard < 256 && transformSystem.getParent(componentManager, root) != -1; ++guard)
+      root = transformSystem.getParent(componentManager, root);
+    if (std::find(roots.begin(), roots.end(), root) == roots.end())
+      roots.push_back(root);
+  });
+  std::sort(roots.begin(), roots.end());
+
+  std::function<void(Entity, int)> node = [&](Entity entity, int depth) {
+    const std::vector<Entity> children = transformSystem.getChildren(componentManager, entity);
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen |
+                               ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (children.empty())
+      flags |= ImGuiTreeNodeFlags_Leaf;
+    if (selectedEntity == entity)
+      flags |= ImGuiTreeNodeFlags_Selected;
+    const std::string label = displayName(componentManager, entity) + "##tree" + std::to_string(entity);
+    const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
+    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
+      selectedEntity = entity;
+    dragToParent(systemManager, componentManager, entity, label);
+    if (open) {
+      if (depth < 64)
+        for (Entity child : children)
+          node(child, depth + 1);
+      ImGui::TreePop();
+    }
+  };
+  for (Entity root : roots)
+    node(root, 0);
+  if (roots.empty())
+    ImGui::TextDisabled("  Drag an entity onto another\n  to attach it to it");
+
+  // Dropped on the empty space below: no parent any more
+  ImGui::Dummy(ImVec2(ImGui::GetContentRegionAvail().x, std::max(ImGui::GetContentRegionAvail().y, 20.0f)));
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY"))
+      transformSystem.setParent(componentManager, *static_cast<const Entity *>(payload->Data), -1);
+    ImGui::EndDragDropTarget();
+  }
+  if (ImGui::IsItemHovered() && ImGui::GetDragDropPayload())
+    ImGui::SetTooltip("Drop here to detach it");
+  ImGui::EndChild();
+}
+
+void EditorUISystem::renderParentAndPrefab(SystemManager &systemManager, ComponentManager &componentManager) {
+  auto &transformSystem = systemManager.getSystem<TransformSystem>();
+  if (!componentManager.has<Transform>(selectedEntity))
+    return;
+
+  // Parent: any entity with a Transform but this one and its descendants (which would make a loop)
+  const Entity current = transformSystem.getParent(componentManager, selectedEntity);
+  const std::string preview = current == -1 ? "(none)" : displayName(componentManager, current);
+  if (ImGui::BeginCombo("Parent", preview.c_str())) {
+    if (ImGui::Selectable("(none)", current == -1))
+      transformSystem.setParent(componentManager, selectedEntity, -1);
+    const std::vector<Entity> descendants = transformSystem.getDescendants(componentManager, selectedEntity);
+    std::vector<Entity> candidates;
+    componentManager.forEachComponent<Transform>([&](Entity entity, Transform &) {
+      if (entity != selectedEntity && std::find(descendants.begin(), descendants.end(), entity) == descendants.end())
+        candidates.push_back(entity);
+    });
+    std::sort(candidates.begin(), candidates.end());
+    for (Entity candidate : candidates) {
+      const std::string label = displayName(componentManager, candidate) + "##parent" + std::to_string(candidate);
+      if (ImGui::Selectable(label.c_str(), candidate == current))
+        transformSystem.setParent(componentManager, selectedEntity, candidate);
+    }
+    ImGui::EndCombo();
+  }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Follows the parent; keeps its place in the world when attached or detached.\n"
+                      "Dragging one entity onto another in the Scene Explorer does the same.");
+
+  // Prefab: this entity and its children, to instantiate as often as needed
+  static char prefabPath[256] = "";
+  static Entity prefabPathEntity = -1;
+  if (prefabPathEntity != selectedEntity) {
+    prefabPathEntity = selectedEntity;
+    std::string name = displayName(componentManager, selectedEntity);
+    std::replace(name.begin(), name.end(), ' ', '_');
+    std::snprintf(prefabPath, sizeof(prefabPath), "../assets/prefabs/%s.json", name.c_str());
+  }
+  ImGui::SetNextItemWidth(200.0f);
+  ImGui::InputText("##prefabPath", prefabPath, sizeof(prefabPath));
+  ImGui::SameLine();
+  if (ImGui::Button("Save as prefab"))
+    systemManager.getSystem<SceneSerializer>().savePrefab(selectedEntity, EngineConfig::resolvePath(prefabPath));
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Saves this entity and its children; Add Entity > Prefab places copies of it");
+}
+
 void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager,
                                          ComponentManager &componentManager) {
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
@@ -850,6 +979,7 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
       std::string label = entityLabel(entity, icon);
       if (ImGui::Selectable(label.c_str(), selectedEntity == entity))
         selectedEntity = (selectedEntity == entity) ? -1 : entity;
+      dragToParent(systemManager, componentManager, entity, label);
       if (m_scrollToSelection && selectedEntity == entity) {
         ImGui::SetScrollHereY();
         m_scrollToSelection = false;
@@ -860,6 +990,7 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
     ImGui::EndChild();
   };
 
+  renderHierarchy(systemManager, componentManager);
   section("Models", "[M]", entitiesWith<Model>(componentManager));
   section("Lights", "[L]", lightSystem.getLights());
   section("Camera", "[C]", entitiesWith<Camera>(componentManager));
@@ -913,6 +1044,7 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
       }
     }
     ImGui::Text("Entity ID: %d", selectedEntity);
+    renderParentAndPrefab(systemManager, componentManager);
     ImGui::Separator();
   }
 
@@ -1415,6 +1547,28 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
 
   ImGui::SetNextItemWidth(300.0f);
   ImGui::Dummy(ImVec2(300.0f, 0.0f));
+
+  // A prefab: copies of a saved entity and its children, placed in front of the camera
+  {
+    static char prefabFile[256] = "../assets/prefabs/";
+    ImGui::TextUnformatted("Prefab");
+    ImGui::SetNextItemWidth(200.0f);
+    ImGui::InputText("##prefabFile", prefabFile, sizeof(prefabFile));
+    pickFileButton("pick_prefab", prefabFile, sizeof(prefabFile), window);
+    ImGui::SameLine();
+    if (ImGui::Button("Place##prefab")) {
+      glm::vec3 position(0.0f);
+      if (const Camera *camera = engine.getActiveCamera())
+        position = camera->position + glm::normalize(camera->front) * 5.0f;
+      const Entity placed = engine.instantiate(prefabFile, position);
+      if (placed != -1) {
+        selectedEntity = placed;
+        m_scrollToSelection = true;
+        ImGui::CloseCurrentPopup();
+      }
+    }
+    ImGui::Separator();
+  }
 
   // Single unified create dialog with per-component checkboxes and options
   static char entityName[64] = "";
