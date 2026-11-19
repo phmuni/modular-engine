@@ -53,8 +53,9 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **PBR Material System**    | Per-submesh materials with diffuse, specular, normal, and emission maps        |
 | **Solid Color Fallback**   | Centralized solid color texture generation and caching for simple rendering    |
 | **Resource Caching**       | Automatic texture caching with handle-based resource management                |
-| **Shadow Mapping**         | Real-time shadows with hardware-filtered PCF                                   |
-| **Asset Loading**          | OBJ (Tiny_Obj) and glTF/GLB (tinygltf) with named parts, shared materials and background loading (`preloadModel`) |
+| **Shadow Mapping**         | Cascaded sun shadows that follow the camera (3 cascades out to 80 units) and cube-map shadows for up to 4 point/spot lights (`Light::castShadows`), re-rendered only when something within the light's range moves; hardware-filtered PCF |
+| **Asset Loading**          | OBJ (Tiny_Obj) and glTF/GLB (tinygltf) with named parts, shared materials, background loading (`preloadModel`) and a binary cache for OBJ files (`bin/cache/meshes`) |
+| **Texture Streaming**      | Textures converted once to GPU-compressed BC1/BC3 with mipmaps (cached in `bin/cache/textures`) and uploaded over several frames, smallest mip first |
 | **glTF Materials**         | Base color tint, alpha modes (opaque, mask, blend), double-sided and unlit (`KHR_materials_unlit`) materials |
 | **Camera System**          | Flexible camera control with quaternion-based rotations                        |
 | **Input System**           | Keyboard and mouse handling via SDL3                                           |
@@ -66,6 +67,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
 | **Performance Overlay**    | `F5` shows FPS, frame time, work time before the buffer swap and the worst frame |
 | **VSync & Pause**          | `F6` toggles vsync; `F7` pauses the simulation while the camera keeps moving |
+| **Scenes**                 | Save the running scene to JSON and load or switch scenes at runtime (`Engine::saveScene`/`loadScene`, Settings panel) |
 | **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
 | **UI Integration**         | ImGui-based editor (`F2`) with material inspector, light tweaks, entity hierarchy and a settings panel |
 | **Settings Panel**         | Every toggle with its key (`F1`–`F9`), time scale, camera FOV/speed, audio volumes, screenshots and render stats (draw calls, culled meshes, particles) |
@@ -89,10 +91,17 @@ The engine is built on the **Entity-Component-System (ECS)** pattern, which sepa
 │  │  Systems)   │  │  Shadows)    │  │               │  │
 │  └─────────────┘  └──────────────┘  └───────────────┘  │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  Asset Mgr  │  │  Scene Mgr   │  │  UI (ImGui)   │  │
-│  │  (Tiny_Obj, │  │  (Lifecycle, │  │  (Inspector,  │  │
-│  │  Caching)   │  │  Composition)│  │  Hierarchy)   │  │
+│  │  Resources  │  │  Scenes      │  │  Editor UI    │  │
+│  │  (OBJ/glTF, │  │  (Lifecycle, │  │  (ImGui:      │  │
+│  │  mesh and   │  │  JSON save/  │  │  inspector,   │  │
+│  │  texture    │  │  load and    │  │  hierarchy,   │  │
+│  │  caches)    │  │  switching)  │  │  settings)    │  │
 │  └─────────────┘  └──────────────┘  └───────────────┘  │
+│  ┌─────────────┐  ┌──────────────┐                     │
+│  │  Audio      │  │  Game UI     │                     │
+│  │  (miniaudio,│  │  (RmlUi:     │                     │
+│  │  3D sound)  │  │  menus, HUD) │                     │
+│  └─────────────┘  └──────────────┘                     │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -102,7 +111,7 @@ The engine is built on the **Entity-Component-System (ECS)** pattern, which sepa
 | ----------- | --------------------------------------------------- |
 | `src/`      | Source and header files organized by engine module  |
 | `external/` | Third-party dependencies and libraries              |
-| `assets/`   | Game assets — models, shaders, textures, sounds    |
+| `assets/`   | Game assets — models, shaders, sounds, scenes and game UI documents |
 
 ---
 
@@ -139,14 +148,14 @@ Bundled dependencies (ImGui, glad, stb_image, Tiny_Obj, tinygltf) live in `exter
 ```
 modular-engine/
 ├── src/                        # Source and header files
-│   ├── components/             # ECS component definitions
-│   ├── foundation/             # Core engine and ECS functionality
-│   ├── game/                   # Example apps: Space Aliens, Black Hole, Stress and a model viewer
-│   ├── rendering/              # Renderer and resource implementations
-│   └── systems/                # ECS system implementations
+│   ├── components/             # ECS component definitions and their JSON form for scene files
+│   ├── foundation/             # Core engine, ECS, config and file caches
+│   ├── game/                   # Example apps: Space Aliens, Black Hole, Stress, a model viewer and a scene browser
+│   ├── rendering/              # Renderer and resources: meshes, materials, texture conversion and streaming
+│   └── systems/                # ECS systems: rendering, lights, audio, game UI, scenes, editor UI...
 ├── cmake/                      # CPM package manager script
 ├── external/                   # Bundled third-party dependencies
-├── assets/                     # Models, shaders, textures
+├── assets/                     # Models, shaders, sounds, scenes (JSON) and game UI (RML/RCSS)
 ├── bin/                        # Compiled binaries
 ├── build/                      # CMake build output
 └── CMakeLists.txt              # Build configuration
@@ -178,6 +187,7 @@ cmake --build build
 ./bin/engine blackhole    # Black hole
 ./bin/engine stress       # 2500 lit, shadowed boxes (for benchmarking)
 ./bin/engine view path/to/model.glb   # any OBJ or glTF/GLB, framed automatically
+./bin/engine scene [file.json]        # scene files in assets/scenes; [ and ] switch between them
 ```
 
 In the black hole example and the model viewer the camera orbits on its own: `←` `→` orbit, `↑` `↓` change the elevation and `W` `S` zoom.
@@ -208,6 +218,12 @@ To save a frame without a window manager screenshot, pass `--screenshot <file.bm
 | Space Aliens | Black Hole |
 | --- | --- |
 | <img src="docs/images/space-aliens.png" alt="Space Aliens example"/> | <img src="docs/images/black-hole.png" alt="Black hole example"/> |
+
+To turn what an example builds into a scene file, pass `--save-scene <file.json> [seconds]`; the engine runs that long (0 by default), saves and exits:
+
+```bash
+./bin/engine blackhole --save-scene ../assets/scenes/black_hole.json 0.5
+```
 
 ### Benchmarking
 
@@ -279,6 +295,11 @@ class MyApp : public App {
             glm::cos(glm::radians(15.0f)),  // cutOff
             glm::cos(glm::radians(25.0f))   // outerCutOff
         );
+
+        // Point light with a cube shadow map (up to EngineConfig::MAX_POINT_SHADOWS at once)
+        Entity lamp = engine.createLightEntity("Lamp", glm::vec3(2.0f, 1.5f, 0.0f), glm::vec3(0.0f),
+                                               glm::vec3(1.0f, 0.8f, 0.6f), LightType::Point, 2.0f, 0, 0);
+        engine.getOrThrow<Light>(lamp).castShadows = true;  // shadowRange (25 by default) bounds it
 
         // Create camera
         engine.createCameraEntity("Camera", glm::vec3(0, 0, 5));
@@ -376,6 +397,10 @@ void setup(Engine& engine) override {
 engine.entities().create("Castle").withModel("../assets/models/castle/castle.glb", pos, rot, scale).build();
 ```
 
+Parsing a large OBJ is slow, so the first load writes the result to `bin/cache/meshes`; later loads read it back (the 96 MB, 1-million-triangle room in `assets/models` goes from 485 ms of geometry to 6 ms in Release). An entry is rebuilt when its `.obj` or a `.mtl` in the same folder changes, and deleting the folder is always safe. The file parsers are compiled with optimizations in Debug builds too.
+
+Textures go through the same idea. The first time one is loaded, a worker thread builds its mipmaps and, when the GPU supports S3TC, compresses it to BC1 (RGB) or BC3 (RGBA): 6 or 4 times less memory, and no PNG/JPEG decode afterwards, since the result is cached in `bin/cache/textures` (with both caches, the room and its 8192×8192 JPEG load in 65 ms in a Debug build, down from 3.5 s). Normal maps stay uncompressed. On the main thread, textures are then uploaded a few megabytes per frame (`EngineConfig::TEXTURE_UPLOAD_BUDGET`), smallest mip level first, so a large one appears blurry at once and sharpens over the next frames instead of stalling one; switching to the room scene went from a 540 ms frame to none above normal rendering. `EngineConfig::COMPRESS_TEXTURES` turns compression off.
+
 For direct ResourceSystem access and full API reference, explore [`src/systems/resourceSystem.h`](src/systems/resourceSystem.h).
 
 ### Audio
@@ -402,6 +427,48 @@ engine.getOrThrow<AudioSource>(fan).playing = false; // stop it; true starts it 
 ```
 
 `AudioSource` also sets pitch, whether it is spatial, and how it fades with distance (`minDistance`, `maxDistance`, `rolloff`). Effects (sources and one-shots) pause with `F7` and follow the time scale; music keeps playing. The Settings panel has master, effects and music volumes, and the Properties panel edits an entity's `AudioSource`. Without an audio device the engine runs silently. See [`src/systems/audioSystem.h`](src/systems/audioSystem.h).
+
+### Scenes
+
+A scene file is JSON with one object per entity: its name and its components. Missing fields take the component's defaults, so files can be short and written by hand ([`assets/scenes/playground.json`](assets/scenes/playground.json); [`point_shadows.json`](assets/scenes/point_shadows.json) shows two lights with cube-map shadows):
+
+```json
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Red Box",
+      "components": {
+        "Transform": { "position": [-1.6, 0.25, 0.0], "rotation": [0.0, 25.0, 0.0] },
+        "Model": { "path": "../assets/models/box/box.obj", "parts": [{ "part": 0, "color": [0.85, 0.2, 0.2] }] },
+        "Collision": {}
+      }
+    }
+  ]
+}
+```
+
+```cpp
+engine.saveScene("../assets/scenes/level1.json");  // now
+engine.loadScene("../assets/scenes/level2.json");  // reads its models in the background, then replaces every entity
+
+// Called after a load: handles to the old entities are gone, so look up what the game needs again
+void onSceneLoaded(Engine& engine, const std::string& path) override { /* ... */ }
+```
+
+Saved: `Transform`, `Model` (the file plus per-part color, textures, emission and shininess changes), `Light`, `Camera` (and which one is active), `Collision`, `ParticleEmitter`, `GravityLens`, `AudioSource` and `Hidden`. Runtime state such as live particles is not. Game components are saved once registered; plain data only needs `to_json`/`from_json`:
+
+```cpp
+#include "systems/sceneSerializer.h"
+
+struct Health { float current = 100.0f; float max = 100.0f; };
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Health, current, max)
+
+engine.getSceneSerializer().registerComponent<Health>("Health");
+```
+
+Components with handles or links to systems use `SceneSerializer::registerComponent(key, save, load)` instead (see [`src/systems/sceneSerializer.h`](src/systems/sceneSerializer.h)). In the debug UI (`F2`), the Settings panel saves and loads scenes and lists those in `assets/scenes` to switch with a click. `loadScene` reads the new scene's models on worker threads while the current one keeps running (`isLoadingScene()` tells when it is waiting), then switches at the end of a frame. Only uploading to the GPU stays on the main thread.
 
 ### Game UI
 
