@@ -5,6 +5,8 @@
 #include "foundation/core/logger.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/meshCache.h"
+#include "foundation/core/fileCache.h"
+#include "rendering/resources/textureProcessing.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -32,13 +34,25 @@ MeshData Mesh::parse(std::string filename) {
   std::string extension = toLowerCopy(std::filesystem::path(normalized).extension().string());
 
   bool loaded = false;
+  auto baseDirOf = [](const std::string &path) {
+    auto slash = path.rfind('/');
+    return slash != std::string::npos ? path.substr(0, slash + 1) : std::string("./");
+  };
   if (extension == ".glb" || extension == ".gltf") {
-    loaded = parseGLB(std::move(normalized), data);
+    // Like OBJ files, from the mesh cache after the first time, with the embedded images from the texture cache
+    if (MeshCache::read(normalized, data) && loadCachedImages(normalized, data)) {
+      data.baseDir = baseDirOf(normalized);
+      data.fromCache = loaded = true;
+    } else {
+      data = MeshData{};
+      loaded = parseGLB(normalized, data);
+      if (loaded)
+        MeshCache::write(normalized, data);
+    }
   } else if (extension == ".obj") {
     // Parsing a large OBJ takes long; after the first time its result comes from the mesh cache
     if (MeshCache::read(normalized, data)) {
-      auto slash = normalized.rfind('/');
-      data.baseDir = slash != std::string::npos ? normalized.substr(0, slash + 1) : "./";
+      data.baseDir = baseDirOf(normalized);
       data.fromCache = loaded = true;
     } else {
       loaded = parseOBJ(normalized, data);
@@ -157,6 +171,19 @@ void Mesh::upload(MeshData &data) {
 
   data.vertices = {};
   data.indices = {};
+}
+
+std::string Mesh::embeddedImageKey(const std::string &file, size_t image) {
+  return FileCache::canonicalKey(file) + "#image" + std::to_string(image);
+}
+
+bool Mesh::loadCachedImages(const std::string &file, MeshData &data) {
+  for (size_t i = 0; i < data.images.size(); ++i) {
+    DecodedImage &image = data.images[i];
+    if (!TextureProcessing::loadCached(embeddedImageKey(file, i), file, image.kind, image))
+      return false;
+  }
+  return true;
 }
 
 void Mesh::generateTangents(MeshData &data) {

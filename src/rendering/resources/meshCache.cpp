@@ -12,11 +12,12 @@ namespace fs = std::filesystem;
 
 constexpr char kMagic[8] = {'M', 'E', 'S', 'H', 'C', 'A', 'C', 'H'};
 // Bump when the layout below or what a loader produces changes, so old entries are parsed again
-constexpr uint32_t kVersion = 1;
+constexpr uint32_t kVersion = 2;
 // The cache is binary-identical only for this layout of Vertex
 constexpr uint32_t kVertexSize = sizeof(Vertex);
 
-// What the entry was built from: the source file and the newest material file next to it
+// What the entry was built from: the source file and the newest file next to it that it reads (.mtl materials,
+// .bin glTF buffers)
 struct Stamp {
   FileCache::FileStamp source;
   int64_t materialsTime = 0;
@@ -32,7 +33,7 @@ bool stampOf(const std::string &sourcePath, Stamp &stamp) {
   std::error_code error;
   stamp.materialsTime = 0;
   for (const auto &entry : fs::directory_iterator(fs::path(sourcePath).parent_path(), error))
-    if (entry.path().extension() == ".mtl")
+    if (entry.path().extension() == ".mtl" || entry.path().extension() == ".bin")
       stamp.materialsTime = std::max(stamp.materialsTime, FileCache::timeOf(entry.last_write_time(error)));
   return true;
 }
@@ -84,6 +85,13 @@ bool read(const std::string &sourcePath, MeshData &data) {
     submesh.materialIndex = material;
     loaded.submeshes.push_back(std::move(submesh));
   }
+
+  // Embedded images (glTF): only how many and their kinds; the pixels are in the texture cache
+  std::vector<uint8_t> imageKinds;
+  ok = ok && reader.array(imageKinds);
+  loaded.images.resize(imageKinds.size());
+  for (size_t i = 0; i < imageKinds.size(); ++i)
+    loaded.images[i].kind = static_cast<TextureKind>(imageKinds[i]);
 
   uint64_t materialCount = 0;
   ok = ok && reader.value(materialCount);
@@ -137,6 +145,11 @@ void write(const std::string &sourcePath, const MeshData &data) {
     writer.value(static_cast<int32_t>(submesh.materialIndex));
     writer.string(submesh.name);
   }
+
+  std::vector<uint8_t> imageKinds;
+  for (const DecodedImage &image : data.images)
+    imageKinds.push_back(static_cast<uint8_t>(image.kind));
+  writer.array(imageKinds);
 
   writer.value(static_cast<uint64_t>(data.materials.size()));
   for (const MtlMaterialData &m : data.materials) {

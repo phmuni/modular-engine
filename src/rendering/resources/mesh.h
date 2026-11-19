@@ -104,6 +104,11 @@ private:
   // Fills the tangents still zero from each triangle's UVs. The bitangent follows +v, which is up in the image for
   // every format: the glTF loader flips v and the image rows together, so normal maps keep their green direction.
   static void generateTangents(MeshData &data);
+  // Texture cache key of a glTF file's embedded image, shared by the glTF loader and the mesh cache
+  static std::string embeddedImageKey(const std::string &file, size_t image);
+  // Embedded images of a cached glTF (MeshCache restores how many and their kinds), from the texture cache only;
+  // false if any is missing, and the file must be parsed
+  static bool loadCachedImages(const std::string &file, MeshData &data);
   static bool parseOBJ(std::string filename, MeshData &data);
   static bool parseGLB(std::string filename, MeshData &data);
 

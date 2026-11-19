@@ -487,11 +487,10 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
   }
 
   // Each image is decoded (or read from the texture cache) on its own thread
-  const std::string cacheKey = FileCache::canonicalKey(normalized) + "#image";
   std::vector<std::future<DecodedImage>> decoding;
   for (uint32_t i = 0; i < gltf->images_count; ++i)
     decoding.push_back(std::async(std::launch::async, [&, i] {
-      return TextureProcessing::load(cacheKey + std::to_string(i), normalized, imageKinds[i],
+      return TextureProcessing::load(embeddedImageKey(normalized, i), normalized, imageKinds[i],
                                      [&] { return decodeImage(*gltf, gltf->images[i]); });
     }));
   data.images.resize(gltf->images_count);
