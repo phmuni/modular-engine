@@ -78,6 +78,10 @@ struct MeshData {
   std::string baseDir;
   glm::vec3 boundsCenter{0.0f};
   float boundsRadius = 0.0f;
+  glm::vec3 boundsMin{0.0f}, boundsMax{0.0f};
+  // Welded positions and triangles for queries, built by parse (on the loading thread); Mesh keeps them
+  std::vector<glm::vec3> collisionVertices;
+  std::vector<uint32_t> collisionIndices;
   bool loaded = false;
   bool fromCache = false; // read from the mesh cache instead of parsing the file
 };
@@ -94,6 +98,13 @@ private:
   // Bounding sphere in model space, used for frustum culling
   glm::vec3 m_boundsCenter{0.0f};
   float m_boundsRadius = 0.0f;
+  // Bounding box in model space
+  glm::vec3 m_boundsMin{0.0f}, m_boundsMax{0.0f};
+  // The triangles in memory, for picking and collision queries: one vertex per distinct position (the GPU copy
+  // repeats positions for each normal and UV), three indices per triangle
+  std::vector<glm::vec3> m_collisionVertices;
+  std::vector<uint32_t> m_collisionIndices;
+  static void buildCollisionGeometry(MeshData &data);
 
   std::vector<uint32_t> m_drawOrder; // submesh indices sorted by indexStart
   uint32_t m_indexCount = 0;
@@ -130,7 +141,9 @@ public:
       : m_VAO(std::exchange(other.m_VAO, 0)), m_VBO(std::exchange(other.m_VBO, 0)),
         m_EBO(std::exchange(other.m_EBO, 0)), m_submeshes(std::move(other.m_submeshes)),
         m_mtlMaterials(std::move(other.m_mtlMaterials)), m_baseDir(std::move(other.m_baseDir)),
-        m_boundsCenter(other.m_boundsCenter), m_boundsRadius(other.m_boundsRadius),
+        m_boundsCenter(other.m_boundsCenter), m_boundsRadius(other.m_boundsRadius), m_boundsMin(other.m_boundsMin),
+        m_boundsMax(other.m_boundsMax), m_collisionVertices(std::move(other.m_collisionVertices)),
+        m_collisionIndices(std::move(other.m_collisionIndices)),
         m_drawOrder(std::move(other.m_drawOrder)), m_indexCount(other.m_indexCount) {}
 
   Mesh &operator=(Mesh &&other) noexcept {
@@ -146,6 +159,10 @@ public:
       m_baseDir = std::move(other.m_baseDir);
       m_boundsCenter = other.m_boundsCenter;
       m_boundsRadius = other.m_boundsRadius;
+      m_boundsMin = other.m_boundsMin;
+      m_boundsMax = other.m_boundsMax;
+      m_collisionVertices = std::move(other.m_collisionVertices);
+      m_collisionIndices = std::move(other.m_collisionIndices);
       m_drawOrder = std::move(other.m_drawOrder);
       m_indexCount = other.m_indexCount;
     }
@@ -165,4 +182,9 @@ public:
   std::string_view getBaseDir() const { return m_baseDir; }
   glm::vec3 getBoundsCenter() const { return m_boundsCenter; }
   float getBoundsRadius() const { return m_boundsRadius; }
+  glm::vec3 getBoundsMin() const { return m_boundsMin; }
+  glm::vec3 getBoundsMax() const { return m_boundsMax; }
+  // Model-space triangles for queries (see ModelQueries): positions, and three indices per triangle
+  const std::vector<glm::vec3> &getCollisionVertices() const { return m_collisionVertices; }
+  const std::vector<uint32_t> &getCollisionIndices() const { return m_collisionIndices; }
 };

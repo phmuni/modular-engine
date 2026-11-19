@@ -13,6 +13,7 @@
 #include "systems/resourceSystem.h"
 #include "systems/stateSystem.h"
 #include <functional>
+#include <limits>
 #include <glm/glm.hpp>
 #include <typeinfo>
 #include <optional>
@@ -40,6 +41,8 @@ public:
     EntityBuilder &withModel(std::string_view modelPath, glm::vec3 position, glm::vec3 rotation = glm::vec3(0.0f),
                              glm::vec3 scale = glm::vec3(1.0f), uint32_t shaderHandle = 0);
     EntityBuilder &withCollision(const glm::vec3 &scale, bool isStatic = false);
+    // A Collision box that hugs the model as placed (see Engine::fitCollisionToModel); needs withModel
+    EntityBuilder &withModelCollision(float fit = 1.0f, bool isStatic = false);
 
     template <typename T, typename... Args> EntityBuilder &withComponent(Args &&...args) {
       auto values = std::make_tuple(std::forward<Args>(args)...);
@@ -154,6 +157,32 @@ public:
   }
   // Every overlapping pair, each once
   const std::vector<CollisionEvent> &findCollisions();
+  // The nearest Collision box along a ray, within maxDistance; see CollisionSystem::raycast
+  std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
+                                const std::function<bool(Entity)> &accept = nullptr);
+  // Only entities that have component T, e.g. raycast<Enemy>(muzzle, forward, 100.0f)
+  template <typename T>
+  std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance) {
+    return raycast(origin, direction, maxDistance, [this](Entity entity) { return has<T>(entity); });
+  }
+  // Picking: the ray from the active camera through a point of the window (window coordinates, like mouse
+  // positions), and the nearest model it hits, e.g. pickModel(engine.input().getMousePosition())
+  struct Ray {
+    glm::vec3 origin;
+    glm::vec3 direction; // unit length
+  };
+  std::optional<Ray> screenRay(glm::vec2 windowPosition);
+  // The nearest triangle of a visible model along a ray, with the surface normal there (see ModelQueries);
+  // `accept` skips entities it returns false for
+  std::optional<RayHit> raycastModels(const glm::vec3 &origin, const glm::vec3 &direction,
+                                      float maxDistance = std::numeric_limits<float>::max(),
+                                      const std::function<bool(Entity)> &accept = nullptr);
+  std::optional<RayHit> pickModel(glm::vec2 windowPosition);
+
+  // Sets the entity's Collision box (adding one if needed) to its model's bounds, as rotated and scaled by its
+  // Transform. `fit` scales the box around its center: below 1 for forgiving hitboxes, above 1 for generous ones.
+  // Call it again after changing the rotation or scale a lot; the box itself does not rotate.
+  void fitCollisionToModel(Entity entity, float fit = 1.0f, bool isStatic = false);
   // Whether these two entities' boxes overlap now
   bool isColliding(Entity a, Entity b);
 

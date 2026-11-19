@@ -8,6 +8,7 @@
 #include "foundation/core/fileCache.h"
 #include "rendering/resources/textureProcessing.h"
 #include <algorithm>
+#include <cstring>
 #include <cctype>
 #include <filesystem>
 #include <future>
@@ -79,6 +80,9 @@ MeshData Mesh::parse(std::string filename) {
     boundsMax = glm::max(boundsMax, vertex.position);
   }
   data.boundsCenter = (boundsMin + boundsMax) * 0.5f;
+  data.boundsMin = boundsMin;
+  data.boundsMax = boundsMax;
+  buildCollisionGeometry(data);
   for (const auto &vertex : data.vertices)
     data.boundsRadius = glm::max(data.boundsRadius, glm::length(vertex.position - data.boundsCenter));
 
@@ -135,7 +139,11 @@ void Mesh::upload(MeshData &data) {
   m_baseDir = std::move(data.baseDir);
   m_boundsCenter = data.boundsCenter;
   m_boundsRadius = data.boundsRadius;
+  m_boundsMin = data.boundsMin;
+  m_boundsMax = data.boundsMax;
   m_indexCount = static_cast<uint32_t>(data.indices.size());
+  m_collisionVertices = std::move(data.collisionVertices);
+  m_collisionIndices = std::move(data.collisionIndices);
 
   m_drawOrder.resize(m_submeshes.size());
   for (uint32_t i = 0; i < m_drawOrder.size(); ++i)
@@ -266,7 +274,38 @@ Mesh::~Mesh() {
   resetMesh();
 }
 
+void Mesh::buildCollisionGeometry(MeshData &data) {
+  // Welds vertices that share a position, by their exact bits
+  struct PositionHash {
+    size_t operator()(const glm::vec3 &p) const {
+      uint32_t bits[3];
+      std::memcpy(bits, &p, sizeof(bits));
+      return (static_cast<size_t>(bits[0]) * 73856093u) ^ (static_cast<size_t>(bits[1]) * 19349663u) ^
+             (static_cast<size_t>(bits[2]) * 83492791u);
+    }
+  };
+  std::unordered_map<glm::vec3, uint32_t, PositionHash> welded;
+  welded.reserve(data.vertices.size());
+  std::vector<uint32_t> remap(data.vertices.size());
+  data.collisionVertices.clear();
+  for (size_t i = 0; i < data.vertices.size(); ++i) {
+    auto [it, added] = welded.try_emplace(data.vertices[i].position, static_cast<uint32_t>(data.collisionVertices.size()));
+    if (added)
+      data.collisionVertices.push_back(data.vertices[i].position);
+    remap[i] = it->second;
+  }
+  data.collisionIndices.clear();
+  data.collisionIndices.reserve(data.indices.size());
+  for (size_t i = 0; i + 2 < data.indices.size(); i += 3) {
+    const uint32_t a = remap[data.indices[i]], b = remap[data.indices[i + 1]], c = remap[data.indices[i + 2]];
+    if (a != b && b != c && a != c) // degenerate triangles have no surface to hit
+      data.collisionIndices.insert(data.collisionIndices.end(), {a, b, c});
+  }
+}
+
 void Mesh::resetMesh() {
+  m_collisionVertices.clear();
+  m_collisionIndices.clear();
   m_submeshes.clear();
   m_mtlMaterials.clear();
   m_drawOrder.clear();

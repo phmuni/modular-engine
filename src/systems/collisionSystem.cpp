@@ -5,6 +5,7 @@
 #include "components/collision.h"
 #include "components/transform.h"
 #include <algorithm>
+#include <cmath>
 
 namespace {
 bool boxesOverlap(const glm::vec3 &minA, const glm::vec3 &maxA, const glm::vec3 &minB, const glm::vec3 &maxB) {
@@ -34,6 +35,50 @@ const std::vector<CollisionEvent> &CollisionSystem::findCollisions(ComponentMana
     }
   }
   return m_collisions;
+}
+
+std::optional<RayHit> CollisionSystem::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
+                                               ComponentManager &componentManager,
+                                               const std::function<bool(Entity)> &accept) const {
+  const float length = glm::length(direction);
+  if (length <= 0.0f || maxDistance < 0.0f)
+    return std::nullopt;
+  const glm::vec3 dir = direction / length;
+
+  std::optional<RayHit> nearest;
+  componentManager.forEachComponent<Collision>([&](Entity entity, Collision &collision) {
+    if (accept && !accept(entity))
+      return;
+    const auto *transform = componentManager.tryGet<Transform>(entity);
+    const glm::vec3 offset = transform ? transform->position : glm::vec3(0.0f);
+    const glm::vec3 boxMin = collision.min + offset, boxMax = collision.max + offset;
+
+    // Slabs: the ray is inside the box between the last entry and the first exit over the three axes
+    float enter = 0.0f;
+    float exit = nearest ? nearest->distance : maxDistance;
+    glm::vec3 normal(0.0f);
+    for (int axis = 0; axis < 3; ++axis) {
+      if (std::abs(dir[axis]) < 1e-8f) {
+        if (origin[axis] < boxMin[axis] || origin[axis] > boxMax[axis])
+          return; // parallel to this slab and outside it
+        continue;
+      }
+      float t0 = (boxMin[axis] - origin[axis]) / dir[axis];
+      float t1 = (boxMax[axis] - origin[axis]) / dir[axis];
+      if (t0 > t1)
+        std::swap(t0, t1);
+      if (t0 > enter) {
+        normal = glm::vec3(0.0f);
+        normal[axis] = dir[axis] > 0.0f ? -1.0f : 1.0f; // the face the ray enters through
+      }
+      enter = std::max(enter, t0);
+      exit = std::min(exit, t1);
+      if (enter > exit)
+        return;
+    }
+    nearest = RayHit{entity, enter, origin + dir * enter, normal};
+  });
+  return nearest;
 }
 
 bool CollisionSystem::overlaps(Entity a, Entity b, ComponentManager &componentManager) const {
