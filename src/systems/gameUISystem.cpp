@@ -162,6 +162,18 @@ void GameUISystem::render() {
   if (impl.context->GetDimensions() != Rml::Vector2i(width, height))
     impl.context->SetDimensions(Rml::Vector2i(width, height));
 
+  // Nothing on screen (no document shown, e.g. no game UI and the debugger closed): skip the frame. The GL3 backend
+  // otherwise still clears its own multisampled layer and blits it over the scene, and that blit makes the driver
+  // submit the frame's GPU work early: about 1 ms a frame on macOS, for nothing. The debugger's hook document is
+  // always "visible" but draws nothing, so it does not count.
+  bool anyVisible = false;
+  for (int i = 0; i < impl.context->GetNumDocuments() && !anyVisible; ++i) {
+    Rml::ElementDocument *document = impl.context->GetDocument(i);
+    anyVisible = document->IsVisible() && document->GetId() != "rmlui-debug-hook";
+  }
+  if (!anyVisible)
+    return;
+
   // The renderer saves the engine's GL state here and restores it in EndFrame
   impl.renderer->SetViewport(width, height);
   impl.renderer->BeginFrame();
