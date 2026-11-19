@@ -272,7 +272,30 @@ The optimizations are instanced drawing for opaque models and shadows, sparse-se
 
 ## Usage
 
-The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains four examples, a complete game (Space Aliens), a black hole scene, a stress scene for benchmarking and a model viewer, all launched from [`src/main.cpp`](src/main.cpp).
+The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains four examples, a complete game (Space Aliens), a black hole scene, a stress scene for benchmarking and a model viewer, all launched from [`src/main.cpp`](src/main.cpp) (`./bin/engine --help` lists them).
+
+### Creating a game
+
+A game is its own project that builds against the engine as a library (`modular_engine`). Create one from
+[`templates/game`](templates/game):
+
+```bash
+python3 tools/new_game.py ~/Games/Asteroids    # copies the template, named after the folder
+cd ~/Games/Asteroids
+cmake -B build && cmake --build build -j
+./bin/Asteroids
+```
+
+The template is a small working game (drive a box, collect coins) whose level is a scene file you edit with `F2`.
+Its `CMakeLists.txt` points at this checkout (`MODULAR_ENGINE_DIR`; left empty, the engine is downloaded from GitHub)
+and builds `src/*.cpp` with `modular_engine_add_game(...)`, which puts the executable in the game's `bin/` along with
+`bin/engine-assets`: the engine's shaders, fonts and basic models. Asset paths stay `"../assets/..."`, relative to the
+executable, and the ones the game does not have are found in `bin/engine-assets`, so `bin/` plus `assets/` is the
+whole game, runnable from any folder. Every game gets `--screenshot`, `--benchmark`, `--deterministic` and
+`--save-scene` through `Engine::parseCommandLine` and `applyCommandLine`.
+
+Setting the `CPM_SOURCE_CACHE` environment variable to a folder shares the dependency downloads (SDL, RmlUi...)
+between projects.
 
 ### Quick Start
 

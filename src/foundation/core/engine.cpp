@@ -31,6 +31,8 @@
 #include "systems/editorUISystem.h"
 #include "systems/windowSystem.h"
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
 #include <limits>
 
 Engine::Engine()
@@ -510,6 +512,65 @@ bool Engine::loadUIFont(std::string_view path, bool fallback) {
 }
 
 void Engine::stopMusic() { m_systemManager.getSystem<AudioSystem>().stopMusic(); }
+
+Engine::CommandLine Engine::parseCommandLine(int argc, char **argv) {
+  CommandLine result;
+  // An optional number after an option: a following argument that does not start with '-'
+  auto number = [&](int &i, float &value) {
+    if (i + 1 < argc && argv[i + 1][0] != '-')
+      value = std::strtof(argv[++i], nullptr);
+  };
+  for (int i = 1; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--screenshot" && i + 1 < argc) {
+      result.screenshotPath = std::filesystem::absolute(argv[++i]).string(); // relative to where it was started
+      number(i, result.screenshotDelay);
+    } else if (arg == "--benchmark") {
+      result.benchmarkSeconds = 10.0f;
+      number(i, result.benchmarkSeconds);
+    } else if (arg == "--save-scene" && i + 1 < argc) {
+      result.saveScenePath = std::filesystem::absolute(argv[++i]).string();
+      number(i, result.saveSceneDelay);
+    } else if (arg == "--deterministic") {
+      result.deterministic = true;
+    } else {
+      result.arguments.push_back(arg);
+    }
+  }
+  return result;
+}
+
+const char *Engine::commandLineHelp() {
+  return "  --screenshot <file.bmp> [seconds]   Save a frame after that long (3 s by default) and quit\n"
+         "  --benchmark [seconds]               Log frame-time statistics (10 s by default) and quit\n"
+         "  --save-scene <file.json> [seconds]  Save what the game built (after 0 s by default) and quit\n"
+         "  --deterministic                     Fixed 1/60 s frames and seeded randomness, for repeatable runs\n";
+}
+
+void Engine::applyCommandLine(const CommandLine &commandLine) {
+  // Before the app exists, so its setup already runs on fixed frames and seeded randomness
+  if (commandLine.deterministic)
+    setDeterministic();
+  if (!commandLine.screenshotPath.empty())
+    captureScreenshot(commandLine.screenshotPath, commandLine.screenshotDelay, true);
+  if (!commandLine.saveScenePath.empty())
+    saveSceneAfter(commandLine.saveScenePath, commandLine.saveSceneDelay, true);
+  if (commandLine.benchmarkSeconds > 0.0f)
+    runBenchmark(commandLine.benchmarkSeconds);
+}
+
+Entity Engine::findEntity(std::string_view name) {
+  Entity found = -1;
+  m_componentManager.forEachComponent<Name>([&](Entity entity, Name &entityName) {
+    if (found == -1 && entityName.name == name)
+      found = entity;
+  });
+  return found;
+}
+
+void Engine::setWindowTitle(std::string_view title) {
+  SDL_SetWindowTitle(m_systemManager.getSystem<WindowSystem>().getWindow(), std::string(title).c_str());
+}
 
 void Engine::captureScreenshot(std::string path, float delaySeconds, bool quitAfter) {
   m_screenshot = ScreenshotRequest{std::move(path), delaySeconds, quitAfter};

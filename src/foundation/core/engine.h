@@ -116,6 +116,9 @@ public:
   // Removes an entity and all its components, unregistering its light or camera. Not while iterating the
   // components of that entity's type (forEachComponent): collect the entities first, then destroy them.
   void destroyEntity(Entity entity);
+  // The first entity with this Name (as the scene file and the editor show it), or -1. A linear search: look entities
+  // up once (in setup or onSceneLoaded) and keep the handles.
+  Entity findEntity(std::string_view name);
   // Whether the entity exists: handles of destroyed entities (or of a scene that loadScene replaced) do not
   bool isAlive(Entity entity) const;
 
@@ -250,6 +253,28 @@ public:
 
   // Saves a BMP of the next frame. With a delay, waits that long after start-up; `quitAfter` closes the engine.
   void captureScreenshot(std::string path, float delaySeconds = 0.0f, bool quitAfter = false);
+
+  // The options every game gets on its command line:
+  //   --screenshot <file.bmp> [seconds]   save a frame after that long (3 s by default) and quit
+  //   --benchmark [seconds]               log frame-time statistics (10 s by default) and quit
+  //   --save-scene <file.json> [seconds]  save what the game built (after 0 s by default) and quit
+  //   --deterministic                     fixed 1/60 s frames and seeded randomness, for repeatable runs
+  // parseCommandLine reads them (no window needed, so bad arguments can be reported first) and leaves the rest,
+  // in order, to the game; applyCommandLine acts on them, after initialize() and before run().
+  struct CommandLine {
+    std::string screenshotPath;
+    float screenshotDelay = 3.0f;
+    float benchmarkSeconds = 0.0f;
+    std::string saveScenePath;
+    float saveSceneDelay = 0.0f;
+    bool deterministic = false;
+    std::vector<std::string> arguments; // everything else, argv[0] left out
+  };
+  static CommandLine parseCommandLine(int argc, char **argv);
+  static const char *commandLineHelp();
+  void applyCommandLine(const CommandLine &commandLine);
+
+  void setWindowTitle(std::string_view title);
 
   // Material utilities
   // `submesh` of -1 applies to every submesh of the entity.

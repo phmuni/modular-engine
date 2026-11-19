@@ -1,13 +1,25 @@
 cmake_minimum_required(VERSION 3.14)
 project(modular-engine C CXX)
 
+# Built on its own, this also builds the examples (bin/engine). A game includes it with add_subdirectory (or
+# FetchContent) and gets the modular_engine library and modular_engine_add_game(); see templates/game.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  set(MODULAR_ENGINE_TOP_LEVEL ON)
+else()
+  set(MODULAR_ENGINE_TOP_LEVEL OFF)
+endif()
+option(MODULAR_ENGINE_BUILD_EXAMPLES "Build the example apps (bin/engine)" ${MODULAR_ENGINE_TOP_LEVEL})
+set(ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+# Also for modular_engine_add_game, which runs in the scope of the game that calls it
+set(MODULAR_ENGINE_ROOT "${ENGINE_DIR}" CACHE INTERNAL "modular-engine checkout")
+
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # --- Build Type ---
 # Release by default; pass -DCMAKE_BUILD_TYPE=Debug for debugging
-if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+if(MODULAR_ENGINE_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
@@ -22,7 +34,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 # --- CPM ---
-include(cmake/CPM.cmake)
+include("${ENGINE_DIR}/cmake/CPM.cmake")
 
 CPMAddPackage("gh:libsdl-org/SDL#release-3.2.14")
 CPMAddPackage("gh:g-truc/glm#1.0.1")
@@ -75,16 +87,13 @@ CPMAddPackage(
   DOWNLOAD_ONLY YES
 )
 
-# --- Directories ---
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
-foreach(OUTPUT_CONFIG Debug Release RelWithDebInfo MinSizeRel)
-    string(TOUPPER "${OUTPUT_CONFIG}" OUTPUT_CONFIG_UPPER)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUT_CONFIG_UPPER} "${CMAKE_SOURCE_DIR}/bin")
-endforeach()
-set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
+set(EXTERNAL_DIR "${ENGINE_DIR}/external")
 
 # --- Source files ---
-file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp")
+# The engine is everything in src/ but the examples (src/game) and their entry point (src/main.cpp)
+file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "${ENGINE_DIR}/src/*.cpp")
+list(FILTER SOURCE_FILES EXCLUDE REGEX "/src/main\\.cpp$")
+list(FILTER SOURCE_FILES EXCLUDE REGEX "/src/game/")
 file(GLOB GLAD_SOURCE "${EXTERNAL_DIR}/glad/*.cpp")
 file(GLOB IMGUI_SOURCE "${EXTERNAL_DIR}/imgui/*.cpp")
 list(FILTER IMGUI_SOURCE EXCLUDE REGEX "imgui_demo\\.cpp$")
@@ -101,54 +110,82 @@ set(RMLUI_BACKEND_SOURCE
 # operation a function call) cost the black hole 8x its frame time. MSVC is left alone, since its Debug runtime
 # checks (/RTC1) refuse to combine with /O2.
 set_source_files_properties(
-  "${CMAKE_SOURCE_DIR}/src/rendering/resources/thirdPartyImpl.cpp"
-  "${CMAKE_SOURCE_DIR}/src/rendering/resources/textureProcessing.cpp"
-  "${CMAKE_SOURCE_DIR}/src/systems/particleSystem.cpp"
+  "${ENGINE_DIR}/src/rendering/resources/thirdPartyImpl.cpp"
+  "${ENGINE_DIR}/src/rendering/resources/textureProcessing.cpp"
+  "${ENGINE_DIR}/src/systems/particleSystem.cpp"
   PROPERTIES
   COMPILE_OPTIONS "$<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-O2>")
 
-# --- Executable ---
-add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE} ${RMLUI_BACKEND_SOURCE}
-               ${IMGUIZMO_SOURCE})
+# --- Engine library ---
+add_library(modular_engine STATIC ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE}
+            ${RMLUI_BACKEND_SOURCE} ${IMGUIZMO_SOURCE})
 
-# --- Include directories ---
-target_include_directories(engine PRIVATE
-  ${CMAKE_SOURCE_DIR}/src
+# Games include the engine's headers (src/) and its third-party ones as their own
+target_include_directories(modular_engine PUBLIC
+  ${ENGINE_DIR}/src
   ${EXTERNAL_DIR}
 )
-target_include_directories(engine SYSTEM PRIVATE ${miniaudio_SOURCE_DIR} ${RmlUi_SOURCE_DIR}/Backends
+target_include_directories(modular_engine SYSTEM PUBLIC ${miniaudio_SOURCE_DIR} ${RmlUi_SOURCE_DIR}/Backends
                            ${ImGuizmo_SOURCE_DIR}/src ${EXTERNAL_DIR}/imgui)
-target_compile_definitions(engine PRIVATE RMLUI_SDL_VERSION_MAJOR=3 "RMLUI_GL3_CUSTOM_LOADER=<glad/glad.h>")
-
-# --- Link libraries ---
-target_link_libraries(engine
+target_compile_definitions(modular_engine PRIVATE RMLUI_SDL_VERSION_MAJOR=3 "RMLUI_GL3_CUSTOM_LOADER=<glad/glad.h>")
+target_link_libraries(modular_engine PUBLIC
     SDL3::SDL3
     glm::glm
     nlohmann_json::nlohmann_json
     RmlUi::RmlUi
 )
-
 if(MSVC)
-  target_compile_definitions(engine PRIVATE _CRT_SECURE_NO_WARNINGS)
+  target_compile_definitions(modular_engine PUBLIC _CRT_SECURE_NO_WARNINGS)
 endif()
 
-# --- OpenGL por plataforma ---
+# --- OpenGL per platform ---
 if(WIN32)
-    target_link_libraries(engine opengl32)
+    target_link_libraries(modular_engine PUBLIC opengl32)
 elseif(UNIX AND NOT APPLE)
     find_package(OpenGL REQUIRED)
     find_package(Threads REQUIRED)
     # miniaudio needs threads and libm, and loads the audio backends (ALSA, PulseAudio...) at runtime
-    target_link_libraries(engine OpenGL::GL Threads::Threads m ${CMAKE_DL_LIBS})
+    target_link_libraries(modular_engine PUBLIC OpenGL::GL Threads::Threads m ${CMAKE_DL_LIBS})
 elseif(APPLE)
     find_library(OPENGL_LIBRARY OpenGL REQUIRED)
-    target_link_libraries(engine ${OPENGL_LIBRARY})
+    target_link_libraries(modular_engine PUBLIC ${OPENGL_LIBRARY})
 endif()
 
-# --- Post-build ---
-add_custom_command(TARGET engine POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:SDL3::SDL3>"
-        "$<TARGET_FILE_DIR:engine>"
-    COMMAND ${CMAKE_COMMAND} -E echo "Build completed! Executable: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/engine${CMAKE_EXECUTABLE_SUFFIX}"
-)
+# --- Games ---
+# modular_engine_add_game(<target> OUTPUT_DIR <dir> SOURCES <files...> [ENGINE_ASSETS_IN_PLACE])
+#
+# An executable linked with the engine, built into OUTPUT_DIR (the game's bin/ folder, next to its assets/ folder).
+# Next to it go SDL's shared library and bin/engine-assets: the shaders, fonts and basic models the engine itself
+# loads, which it looks for there when the game's own assets/ folder does not have them. A game folder is then
+# complete: copy bin/ and assets/ to ship it. ENGINE_ASSETS_IN_PLACE skips that copy, for the engine's own examples.
+function(modular_engine_add_game target)
+  cmake_parse_arguments(GAME "ENGINE_ASSETS_IN_PLACE" "OUTPUT_DIR" "SOURCES" ${ARGN})
+  if(NOT GAME_OUTPUT_DIR)
+    set(GAME_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bin")
+  endif()
+  add_executable(${target} ${GAME_SOURCES})
+  target_link_libraries(${target} PRIVATE modular_engine)
+  set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${GAME_OUTPUT_DIR}")
+  foreach(config Debug Release RelWithDebInfo MinSizeRel)
+    string(TOUPPER "${config}" config_upper)
+    set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${config_upper} "${GAME_OUTPUT_DIR}")
+  endforeach()
+
+  add_custom_command(TARGET ${target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:SDL3::SDL3>" "$<TARGET_FILE_DIR:${target}>")
+  if(NOT GAME_ENGINE_ASSETS_IN_PLACE)
+    set(engine_assets "$<TARGET_FILE_DIR:${target}>/engine-assets")
+    foreach(folder shaders ui/fonts models/box models/sphere)
+      add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${MODULAR_ENGINE_ROOT}/assets/${folder}" "${engine_assets}/${folder}")
+    endforeach()
+  endif()
+  add_custom_command(TARGET ${target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "Build completed! Executable: $<TARGET_FILE:${target}>")
+endfunction()
+
+# --- Examples ---
+if(MODULAR_ENGINE_BUILD_EXAMPLES)
+  modular_engine_add_game(engine OUTPUT_DIR "${ENGINE_DIR}/bin" SOURCES "${ENGINE_DIR}/src/main.cpp"
+                          ENGINE_ASSETS_IN_PLACE)
+endif()
