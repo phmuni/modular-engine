@@ -13,12 +13,12 @@ class ResourceSystem;
 class RenderSystem;
 using Entity = int;
 
-class UISystem : public BaseSystem {
+class EditorUISystem : public BaseSystem {
 public:
   Entity selectedEntity = -1;
   bool m_renderUI = false;
 
-  UISystem(SDL_Window *window, SDL_GLContext glContext);
+  EditorUISystem(SDL_Window *window, SDL_GLContext glContext);
 
   void beginFrame();
   void update(SystemManager &systemManager);

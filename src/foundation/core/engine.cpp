@@ -19,7 +19,7 @@
 #include "systems/sceneSystem.h"
 #include "systems/timeSystem.h"
 #include "systems/transformSystem.h"
-#include "systems/uiSystem.h"
+#include "systems/editorUISystem.h"
 #include "systems/windowSystem.h"
 #include <algorithm>
 
@@ -197,8 +197,8 @@ void Engine::update(bool &isRunning) {
   collisionSystem.update(m_componentManager);
 
   // UI/Cursor show detection
-  auto &uiSystem = m_systemManager.getSystem<UISystem>();
-  uiSystem.update(m_systemManager);
+  auto &editorUI = m_systemManager.getSystem<EditorUISystem>();
+  editorUI.update(m_systemManager);
 
   if (m_app) {
     m_app->update(*this, timeSystem.getDeltaTime());
@@ -226,24 +226,24 @@ void Engine::update(bool &isRunning) {
 void Engine::render() {
   auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
   auto &renderer = renderSystem.getRenderer();
-  auto &uiSystem = m_systemManager.getSystem<UISystem>();
+  auto &editorUI = m_systemManager.getSystem<EditorUISystem>();
 
   renderer.beginFrame();
 
-  uiSystem.beginFrame();
+  editorUI.beginFrame();
 
   renderSystem.renderPipeline(m_systemManager, m_componentManager);
 
   // Game UI over the scene, debug panels over the game UI
   m_systemManager.getSystem<GameUISystem>().render();
 
-  uiSystem.render(*this, m_entityManager, m_systemManager, m_componentManager);
+  editorUI.render(*this, m_entityManager, m_systemManager, m_componentManager);
 
-  uiSystem.endFrame();
+  editorUI.endFrame();
 
   // Everything this frame did before the swap, which may wait on vsync
   float workSeconds = static_cast<float>(static_cast<double>(SDL_GetTicksNS() - m_frameStartNs) / 1e9);
-  uiSystem.recordFrame(m_systemManager.getSystem<TimeSystem>().getUnscaledDeltaTime(), workSeconds);
+  editorUI.recordFrame(m_systemManager.getSystem<TimeSystem>().getUnscaledDeltaTime(), workSeconds);
 
   if (m_screenshot && m_screenshot->delay <= 0.0f) {
     renderer.saveScreenshot(m_screenshot->path);
@@ -376,8 +376,8 @@ void Engine::registerSystems() {
   m_systemManager.insert<CollisionSystem>();
   m_systemManager.insert<AudioSystem>(m_componentManager);
   m_systemManager.insert<GameUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow());
-  m_systemManager.insert<UISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
-                                   m_systemManager.getSystem<WindowSystem>().getContext());
+  m_systemManager.insert<EditorUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
+                                         m_systemManager.getSystem<WindowSystem>().getContext());
 }
 
 bool Engine::loadResources() {

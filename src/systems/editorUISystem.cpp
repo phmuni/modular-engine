@@ -1,7 +1,7 @@
-// UI system implementation for rendering the ImGui-based user interface, including the scene explorer and properties
-// panel.
+// Editor UI implementation: the ImGui scene explorer, properties panel and settings panel (F2), apart from the game
+// UI that games build with RmlUi (GameUISystem).
 
-#include "systems/uiSystem.h"
+#include "systems/editorUISystem.h"
 #include "components/audioSource.h"
 #include "components/collision.h"
 #include "components/light.h"
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-UISystem::UISystem(SDL_Window *window, SDL_GLContext glContext) {
+EditorUISystem::EditorUISystem(SDL_Window *window, SDL_GLContext glContext) {
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGui::StyleColorsDark();
@@ -40,7 +40,7 @@ UISystem::UISystem(SDL_Window *window, SDL_GLContext glContext) {
   ImGui_ImplOpenGL3_Init("#version 330");
 }
 
-void UISystem::fileDialogCallback(void *userdata, const char *const *filelist, int /*filter*/) {
+void EditorUISystem::fileDialogCallback(void *userdata, const char *const *filelist, int /*filter*/) {
   if (!userdata)
     return;
   auto *buf = static_cast<char *>(userdata);
@@ -55,8 +55,8 @@ void UISystem::fileDialogCallback(void *userdata, const char *const *filelist, i
   }
 }
 
-void UISystem::pickFileButton(const char *id, char *buf, int /*bufSize*/, SDL_Window *window,
-                              const SDL_DialogFileFilter *filters, int nfilters) {
+void EditorUISystem::pickFileButton(const char *id, char *buf, int /*bufSize*/, SDL_Window *window,
+                                    const SDL_DialogFileFilter *filters, int nfilters) {
   ImGui::SameLine();
   std::string label = std::string("...") + "##" + id;
   if (ImGui::Button(label.c_str())) {
@@ -64,18 +64,18 @@ void UISystem::pickFileButton(const char *id, char *buf, int /*bufSize*/, SDL_Wi
   }
 }
 
-void UISystem::beginFrame() {
+void EditorUISystem::beginFrame() {
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
 }
 
-void UISystem::endFrame() {
+void EditorUISystem::endFrame() {
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-void UISystem::update(SystemManager &systemManager) {
+void EditorUISystem::update(SystemManager &systemManager) {
   auto &state = systemManager.getSystem<StateSystem>();
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
 
@@ -98,7 +98,7 @@ const char *toggleKeyName(Toggle toggle) {
 }
 } // namespace
 
-void UISystem::recordFrame(float frameSeconds, float workSeconds) {
+void EditorUISystem::recordFrame(float frameSeconds, float workSeconds) {
   m_statsElapsed += frameSeconds;
   m_statsWork += workSeconds;
   m_statsMaxFrame = std::max(m_statsMaxFrame, frameSeconds);
@@ -116,7 +116,7 @@ void UISystem::recordFrame(float frameSeconds, float workSeconds) {
   m_statsFrames = 0;
 }
 
-void UISystem::renderStatsOverlay(float rightInset) {
+void EditorUISystem::renderStatsOverlay(float rightInset) {
   const ImGuiViewport *viewport = ImGui::GetMainViewport();
   constexpr float kMargin = 10.0f;
   ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - rightInset - kMargin,
@@ -136,8 +136,8 @@ void UISystem::renderStatsOverlay(float rightInset) {
   ImGui::End();
 }
 
-void UISystem::renderSettingsPanel(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
-                                   ComponentManager &componentManager) {
+void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
+                                         ComponentManager &componentManager) {
   auto &state = systemManager.getSystem<StateSystem>();
   auto &timeSystem = systemManager.getSystem<TimeSystem>();
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
@@ -254,8 +254,8 @@ template <typename T> std::vector<Entity> entitiesWith(ComponentManager &compone
 }
 } // namespace
 
-void UISystem::render(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
-                      ComponentManager &componentManager) {
+void EditorUISystem::render(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
+                            ComponentManager &componentManager) {
   if (m_showStats)
     renderStatsOverlay(m_renderUI && selectedEntity != -1 ? kPropertiesWidth : 0.0f);
 
@@ -268,7 +268,8 @@ void UISystem::render(Engine &engine, EntityManager &entityManager, SystemManage
     renderPropertiesPanel(systemManager, componentManager);
 }
 
-void UISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
+void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager,
+                                         ComponentManager &componentManager) {
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
   auto &lightSystem = systemManager.getSystem<LightSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
@@ -327,7 +328,7 @@ void UISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager,
   ImGui::End();
 }
 
-void UISystem::renderPropertiesPanel(SystemManager &systemManager, ComponentManager &componentManager) {
+void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, ComponentManager &componentManager) {
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();
@@ -574,8 +575,9 @@ void UISystem::renderPropertiesPanel(SystemManager &systemManager, ComponentMana
 }
 
 // Returns true if the component was removed (caller should set earlyOut).
-bool UISystem::renderCameraInspector(Entity entity, SystemManager &systemManager, ComponentManager &componentManager,
-                                     ResourceSystem & /*resourceSystem*/, SDL_Window * /*window*/) {
+bool EditorUISystem::renderCameraInspector(Entity entity, SystemManager &systemManager,
+                                           ComponentManager &componentManager, ResourceSystem & /*resourceSystem*/,
+                                           SDL_Window * /*window*/) {
 
   if (!ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
     return false;
@@ -614,7 +616,7 @@ bool UISystem::renderCameraInspector(Entity entity, SystemManager &systemManager
 }
 
 // Returns true if the component was removed (caller should set earlyOut).
-bool UISystem::renderParticleInspector(Entity entity, ComponentManager &componentManager) {
+bool EditorUISystem::renderParticleInspector(Entity entity, ComponentManager &componentManager) {
   if (!ImGui::CollapsingHeader("ParticleEmitter Emitter", ImGuiTreeNodeFlags_DefaultOpen))
     return false;
 
@@ -690,8 +692,9 @@ bool UISystem::renderParticleInspector(Entity entity, ComponentManager &componen
 }
 
 // Returns true if the component was removed (caller should set earlyOut).
-bool UISystem::renderMaterialInspector(Entity entity, ComponentManager &componentManager,
-                                       ResourceSystem &resourceSystem, RenderSystem &renderSystem, SDL_Window *window) {
+bool EditorUISystem::renderMaterialInspector(Entity entity, ComponentManager &componentManager,
+                                             ResourceSystem &resourceSystem, RenderSystem &renderSystem,
+                                             SDL_Window *window) {
   if (!ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
     return false;
 
@@ -815,9 +818,9 @@ bool UISystem::renderMaterialInspector(Entity entity, ComponentManager &componen
   return false;
 }
 
-void UISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSystem, SystemManager &systemManager,
-                                    ComponentManager &componentManager, ResourceSystem &resourceSystem,
-                                    RenderSystem &renderSystem, SDL_Window *window) {
+void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSystem, SystemManager &systemManager,
+                                          ComponentManager &componentManager, ResourceSystem &resourceSystem,
+                                          RenderSystem &renderSystem, SDL_Window *window) {
   if (!ImGui::BeginPopup("AddEntityPopup"))
     return;
 
