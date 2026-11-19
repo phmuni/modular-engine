@@ -291,39 +291,38 @@ class MyApp : public App {
             .withEmission(glm::vec3(0.2f, 0.8f, 1.0f), 1.5f)
             .build();
 
-        // Create directional light (Sun)
-        engine.createLightEntity(
-            "Sun",
-            glm::vec3(0.0f),           // position
-            glm::vec3(-0.8f, -1.0f, 0.2f),  // direction
-            glm::vec3(1.0f, 0.0f, 0.0f),    // color (red)
-            LightType::Directional,
-            2.0f, 0, 0                 // intensity, cutOff, outerCutOff
-        );
+        // A red sun: direction, color, intensity
+        engine.entities()
+            .create("Sun")
+            .withLight(Light::directional({-0.8f, -1.0f, 0.2f}, {1.0f, 0.0f, 0.0f}, 2.0f))
+            .build();
 
-        // Create spot light overhead
-        engine.createLightEntity(
-            "Spotlight",
-            glm::vec3(0.0f, 10.0f, 0.0f),   // position
-            glm::vec3(0.0f, -1.0f, 0.0f),   // direction (down)
-            glm::vec3(1.0f),                // color (white)
-            LightType::Spot,
-            3.0f,                           // intensity
-            glm::cos(glm::radians(15.0f)),  // cutOff
-            glm::cos(glm::radians(25.0f))   // outerCutOff
-        );
+        // A spot from above: direction, color, intensity, and the angles (degrees) where it fades and ends
+        engine.entities()
+            .create("Spotlight")
+            .withTransform({0.0f, 10.0f, 0.0f}, glm::vec3(0.0f), glm::vec3(1.0f))
+            .withLight(Light::spot({0.0f, -1.0f, 0.0f}, glm::vec3(1.0f), 3.0f, 15.0f, 25.0f))
+            .build();
 
-        // Point light with a cube shadow map (up to EngineConfig::MAX_POINT_SHADOWS at once)
-        Entity lamp = engine.createLightEntity("Lamp", glm::vec3(2.0f, 1.5f, 0.0f), glm::vec3(0.0f),
-                                               glm::vec3(1.0f, 0.8f, 0.6f), LightType::Point, 2.0f, 0, 0);
-        engine.getOrThrow<Light>(lamp).castShadows = true;  // shadowRange (25 by default) bounds it
+        // A point light with a cube shadow map (up to EngineConfig::MAX_POINT_SHADOWS at once) reaching 20 units
+        engine.entities()
+            .create("Lamp")
+            .withTransform({2.0f, 1.5f, 0.0f}, glm::vec3(0.0f), glm::vec3(1.0f))
+            .withLight(Light::point({1.0f, 0.8f, 0.6f}, 2.0f).withShadows(20.0f))
+            .build();
 
-        // Create camera
         engine.createCameraEntity("Camera", glm::vec3(0, 0, 5));
+        engine.getActiveCamera()->lookAt(glm::vec3(0, 2, 6), glm::vec3(0.0f));  // or set yaw/pitch
     }
 
     void update(Engine& engine, float dt) override {
-        // Game logic here
+        auto& input = engine.input();
+        if (input.wasKeyPressed(SDL_SCANCODE_SPACE))           // once per press
+            jump();
+        if (input.isKeyDown(SDL_SCANCODE_A))                   // while held
+            moveLeft(dt);
+        if (input.wasMouseButtonPressed(MouseButton::Left))    // clicks the game UI or the editor took are left out
+            shoot(input.getMousePosition());
     }
 };
 
@@ -363,6 +362,9 @@ Entity e = engine.entities()
 auto& health = engine.getOrThrow<Health>(e);
 health.current -= 1;
 
+// getOrThrow's error says whether the entity lacks the component or no longer exists:
+//   "entity 8 no longer exists (destroyed, or its scene was replaced), so it has no Health"
+
 // Safe query (returns nullptr if component doesn't exist)
 if (auto* vel = engine.getOrNil<Velocity>(e)) {
     vel->speed *= 1.5f;
@@ -375,6 +377,10 @@ if (engine.containsComponent<Health>(e)) {
 
 // Remove component
 engine.removeComponent<Velocity>(e);
+
+// Destroying unregisters the entity's light or camera too; collect entities first when iterating their components
+engine.destroyEntity(e);
+engine.isAlive(e);  // false: handles of destroyed entities, or of a scene that loadScene replaced
 ```
 
 ### Material & Resource Management
