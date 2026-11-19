@@ -54,8 +54,10 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Solid Color Fallback**   | Centralized solid color texture generation and caching for simple rendering    |
 | **Resource Caching**       | Automatic texture caching with handle-based resource management                |
 | **Shadow Mapping**         | Cascaded sun shadows that follow the camera (3 cascades out to 80 units) and cube-map shadows for up to 4 point/spot lights (`Light::castShadows`), re-rendered only when something within the light's range moves; hardware-filtered PCF |
-| **Asset Loading**          | OBJ (Tiny_Obj) and glTF/GLB (tinygltf) with named parts, shared materials, background loading (`preloadModel`) and a binary cache for OBJ files (`bin/cache/meshes`) |
-| **Texture Streaming**      | Textures converted once to GPU-compressed BC1/BC3 with mipmaps (cached in `bin/cache/textures`) and uploaded over several frames, smallest mip first |
+| **Asset Loading**          | OBJ (Tiny_Obj) and glTF/GLB (tinygltf) with named parts, shared materials, background loading (`preloadModel`) and a binary mesh cache (`bin/cache/meshes`) |
+| **Texture Streaming**      | Textures converted once to GPU-compressed BC1/BC3 (BC5 for normal maps) with mipmaps, cached in `bin/cache/textures`, and uploaded over several frames, smallest mip first |
+| **Normal Maps**            | Tangent-space normal maps on OBJ and glTF models; tangents read from glTF or generated from UVs |
+| **HDR & Bloom**            | Lighting rendered in HDR, highlights rolled off instead of clipped, and bloom around emission and strong highlights (`F10`) |
 | **glTF Materials**         | Base color tint, alpha modes (opaque, mask, blend), double-sided and unlit (`KHR_materials_unlit`) materials |
 | **Camera System**          | Flexible camera control with quaternion-based rotations                        |
 | **Input System**           | Keyboard and mouse handling via SDL3                                           |
@@ -69,8 +71,9 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **VSync & Pause**          | `F6` toggles vsync; `F7` pauses the simulation while the camera keeps moving |
 | **Scenes**                 | Save the running scene to JSON and load or switch scenes at runtime (`Engine::saveScene`/`loadScene`, Settings panel) |
 | **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
-| **UI Integration**         | ImGui-based editor (`F2`) with material inspector, light tweaks, entity hierarchy and a settings panel |
-| **Settings Panel**         | Every toggle with its key (`F1`–`F9`), time scale, camera FOV/speed, audio volumes, screenshots and render stats (draw calls, culled meshes, particles) |
+| **UI Integration**         | ImGui-based editor (`F2`) with move/rotate/scale gizmos (ImGuizmo), material inspector, light tweaks, entity hierarchy and a settings panel |
+| **Regression Tests**       | `tools/regression.py` compares screenshots and frame times of every example and scene with references, on repeatable `--deterministic` runs |
+| **Settings Panel**         | Every toggle with its key (`F1`–`F10`), time scale, camera FOV/speed, audio volumes, screenshots and render stats (draw calls, culled meshes, particles) |
 | **Scene Management**       | Entity lifecycle management and component composition                          |
 
 ---
@@ -205,9 +208,11 @@ In the black hole example and the model viewer the camera orbits on its own: `�
 | `F7` | Pause the simulation |
 | `F8` | Gamma-correct lighting |
 | `F9` | Game UI (RmlUi) debugger |
+| `F10` | Bloom |
 | `F12` | Screenshot (`bin/screenshot.bmp`) |
 | `Right Alt` / `Right Option` | Cursor lock |
-| `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled |
+| `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled (with the cursor locked) |
+| `W` / `E` / `R` | Editor gizmo on the selected entity: move / rotate / scale (cursor unlocked; `Ctrl` snaps) |
 
 To save a frame without a window manager screenshot, pass `--screenshot <file.bmp> [seconds]`; the engine waits that long (3 seconds by default), saves the frame and exits:
 
@@ -224,6 +229,18 @@ To turn what an example builds into a scene file, pass `--save-scene <file.json>
 ```bash
 ./bin/engine blackhole --save-scene ../assets/scenes/black_hole.json 0.5
 ```
+
+### Regression tests
+
+`tools/regression.py` runs every example and scene with `--deterministic` (fixed 1/60 s frames, seeded randomness, scene switches and texture uploads that do not depend on background threads), so a build renders the same pixels every time. It compares a screenshot of each with a reference PNG and a short benchmark with a stored baseline, and fails on changed pixels, warnings in the log, or frames more than 20 % slower:
+
+```bash
+python3 tools/regression.py --update   # record references and baselines from a build you trust
+python3 tools/regression.py            # after a change: exit code 1 on a regression
+python3 tools/regression.py --only aliens --images-only
+```
+
+References and baselines describe this machine's GPU, speed and build type, so they live in `tests/regression/` and are not committed; changed screenshots and diff images (changes in red) go to `tests/regression/out/`. Python's standard library is enough.
 
 ### Benchmarking
 
@@ -377,6 +394,9 @@ engine.setTexture(entity, TextureSlot::Diffuse, "path/to/texture.png");
 // Apply texture to specific submesh
 engine.setTexture(entity, TextureSlot::Diffuse, "path/to/texture.png", 0);
 
+// Tangent-space normal map (OpenGL convention: green points up the image)
+engine.setTexture(entity, TextureSlot::Normal, "path/to/normal.png");
+
 // Set shininess
 engine.setShininess(entity, 32.0f);
 
@@ -397,9 +417,11 @@ void setup(Engine& engine) override {
 engine.entities().create("Castle").withModel("../assets/models/castle/castle.glb", pos, rot, scale).build();
 ```
 
-Parsing a large OBJ is slow, so the first load writes the result to `bin/cache/meshes`; later loads read it back (the 96 MB, 1-million-triangle room in `assets/models` goes from 485 ms of geometry to 6 ms in Release). An entry is rebuilt when its `.obj` or a `.mtl` in the same folder changes, and deleting the folder is always safe. The file parsers are compiled with optimizations in Debug builds too.
+Parsing a large model is slow, so the first load writes the result to `bin/cache/meshes`; later loads read it back (the 96 MB, 1-million-triangle room in `assets/models` goes from 485 ms of geometry to 6 ms in Release; the cathedral GLB from 819 ms to 85 ms in Debug, its embedded texture coming from the texture cache). An entry is rebuilt when its file or a `.mtl`/`.bin` in the same folder changes, and deleting the folder is always safe. The file parsers are compiled with optimizations in Debug builds too.
 
-Textures go through the same idea. The first time one is loaded, a worker thread builds its mipmaps and, when the GPU supports S3TC, compresses it to BC1 (RGB) or BC3 (RGBA): 6 or 4 times less memory, and no PNG/JPEG decode afterwards, since the result is cached in `bin/cache/textures` (with both caches, the room and its 8192×8192 JPEG load in 65 ms in a Debug build, down from 3.5 s). Normal maps stay uncompressed. On the main thread, textures are then uploaded a few megabytes per frame (`EngineConfig::TEXTURE_UPLOAD_BUDGET`), smallest mip level first, so a large one appears blurry at once and sharpens over the next frames instead of stalling one; switching to the room scene went from a 540 ms frame to none above normal rendering. `EngineConfig::COMPRESS_TEXTURES` turns compression off.
+Textures go through the same idea. The first time one is loaded, a worker thread builds its mipmaps and, when the GPU supports S3TC, compresses it to BC1 (RGB) or BC3 (RGBA): 6 or 4 times less memory, and no PNG/JPEG decode afterwards, since the result is cached in `bin/cache/textures` (with both caches, the room and its 8192×8192 JPEG load in 65 ms in a Debug build, down from 3.5 s). Normal maps compress to BC5, which keeps their X and Y precisely (the shader rebuilds Z); a grayscale "normal map" is a height map, which some `.mtl` files give as `bump`, and is skipped with a warning. On the main thread, textures are then uploaded a few megabytes per frame (`EngineConfig::TEXTURE_UPLOAD_BUDGET`), smallest mip level first, so a large one appears blurry at once and sharpens over the next frames instead of stalling one; switching to the room scene went from a 540 ms frame to none above normal rendering. `EngineConfig::COMPRESS_TEXTURES` turns compression off.
+
+Lit geometry renders into a 16-bit floating-point target, so light can go past white. A tone mapping pass leaves colors below about 0.76 untouched and rolls brighter ones off smoothly, keeping their hue instead of clipping them; particles then draw on top in display space, where their colors and additive blending were tuned. Bloom (`F10`) spreads light brighter than `EngineConfig::BLOOM_THRESHOLD` (emission, strong highlights) through a mip chain and adds it at the end. [`assets/scenes/normal_maps.json`](assets/scenes/normal_maps.json) shows normal maps lit from the side by a point light with shadows.
 
 For direct ResourceSystem access and full API reference, explore [`src/systems/resourceSystem.h`](src/systems/resourceSystem.h).
 
@@ -524,7 +546,7 @@ RCSS has no default style sheet, so give `div` a `display: block`. Lato is loade
 | Mathematics    | GLM                 |
 | Asset Loading  | Tiny_Obj, tinygltf  |
 | Audio          | miniaudio           |
-| UI Framework   | Dear ImGui (tools), RmlUi (game UI) |
+| UI Framework   | Dear ImGui and ImGuizmo (editor), RmlUi (game UI) |
 | Dependencies   | See `external/`     |
 
 ---
