@@ -32,6 +32,14 @@ public:
 private:
   bool m_showStats = false;
 
+  // Gizmo on the selected entity: move (W), rotate (E) or scale (R), in world or local axes, optionally snapped
+  enum class GizmoOperation { Move, Rotate, Scale };
+  GizmoOperation m_gizmoOperation = GizmoOperation::Move;
+  bool m_gizmoLocal = false;
+  bool m_gizmoSnap = false;
+  void renderGizmo(SystemManager &systemManager, ComponentManager &componentManager);
+  void renderGizmoControls();
+
   // Performance overlay, averaged over kStatsWindow seconds so the numbers stay readable
   static constexpr float kStatsWindow = 0.5f;
   float m_statsElapsed = 0.0f;

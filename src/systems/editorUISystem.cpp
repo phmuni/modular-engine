@@ -22,14 +22,19 @@
 #include "systems/sceneSystem.h"
 #include "systems/stateSystem.h"
 #include "systems/timeSystem.h"
+#include "systems/transformSystem.h"
 #include "systems/windowSystem.h"
 
 #include <algorithm>
 #include <array>
 #include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/euler_angles.hpp>
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_opengl3.h>
 #include <imgui/imgui_impl_sdl3.h>
+#include <ImGuizmo.h> // after imgui.h, which it does not include itself
 #include <string>
 #include <vector>
 
@@ -70,6 +75,7 @@ void EditorUISystem::beginFrame() {
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
+  ImGuizmo::BeginFrame();
 }
 
 void EditorUISystem::endFrame() {
@@ -310,8 +316,93 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
 
   renderSettingsPanel(engine, entityManager, systemManager, componentManager);
   renderSceneExplorer(engine, systemManager, componentManager);
-  if (selectedEntity != -1)
+  if (selectedEntity != -1) {
     renderPropertiesPanel(systemManager, componentManager);
+    renderGizmo(systemManager, componentManager);
+  }
+}
+
+void EditorUISystem::renderGizmoControls() {
+  auto option = [&](const char *label, GizmoOperation operation) {
+    if (ImGui::RadioButton(label, m_gizmoOperation == operation))
+      m_gizmoOperation = operation;
+  };
+  option("Move##gizmo", GizmoOperation::Move);
+  ImGui::SameLine();
+  option("Rotate##gizmo", GizmoOperation::Rotate);
+  ImGui::SameLine();
+  option("Scale##gizmo", GizmoOperation::Scale);
+  ImGui::SameLine();
+  ImGui::TextDisabled("[W/E/R]");
+  ImGui::Checkbox("Local axes##gizmo", &m_gizmoLocal);
+  ImGui::SameLine();
+  ImGui::Checkbox("Snap##gizmo", &m_gizmoSnap);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("0.5 units, 15 degrees, 0.1 scale; holding Ctrl snaps too");
+}
+
+void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager &componentManager) {
+  // Cameras place themselves from their Camera component, not the Transform the gizmo would move
+  auto *transform = componentManager.getOrNil<Transform>(selectedEntity);
+  if (!transform || componentManager.containsComponent<Camera>(selectedEntity))
+    return;
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  const Camera *camera = cameraEntity != -1 ? componentManager.getOrNil<Camera>(cameraEntity) : nullptr;
+  if (!camera)
+    return;
+
+  ImGuiIO &io = ImGui::GetIO();
+  // Shortcuts, unless a text field has the keyboard (the free camera only reads WASD with the cursor locked)
+  if (!io.WantTextInput && !ImGuizmo::IsUsing()) {
+    if (ImGui::IsKeyPressed(ImGuiKey_W, false))
+      m_gizmoOperation = GizmoOperation::Move;
+    if (ImGui::IsKeyPressed(ImGuiKey_E, false))
+      m_gizmoOperation = GizmoOperation::Rotate;
+    if (ImGui::IsKeyPressed(ImGuiKey_R, false))
+      m_gizmoOperation = GizmoOperation::Scale;
+  }
+
+  const glm::mat4 view = cameraSystem.getViewMatrix(*camera);
+  const glm::mat4 projection = cameraSystem.getProjectionMatrix(*camera);
+  glm::mat4 model = systemManager.getSystem<TransformSystem>().calculateModelMatrix(*transform);
+
+  const ImGuizmo::OPERATION operation = m_gizmoOperation == GizmoOperation::Move     ? ImGuizmo::TRANSLATE
+                                        : m_gizmoOperation == GizmoOperation::Rotate ? ImGuizmo::ROTATE
+                                                                                     : ImGuizmo::SCALE;
+  // Scaling is always along the entity's own axes
+  const ImGuizmo::MODE mode = m_gizmoLocal || operation == ImGuizmo::SCALE ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+  const float snapStep = operation == ImGuizmo::TRANSLATE ? 0.5f : operation == ImGuizmo::ROTATE ? 15.0f : 0.1f;
+  const float snap[3] = {snapStep, snapStep, snapStep};
+
+  // Drawn over the whole screen, behind the editor's windows
+  ImGuizmo::SetOrthographic(false);
+  ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
+  ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+  if (!ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode,
+                            glm::value_ptr(model), nullptr, m_gizmoSnap || io.KeyCtrl ? snap : nullptr))
+    return;
+
+  // Back to position, rotation and scale. TransformSystem rotates by Y, then X, then Z (qy * qx * qz), which is the
+  // order extractEulerAngleYXZ undoes.
+  const glm::vec3 scale(glm::length(glm::vec3(model[0])), glm::length(glm::vec3(model[1])),
+                        glm::length(glm::vec3(model[2])));
+  if (scale.x <= 0.0f || scale.y <= 0.0f || scale.z <= 0.0f)
+    return;
+  glm::mat4 rotation(1.0f);
+  rotation[0] = glm::vec4(glm::vec3(model[0]) / scale.x, 0.0f);
+  rotation[1] = glm::vec4(glm::vec3(model[1]) / scale.y, 0.0f);
+  rotation[2] = glm::vec4(glm::vec3(model[2]) / scale.z, 0.0f);
+  float yaw = 0.0f, pitch = 0.0f, roll = 0.0f;
+  glm::extractEulerAngleYXZ(rotation, yaw, pitch, roll);
+
+  // Only what this operation changes, so moving never nudges the rotation through float round-off
+  if (operation == ImGuizmo::TRANSLATE)
+    transform->position = glm::vec3(model[3]);
+  else if (operation == ImGuizmo::ROTATE)
+    transform->rotation = glm::degrees(glm::vec3(pitch, yaw, roll));
+  else
+    transform->scale = scale;
 }
 
 void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager,
@@ -426,6 +517,8 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
       if (!earlyOut) {
         ImGui::Separator();
         auto &t = componentManager.getOrThrow<Transform>(selectedEntity);
+        if (!componentManager.containsComponent<Camera>(selectedEntity))
+          renderGizmoControls();
         ImGui::DragFloat3("Position##t", &t.position.x, 0.1f);
         ImGui::DragFloat3("Rotation##t", &t.rotation.x, 0.1f);
         ImGui::DragFloat3("Scale##t", &t.scale.x, 0.01f);

@@ -59,6 +59,14 @@ CPMAddPackage(
     "BUILD_TESTING OFF"
     "RMLUI_FONT_ENGINE freetype"
 )
+# Editor gizmos (move/rotate/scale handles) for Dear ImGui; only ImGuizmo.cpp is compiled, against external/imgui.
+# Pinned to a commit: the tagged releases predate ImGui 1.92.
+CPMAddPackage(
+  NAME ImGuizmo
+  GITHUB_REPOSITORY CedricGuillemet/ImGuizmo
+  GIT_TAG 105e4fde45e4e74aae8973d98750820ef7aca7e2
+  DOWNLOAD_ONLY YES
+)
 # Audio: only the sources are used; miniaudio.c is compiled into the engine below
 CPMAddPackage(
   NAME miniaudio
@@ -81,6 +89,7 @@ file(GLOB GLAD_SOURCE "${EXTERNAL_DIR}/glad/*.cpp")
 file(GLOB IMGUI_SOURCE "${EXTERNAL_DIR}/imgui/*.cpp")
 list(FILTER IMGUI_SOURCE EXCLUDE REGEX "imgui_demo\\.cpp$")
 set(MINIAUDIO_SOURCE "${miniaudio_SOURCE_DIR}/miniaudio.c")
+set(IMGUIZMO_SOURCE "${ImGuizmo_SOURCE_DIR}/src/ImGuizmo.cpp")
 # RmlUi's reference SDL platform and OpenGL 3 renderer, built against the engine's SDL3 and glad
 set(RMLUI_BACKEND_SOURCE
   "${RmlUi_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp"
@@ -97,14 +106,16 @@ set_source_files_properties(
   COMPILE_OPTIONS "$<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-O2>")
 
 # --- Executable ---
-add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE} ${RMLUI_BACKEND_SOURCE})
+add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE} ${RMLUI_BACKEND_SOURCE}
+               ${IMGUIZMO_SOURCE})
 
 # --- Include directories ---
 target_include_directories(engine PRIVATE
   ${CMAKE_SOURCE_DIR}/src
   ${EXTERNAL_DIR}
 )
-target_include_directories(engine SYSTEM PRIVATE ${miniaudio_SOURCE_DIR} ${RmlUi_SOURCE_DIR}/Backends)
+target_include_directories(engine SYSTEM PRIVATE ${miniaudio_SOURCE_DIR} ${RmlUi_SOURCE_DIR}/Backends
+                           ${ImGuizmo_SOURCE_DIR}/src ${EXTERNAL_DIR}/imgui)
 target_compile_definitions(engine PRIVATE RMLUI_SDL_VERSION_MAJOR=3 "RMLUI_GL3_CUSTOM_LOADER=<glad/glad.h>")
 
 # --- Link libraries ---
