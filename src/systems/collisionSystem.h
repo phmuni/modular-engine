@@ -1,9 +1,13 @@
 #pragma once
-// AABB collision system for detecting collisions between entities with Collision components.
+// AABB collision queries between entities with Collision components.
+//
+// A Collision box is min/max around the entity's Transform position (not rotated or scaled). Queries look at the
+// positions as they are when called, so a game can move things and then ask what touches what in the same frame.
 
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
 #include <glm/glm.hpp>
+#include <vector>
 
 struct CollisionEvent {
   Entity a;
@@ -12,16 +16,18 @@ struct CollisionEvent {
 
 class CollisionSystem : public BaseSystem {
 public:
-  CollisionSystem() = default;
-  ~CollisionSystem() = default;
-
-  void update(ComponentManager &componentManager);
-
-  void setCollisionCallback(std::function<void(const CollisionEvent &)> cb) { m_callback = cb; }
-
-  bool checkEntitiesCollision(Entity a, Entity b, ComponentManager &componentManager);
+  // Every pair of entities whose boxes overlap now, each pair once (two static boxes never count). Sort and sweep
+  // along x: about n log n plus the pairs found, rather than testing every pair.
+  const std::vector<CollisionEvent> &findCollisions(ComponentManager &componentManager);
+  // Whether these two entities' boxes overlap now (false if either has no Collision)
+  bool overlaps(Entity a, Entity b, ComponentManager &componentManager) const;
 
 private:
-  std::function<void(const CollisionEvent &)> m_callback;
-  bool checkAABB(const glm::vec3 &minA, const glm::vec3 &maxA, const glm::vec3 &minB, const glm::vec3 &maxB);
+  struct Box {
+    Entity entity;
+    glm::vec3 min, max;
+    bool isStatic;
+  };
+  std::vector<Box> m_boxes;
+  std::vector<CollisionEvent> m_collisions;
 };

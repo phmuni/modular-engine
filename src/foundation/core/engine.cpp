@@ -226,10 +226,6 @@ void Engine::update(bool &isRunning) {
   auto &particleSystem = m_systemManager.getSystem<ParticleSystem>();
   particleSystem.update(timeSystem.getDeltaTime());
 
-  // Collision detection
-  auto &collisionSystem = m_systemManager.getSystem<CollisionSystem>();
-  collisionSystem.update(m_componentManager);
-
   // UI/Cursor show detection
   auto &editorUI = m_systemManager.getSystem<EditorUISystem>();
   editorUI.update(m_systemManager);
@@ -326,6 +322,14 @@ Camera *Engine::getActiveCamera() {
 }
 
 InputSystem &Engine::input() { return m_systemManager.getSystem<InputSystem>(); }
+
+const std::vector<CollisionEvent> &Engine::findCollisions() {
+  return m_systemManager.getSystem<CollisionSystem>().findCollisions(m_componentManager);
+}
+
+bool Engine::isColliding(Entity a, Entity b) {
+  return m_systemManager.getSystem<CollisionSystem>().overlaps(a, b, m_componentManager);
+}
 
 bool Engine::getState(Toggle toggle) { return m_systemManager.getSystem<StateSystem>().isToggled(toggle); }
 

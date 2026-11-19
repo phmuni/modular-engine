@@ -6,7 +6,6 @@
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
 #include "game/components.h"
-#include "systems/collisionSystem.h"
 #include "systems/inputSystem.h"
 #include "systems/stateSystem.h"
 #include <RmlUi/Core.h>
@@ -426,51 +425,44 @@ class SpaceAliens : public App {
   }
 
   void updateBullets(Engine &engine, float deltaTime) {
-    auto &collisionSystem = engine.getSystemManager().getSystem<CollisionSystem>();
     auto &cm = engine.getComponentManager();
     auto &state = engine.get<GameState>(gameManager);
-
     std::unordered_set<Entity> destroySet;
 
+    // Move every bullet first, retiring the old ones...
     cm.forEachComponent<Bullet>([&](Entity entity, Bullet &bullet) {
-      if (destroySet.count(entity))
-        return;
-
       auto &tf = engine.get<Transform>(entity);
       tf.position += bullet.velocity * deltaTime;
-
       if (!bullet.friendly)
         tf.rotation.z += 8.0f * deltaTime;
-
       bullet.ttl -= deltaTime;
-      if (bullet.ttl <= 0.0f) {
+      if (bullet.ttl <= 0.0f)
         destroySet.insert(entity);
-        return;
-      }
+    });
 
-      if (bullet.friendly) {
-        cm.forEachComponent<Invader>([&](Entity inv, Invader &invader) {
-          if (!invader.alive || destroySet.count(entity) || destroySet.count(inv))
-            return;
-          if (collisionSystem.checkEntitiesCollision(entity, inv, cm)) {
-            const glm::vec3 &invaderPos = engine.get<Transform>(inv).position;
-            createExplosion(engine, invaderPos, invader.color, 1.2f);
-            engine.playSoundAt(SOUND_EXPLOSION, invaderPos, 0.8f, pitchJitter(rng));
-            invader.alive = false;
-            state.score += invader.scoreValue;
-            destroySet.insert(entity);
-            destroySet.insert(inv);
-          }
-        });
-      } else if (!state.gameOver && collisionSystem.checkEntitiesCollision(entity, player, cm)) {
-        destroySet.insert(entity);
-        killPlayer(engine);
-      }
+    // ...then see what they hit: the player's bullets destroy invaders, the invaders' bullets hurt the player
+    engine.forEachCollision<Bullet, Invader>([&](Entity shot, Bullet &bullet, Entity inv, Invader &invader) {
+      if (!bullet.friendly || !invader.alive || destroySet.count(shot) || destroySet.count(inv))
+        return;
+      const glm::vec3 &invaderPos = engine.get<Transform>(inv).position;
+      createExplosion(engine, invaderPos, invader.color, 1.2f);
+      engine.playSoundAt(SOUND_EXPLOSION, invaderPos, 0.8f, pitchJitter(rng));
+      invader.alive = false;
+      state.score += invader.scoreValue;
+      destroySet.insert(shot);
+      destroySet.insert(inv);
+    });
+    engine.forEachCollision<Bullet, Player>([&](Entity shot, Bullet &bullet, Entity, Player &) {
+      if (bullet.friendly || state.gameOver || destroySet.count(shot))
+        return;
+      destroySet.insert(shot);
+      killPlayer(engine);
     });
 
     for (Entity e : destroySet)
       engine.destroyEntity(e);
   }
+
 
   void checkInvaderReach(Engine &engine) {
     auto &state = engine.get<GameState>(gameManager);

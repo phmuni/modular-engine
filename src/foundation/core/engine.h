@@ -8,6 +8,7 @@
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
+#include "systems/collisionSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/stateSystem.h"
 #include <functional>
@@ -128,6 +129,28 @@ public:
 
   // allow entity builder to add components without exposing this publicly
   friend class EntityBuilder;
+
+  // Collisions between entities with Collision components, using the positions as they are when called (so move,
+  // then ask). forEachCollision<A, B> visits each overlapping pair where one entity has A and the other has B, as
+  // fn(Entity, A &, Entity, B &); a pair whose entity was destroyed by an earlier call is skipped.
+  template <typename A, typename B, typename Fn> void forEachCollision(Fn &&fn) {
+    const std::vector<CollisionEvent> pairs = findCollisions(); // a copy: fn may create or destroy entities
+    for (const CollisionEvent &pair : pairs) {
+      if (A *a = tryGet<A>(pair.a)) {
+        if (B *b = tryGet<B>(pair.b)) {
+          fn(pair.a, *a, pair.b, *b);
+          continue;
+        }
+      }
+      if (A *a = tryGet<A>(pair.b))
+        if (B *b = tryGet<B>(pair.a))
+          fn(pair.b, *a, pair.a, *b);
+    }
+  }
+  // Every overlapping pair, each once
+  const std::vector<CollisionEvent> &findCollisions();
+  // Whether these two entities' boxes overlap now
+  bool isColliding(Entity a, Entity b);
 
   // Entity creation utilities
   Entity createCameraEntity(std::string_view name, glm::vec3 position, float yaw = 0.0f, float pitch = 0.0f,
