@@ -9,7 +9,7 @@ WindowSystem::WindowSystem(float screenWidth, float screenHeight) : m_window(nul
 };
 
 bool WindowSystem::initialize(float screenWidth, float screenHeight) {
-  if (!SDL_Init(SDL_INIT_VIDEO)) {
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
     LOG_E("[Window System] Failed to initialize SDL: %s", SDL_GetError());
     return false;
   }

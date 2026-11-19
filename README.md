@@ -61,7 +61,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **HDR & Bloom**            | Lighting rendered in HDR, highlights rolled off instead of clipped, and bloom around emission and strong highlights (`F10`) |
 | **glTF Materials**         | Base color tint, alpha modes (opaque, mask, blend), double-sided and unlit (`KHR_materials_unlit`) materials |
 | **Camera System**          | Flexible camera control with quaternion-based rotations                        |
-| **Input System**           | Keyboard and mouse handling via SDL3                                           |
+| **Input System**           | Keyboard, mouse and gamepads (SDL3), named actions and axes with bindings in code or a JSON file |
 | **Lighting System**        | Directional, point, and spotlight types with intensity and cutoff controls; gamma-correct by default |
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
@@ -588,6 +588,33 @@ engine.entities().create("Sky").withSkybox("../assets/textures/skybox/space.png"
 ```
 
 The image goes through the same texture cache and streaming as model textures. Its center column is straight ahead (-Z); `intensity` above 1 lets bright stars reach the bloom. [`tools/generateSpaceSkybox.c`](tools/generateSpaceSkybox.c) generated the space panorama used by Space Aliens.
+
+### Input actions and gamepads
+
+Games can ask for named actions and axes instead of keys, each fed by any of its bindings: keys, mouse buttons,
+gamepad buttons and sticks. Gamepads are picked up when they are plugged in (with several, they add up), sticks get a
+dead zone, and the keyboard and a gamepad work side by side:
+
+```cpp
+auto &input = engine.input();
+input.bindAxis("moveX", {InputBinding::keys(SDL_SCANCODE_A, SDL_SCANCODE_D),          // -1 / +1
+                         InputBinding::gamepad(SDL_GAMEPAD_AXIS_LEFTX)});
+input.bindAction("jump", {InputBinding::keyboard(SDL_SCANCODE_SPACE),
+                          InputBinding::gamepad(SDL_GAMEPAD_BUTTON_SOUTH)});          // A / Cross
+
+float x = input.getAxis("moveX");          // -1 to 1, the strongest binding
+if (input.wasActionPressed("jump")) { }   // also isActionDown, wasActionReleased
+```
+
+Bindings can also come from a file, so they change without a build (`input.loadBindings("../assets/input.json")`):
+
+```json
+{ "actions": { "jump": ["Space", "gamepad:south"], "fire": ["mouse:left", "gamepad:righttrigger"] },
+  "axes":    { "moveX": ["A/D", "Left/Right", "gamepad:leftx"], "moveY": ["S/W", "gamepad:-lefty"] } }
+```
+
+The gamepad itself is readable too: `isGamepadButtonDown`, `wasGamepadButtonPressed`, `getGamepadAxis`,
+`getGamepadCount`.
 
 ### Audio
 

@@ -11,6 +11,9 @@
 #include "systems/renderSystem.h"
 #include "systems/stateSystem.h"
 #include "systems/windowSystem.h"
+#include <cmath>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 InputSystem::InputSystem() {
   setDefaultKeyBinds();
@@ -45,6 +48,7 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
   std::fill(std::begin(m_released), std::end(m_released), false);
   std::fill(std::begin(m_mousePressed), std::end(m_mousePressed), false);
   std::fill(std::begin(m_mouseReleased), std::end(m_mouseReleased), false);
+  std::fill(std::begin(m_gamepadPressed), std::end(m_gamepadPressed), false);
 
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
@@ -102,6 +106,39 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
         m_mouseWheel += event.wheel.y;
       break;
 
+    // Gamepads: the ones already plugged in also arrive as "added" at start-up
+    case SDL_EVENT_GAMEPAD_ADDED:
+      openGamepad(event.gdevice.which);
+      break;
+    case SDL_EVENT_GAMEPAD_REMOVED: {
+      auto it = m_gamepads.find(event.gdevice.which);
+      if (it != m_gamepads.end()) {
+        SDL_CloseGamepad(it->second.gamepad);
+        m_gamepads.erase(it);
+        LOG_I("[Input] Gamepad disconnected (%d left)", getGamepadCount());
+      }
+      break;
+    }
+    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+    case SDL_EVENT_GAMEPAD_BUTTON_UP: {
+      auto it = m_gamepads.find(event.gbutton.which);
+      const int button = event.gbutton.button;
+      if (it != m_gamepads.end() && button >= 0 && button < SDL_GAMEPAD_BUTTON_COUNT) {
+        const bool down = event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+        if (down && !isGamepadButtonDown(static_cast<SDL_GamepadButton>(button)))
+          m_gamepadPressed[button] = true;
+        it->second.buttons[button] = down;
+      }
+      break;
+    }
+    case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
+      auto it = m_gamepads.find(event.gaxis.which);
+      const int axis = event.gaxis.axis;
+      if (it != m_gamepads.end() && axis >= 0 && axis < SDL_GAMEPAD_AXIS_COUNT)
+        it->second.axes[axis] = std::clamp(static_cast<float>(event.gaxis.value) / 32767.0f, -1.0f, 1.0f);
+      break;
+    }
+
     case SDL_EVENT_WINDOW_RESIZED:
       windowSystem.onResize(event.window.data1, event.window.data2, renderer);
       renderer.setViewportSize(event.window.data1, event.window.data2);
@@ -113,6 +150,250 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
   }
 
   processToggleKeys(systemManager);
+
+  // Actions now and a frame ago, for pressed and released
+  for (auto &[name, bindings] : m_actions) {
+    auto &state = m_actionStates[name];
+    state.second = state.first;
+    state.first = readAction(bindings);
+  }
+}
+
+void InputSystem::openGamepad(SDL_JoystickID id) {
+  if (m_gamepads.count(id))
+    return;
+  SDL_Gamepad *gamepad = SDL_OpenGamepad(id);
+  if (!gamepad) {
+    LOG_W("[Input] Could not open gamepad %u: %s", static_cast<unsigned>(id), SDL_GetError());
+    return;
+  }
+  m_gamepads[id].gamepad = gamepad;
+  const char *name = SDL_GetGamepadName(gamepad);
+  LOG_I("[Input] Gamepad connected: %s", name ? name : "unnamed");
+}
+
+// --- Bindings ---------------------------------------------------------------------------------------------------
+
+InputBinding InputBinding::keyboard(SDL_Scancode key) {
+  InputBinding binding;
+  binding.kind = Kind::Key;
+  binding.key = key;
+  return binding;
+}
+
+InputBinding InputBinding::keys(SDL_Scancode negative, SDL_Scancode positive) {
+  InputBinding binding;
+  binding.kind = Kind::KeyPair;
+  binding.key = negative;
+  binding.positiveKey = positive;
+  return binding;
+}
+
+InputBinding InputBinding::mouse(MouseButton button) {
+  InputBinding binding;
+  binding.kind = Kind::MouseButton;
+  binding.mouseButton = button;
+  return binding;
+}
+
+InputBinding InputBinding::gamepad(SDL_GamepadButton button) {
+  InputBinding binding;
+  binding.kind = Kind::GamepadButton;
+  binding.gamepadButton = button;
+  return binding;
+}
+
+InputBinding InputBinding::gamepad(SDL_GamepadAxis axis, float scale) {
+  InputBinding binding;
+  binding.kind = Kind::GamepadAxis;
+  binding.gamepadAxis = axis;
+  binding.scale = scale;
+  return binding;
+}
+
+void InputSystem::bindAction(const std::string &name, std::vector<InputBinding> bindings) {
+  m_actions[name] = std::move(bindings);
+  m_actionStates[name] = {false, false};
+}
+
+void InputSystem::bindAxis(const std::string &name, std::vector<InputBinding> bindings) {
+  m_axes[name] = std::move(bindings);
+}
+
+float InputSystem::readBinding(const InputBinding &binding) const {
+  auto valid = [](SDL_Scancode key) { return key > SDL_SCANCODE_UNKNOWN && key < SDL_SCANCODE_COUNT; };
+  switch (binding.kind) {
+  case InputBinding::Kind::Key:
+    return valid(binding.key) && m_keys[binding.key] ? 1.0f : 0.0f;
+  case InputBinding::Kind::KeyPair:
+    return (valid(binding.positiveKey) && m_keys[binding.positiveKey] ? 1.0f : 0.0f) -
+           (valid(binding.key) && m_keys[binding.key] ? 1.0f : 0.0f);
+  case InputBinding::Kind::MouseButton:
+    return isMouseButtonDown(binding.mouseButton) ? 1.0f : 0.0f;
+  case InputBinding::Kind::GamepadButton:
+    return isGamepadButtonDown(binding.gamepadButton) ? 1.0f : 0.0f;
+  case InputBinding::Kind::GamepadAxis:
+    return getGamepadAxis(binding.gamepadAxis) * binding.scale;
+  }
+  return 0.0f;
+}
+
+bool InputSystem::readAction(const std::vector<InputBinding> &bindings) const {
+  for (const InputBinding &binding : bindings) {
+    const float value = readBinding(binding);
+    if (binding.kind == InputBinding::Kind::GamepadAxis ? value > 0.5f : value != 0.0f)
+      return true;
+  }
+  return false;
+}
+
+bool InputSystem::isActionDown(std::string_view name) const {
+  auto it = m_actionStates.find(name);
+  return it != m_actionStates.end() && it->second.first;
+}
+
+bool InputSystem::wasActionPressed(std::string_view name) const {
+  auto it = m_actionStates.find(name);
+  return it != m_actionStates.end() && it->second.first && !it->second.second;
+}
+
+bool InputSystem::wasActionReleased(std::string_view name) const {
+  auto it = m_actionStates.find(name);
+  return it != m_actionStates.end() && !it->second.first && it->second.second;
+}
+
+float InputSystem::getAxis(std::string_view name) const {
+  auto it = m_axes.find(name);
+  if (it == m_axes.end())
+    return 0.0f;
+  float strongest = 0.0f;
+  for (const InputBinding &binding : it->second) {
+    const float value = readBinding(binding);
+    if (std::abs(value) > std::abs(strongest))
+      strongest = value;
+  }
+  return std::clamp(strongest, -1.0f, 1.0f);
+}
+
+bool InputSystem::isGamepadButtonDown(SDL_GamepadButton button) const {
+  if (button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT)
+    return false;
+  for (const auto &[id, state] : m_gamepads)
+    if (state.buttons[button])
+      return true;
+  return false;
+}
+
+bool InputSystem::wasGamepadButtonPressed(SDL_GamepadButton button) const {
+  return button >= 0 && button < SDL_GAMEPAD_BUTTON_COUNT && m_gamepadPressed[button];
+}
+
+float InputSystem::getGamepadAxis(SDL_GamepadAxis axis) const {
+  if (axis < 0 || axis >= SDL_GAMEPAD_AXIS_COUNT)
+    return 0.0f;
+  float strongest = 0.0f;
+  for (const auto &[id, state] : m_gamepads)
+    if (std::abs(state.axes[axis]) > std::abs(strongest))
+      strongest = state.axes[axis];
+  // Sticks rest a little off center: nothing inside the dead zone, the rest stretched back to the full range
+  const float magnitude = std::abs(strongest);
+  if (magnitude <= m_deadZone)
+    return 0.0f;
+  return std::copysign((magnitude - m_deadZone) / (1.0f - m_deadZone), strongest);
+}
+
+bool InputSystem::loadBindings(const std::string &path) {
+  const std::string resolved = EngineConfig::resolvePath(path);
+  std::ifstream file(resolved);
+  if (!file) {
+    LOG_W("[Input] Could not open %s", resolved.c_str());
+    return false;
+  }
+  nlohmann::json bindings;
+  try {
+    bindings = nlohmann::json::parse(file);
+  } catch (const std::exception &error) {
+    LOG_W("[Input] %s is not valid JSON: %s", resolved.c_str(), error.what());
+    return false;
+  }
+
+  auto parse = [&](const std::string &spec, InputBinding &binding) {
+    if (spec.rfind("mouse:", 0) == 0) {
+      const std::string button = spec.substr(6);
+      if (button == "left" || button == "middle" || button == "right") {
+        binding = InputBinding::mouse(button == "left" ? MouseButton::Left
+                                      : button == "middle" ? MouseButton::Middle
+                                                           : MouseButton::Right);
+        return true;
+      }
+      return false;
+    }
+    if (spec.rfind("gamepad:", 0) == 0) {
+      std::string name = spec.substr(8);
+      float scale = 1.0f;
+      if (!name.empty() && name[0] == '-') {
+        scale = -1.0f;
+        name = name.substr(1);
+      }
+      // The face buttons by position too, the same on every brand of gamepad (SDL calls them a, b, x, y)
+      const std::pair<const char *, SDL_GamepadButton> faces[] = {{"south", SDL_GAMEPAD_BUTTON_SOUTH},
+                                                                    {"east", SDL_GAMEPAD_BUTTON_EAST},
+                                                                    {"west", SDL_GAMEPAD_BUTTON_WEST},
+                                                                    {"north", SDL_GAMEPAD_BUTTON_NORTH}};
+      for (const auto &[face, faceButton] : faces)
+        if (name == face) {
+          binding = InputBinding::gamepad(faceButton);
+          return true;
+        }
+      const SDL_GamepadButton button = SDL_GetGamepadButtonFromString(name.c_str());
+      if (button != SDL_GAMEPAD_BUTTON_INVALID) {
+        binding = InputBinding::gamepad(button);
+        return true;
+      }
+      const SDL_GamepadAxis axis = SDL_GetGamepadAxisFromString(name.c_str());
+      if (axis != SDL_GAMEPAD_AXIS_INVALID) {
+        binding = InputBinding::gamepad(axis, scale);
+        return true;
+      }
+      return false;
+    }
+    const size_t slash = spec.find('/');
+    if (slash != std::string::npos && slash > 0 && slash + 1 < spec.size()) {
+      const SDL_Scancode negative = SDL_GetScancodeFromName(spec.substr(0, slash).c_str());
+      const SDL_Scancode positive = SDL_GetScancodeFromName(spec.substr(slash + 1).c_str());
+      if (negative != SDL_SCANCODE_UNKNOWN && positive != SDL_SCANCODE_UNKNOWN) {
+        binding = InputBinding::keys(negative, positive);
+        return true;
+      }
+    }
+    const SDL_Scancode key = SDL_GetScancodeFromName(spec.c_str());
+    if (key == SDL_SCANCODE_UNKNOWN)
+      return false;
+    binding = InputBinding::keyboard(key);
+    return true;
+  };
+  auto read = [&](const char *section, bool axes) {
+    if (!bindings.contains(section) || !bindings[section].is_object())
+      return;
+    for (const auto &[name, specs] : bindings[section].items()) {
+      std::vector<InputBinding> list;
+      for (const auto &spec : specs) {
+        InputBinding binding;
+        if (spec.is_string() && parse(spec.get<std::string>(), binding))
+          list.push_back(binding);
+        else
+          LOG_W("[Input] %s: %s in %s is not a key, mouse button or gamepad input", resolved.c_str(),
+                spec.dump().c_str(), name.c_str());
+      }
+      if (axes)
+        bindAxis(name, std::move(list));
+      else
+        bindAction(name, std::move(list));
+    }
+  };
+  read("actions", false);
+  read("axes", true);
+  return true;
 }
 
 void InputSystem::processToggleKeys(SystemManager &systemManager) {

@@ -1,0 +1,9 @@
+{
+  "actions": {
+    "jump": ["Space", "gamepad:south"]
+  },
+  "axes": {
+    "moveX": ["A/D", "Left/Right", "gamepad:leftx"],
+    "moveY": ["S/W", "Down/Up", "gamepad:-lefty"]
+  }
+}

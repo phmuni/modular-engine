@@ -1,5 +1,5 @@
-// MyGame: a starting point for a game on modular-engine. Walk with W A S D, jump with Space, push the crates around
-// and pick up the gold spheres.
+// MyGame: a starting point for a game on modular-engine. Walk with W A S D (or a gamepad's left stick), jump with
+// Space (or its bottom button), push the crates around and pick up the gold spheres.
 //
 // The level is a scene file, assets/scenes/level.json: press F2 for the editor, move things around (click to select,
 // W/E/R/T for the gizmos) and save it from the Settings panel. The code below builds what the level file does not
@@ -65,21 +65,15 @@ class MyGame : public App {
     auto &transform = engine.get<Transform>(player);
     const Player &settings = engine.get<Player>(player);
 
-    float turn = 0.0f, drive = 0.0f;
-    if (input.isKeyDown(SDL_SCANCODE_A) || input.isKeyDown(SDL_SCANCODE_LEFT))
-      turn += 1.0f;
-    if (input.isKeyDown(SDL_SCANCODE_D) || input.isKeyDown(SDL_SCANCODE_RIGHT))
-      turn -= 1.0f;
-    if (input.isKeyDown(SDL_SCANCODE_W) || input.isKeyDown(SDL_SCANCODE_UP))
-      drive += 1.0f;
-    if (input.isKeyDown(SDL_SCANCODE_S) || input.isKeyDown(SDL_SCANCODE_DOWN))
-      drive -= 1.0f;
+    // Actions and axes, not keys: the bindings (setup, assets/input.json) decide what drives them
+    const float turn = -input.getAxis("moveX");
+    const float drive = input.getAxis("moveY");
 
     // Turning is ours; walking goes through the character controller, which keeps it on the ground and out of walls
     transform.rotation.y += turn * settings.turnSpeed * deltaTime;
     auto &character = engine.get<CharacterController>(player);
     character.move = forward(transform) * drive * settings.speed;
-    if (input.wasKeyPressed(SDL_SCANCODE_SPACE) && character.onGround)
+    if (input.wasActionPressed("jump") && character.onGround)
       character.jump = settings.jumpSpeed;
 
     // Fell off the level: back to the start (moving the Transform moves the character there)
@@ -124,6 +118,18 @@ class MyGame : public App {
 public:
   void setup(Engine &engine) override {
     engine.setWindowTitle("MyGame");
+
+    // Default bindings, keyboard and gamepad; assets/input.json (if there) replaces them, no rebuild needed
+    auto &input = engine.input();
+    input.bindAxis("moveX", {InputBinding::keys(SDL_SCANCODE_A, SDL_SCANCODE_D),
+                             InputBinding::keys(SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT),
+                             InputBinding::gamepad(SDL_GAMEPAD_AXIS_LEFTX)});
+    input.bindAxis("moveY", {InputBinding::keys(SDL_SCANCODE_S, SDL_SCANCODE_W),
+                             InputBinding::keys(SDL_SCANCODE_DOWN, SDL_SCANCODE_UP),
+                             InputBinding::gamepad(SDL_GAMEPAD_AXIS_LEFTY, -1.0f)}); // stick up is negative
+    input.bindAction("jump", {InputBinding::keyboard(SDL_SCANCODE_SPACE), InputBinding::gamepad(SDL_GAMEPAD_BUTTON_SOUTH)});
+    input.loadBindings("../assets/input.json");
+
     engine.setState(Toggle::CameraMovement, false); // the game drives the camera
     engine.loadScene(LEVEL);                         // its entities arrive in onSceneLoaded
   }

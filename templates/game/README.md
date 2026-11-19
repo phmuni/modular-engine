@@ -9,6 +9,8 @@ cmake -B build && cmake --build build -j     # Release; add -DCMAKE_BUILD_TYPE=D
 
 - `src/` is the game's code: `src/main.cpp` to start with. New `.cpp` files there are built automatically.
 - `assets/` holds its files, referenced as `"../assets/..."`. The level is `assets/scenes/level.json`.
+- `assets/input.json` maps keys, mouse buttons and gamepad buttons and sticks to the game's actions and axes
+  ("jump", "moveX"...): change it to rebind without a rebuild.
 - `bin/` is where it builds, with `bin/engine-assets` (the engine's shaders, fonts and basic models). To ship the
   game, copy `bin/` and `assets/` together.
 
