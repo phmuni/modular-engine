@@ -4,7 +4,7 @@ out vec4 FragColor;
 struct Material {
     sampler2D diffuse;
     sampler2D specular;
-    // sampler2D normal; // TODO: re-enable when TBN is implemented
+    sampler2D normal; // tangent-space normal map (BC5 or RGB); only X and Y are read
     sampler2D emission;
     float shininess;
     vec3 emissionColor;
@@ -30,6 +30,7 @@ struct Light {
 in vec3 FragPos;  
 in vec3 Normal;  
 in vec2 TexCoords;
+in vec4 Tangent;
 
 uniform vec3 viewPos;
 uniform Material material;
@@ -53,6 +54,7 @@ uniform samplerCubeShadow pointShadowMaps3;
 uniform float pointShadowTexel; // one texel of a cube face at distance 1 (2 / POINT_SHADOW_SIZE)
 uniform int useShadows;
 uniform float opacity;
+uniform int useNormalMap;
 uniform int useSolidDiffuseColor;
 uniform vec3 solidDiffuseColor;
 
@@ -156,6 +158,18 @@ void main()
     // Back faces of double-sided materials are lit as the front
     if (doubleSided == 1 && !gl_FrontFacing)
         normal = -normal;
+    // Shadow lookups offset along the surface itself: the normal map's bumps would make them miss
+    vec3 surfaceNormal = normal;
+
+    // Sampled unconditionally, like the other textures; without a normal map the result is not used
+    vec2 normalTexel = texture(material.normal, TexCoords).rg * 2.0 - 1.0;
+    if (useNormalMap == 1 && dot(Tangent.xyz, Tangent.xyz) > 0.0) {
+        // Tangent frame: the tangent made perpendicular to the interpolated normal, the bitangent from their cross
+        vec3 tangent = normalize(Tangent.xyz - normal * dot(normal, Tangent.xyz));
+        vec3 bitangent = cross(normal, tangent) * Tangent.w;
+        vec3 mapped = vec3(normalTexel, sqrt(max(1.0 - dot(normalTexel, normalTexel), 0.0)));
+        normal = normalize(mat3(tangent, bitangent, normal) * mapped);
+    }
 
     vec3 viewDir = normalize(viewPos - FragPos);
 
@@ -175,7 +189,7 @@ void main()
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
     vec3 emissionResult = toLinear(material.emissionColor) * material.emissionStrength * toLinear(emissionTex);
 
-    float shadow = calculateShadow(normal);
+    float shadow = calculateShadow(surfaceNormal);
 
     vec3 result = emissionResult;
 
@@ -219,7 +233,7 @@ void main()
                 spotFactor = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
             }
 
-            float shadowFactor = (light.type == 0) ? shadow : calculatePointShadow(light, normal);
+            float shadowFactor = (light.type == 0) ? shadow : calculatePointShadow(light, surfaceNormal);
 
             vec3 lightResult =
                 ambient +

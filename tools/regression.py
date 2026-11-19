@@ -47,6 +47,7 @@ CASES = {
     "scene-point-shadows": ["scene", "../assets/scenes/point_shadows.json"],
     "scene-sun-shadows": ["scene", "../assets/scenes/sun_shadows.json"],
     "scene-black-hole": ["scene", "../assets/scenes/black_hole.json"],
+    "scene-normal-maps": ["scene", "../assets/scenes/normal_maps.json"],
 }
 
 SCREENSHOT_SECONDS = 2.0     # 120 fixed frames

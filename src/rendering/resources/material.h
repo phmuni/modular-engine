@@ -16,12 +16,13 @@ public:
   Material(GLuint diffuse, GLuint specular, GLuint normal, GLuint emission, float shininess = 16.0f);
 
   static GLuint createSolidColorTexture(const std::array<unsigned char, 3> &color);
-  static GLuint loadTexture(const std::filesystem::path &path, bool compress = true);
+  static GLuint loadTexture(const std::filesystem::path &path, TextureKind kind = TextureKind::Color);
   // loadTexture in two steps: decoding is thread-safe, uploading needs the GL context (main thread).
-  // Decoding also builds mipmaps and, with `compress`, converts to BC1/BC3 (cached; see TextureProcessing).
+  // Decoding also builds mipmaps and converts to BC1/BC3, or BC5 for normal maps (cached; see TextureProcessing).
   // Uploading returns at once; large textures finish over the next frames (TextureUploader).
-  // An empty image uploads as a 1x1 magenta texture, so missing textures stand out.
-  static DecodedImage decodeTexture(const std::filesystem::path &path, bool compress = true);
+  // An empty color image uploads as a 1x1 magenta texture, so missing textures stand out; an empty normal map
+  // uploads as nothing (0).
+  static DecodedImage decodeTexture(const std::filesystem::path &path, TextureKind kind = TextureKind::Color);
   static GLuint uploadTexture(DecodedImage image);
   static bool hasAlphaTexture(const std::filesystem::path &path);
 

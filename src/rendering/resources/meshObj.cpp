@@ -195,5 +195,6 @@ bool Mesh::parseOBJ(std::string filename, MeshData &data) {
     }
   }
 
+  generateTangents(data);
   return true;
 }

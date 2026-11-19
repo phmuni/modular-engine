@@ -460,7 +460,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   auto applyMaterial = [&](Shader &shader, const Material &material, float opacity) {
     shader.setTex("material.diffuse", material.getDiffuse(), 0);
     shader.setTex("material.specular", material.getSpecular(), 1);
-    // material.normal disabled until TBN is implemented
+    shader.setTex("material.normal", material.getNormal(), 3);
+    shader.setInt("useNormalMap", material.getNormal() != 0 ? 1 : 0);
     shader.setTex("material.emission", material.getEmission(), 2);
     shader.setFloat("material.shininess", material.getShininess());
     shader.setVec3("material.emissionColor", material.getEmissionColor());

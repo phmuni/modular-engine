@@ -20,6 +20,7 @@ struct Level {
 struct Job {
   GLuint texture = 0;
   bool compressed = false;
+  size_t blockBytes = 0; // compressed: bytes per 4x4 block (8 for BC1, 16 for BC3 and BC5)
   GLenum format = 0; // pixel format (GL_RGB...) or compressed format
   GLenum type = GL_UNSIGNED_BYTE;
   int channels = 0;
@@ -39,7 +40,7 @@ size_t bytesPerComponent(GLenum type) {
 // Bytes of one band: a pixel row, or a row of 4x4 blocks when compressed
 size_t bandBytes(const Job &job, const Level &level) {
   if (job.compressed)
-    return static_cast<size_t>((level.width + 3) / 4) * (job.channels == 4 ? 16 : 8);
+    return static_cast<size_t>((level.width + 3) / 4) * job.blockBytes;
   return static_cast<size_t>(level.width) * job.channels * bytesPerComponent(job.type);
 }
 int bandHeight(const Job &job) { return job.compressed ? 4 : 1; }
@@ -99,6 +100,8 @@ GLuint upload(DecodedImage image) {
   job.channels = image.channels;
   job.type = image.type;
   job.format = job.compressed ? image.compressedFormat : kFormats[image.channels - 1];
+  // BC1 (0x83F0, GL_COMPRESSED_RGB_S3TC_DXT1_EXT) is the only 8-byte block format the engine uses
+  job.blockBytes = image.compressedFormat == 0x83F0 ? 8 : 16;
 
   int width = image.width, height = image.height;
   auto addLevel = [&](std::vector<uint8_t> &&data) {

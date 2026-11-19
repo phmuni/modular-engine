@@ -475,14 +475,14 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
       LOG_W("[Mesh] %s uses the glTF extension %s, which is ignored", normalized.c_str(),
             toStdString(gltf->extensions_used[i]).c_str());
   }
-  // Images used as normal maps are not compressed: BC1 blocks would show in the lighting
-  std::vector<bool> compressImage(gltf->images_count, true);
+  // Images used as normal maps are processed as normals (BC5), the rest as colors
+  std::vector<TextureKind> imageKinds(gltf->images_count, TextureKind::Color);
   for (uint32_t i = 0; i < gltf->materials_count; ++i) {
     const int32_t normal = gltf->materials[i].normal_texture.index;
     if (normal >= 0 && normal < static_cast<int32_t>(gltf->textures_count)) {
       const int32_t source = gltf->textures[normal].source;
       if (source >= 0 && source < static_cast<int32_t>(gltf->images_count))
-        compressImage[static_cast<size_t>(source)] = false;
+        imageKinds[static_cast<size_t>(source)] = TextureKind::Normal;
     }
   }
 
@@ -491,7 +491,7 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
   std::vector<std::future<DecodedImage>> decoding;
   for (uint32_t i = 0; i < gltf->images_count; ++i)
     decoding.push_back(std::async(std::launch::async, [&, i] {
-      return TextureProcessing::load(cacheKey + std::to_string(i), normalized, compressImage[i],
+      return TextureProcessing::load(cacheKey + std::to_string(i), normalized, imageKinds[i],
                                      [&] { return decodeImage(*gltf, gltf->images[i]); });
     }));
   data.images.resize(gltf->images_count);
@@ -583,6 +583,9 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
     const AccessorView positions = makeAccessorView(*gltf, positionAccessor);
     const AccessorView normals = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "NORMAL"));
     const AccessorView texcoords = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "TEXCOORD_0"));
+    const AccessorView tangents = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "TANGENT"));
+    // A mirroring node transform flips which side the bitangent is on
+    const float mirror = glm::determinant(glm::mat3(worldMatrix)) < 0.0f ? -1.0f : 1.0f;
 
     glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(worldMatrix)));
     size_t primitiveBaseVertex = vertices.size();
@@ -604,6 +607,13 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
         // glTF puts the UV origin at the top-left of the image; the engine's images start at the bottom
         vertex.texCoord = texcoords.read<2>(i);
         vertex.texCoord.y = 1.0f - vertex.texCoord.y;
+      }
+
+      if (tangents.valid()) {
+        const glm::vec4 tangent = tangents.read<4>(i);
+        const glm::vec3 direction = glm::mat3(worldMatrix) * glm::vec3(tangent);
+        if (glm::dot(direction, direction) > 0.0f)
+          vertex.tangent = glm::vec4(glm::normalize(direction), (tangent.w < 0.0f ? -1.0f : 1.0f) * mirror);
       }
 
       vertices.push_back(vertex);
@@ -770,5 +780,6 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
     }
   }
 
+  generateTangents(data);
   return true;
 }

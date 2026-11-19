@@ -15,9 +15,12 @@ struct Vertex {
   glm::vec3 position;
   glm::vec3 normal;
   glm::vec2 texCoord;
+  // Direction of +u on the surface (xyz) and the bitangent's sign (w: bitangent = cross(normal, tangent) * w), for
+  // normal maps; all zero until a loader reads or generates it
+  glm::vec4 tangent{0.0f};
 
   friend bool operator==(const Vertex &a, const Vertex &b) {
-    return a.position == b.position && a.normal == b.normal && a.texCoord == b.texCoord;
+    return a.position == b.position && a.normal == b.normal && a.texCoord == b.texCoord && a.tangent == b.tangent;
   }
 };
 
@@ -98,6 +101,9 @@ private:
   void resetMesh();
   // Fills data.submeshes (in file order) and data.indices (grouped by material, in order of first use)
   static void layoutParts(std::vector<PendingPart> &parts, MeshData &data);
+  // Fills the tangents still zero from each triangle's UVs. The bitangent follows +v, which is up in the image for
+  // every format: the glTF loader flips v and the image rows together, so normal maps keep their green direction.
+  static void generateTangents(MeshData &data);
   static bool parseOBJ(std::string filename, MeshData &data);
   static bool parseGLB(std::string filename, MeshData &data);
 

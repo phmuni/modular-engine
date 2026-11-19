@@ -103,8 +103,8 @@ public:
   void removeMaterialTexture(uint32_t &handle, TextureSlot slot);
 
   // Texture
-  // Normal maps pass `compress` false; see Material::decodeTexture
-  GLuint loadTexture(std::string_view path, bool compress = true);
+  // Normal maps load as TextureKind::Normal; one that cannot be used (missing, or a grayscale height map) gives 0
+  GLuint loadTexture(std::string_view path, TextureKind kind = TextureKind::Color);
   // Path a texture was loaded from ("solid_r_g_b" for solid colors), empty if unknown
   std::string getTexturePath(GLuint texture) const;
 

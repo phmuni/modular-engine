@@ -18,6 +18,9 @@
 #ifndef GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
 #define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
 #endif
+#ifndef GL_COMPRESSED_RG_RGTC2
+#define GL_COMPRESSED_RG_RGTC2 0x8DBD
+#endif
 
 namespace {
 
@@ -25,7 +28,7 @@ std::atomic<bool> g_s3tc{false};
 
 constexpr char kMagic[8] = {'T', 'E', 'X', 'C', 'A', 'C', 'H', 'E'};
 // Bump when the encoder, mip filter or layout changes, so textures are converted again
-constexpr uint32_t kVersion = 1;
+constexpr uint32_t kVersion = 2;
 
 // Halves an 8-bit image with a 2x2 box filter (a 1-pixel side stays 1)
 std::vector<uint8_t> halve(const std::vector<uint8_t> &source, int width, int height, int channels, int &outWidth,
@@ -47,11 +50,13 @@ std::vector<uint8_t> halve(const std::vector<uint8_t> &source, int width, int he
   return result;
 }
 
-// One level to BC1 (RGB, 8 bytes per 4x4 block) or BC3 (RGBA, 16 bytes); edge blocks repeat the last row/column.
-// Rows of blocks are split across threads: an 8K texture is 4 million blocks.
-std::vector<uint8_t> compressLevel(const std::vector<uint8_t> &pixels, int width, int height, int channels) {
-  const bool alpha = channels == 4;
-  const size_t blockBytes = alpha ? 16 : 8;
+// One level to BC1 (RGB, 8 bytes per 4x4 block), BC3 (RGBA, 16 bytes) or BC5 (the red and green channels, 16 bytes);
+// edge blocks repeat the last row/column. Rows of blocks are split across threads: an 8K texture is 4 million blocks.
+std::vector<uint8_t> compressLevel(const std::vector<uint8_t> &pixels, int width, int height, int channels,
+                                   GLenum format) {
+  const bool alpha = format == GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+  const bool twoChannels = format == GL_COMPRESSED_RG_RGTC2;
+  const size_t blockBytes = format == GL_COMPRESSED_RGB_S3TC_DXT1_EXT ? 8 : 16;
   const int blocksX = (width + 3) / 4, blocksY = (height + 3) / 4;
   std::vector<uint8_t> output(static_cast<size_t>(blocksX) * blocksY * blockBytes);
 
@@ -59,20 +64,26 @@ std::vector<uint8_t> compressLevel(const std::vector<uint8_t> &pixels, int width
     unsigned char block[64];
     for (int by = firstRow; by < lastRow; ++by) {
       for (int bx = 0; bx < blocksX; ++bx) {
+        const int stride = twoChannels ? 2 : 4;
         for (int py = 0; py < 4; ++py) {
           const int y = std::min(by * 4 + py, height - 1);
           for (int px = 0; px < 4; ++px) {
             const int x = std::min(bx * 4 + px, width - 1);
             const uint8_t *source = &pixels[(static_cast<size_t>(y) * width + x) * channels];
-            unsigned char *target = &block[(py * 4 + px) * 4];
+            unsigned char *target = &block[(py * 4 + px) * stride];
             target[0] = source[0];
             target[1] = source[1];
-            target[2] = source[2];
-            target[3] = alpha ? source[3] : 255;
+            if (!twoChannels) {
+              target[2] = source[2];
+              target[3] = alpha ? source[3] : 255;
+            }
           }
         }
-        stb_compress_dxt_block(&output[(static_cast<size_t>(by) * blocksX + bx) * blockBytes], block, alpha ? 1 : 0,
-                               STB_DXT_NORMAL);
+        unsigned char *destination = &output[(static_cast<size_t>(by) * blocksX + bx) * blockBytes];
+        if (twoChannels)
+          stb_compress_bc5_block(destination, block);
+        else
+          stb_compress_dxt_block(destination, block, alpha ? 1 : 0, STB_DXT_NORMAL);
       }
     }
   };
@@ -163,9 +174,24 @@ void detectSupport() {
     LOG_I("[Texture] The GPU has no S3TC; textures stay uncompressed");
 }
 
-bool compressionSupported() { return g_s3tc; }
+namespace {
+// The format an image is compressed to, or 0 to leave it uncompressed
+GLenum compressedFormatFor(const DecodedImage &image) {
+  if (!EngineConfig::COMPRESS_TEXTURES || (image.channels != 3 && image.channels != 4))
+    return 0;
+  if (image.kind == TextureKind::Normal)
+    return GL_COMPRESSED_RG_RGTC2; // RGTC is core OpenGL 3.0
+  if (!g_s3tc)
+    return 0;
+  return image.channels == 4 ? GL_COMPRESSED_RGBA_S3TC_DXT5_EXT : GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
+}
 
-void prepare(DecodedImage &image, bool compress) {
+std::string cacheKey(const std::string &key, TextureKind kind) {
+  return kind == TextureKind::Normal ? key + "#normal" : key;
+}
+} // namespace
+
+void prepare(DecodedImage &image) {
   if (image.empty() || image.compressed() || image.type != GL_UNSIGNED_BYTE || image.channels < 1 ||
       image.channels > 4)
     return;
@@ -181,33 +207,48 @@ void prepare(DecodedImage &image, bool compress) {
     height = nextHeight;
   }
 
-  if (!compress || !compressionSupported() || (image.channels != 3 && image.channels != 4))
+  const GLenum format = compressedFormatFor(image);
+  if (!format)
     return;
 
-  image.compressedFormat = image.channels == 4 ? GL_COMPRESSED_RGBA_S3TC_DXT5_EXT : GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
+  image.compressedFormat = format;
   width = image.width;
   height = image.height;
-  image.compressedLevels.push_back(compressLevel(image.pixels, width, height, image.channels));
+  image.compressedLevels.push_back(compressLevel(image.pixels, width, height, image.channels, format));
   for (const auto &mip : image.mipmaps) {
     width = std::max(width / 2, 1);
     height = std::max(height / 2, 1);
-    image.compressedLevels.push_back(compressLevel(mip, width, height, image.channels));
+    image.compressedLevels.push_back(compressLevel(mip, width, height, image.channels, format));
   }
   image.pixels = {};
   image.mipmaps = {};
 }
 
-DecodedImage load(const std::string &key, const std::string &sourceFile, bool compress,
+bool loadCached(const std::string &key, const std::string &sourceFile, TextureKind kind, DecodedImage &image) {
+  if (!readCached(cacheKey(key, kind), sourceFile, image))
+    return false;
+  image.kind = kind;
+  return true;
+}
+
+DecodedImage load(const std::string &key, const std::string &sourceFile, TextureKind kind,
                   const std::function<DecodedImage()> &decode) {
   DecodedImage image;
-  const bool compressing = compress && compressionSupported();
-  if (compressing && readCached(key, sourceFile, image))
+  if (loadCached(key, sourceFile, kind, image))
     return image;
 
   image = decode();
-  prepare(image, compressing);
+  image.kind = kind;
+  // Normals need three channels; a grayscale "normal map" is a height map, which would light as tilted garbage
+  if (kind == TextureKind::Normal && !image.empty() && image.channels < 3) {
+    LOG_W("[Texture] %s is grayscale, probably a height map; it is not used as a normal map", key.c_str());
+    DecodedImage none;
+    none.kind = kind;
+    return none;
+  }
+  prepare(image);
   if (image.compressed())
-    writeCached(key, sourceFile, image);
+    writeCached(cacheKey(key, kind), sourceFile, image);
   return image;
 }
 

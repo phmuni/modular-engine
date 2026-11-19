@@ -29,7 +29,7 @@ Material::Material() {
   const DefaultTextures &defaults = defaultTextures();
   m_diffuse = defaults.diffuse;
   m_specular = defaults.specular;
-  m_normal = 0; // disabled until TBN is implemented
+  m_normal = 0; // no normal map
   m_emission = defaults.emission;
   m_shininess = 16.0f;
   m_shaderHandle = 0;
@@ -99,22 +99,25 @@ std::string findTextureFile(const std::string &normalized) {
 }
 } // namespace
 
-GLuint Material::loadTexture(const std::filesystem::path &path, bool compress) {
-  return uploadTexture(decodeTexture(path, compress));
+GLuint Material::loadTexture(const std::filesystem::path &path, TextureKind kind) {
+  return uploadTexture(decodeTexture(path, kind));
 }
 
 namespace {
-DecodedImage decodeFile(const std::string &foundPath) {
+DecodedImage decodeFile(const std::string &foundPath, TextureKind kind) {
   DecodedImage image;
 
   // Every image is stored bottom row first (OpenGL's convention). Set per call and per thread: the flag is
   // otherwise global, and other loaders decode images too.
   stbi_set_flip_vertically_on_load_thread(1);
 
-  // Grayscale images are expanded: uploading 1 or 2 channels as RGB read past each row
+  // Grayscale color images are expanded: uploading 1 or 2 channels as RGB read past each row. Normal maps keep a
+  // grayscale source as one channel, so TextureProcessing can tell a height map from a normal map.
   int width = 0, height = 0, sourceChannels = 0;
   stbi_info(foundPath.c_str(), &width, &height, &sourceChannels);
-  const int wanted = (sourceChannels == 2 || sourceChannels == 4) ? 4 : 3;
+  int wanted = (sourceChannels == 2 || sourceChannels == 4) ? 4 : 3;
+  if (kind == TextureKind::Normal)
+    wanted = sourceChannels < 3 ? 1 : 3;
 
   int channels = 0;
   unsigned char *data = stbi_load(foundPath.c_str(), &width, &height, &channels, wanted);
@@ -132,19 +135,26 @@ DecodedImage decodeFile(const std::string &foundPath) {
 }
 } // namespace
 
-DecodedImage Material::decodeTexture(const std::filesystem::path &path, bool compress) {
+DecodedImage Material::decodeTexture(const std::filesystem::path &path, TextureKind kind) {
   std::string normalized = PathUtils::normalizeSeparators(path.string());
   std::string foundPath = findTextureFile(normalized);
   if (foundPath.empty()) {
     if (!PathUtils::stripExtension(normalized).empty())
       LOG_W("[Material] File not found: %s", normalized.c_str());
-    return {};
+    DecodedImage missing;
+    missing.kind = kind;
+    return missing;
   }
-  return TextureProcessing::load(FileCache::canonicalKey(foundPath), foundPath, compress,
-                                 [&] { return decodeFile(foundPath); });
+  return TextureProcessing::load(FileCache::canonicalKey(foundPath), foundPath, kind,
+                                 [&] { return decodeFile(foundPath, kind); });
 }
 
-GLuint Material::uploadTexture(DecodedImage image) { return TextureUploader::upload(std::move(image)); }
+GLuint Material::uploadTexture(DecodedImage image) {
+  // A missing color texture shows as magenta so it stands out; a missing normal map is simply no normal map
+  if (image.empty() && image.kind == TextureKind::Normal)
+    return 0;
+  return TextureUploader::upload(std::move(image));
+}
 
 bool Material::hasAlphaTexture(const std::filesystem::path &path) {
   std::string found = findTextureFile(PathUtils::normalizeSeparators(path.string()));

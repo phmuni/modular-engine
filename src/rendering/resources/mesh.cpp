@@ -69,20 +69,19 @@ MeshData Mesh::parse(std::string filename) {
     data.boundsRadius = glm::max(data.boundsRadius, glm::length(vertex.position - data.boundsCenter));
 
   // Texture files are decoded here too, so the main thread only uploads them; several at once when there are several
-  // Normal maps are not compressed: BC1 blocks would show in the lighting
-  std::vector<std::pair<std::string, bool>> textures; // path, compress
-  auto collect = [&](const std::string &relativePath, int embeddedImage, bool compress) {
+  std::vector<std::pair<std::string, TextureKind>> textures;
+  auto collect = [&](const std::string &relativePath, int embeddedImage, TextureKind kind) {
     if (relativePath.empty() || embeddedImage >= 0)
       return;
     std::string path = PathUtils::normalizeSeparators(data.baseDir + relativePath);
     if (std::none_of(textures.begin(), textures.end(), [&](const auto &texture) { return texture.first == path; }))
-      textures.emplace_back(std::move(path), compress);
+      textures.emplace_back(std::move(path), kind);
   };
   for (const auto &material : data.materials) {
-    collect(material.diffuseTexPath, material.diffuseImage, true);
-    collect(material.specularTexPath, material.specularImage, true);
-    collect(material.normalTexPath, material.normalImage, false);
-    collect(material.emissionTexPath, material.emissionImage, true);
+    collect(material.diffuseTexPath, material.diffuseImage, TextureKind::Color);
+    collect(material.specularTexPath, material.specularImage, TextureKind::Color);
+    collect(material.normalTexPath, material.normalImage, TextureKind::Normal);
+    collect(material.emissionTexPath, material.emissionImage, TextureKind::Color);
   }
   std::vector<std::future<DecodedImage>> decoding;
   for (size_t i = 1; i < textures.size(); ++i)
@@ -150,10 +149,58 @@ void Mesh::upload(MeshData &data) {
   glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)offsetof(Vertex, texCoord));
   glEnableVertexAttribArray(2);
 
+  // Location 10: 3-9 hold the per-instance matrices (Renderer::InstanceData)
+  glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)offsetof(Vertex, tangent));
+  glEnableVertexAttribArray(10);
+
   glBindVertexArray(0);
 
   data.vertices = {};
   data.indices = {};
+}
+
+void Mesh::generateTangents(MeshData &data) {
+  std::vector<Vertex> &vertices = data.vertices;
+  bool missing = false;
+  for (const Vertex &vertex : vertices)
+    missing = missing || vertex.tangent == glm::vec4(0.0f);
+  if (!missing)
+    return;
+
+  // Per vertex, the sum of the +u (tangents) and +v (bitangents) directions of the triangles around it
+  std::vector<glm::vec3> tangents(vertices.size(), glm::vec3(0.0f));
+  std::vector<glm::vec3> bitangents(vertices.size(), glm::vec3(0.0f));
+  for (size_t i = 0; i + 2 < data.indices.size(); i += 3) {
+    const uint32_t ia = data.indices[i], ib = data.indices[i + 1], ic = data.indices[i + 2];
+    const Vertex &a = vertices[ia], &b = vertices[ib], &c = vertices[ic];
+    const glm::vec3 edge1 = b.position - a.position, edge2 = c.position - a.position;
+    const glm::vec2 uv1 = b.texCoord - a.texCoord;
+    const glm::vec2 uv2 = c.texCoord - a.texCoord;
+    const float determinant = uv1.x * uv2.y - uv2.x * uv1.y;
+    if (std::abs(determinant) < 1e-12f)
+      continue; // no UV area: says nothing about directions
+    const float r = 1.0f / determinant;
+    const glm::vec3 tangent = (edge1 * uv2.y - edge2 * uv1.y) * r;
+    const glm::vec3 bitangent = (edge2 * uv1.x - edge1 * uv2.x) * r;
+    for (uint32_t index : {ia, ib, ic}) {
+      tangents[index] += tangent;
+      bitangents[index] += bitangent;
+    }
+  }
+
+  for (size_t i = 0; i < vertices.size(); ++i) {
+    Vertex &vertex = vertices[i];
+    if (vertex.tangent != glm::vec4(0.0f))
+      continue; // read from the file
+    const glm::vec3 normal = vertex.normal;
+    // Made perpendicular to the normal (Gram-Schmidt); without UVs, any perpendicular direction will do
+    glm::vec3 tangent = tangents[i] - normal * glm::dot(normal, tangents[i]);
+    if (glm::dot(tangent, tangent) < 1e-12f)
+      tangent = glm::cross(normal, std::abs(normal.y) < 0.99f ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0));
+    tangent = glm::normalize(tangent);
+    const float handedness = glm::dot(glm::cross(normal, tangent), bitangents[i]) < 0.0f ? -1.0f : 1.0f;
+    vertex.tangent = glm::vec4(tangent, handedness);
+  }
 }
 
 void Mesh::layoutParts(std::vector<PendingPart> &parts, MeshData &data) {

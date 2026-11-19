@@ -148,7 +148,7 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
     if (mtl.normalTextureId != 0)
       mat.setNormalTexture(mtl.normalTextureId);
     else if (!mtl.normalTexPath.empty())
-      mat.setNormalTexture(loadTexture(resolve(mtl.normalTexPath)));
+      mat.setNormalTexture(loadTexture(resolve(mtl.normalTexPath), TextureKind::Normal));
 
     if (mtl.emissionTextureId != 0)
       mat.setEmissionTexture(mtl.emissionTextureId);
@@ -200,12 +200,12 @@ std::string ResourceSystem::getTexturePath(GLuint texture) const {
 }
 
 // Cached by the full path: "rock.png" and "rock.jpg" are different textures
-GLuint ResourceSystem::loadTexture(std::string_view path, bool compress) {
+GLuint ResourceSystem::loadTexture(std::string_view path, TextureKind kind) {
   std::string normalized = PathUtils::normalizeSeparators(std::string(path));
   auto it = m_textures.find(normalized);
   if (it != m_textures.end())
     return it->second;
-  GLuint tex = Material::loadTexture(normalized, compress);
+  GLuint tex = Material::loadTexture(normalized, kind);
   if (tex != 0)
     m_textures[std::move(normalized)] = tex;
   return tex;
@@ -372,7 +372,8 @@ void ResourceSystem::setTexture(Entity entity, int submesh, TextureSlot slot, st
   }
 
   auto &model = *modelPtr;
-  GLuint tex = loadTexture(EngineConfig::resolvePath(path), slot != TextureSlot::Normal);
+  GLuint tex = loadTexture(EngineConfig::resolvePath(path),
+                           slot == TextureSlot::Normal ? TextureKind::Normal : TextureKind::Color);
   if (submesh < 0) {
     for (auto &h : model.materialHandles)
       setMaterialTexture(h, slot, tex);

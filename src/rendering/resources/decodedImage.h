@@ -8,11 +8,16 @@
 #include <cstdint>
 #include <vector>
 
+// What a texture holds: colors (diffuse, specular, emission), or tangent-space normals, which are compressed
+// differently (BC5 keeps X and Y precisely; Z is rebuilt in the shader) and must never be stood in for by a color
+enum class TextureKind { Color, Normal };
+
 struct DecodedImage {
   int width = 0;
   int height = 0;
   int channels = 0;           // 1-4
   GLenum type = GL_UNSIGNED_BYTE;
+  TextureKind kind = TextureKind::Color;
   std::vector<uint8_t> pixels; // level 0, bottom row first, tightly packed
 
   // Levels 1, 2... of `pixels`, each half the size of the previous one; empty means the GPU builds them
