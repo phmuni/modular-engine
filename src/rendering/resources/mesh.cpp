@@ -4,9 +4,11 @@
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "rendering/resources/material.h"
+#include "rendering/resources/meshCache.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <future>
 
 namespace {
 
@@ -33,7 +35,16 @@ MeshData Mesh::parse(std::string filename) {
   if (extension == ".glb" || extension == ".gltf") {
     loaded = parseGLB(std::move(normalized), data);
   } else if (extension == ".obj") {
-    loaded = parseOBJ(std::move(normalized), data);
+    // Parsing a large OBJ takes long; after the first time its result comes from the mesh cache
+    if (MeshCache::read(normalized, data)) {
+      auto slash = normalized.rfind('/');
+      data.baseDir = slash != std::string::npos ? normalized.substr(0, slash + 1) : "./";
+      data.fromCache = loaded = true;
+    } else {
+      loaded = parseOBJ(normalized, data);
+      if (loaded)
+        MeshCache::write(normalized, data);
+    }
   } else {
     loaded = parseOBJ(normalized, data);
     if (!loaded) {
@@ -57,20 +68,31 @@ MeshData Mesh::parse(std::string filename) {
   for (const auto &vertex : data.vertices)
     data.boundsRadius = glm::max(data.boundsRadius, glm::length(vertex.position - data.boundsCenter));
 
-  // Texture files are decoded here too, so the main thread only uploads them
-  auto prefetch = [&](const std::string &relativePath, int embeddedImage) {
+  // Texture files are decoded here too, so the main thread only uploads them; several at once when there are several
+  // Normal maps are not compressed: BC1 blocks would show in the lighting
+  std::vector<std::pair<std::string, bool>> textures; // path, compress
+  auto collect = [&](const std::string &relativePath, int embeddedImage, bool compress) {
     if (relativePath.empty() || embeddedImage >= 0)
       return;
     std::string path = PathUtils::normalizeSeparators(data.baseDir + relativePath);
-    if (data.externalImages.find(path) == data.externalImages.end())
-      data.externalImages.emplace(path, Material::decodeTexture(path));
+    if (std::none_of(textures.begin(), textures.end(), [&](const auto &texture) { return texture.first == path; }))
+      textures.emplace_back(std::move(path), compress);
   };
   for (const auto &material : data.materials) {
-    prefetch(material.diffuseTexPath, material.diffuseImage);
-    prefetch(material.specularTexPath, material.specularImage);
-    prefetch(material.normalTexPath, material.normalImage);
-    prefetch(material.emissionTexPath, material.emissionImage);
+    collect(material.diffuseTexPath, material.diffuseImage, true);
+    collect(material.specularTexPath, material.specularImage, true);
+    collect(material.normalTexPath, material.normalImage, false);
+    collect(material.emissionTexPath, material.emissionImage, true);
   }
+  std::vector<std::future<DecodedImage>> decoding;
+  for (size_t i = 1; i < textures.size(); ++i)
+    decoding.push_back(std::async(std::launch::async, [&texture = textures[i]] {
+      return Material::decodeTexture(texture.first, texture.second);
+    }));
+  if (!textures.empty())
+    data.externalImages.emplace(textures[0].first, Material::decodeTexture(textures[0].first, textures[0].second));
+  for (size_t i = 1; i < textures.size(); ++i)
+    data.externalImages.emplace(textures[i].first, decoding[i - 1].get());
 
   data.loaded = true;
   return data;
@@ -85,7 +107,7 @@ void Mesh::upload(MeshData &data) {
   std::vector<GLuint> imageTextures(data.images.size(), 0);
   for (size_t i = 0; i < data.images.size(); ++i)
     if (!data.images[i].empty())
-      imageTextures[i] = Material::uploadTexture(data.images[i]);
+      imageTextures[i] = Material::uploadTexture(std::move(data.images[i]));
   auto textureFor = [&](int image) { return image >= 0 && image < static_cast<int>(imageTextures.size()) ? imageTextures[image] : 0; };
   for (auto &material : data.materials) {
     material.diffuseTextureId = textureFor(material.diffuseImage);

@@ -45,6 +45,9 @@ public:
   // Destroys every entity
   void clear();
 
+  // The model files a scene file uses (resolved paths), to read them ahead of loading it; empty if it cannot be read
+  std::vector<std::string> modelPaths(const std::string &path) const;
+
   // The .json files in a folder, sorted, as paths relative to the executable's folder
   std::vector<std::string> listScenes(const std::string &directory) const;
 

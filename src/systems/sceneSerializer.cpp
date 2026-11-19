@@ -312,6 +312,25 @@ bool SceneSerializer::load(const std::string &path) {
   return true;
 }
 
+std::vector<std::string> SceneSerializer::modelPaths(const std::string &path) const {
+  std::vector<std::string> paths;
+  std::ifstream file(EngineConfig::resolvePath(path));
+  json scene = json::parse(file, nullptr, false);
+  if (scene.is_discarded() || !scene.contains("entities") || !scene["entities"].is_array())
+    return paths;
+  for (const json &entry : scene["entities"]) {
+    const json *model = entry.contains("components") && entry["components"].contains("Model")
+                            ? &entry["components"]["Model"]
+                            : nullptr;
+    if (model && model->contains("path") && (*model)["path"].is_string()) {
+      std::string resolved = EngineConfig::resolvePath((*model)["path"].get<std::string>());
+      if (std::find(paths.begin(), paths.end(), resolved) == paths.end())
+        paths.push_back(std::move(resolved));
+    }
+  }
+  return paths;
+}
+
 void SceneSerializer::clear() {
   auto &sceneSystem = m_systemManager.getSystem<SceneSystem>();
   std::vector<Entity> entities(m_entityManager.entities().begin(), m_entityManager.entities().end());

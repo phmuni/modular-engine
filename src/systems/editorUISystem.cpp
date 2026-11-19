@@ -12,6 +12,7 @@
 #include "foundation/core/engine.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
+#include "rendering/resources/textureUploader.h"
 #include "systems/audioSystem.h"
 #include "systems/sceneSerializer.h"
 #include "systems/cameraSystem.h"
@@ -179,6 +180,8 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
     ImGui::Text("Materials: %zu  |  Cached textures: %zu", resourceSystem.getMaterialCount(),
                 resourceSystem.getTextureCount());
+    if (size_t streaming = TextureUploader::pendingCount())
+      ImGui::Text("Textures still uploading: %zu", streaming);
     toggleCheckbox("Performance overlay", Toggle::ShowStats);
     toggleCheckbox("VSync", Toggle::VSync, "Off shows how fast the engine can actually run");
   }

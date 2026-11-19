@@ -7,6 +7,7 @@
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "rendering/resources/material.h"
+#include "rendering/resources/textureProcessing.h"
 #include "systems/audioSystem.h"
 #include "systems/cameraSystem.h"
 #include "systems/collisionSystem.h"
@@ -318,7 +319,13 @@ bool Engine::saveScene(std::string_view path) {
 
 SceneSerializer &Engine::getSceneSerializer() { return m_systemManager.getSystem<SceneSerializer>(); }
 
-void Engine::loadScene(std::string_view path) { m_pendingScene = std::string(path); }
+void Engine::loadScene(std::string_view path) {
+  m_pendingScene = std::string(path);
+  auto &resources = m_systemManager.getSystem<ResourceSystem>();
+  m_pendingSceneModels = m_systemManager.getSystem<SceneSerializer>().modelPaths(*m_pendingScene);
+  for (const std::string &model : m_pendingSceneModels)
+    resources.preloadModel(model); // returns at once for models already loaded or being read
+}
 
 void Engine::saveSceneAfter(std::string path, float delaySeconds, bool quitAfter) {
   m_sceneSave = ScreenshotRequest{std::move(path), delaySeconds, quitAfter};
@@ -327,6 +334,12 @@ void Engine::saveSceneAfter(std::string path, float delaySeconds, bool quitAfter
 void Engine::applyPendingScene() {
   if (!m_pendingScene)
     return;
+  // Waits while the scene's models are read in the background; ResourceSystem::update uploads each as it finishes
+  auto &resources = m_systemManager.getSystem<ResourceSystem>();
+  for (const std::string &model : m_pendingSceneModels)
+    if (resources.isModelPending(model))
+      return;
+  m_pendingSceneModels.clear();
   std::string path = std::move(*m_pendingScene);
   m_pendingScene.reset();
   if (!m_systemManager.getSystem<SceneSerializer>().load(path))
@@ -437,6 +450,7 @@ bool Engine::loadResources() {
   auto &windowSystem = m_systemManager.getSystem<WindowSystem>();
   auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
   renderer.init(windowSystem.getWindow());
+  TextureProcessing::detectSupport();
 
   uint32_t baseShader = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
                                                   EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT));

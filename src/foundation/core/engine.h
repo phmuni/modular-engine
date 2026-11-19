@@ -139,8 +139,11 @@ public:
 
   // Scenes (JSON). Saving writes every entity with components that have a serializer; see SceneSerializer.
   bool saveScene(std::string_view path);
-  // Replaces all entities with the file's at the end of this frame, then calls App::onSceneLoaded
+  // Replaces all entities with the file's, then calls App::onSceneLoaded. Its models are read on worker threads
+  // first, so the current scene keeps running until they are ready; the switch happens at the end of that frame.
   void loadScene(std::string_view path);
+  // Whether a loadScene is waiting for its models
+  bool isLoadingScene() const { return m_pendingScene.has_value(); }
   // The file last loaded or saved, empty before that
   const std::string &getScenePath() const { return m_scenePath; }
   // Lets scene files hold game components: include "systems/sceneSerializer.h" and call registerComponent<T>(key)
@@ -200,6 +203,7 @@ private:
   std::optional<ScreenshotRequest> m_screenshot;
   std::optional<ScreenshotRequest> m_sceneSave;
   std::optional<std::string> m_pendingScene;
+  std::vector<std::string> m_pendingSceneModels;
   std::string m_scenePath;
   void applyPendingScene();
   bool m_screenshotKeyDown = false;

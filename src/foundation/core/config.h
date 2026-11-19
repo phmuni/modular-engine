@@ -87,6 +87,11 @@ constexpr const char *SHADER_FRAGMENT_PARTICLE = "../assets/shaders/fragmentPart
 constexpr const char *MODEL_BOX = "../assets/models/box/box.obj";
 constexpr const char *MODEL_SPHERE = "../assets/models/sphere/sphere.obj";
 
+// Textures: converted to BC1/BC3 (and cached in bin/cache/textures) when the GPU supports S3TC
+constexpr bool COMPRESS_TEXTURES = true;
+// Bytes of texture data sent to the GPU per frame; larger textures finish over the following frames
+constexpr size_t TEXTURE_UPLOAD_BUDGET = 4 * 1024 * 1024;
+
 // Game UI fonts loaded at start-up, available to every document as font-family: LatoLatin
 inline const char *const UI_FONTS[] = {"../assets/ui/fonts/LatoLatin-Regular.ttf",
                                        "../assets/ui/fonts/LatoLatin-Bold.ttf"};

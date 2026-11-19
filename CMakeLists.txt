@@ -87,6 +87,15 @@ set(RMLUI_BACKEND_SOURCE
   "${RmlUi_SOURCE_DIR}/Backends/RmlUi_Renderer_GL3.cpp"
 )
 
+# The file parsers (tinyobj, tinygltf, stb_image, stb_dxt) and the texture conversion loops are optimized in every
+# build type: unoptimized, they take seconds on a large model. MSVC is left alone, since its Debug runtime checks
+# (/RTC1) refuse to combine with /O2.
+set_source_files_properties(
+  "${CMAKE_SOURCE_DIR}/src/rendering/resources/thirdPartyImpl.cpp"
+  "${CMAKE_SOURCE_DIR}/src/rendering/resources/textureProcessing.cpp"
+  PROPERTIES
+  COMPILE_OPTIONS "$<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-O2>")
+
 # --- Executable ---
 add_executable(engine ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE} ${RMLUI_BACKEND_SOURCE})
 

@@ -76,6 +76,7 @@ struct MeshData {
   glm::vec3 boundsCenter{0.0f};
   float boundsRadius = 0.0f;
   bool loaded = false;
+  bool fromCache = false; // read from the mesh cache instead of parsing the file
 };
 
 class Mesh {

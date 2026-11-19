@@ -1,10 +1,12 @@
 
 // Material class implementation with texture loading and solid-color texture generation.
-#define STB_IMAGE_IMPLEMENTATION
 
 #include "rendering/resources/material.h"
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
+#include "foundation/core/fileCache.h"
+#include "rendering/resources/textureProcessing.h"
+#include "rendering/resources/textureUploader.h"
 #include <stb_image/stb_image.h>
 
 static const std::vector<std::string> kSupportedExtensions = {".png", ".jpg", ".jpeg", ".bmp", ".tga"};
@@ -97,18 +99,13 @@ std::string findTextureFile(const std::string &normalized) {
 }
 } // namespace
 
-GLuint Material::loadTexture(const std::filesystem::path &path) { return uploadTexture(decodeTexture(path)); }
+GLuint Material::loadTexture(const std::filesystem::path &path, bool compress) {
+  return uploadTexture(decodeTexture(path, compress));
+}
 
-DecodedImage Material::decodeTexture(const std::filesystem::path &path) {
-  std::string normalized = PathUtils::normalizeSeparators(path.string());
-  std::string foundPath = findTextureFile(normalized);
+namespace {
+DecodedImage decodeFile(const std::string &foundPath) {
   DecodedImage image;
-
-  if (foundPath.empty()) {
-    if (!PathUtils::stripExtension(normalized).empty())
-      LOG_W("[Material] File not found: %s", normalized.c_str());
-    return image;
-  }
 
   // Every image is stored bottom row first (OpenGL's convention). Set per call and per thread: the flag is
   // otherwise global, and other loaders decode images too.
@@ -133,34 +130,21 @@ DecodedImage Material::decodeTexture(const std::filesystem::path &path) {
   stbi_image_free(data);
   return image;
 }
+} // namespace
 
-GLuint Material::uploadTexture(const DecodedImage &image) {
-  static constexpr GLenum kFormats[] = {GL_RED, GL_RG, GL_RGB, GL_RGBA};
-  const bool valid = !image.empty() && image.channels >= 1 && image.channels <= 4;
-
-  GLuint textureID = 0;
-  glGenTextures(1, &textureID);
-  glBindTexture(GL_TEXTURE_2D, textureID);
-  // Rows are tightly packed; the default 4-byte alignment skews RGB images whose width * 3 is not a multiple of 4
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-  if (valid) {
-    GLenum format = kFormats[image.channels - 1];
-    glTexImage2D(GL_TEXTURE_2D, 0, format, image.width, image.height, 0, format, image.type, image.pixels.data());
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-  } else {
-    // Fallback for missing or unreadable images
-    unsigned char fallbackColor[3] = {255, 0, 255};
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, fallbackColor);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+DecodedImage Material::decodeTexture(const std::filesystem::path &path, bool compress) {
+  std::string normalized = PathUtils::normalizeSeparators(path.string());
+  std::string foundPath = findTextureFile(normalized);
+  if (foundPath.empty()) {
+    if (!PathUtils::stripExtension(normalized).empty())
+      LOG_W("[Material] File not found: %s", normalized.c_str());
+    return {};
   }
-
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  return textureID;
+  return TextureProcessing::load(FileCache::canonicalKey(foundPath), foundPath, compress,
+                                 [&] { return decodeFile(foundPath); });
 }
+
+GLuint Material::uploadTexture(DecodedImage image) { return TextureUploader::upload(std::move(image)); }
 
 bool Material::hasAlphaTexture(const std::filesystem::path &path) {
   std::string found = findTextureFile(PathUtils::normalizeSeparators(path.string()));

@@ -1,9 +1,11 @@
 // Mesh glTF/GLB loading using tinygltf.
-#define TINYGLTF3_IMPLEMENTATION
 
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "rendering/resources/mesh.h"
+#include "foundation/core/fileCache.h"
+#include "rendering/resources/textureProcessing.h"
+#include <future>
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -473,9 +475,28 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
       LOG_W("[Mesh] %s uses the glTF extension %s, which is ignored", normalized.c_str(),
             toStdString(gltf->extensions_used[i]).c_str());
   }
+  // Images used as normal maps are not compressed: BC1 blocks would show in the lighting
+  std::vector<bool> compressImage(gltf->images_count, true);
+  for (uint32_t i = 0; i < gltf->materials_count; ++i) {
+    const int32_t normal = gltf->materials[i].normal_texture.index;
+    if (normal >= 0 && normal < static_cast<int32_t>(gltf->textures_count)) {
+      const int32_t source = gltf->textures[normal].source;
+      if (source >= 0 && source < static_cast<int32_t>(gltf->images_count))
+        compressImage[static_cast<size_t>(source)] = false;
+    }
+  }
+
+  // Each image is decoded (or read from the texture cache) on its own thread
+  const std::string cacheKey = FileCache::canonicalKey(normalized) + "#image";
+  std::vector<std::future<DecodedImage>> decoding;
+  for (uint32_t i = 0; i < gltf->images_count; ++i)
+    decoding.push_back(std::async(std::launch::async, [&, i] {
+      return TextureProcessing::load(cacheKey + std::to_string(i), normalized, compressImage[i],
+                                     [&] { return decodeImage(*gltf, gltf->images[i]); });
+    }));
   data.images.resize(gltf->images_count);
   for (uint32_t i = 0; i < gltf->images_count; ++i)
-    data.images[i] = decodeImage(*gltf, gltf->images[i]);
+    data.images[i] = decoding[i].get();
 
   data.materials.reserve(gltf->materials_count);
   for (uint32_t i = 0; i < gltf->materials_count; ++i) {

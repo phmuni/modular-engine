@@ -10,6 +10,7 @@
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "rendering/resources/shader.h"
+#include "rendering/resources/textureUploader.h"
 #include <SDL3/SDL_timer.h>
 #include <string_view>
 
@@ -26,7 +27,12 @@ void ResourceSystem::preloadModel(std::string_view path) {
   m_pendingMeshes.emplace(normalized, std::async(std::launch::async, [normalized] { return Mesh::parse(normalized); }));
 }
 
+bool ResourceSystem::isModelPending(std::string_view path) const {
+  return m_pendingMeshes.count(PathUtils::normalizeSeparators(std::string(path))) > 0;
+}
+
 void ResourceSystem::update() {
+  TextureUploader::pump(EngineConfig::TEXTURE_UPLOAD_BUDGET);
   for (auto it = m_pendingMeshes.begin(); it != m_pendingMeshes.end();) {
     if (it->second.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
       ++it;
@@ -63,10 +69,11 @@ uint32_t ResourceSystem::storeMesh(const std::string &path, MeshData &data, uint
 
   for (auto &[texturePath, image] : data.externalImages)
     if (m_textures.find(texturePath) == m_textures.end())
-      m_textures.emplace(texturePath, Material::uploadTexture(image));
+      m_textures.emplace(texturePath, Material::uploadTexture(std::move(image)));
 
   if (mesh->isLoaded())
-    LOG_I("[Resources] Loaded %s in %.1f ms%s", path.c_str(), static_cast<double>(SDL_GetTicksNS() - startNs) / 1e6,
+    LOG_I("[Resources] Loaded %s in %.1f ms%s%s", path.c_str(), static_cast<double>(SDL_GetTicksNS() - startNs) / 1e6,
+          data.fromCache ? " from the mesh cache" : "",
           readInBackground ? " on the main thread (read in the background)" : "");
 
   m_meshes[handle] = std::move(mesh);
@@ -193,12 +200,12 @@ std::string ResourceSystem::getTexturePath(GLuint texture) const {
 }
 
 // Cached by the full path: "rock.png" and "rock.jpg" are different textures
-GLuint ResourceSystem::loadTexture(std::string_view path) {
+GLuint ResourceSystem::loadTexture(std::string_view path, bool compress) {
   std::string normalized = PathUtils::normalizeSeparators(std::string(path));
   auto it = m_textures.find(normalized);
   if (it != m_textures.end())
     return it->second;
-  GLuint tex = Material::loadTexture(normalized);
+  GLuint tex = Material::loadTexture(normalized, compress);
   if (tex != 0)
     m_textures[std::move(normalized)] = tex;
   return tex;
@@ -365,7 +372,7 @@ void ResourceSystem::setTexture(Entity entity, int submesh, TextureSlot slot, st
   }
 
   auto &model = *modelPtr;
-  GLuint tex = loadTexture(EngineConfig::resolvePath(path));
+  GLuint tex = loadTexture(EngineConfig::resolvePath(path), slot != TextureSlot::Normal);
   if (submesh < 0) {
     for (auto &h : model.materialHandles)
       setMaterialTexture(h, slot, tex);

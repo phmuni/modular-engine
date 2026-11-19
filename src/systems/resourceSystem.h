@@ -60,6 +60,8 @@ public:
   // Starts reading a model (geometry and textures) on a worker thread; a later loadMesh/loadModel of the same path
   // only uploads it, or waits for the read to finish
   void preloadModel(std::string_view path);
+  // Whether a preloadModel read of this path is still going on
+  bool isModelPending(std::string_view path) const;
   // Uploads background reads that finished; call once per frame
   void update();
   uint32_t loadMesh(std::string_view path);
@@ -97,7 +99,8 @@ public:
   void removeMaterialTexture(uint32_t &handle, TextureSlot slot);
 
   // Texture
-  GLuint loadTexture(std::string_view path);
+  // Normal maps pass `compress` false; see Material::decodeTexture
+  GLuint loadTexture(std::string_view path, bool compress = true);
   // Path a texture was loaded from ("solid_r_g_b" for solid colors), empty if unknown
   std::string getTexturePath(GLuint texture) const;
 

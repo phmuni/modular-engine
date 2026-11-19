@@ -1,5 +1,4 @@
 // Mesh OBJ loading using tinyobjloader.
-#define TINYOBJLOADER_IMPLEMENTATION
 
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
@@ -10,23 +9,25 @@
 #include <tiny_obj_loader/tiny_obj_loader.h>
 #include <unordered_map>
 
-namespace std {
-template <> struct hash<Vertex> {
-  size_t operator()(const Vertex &v) const {
-    size_t h = 0;
-    auto combine = [&](float f) { h ^= std::hash<float>{}(f) + 0x9e3779b9 + (h << 6) + (h >> 2); };
-    combine(v.position.x);
-    combine(v.position.y);
-    combine(v.position.z);
-    combine(v.normal.x);
-    combine(v.normal.y);
-    combine(v.normal.z);
-    combine(v.texCoord.x);
-    combine(v.texCoord.y);
-    return h;
+namespace {
+// A face corner as the file writes it: position/texcoord/normal indices. Corners that repeat the same triple become
+// one vertex; comparing three ints is much cheaper than hashing the eight floats they point to.
+struct CornerKey {
+  int position, normal, texCoord;
+  bool operator==(const CornerKey &other) const {
+    return position == other.position && normal == other.normal && texCoord == other.texCoord;
   }
 };
-} // namespace std
+
+struct CornerKeyHash {
+  size_t operator()(const CornerKey &key) const {
+    uint64_t h = static_cast<uint32_t>(key.position) * 0x9E3779B97F4A7C15ull;
+    h ^= (static_cast<uint32_t>(key.normal) + 0x632BE59BD9B4E019ull) * 0xC2B2AE3D27D4EB4Full;
+    h ^= (static_cast<uint32_t>(key.texCoord) + 0x165667B19E3779F9ull) * 0xFF51AFD7ED558CCDull;
+    return static_cast<size_t>(h ^ (h >> 29));
+  }
+};
+} // namespace
 
 bool Mesh::parseOBJ(std::string filename, MeshData &data) {
 
@@ -76,7 +77,8 @@ bool Mesh::parseOBJ(std::string filename, MeshData &data) {
 
   std::vector<Vertex> &vertices = data.vertices;
   std::vector<uint32_t> &indices = data.indices;
-  std::unordered_map<Vertex, uint32_t> vertexCache;
+  std::unordered_map<CornerKey, uint32_t, CornerKeyHash> vertexCache;
+  vertexCache.reserve(attrib.vertices.size() / 3 + attrib.vertices.size() / 6);
 
   std::vector<PendingPart> parts;
 
@@ -106,6 +108,12 @@ bool Mesh::parseOBJ(std::string filename, MeshData &data) {
     }
 
     auto emitVertex = [&](const tinyobj::index_t &idx, std::vector<uint32_t> &target) {
+      const CornerKey key{idx.vertex_index, idx.normal_index, idx.texcoord_index};
+      auto [cached, inserted] = vertexCache.try_emplace(key, static_cast<uint32_t>(vertices.size()));
+      target.push_back(cached->second);
+      if (!inserted)
+        return;
+
       Vertex vertex{};
 
       if (idx.vertex_index >= 0) {
@@ -122,10 +130,7 @@ bool Mesh::parseOBJ(std::string filename, MeshData &data) {
         vertex.texCoord = {attrib.texcoords[2 * idx.texcoord_index + 0], attrib.texcoords[2 * idx.texcoord_index + 1]};
       }
 
-      auto [it, inserted] = vertexCache.emplace(vertex, static_cast<uint32_t>(vertices.size()));
-      if (inserted)
-        vertices.push_back(vertex);
-      target.push_back(it->second);
+      vertices.push_back(vertex);
     };
 
     const std::string shapeName = shape.name.empty() ? "part " + std::to_string(shapeIndex) : shape.name;
