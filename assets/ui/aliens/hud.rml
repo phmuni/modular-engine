@@ -11,7 +11,7 @@
 		</div>
 
 		<div class="panel invaders">
-			<div class="label">Invaders <span class="count">{{ remaining }}</span></div>
+			<div class="label">Wave {{ wave }} &#183; Invaders <span class="count">{{ remaining }}</span></div>
 			<div class="bar"><div class="fill" data-style-width="progress + '%'"></div></div>
 		</div>
 
@@ -25,7 +25,7 @@
 		</div>
 	</div>
 
-	<div id="hint" data-class-hidden="hint_hidden">A / D move &#183; SPACE fire &#183; F7 pause</div>
+	<div id="hint" data-class-hidden="hint_hidden">WASD / arrows move &#183; SPACE fire &#183; F7 pause</div>
 
 	<div id="paused" data-class-show="paused">
 		<div class="title">Paused</div>

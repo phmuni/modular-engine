@@ -1,23 +1,32 @@
 #pragma once
 // Space Aliens example game built on top of the engine.
+//
+// A chase camera follows the ship from behind. The ship moves up, down and sideways; waves of aliens fly in from
+// the far end into formations at different heights, sway there, shoot at the ship and now and then dive at it.
 
+#include "components/camera.h"
+#include "components/collision.h"
 #include "components/particleEmitter.h"
 #include "components/transform.h"
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
+#include "foundation/core/logger.h"
+#include "foundation/core/random.h"
 #include "game/components.h"
 #include "systems/inputSystem.h"
 #include "systems/stateSystem.h"
 #include <RmlUi/Core.h>
+#include <array>
 #include <cmath>
-#include "foundation/core/random.h"
+#include <glm/gtc/constants.hpp>
 #include <random>
 #include <unordered_set>
+#include <vector>
 
 class SpaceAliens : public App {
   Entity player = -1;
-  Entity starfield = -1;
   Entity gameManager = -1;
+  std::array<Entity, 4> reticle{-1, -1, -1, -1}; // shows where the shots go, ahead of the ship
 
   std::mt19937 &rng = Random::generator();
   std::uniform_real_distribution<float> pitchJitter{0.92f, 1.08f};
@@ -29,11 +38,27 @@ class SpaceAliens : public App {
   static constexpr const char *MUSIC = "../assets/sounds/music.wav";
   static constexpr const char *SOUND_UI_HOVER = "../assets/sounds/ui_hover.wav";
   static constexpr const char *SOUND_UI_CLICK = "../assets/sounds/ui_click.wav";
+  static constexpr const char *MODEL_ALIEN = "../assets/models/alien/alien.glb";
+  static constexpr const char *MODEL_SHIP = "../assets/models/spaceship/spaceship.obj";
+  static constexpr const char *SKYBOX = "../assets/textures/skybox/space.png";
+
+  // The arena, along -Z away from the camera
+  static constexpr float PLAYER_Z = 6.0f;
+  static constexpr float FORMATION_Z = -22.0f; // the formation's center
+  static constexpr float SPAWN_Z = -110.0f;    // where aliens enter from
+  static constexpr glm::vec3 PLAYER_START{0.0f, 4.0f, PLAYER_Z};
+  static constexpr glm::vec3 ALIEN_SCALE{1.5f, 1.5f, 1.5f};
+  static constexpr glm::vec3 ALIEN_ROTATION{30.0f, 0.0f, 0.0f}; // the dome tipped toward the player
+  static constexpr int WAVE_COUNT = 4;
+  // The saucer's box, tilted, has empty corners; trimmed a little so shots that look like misses miss
+  static constexpr float ALIEN_FIT = 0.92f;
+  static constexpr glm::vec3 RETICLE_COLOR{0.3f, 1.0f, 0.85f};
 
   // What the HUD document (assets/ui/aliens/hud.rml) shows, bound by name in createHud
   struct Hud {
     int score = 0;
     int lives = 3;
+    int wave = 1;
     int remaining = 0;
     float progress = 100.0f; // invaders left, in percent
     bool bump = false;       // briefly true when the score goes up
@@ -51,88 +76,158 @@ class SpaceAliens : public App {
   float hintTimer = 6.0f;
   bool restartRequested = false;
   Engine *engine = nullptr;
-  float bulletTTL = 5.0f;
+  int totalInvaders = 0;
+  glm::vec3 cameraPosition = PLAYER_START + glm::vec3(0.0f, 3.0f, 9.0f);
+  glm::vec3 cameraTarget = PLAYER_START + glm::vec3(0.0f, 0.0f, -20.0f);
 
-  // Returns a color interpolated from purple (first row) to red (last row).
-  // The gradient is stretched by `spread` so the transition to red happens later.
-  glm::vec3 rowColor(int row, int totalRows) const {
-    glm::vec3 purple = {0.2f, 0.8f, 0.2f};
-    glm::vec3 red = {1.00f, 0.08f, 0.08f};
-    if (totalRows <= 1)
-      return purple;
-    const float spread = 4.0f; // increase to make gradient larger (slower transition)
-    int denom = glm::max(1, static_cast<int>((totalRows - 1) * spread));
-    float t = static_cast<float>(row) / static_cast<float>(denom);
-    return glm::mix(purple, red, glm::clamp(t, 0.0f, 1.0f));
-  }
+  // ---- Waves -------------------------------------------------------------------------------------------------
 
-  int rowScore(int row, const InvaderGroup &ig) const { return (ig.rows - row) * 10; }
+  struct Slot {
+    glm::vec3 offset; // from the formation's center; z > 0 is nearer the player
+    int row;          // 0 = the front row, worth the least
+  };
 
-  glm::vec3 pathPosition(float d, float stepDown) const {
-    d = glm::max(d, 0.0f);
-
-    constexpr float startX = -8.0f;
-    constexpr float W = 16.0f;
-    constexpr float startZ = -10.0f;
-    const float segLen = W + stepDown;
-
-    int row = static_cast<int>(d / segLen);
-    float remainder = std::fmod(d, segLen);
-    bool goRight = (row % 2 == 0);
-
-    float z = startZ + row * stepDown;
-    float x, finalZ;
-
-    if (remainder <= W) {
-      x = goRight ? (startX + remainder) : (startX + W - remainder);
-      finalZ = z;
-    } else {
-      float t = (remainder - W) / stepDown;
-      float smooth = t * t * (3.0f - 2.0f * t);
-      x = goRight ? (startX + W) : startX;
-      finalZ = z + smooth * stepDown;
+  // Each wave's formation, centered on (0, 0); heights are added to the formation center's
+  static std::vector<Slot> formation(int wave) {
+    std::vector<Slot> slots;
+    switch (wave) {
+    case 0: // a wall of three rows at different heights, the back rows further away
+      for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 6; ++col)
+          slots.push_back({{(col - 2.5f) * 3.2f, (row - 1.0f) * 2.6f, -row * 3.0f}, row});
+      break;
+    case 1: // a V pointing at the player, rising at the wings
+      for (int i = -5; i <= 5; ++i) {
+        const float side = static_cast<float>(std::abs(i));
+        slots.push_back({{i * 1.6f, -2.5f + side * 1.0f, -side * 1.6f}, std::abs(i) / 2});
+      }
+      break;
+    case 2: // a ring around a pair at its center
+      for (int i = 0; i < 12; ++i) {
+        const float angle = glm::two_pi<float>() * static_cast<float>(i) / 12.0f;
+        slots.push_back({{std::cos(angle) * 7.5f, std::sin(angle) * 3.4f, std::sin(angle * 2.0f) * 2.0f}, 1});
+      }
+      slots.push_back({{-1.3f, 0.0f, -2.0f}, 2});
+      slots.push_back({{1.3f, 0.0f, -2.0f}, 2});
+      break;
+    default: // two crossing diagonals, deep
+      for (int i = 0; i < 7; ++i) {
+        const float t = static_cast<float>(i) - 3.0f;
+        slots.push_back({{t * 2.6f, t * 1.1f, -std::abs(t) * 2.0f - 1.0f}, i % 3});
+        if (i != 3)
+          slots.push_back({{t * 2.6f, -t * 1.1f, -std::abs(t) * 2.0f - 1.0f}, (i + 1) % 3});
+      }
+      break;
     }
-
-    return {x, glm::sin(x * 0.4f + d * 0.12f) * 0.3f, finalZ};
+    return slots;
   }
+
+  static glm::vec3 rowColor(int row) {
+    static const glm::vec3 colors[] = {{0.2f, 0.85f, 0.25f}, {0.95f, 0.75f, 0.1f}, {1.0f, 0.15f, 0.12f}};
+    return colors[glm::clamp(row, 0, 2)];
+  }
+
+  // Later waves dive and shoot more often
+  static float waveDiveInterval(int wave) { return glm::max(3.6f - wave * 0.6f, 1.2f); }
+  static float waveShootInterval(int wave) { return glm::max(1.5f - wave * 0.25f, 0.55f); }
+
+  // The formation sways around (0, FORMATION_Y, FORMATION_Z) by up to FORMATION_SWAY
+  static constexpr float FORMATION_Y = 5.0f;
+  static constexpr glm::vec3 FORMATION_SWAY{2.5f, 1.0f, 2.0f};
+  glm::vec3 formationCenter(float time) const {
+    return glm::vec3(0.0f, FORMATION_Y, FORMATION_Z) +
+           FORMATION_SWAY * glm::vec3(std::sin(time * 0.45f), std::sin(time * 0.8f), std::sin(time * 0.3f));
+  }
+
+  // Every alien must be reachable: in front of some position the ship can fly to, even at the far end of the sway.
+  // Measured at the middle of its saucer, which sits about half a unit above its origin.
+  static void checkFormationsReachable() {
+    const Player ship;
+    const glm::vec2 middle(0.0f, FORMATION_Y + 0.5f);
+    for (int wave = 0; wave < WAVE_COUNT; ++wave)
+      for (const Slot &slot : formation(wave)) {
+        const glm::vec2 lowest = glm::vec2(slot.offset) + middle - glm::vec2(FORMATION_SWAY);
+        const glm::vec2 highest = glm::vec2(slot.offset) + middle + glm::vec2(FORMATION_SWAY);
+        if (glm::any(glm::lessThan(lowest, ship.boundsMin)) || glm::any(glm::greaterThan(highest, ship.boundsMax)))
+          LOG_W("[SpaceAliens] Wave %d has an alien at (%.1f, %.1f) the ship cannot always reach", wave + 1,
+                slot.offset.x, slot.offset.y);
+      }
+  }
+
+  void spawnWave(Engine &engine, GameState &state) {
+    const std::vector<Slot> slots = formation(state.wave);
+    std::uniform_real_distribution<float> side(-1.0f, 1.0f);
+    for (size_t i = 0; i < slots.size(); ++i) {
+      const Slot &slot = slots[i];
+      Invader invader;
+      invader.color = rowColor(slot.row);
+      invader.scoreValue = (slot.row + 1) * 10 * (state.wave + 1);
+      invader.slot = slot.offset;
+      invader.delay = static_cast<float>(i) * 0.12f;
+      invader.start = glm::vec3(slot.offset.x * 2.5f + side(rng) * 6.0f, 4.5f + side(rng) * 6.0f, SPAWN_Z);
+      invader.curve = glm::vec3(side(rng) * 18.0f, side(rng) * 8.0f, 0.0f);
+      engine.entities()
+          .create("Invader")
+          .withModel(MODEL_ALIEN, invader.start, ALIEN_ROTATION, ALIEN_SCALE)
+          .withModelCollision(ALIEN_FIT)
+          .withSolidColor(invader.color)
+          .withComponent<Invader>(invader)
+          .build();
+    }
+    state.diveTimer = waveDiveInterval(state.wave) + 2.0f; // time to settle in first
+    state.enemyShootTimer = 2.0f;
+  }
+
+  // ---- Entities ----------------------------------------------------------------------------------------------
 
   void createPlayer(Engine &engine) {
     constexpr glm::vec3 scale{1.4f, 0.6f, 1.4f};
-    player =
-        engine.entities()
-            .create("Player")
-            .withModel("../assets/models/spaceship/spaceship.obj", glm::vec3(0.0f, 0.0f, 8.0f), glm::vec3(0.0f), scale)
-            .withCollision(scale)
-            .withComponent<Player>()
-            .withSolidColor(glm::vec3(0.8f, 0.8f, 0.8f))
-            .build();
+    player = engine.entities()
+                 .create("Player")
+                 .withModel(MODEL_SHIP, PLAYER_START, glm::vec3(0.0f), scale)
+                 .withModelCollision(0.6f) // smaller than the ship: grazing shots miss
+                 .withComponent<Player>()
+                 .withSolidColor(glm::vec3(0.8f, 0.8f, 0.8f))
+                 .build();
   }
 
+  void createReticle(Engine &engine) {
+    for (Entity &dot : reticle)
+      dot = engine.entities()
+                .create("Reticle")
+                .withModel(EngineConfig::MODEL_BOX, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 45.0f),
+                           glm::vec3(0.32f, 0.32f, 0.02f))
+                .withEmission(RETICLE_COLOR, 3.0f)
+                .build();
+  }
+
+  // Streaks flying past the camera, which sell the speed against the still sky
   void createStarfield(Engine &engine) {
-    starfield = engine.entities()
-                    .create("Starfield")
-                    .withTransform(glm::vec3(0.0f, 7.0f, -40.0f))
-                    .withComponent<ParticleEmitter>()
-                    .build();
+    Entity starfield = engine.entities()
+                           .create("Starfield")
+                           .withTransform(glm::vec3(0.0f, 4.0f, -90.0f))
+                           .withComponent<ParticleEmitter>()
+                           .build();
     auto &p = engine.get<ParticleEmitter>(starfield);
-    p.emitRate = 100.0f;
-    p.particleLifetime = 9.0f;
-    p.speed = 12.0f;
-    p.speedVariance = 3.5f;
-    p.size = 0.09f;
+    p.emissionShape = EmissionShape::Box;
+    p.boxHalfExtents = {40.0f, 24.0f, 2.0f};
+    p.emitRate = 140.0f;
+    p.particleLifetime = 3.6f;
+    p.speed = 30.0f;
+    p.speedVariance = 8.0f;
+    p.size = 0.07f;
     p.sizeDecay = 0.0f;
     p.gravity = {0.0f, 0.0f, 0.0f};
-    p.startColor = {0.85f, 0.85f, 1.0f, 0.9f};
+    p.startColor = {0.85f, 0.85f, 1.0f, 0.8f};
     p.endColor = {0.85f, 0.85f, 1.0f, 0.0f};
     p.emitDirection = {0.0f, 0.0f, 1.0f};
-    p.spread = 0.28f;
-    p.maxParticles = 1000;
+    p.spread = 0.0f;
+    p.maxParticles = 700;
     p.additiveBlending = true;
   }
 
   void createGameManager(Engine &engine) {
-    gameManager =
-        engine.entities().create("GameManager").withComponent<GameState>().withComponent<InvaderGroup>().build();
+    gameManager = engine.entities().create("GameManager").withComponent<GameState>().build();
   }
 
   void createExplosion(Engine &engine, const glm::vec3 &position, const glm::vec3 &color, float scale = 1.0f) {
@@ -143,13 +238,14 @@ class SpaceAliens : public App {
                       .withComponent<Explosion>(0.1f, 0.55f * scale)
                       .build();
     auto &p = engine.get<ParticleEmitter>(expl);
+    p.emissionShape = EmissionShape::Sphere;
     p.emitRate = 350.0f;
     p.particleLifetime = 0.55f * scale;
     p.speed = 5.5f * scale;
     p.speedVariance = 3.0f * scale;
     p.size = 0.35f * scale;
     p.sizeDecay = 0.9f;
-    p.gravity = {0.0f, 0.5f, 0.0f};
+    p.gravity = {0.0f, 0.0f, 0.0f};
     p.startColor = {color.r, color.g, color.b, 1.0f};
     p.endColor = {color.r * 0.3f, color.g * 0.3f, color.b * 0.3f, 0.0f};
     p.emitDirection = {0.0f, 0.0f, 1.0f};
@@ -159,15 +255,23 @@ class SpaceAliens : public App {
   }
 
   void spawnBullet(Engine &engine, const glm::vec3 &pos, const glm::vec3 &vel, bool friendly) {
-    const glm::vec3 scale = friendly ? glm::vec3(0.12f, 0.12f, 1.2f) : glm::vec3(0.22f, 0.22f, 0.70f);
-    engine.entities()
-                        .create(friendly ? "PlayerBullet" : "EnemyBullet")
-                        .withModel(EngineConfig::MODEL_BOX, pos, glm::vec3(0.0f), scale)
-                        .withCollision(scale)
-                        .withEmission(friendly ? glm::vec3(0.15f, 1.0f, 0.75f) : glm::vec3(1.0f, 0.18f, 0.08f), 7.0f)
-                        .withComponent<Bullet>(vel, bulletTTL, friendly)
-                        .build();
+    const glm::vec3 scale = friendly ? glm::vec3(0.12f, 0.12f, 2.0f) : glm::vec3(0.3f, 0.3f, 0.9f);
+    // Pointed along its flight
+    const glm::vec3 dir = glm::normalize(vel);
+    const glm::vec3 rotation(glm::degrees(std::asin(dir.y)), glm::degrees(std::atan2(-dir.x, -dir.z)), 0.0f);
+    auto builder = engine.entities()
+                       .create(friendly ? "PlayerBullet" : "EnemyBullet")
+                       .withModel(EngineConfig::MODEL_BOX, pos, rotation, scale)
+                       .withEmission(friendly ? glm::vec3(0.15f, 1.0f, 0.75f) : glm::vec3(1.0f, 0.18f, 0.08f), 7.0f)
+                       .withComponent<Bullet>(vel, friendly ? 1.8f : 6.0f, friendly);
+    // The player's shots are fast and thin: they test the path they flew each frame (updateCollisions) instead of
+    // a box, so none passes through an alien between two frames. The aliens' slow shots use a box.
+    if (!friendly)
+      builder.withCollision(glm::vec3(0.45f));
+    builder.build();
   }
+
+  // ---- HUD ---------------------------------------------------------------------------------------------------
 
   void createHud(Engine &engine) {
     Rml::Context *context = engine.getUIContext();
@@ -178,6 +282,7 @@ class SpaceAliens : public App {
       return;
     model.Bind("score", &hud.score);
     model.Bind("lives", &hud.lives);
+    model.Bind("wave", &hud.wave);
     model.Bind("remaining", &hud.remaining);
     model.Bind("progress", &hud.progress);
     model.Bind("bump", &hud.bump);
@@ -209,17 +314,19 @@ class SpaceAliens : public App {
       hudModel.DirtyVariable(name);
   }
 
+  int aliveInvaders(Engine &engine) {
+    int alive = 0;
+    engine.getComponentManager().forEachComponent<Invader>([&](Entity, Invader &inv) { alive += inv.alive ? 1 : 0; });
+    return alive;
+  }
+
   void updateHud(Engine &engine, float deltaTime) {
     auto &state = engine.get<GameState>(gameManager);
-    auto &ig = engine.get<InvaderGroup>(gameManager);
 
-    int alive = 0;
-    engine.getComponentManager().forEachComponent<Invader>([&](Entity, Invader &inv) {
-      if (inv.alive)
-        ++alive;
-    });
-    const int total = static_cast<int>(ig.invaderSlots.size());
-    const int remaining = alive + total - static_cast<int>(ig.nextInvaderIndex);
+    // This wave's survivors plus the waves still to come
+    int remaining = aliveInvaders(engine);
+    for (int wave = state.wave + (state.nextWaveTimer > 0.0f ? 0 : 1); wave < WAVE_COUNT; ++wave)
+      remaining += static_cast<int>(formation(wave).size());
 
     if (state.score > hud.score)
       bumpTimer = 0.08f;
@@ -228,8 +335,9 @@ class SpaceAliens : public App {
 
     setHud(hud.score, state.score, "score");
     setHud(hud.lives, glm::max(state.lives, 0), "lives");
+    setHud(hud.wave, glm::min(state.wave + 1, WAVE_COUNT), "wave");
     setHud(hud.remaining, remaining, "remaining");
-    setHud(hud.progress, total > 0 ? 100.0f * static_cast<float>(remaining) / static_cast<float>(total) : 0.0f,
+    setHud(hud.progress, totalInvaders > 0 ? 100.0f * remaining / static_cast<float>(totalInvaders) : 0.0f,
            "progress");
     setHud(hud.bump, bumpTimer > 0.0f, "bump");
     setHud(hud.hintHidden, hintTimer <= 0.0f, "hint_hidden");
@@ -239,24 +347,7 @@ class SpaceAliens : public App {
     setHud(hud.restartIn, static_cast<int>(std::ceil(glm::max(state.restartTimer, 0.0f))), "restart_in");
   }
 
-  void initInvaderSlots(InvaderGroup &ig) {
-    ig.invaderSlots.clear();
-    ig.nextInvaderIndex = 0;
-    ig.invaderSlots.reserve(ig.rows * ig.cols);
-    for (int r = 0; r < ig.rows; ++r)
-      for (int c = 0; c < ig.cols; ++c)
-        ig.invaderSlots.push_back({rowColor(r, ig.rows), rowScore(r, ig)});
-  }
-
-  float invaderSpeed(const InvaderGroup &ig, int activeInvaders) const {
-    if (ig.invaderSlots.empty())
-      return ig.baseSpeed;
-
-    const float aliveFraction =
-        glm::clamp(static_cast<float>(activeInvaders) / static_cast<float>(ig.invaderSlots.size()), 0.0f, 1.0f);
-    const float acceleration = 1.0f - aliveFraction;
-    return glm::mix(ig.baseSpeed, ig.maxSpeed, acceleration * acceleration);
-  }
+  // ---- Game --------------------------------------------------------------------------------------------------
 
   void resetGame(Engine &engine) {
     auto &cm = engine.getComponentManager();
@@ -268,70 +359,111 @@ class SpaceAliens : public App {
     for (Entity e : toDestroy)
       engine.destroyEntity(e);
 
-    auto &state = engine.get<GameState>(gameManager);
-    auto &ig = engine.get<InvaderGroup>(gameManager);
-    auto &pData = engine.get<Player>(player);
+    engine.get<Player>(player) = Player{};
     auto &tf = engine.get<Transform>(player);
-
-    initInvaderSlots(ig);
-    ig.headPathDistance = 0.0f;
-    ig.enemyShootTimer = 1.0f;
-
-    pData = Player{};
-
-    tf.position = glm::vec3(0.0f, 0.0f, 8.0f);
+    tf.position = PLAYER_START;
     tf.rotation = glm::vec3(0.0f);
-
     engine.setEmission(player, glm::vec3(1.0f, 0.90f, 0.20f), 0.0f);
 
-    state = GameState{};
+    engine.get<GameState>(gameManager) = GameState{};
   }
 
   void updatePlayer(Engine &engine, float deltaTime) {
     auto &input = engine.input();
     auto &tf = engine.get<Transform>(player);
-    auto &pData = engine.get<Player>(player);
+    auto &ship = engine.get<Player>(player);
 
-    float axis = 0.0f;
+    glm::vec2 axis(0.0f);
     if (input.isKeyDown(SDL_SCANCODE_A) || input.isKeyDown(SDL_SCANCODE_LEFT))
-      axis -= 1.0f;
+      axis.x -= 1.0f;
     if (input.isKeyDown(SDL_SCANCODE_D) || input.isKeyDown(SDL_SCANCODE_RIGHT))
-      axis += 1.0f;
+      axis.x += 1.0f;
+    if (input.isKeyDown(SDL_SCANCODE_W) || input.isKeyDown(SDL_SCANCODE_UP))
+      axis.y += 1.0f;
+    if (input.isKeyDown(SDL_SCANCODE_S) || input.isKeyDown(SDL_SCANCODE_DOWN))
+      axis.y -= 1.0f;
 
-    if (axis != 0.0f) {
-      pData.velocityX += axis * pData.acceleration * deltaTime;
-    } else {
-      pData.velocityX = glm::mix(pData.velocityX, 0.0f, glm::min(pData.friction * deltaTime, 1.0f));
+    // Accelerates along held axes, glides to a stop on the others
+    for (int i = 0; i < 2; ++i) {
+      if (axis[i] != 0.0f)
+        ship.velocity[i] += axis[i] * ship.acceleration * deltaTime;
+      else
+        ship.velocity[i] = glm::mix(ship.velocity[i], 0.0f, glm::min(ship.friction * deltaTime, 1.0f));
+    }
+    if (glm::length(ship.velocity) > ship.maxSpeed)
+      ship.velocity = glm::normalize(ship.velocity) * ship.maxSpeed;
+
+    glm::vec2 position = glm::vec2(tf.position) + ship.velocity * deltaTime;
+    for (int i = 0; i < 2; ++i) {
+      if (position[i] < ship.boundsMin[i] || position[i] > ship.boundsMax[i]) {
+        position[i] = glm::clamp(position[i], ship.boundsMin[i], ship.boundsMax[i]);
+        ship.velocity[i] = 0.0f;
+      }
+    }
+    tf.position = glm::vec3(position, PLAYER_Z);
+
+    // Banks into turns and noses up or down with the climb
+    const float blend = glm::min(8.0f * deltaTime, 1.0f);
+    ship.roll = glm::mix(ship.roll, -ship.velocity.x / ship.maxSpeed * 35.0f, blend);
+    ship.pitch = glm::mix(ship.pitch, ship.velocity.y / ship.maxSpeed * 15.0f, blend);
+    tf.rotation = glm::vec3(ship.pitch, 0.0f, ship.roll);
+
+    ship.shootTimer -= deltaTime;
+    if (input.isKeyDown(SDL_SCANCODE_SPACE) && ship.shootTimer <= 0.0f) {
+      const float side = ship.leftCannon ? -0.55f : 0.55f;
+      ship.leftCannon = !ship.leftCannon;
+      // Both cannons angle in to meet at the reticle
+      const glm::vec3 muzzle = tf.position + glm::vec3(side, 0.0f, -1.5f);
+      spawnBullet(engine, muzzle, glm::normalize(aimPoint(engine) - muzzle) * ship.bulletSpeed, true);
+      engine.playSound(SOUND_LASER, 0.3f, pitchJitter(rng));
+      ship.shootTimer = ship.shootCooldown;
     }
 
-    pData.velocityX = glm::clamp(pData.velocityX, -pData.maxSpeed, pData.maxSpeed);
-    tf.position.x += pData.velocityX * deltaTime;
-    tf.position.x = glm::clamp(tf.position.x, -pData.bounds, pData.bounds);
-
-    if (tf.position.x <= -pData.bounds || tf.position.x >= pData.bounds)
-      pData.velocityX = 0.0f;
-
-    pData.tilt = glm::mix(pData.tilt, -axis * 30.0f, 8.0f * deltaTime);
-    tf.rotation.z = pData.tilt;
-
-    pData.shootTimer -= deltaTime;
-    if (input.isKeyDown(SDL_SCANCODE_SPACE) && pData.shootTimer <= 0.0f) {
-      spawnBullet(engine, tf.position + glm::vec3(0.0f, 0.0f, -1.0f), {0.0f, 0.0f, -pData.bulletSpeed}, true);
-      engine.playSound(SOUND_LASER, 0.35f, pitchJitter(rng));
-      pData.shootTimer = pData.shootCooldown;
-      pData.flashTimer = 0.06f;
-    }
-
-    if (pData.hitCooldown > 0.0f)
-      pData.hitCooldown -= deltaTime;
+    if (ship.hitCooldown > 0.0f)
+      ship.hitCooldown -= deltaTime;
   }
 
-  void killPlayer(Engine &engine) {
-    auto &pData = engine.get<Player>(player);
-    if (pData.hitCooldown > 0.0f)
+  // Behind and above the ship, following it part of the way so the ship also moves across the screen
+  void updateCamera(Engine &engine, float deltaTime, bool snap = false) {
+    Camera *camera = engine.getActiveCamera();
+    if (!camera)
       return;
+    const auto &tf = engine.get<Transform>(player);
+    const auto &ship = engine.get<Player>(player);
+    const glm::vec3 eye(tf.position.x * 0.6f, 3.6f + tf.position.y * 0.75f, PLAYER_Z + 8.5f);
+    const glm::vec3 target(tf.position.x * 0.3f, 2.4f + tf.position.y * 0.45f, FORMATION_Z);
 
-    pData.hitCooldown = pData.hitInvincibility;
+    const float follow = snap ? 1.0f : 1.0f - std::exp(-5.0f * deltaTime);
+    cameraPosition = glm::mix(cameraPosition, eye, follow);
+    cameraTarget = glm::mix(cameraTarget, target, follow);
+    camera->lookAt(cameraPosition, cameraTarget);
+    // A little of the ship's bank
+    const float roll = glm::radians(ship.roll * 0.2f);
+    const glm::vec3 right = glm::normalize(glm::cross(camera->front, glm::vec3(0.0f, 1.0f, 0.0f)));
+    camera->up = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f) * std::cos(roll) + right * std::sin(roll));
+  }
+
+  // Where both cannons' shots meet: straight ahead of the ship, at about the depth of the formation's front row
+  glm::vec3 aimPoint(Engine &engine) {
+    const glm::vec3 &ship = engine.get<Transform>(player).position;
+    return {ship.x, ship.y, formationCenter(engine.get<GameState>(gameManager).time).z + 4.0f};
+  }
+
+  void updateReticle(Engine &engine) {
+    const auto &state = engine.get<GameState>(gameManager);
+    const glm::vec3 center = aimPoint(engine);
+    const glm::vec2 offsets[] = {{-1.1f, 0.0f}, {1.1f, 0.0f}, {0.0f, -1.1f}, {0.0f, 1.1f}};
+    for (size_t i = 0; i < reticle.size(); ++i)
+      // Out of sight while the game is over
+      engine.get<Transform>(reticle[i]).position =
+          state.gameOver ? glm::vec3(0.0f, -1000.0f, 0.0f) : center + glm::vec3(offsets[i], 0.0f);
+  }
+
+  void hitPlayer(Engine &engine) {
+    auto &ship = engine.get<Player>(player);
+    if (ship.hitCooldown > 0.0f)
+      return;
+    ship.hitCooldown = ship.hitInvincibility;
 
     auto &state = engine.get<GameState>(gameManager);
     auto &tf = engine.get<Transform>(player);
@@ -343,143 +475,188 @@ class SpaceAliens : public App {
       state.playerWon = false;
       state.restartTimer = 3.5f;
       engine.setEmission(player, glm::vec3(1.0f, 0.1f, 0.1f), 3.0f);
-    } else {
-      engine.setEmission(player, glm::vec3(1.0f, 0.5f, 0.2f), 4.0f);
     }
+  }
+
+  void destroyInvader(Engine &engine, Entity entity, Invader &invader, bool scored) {
+    const glm::vec3 &position = engine.get<Transform>(entity).position;
+    createExplosion(engine, position, invader.color, 1.4f);
+    engine.playSoundAt(SOUND_EXPLOSION, position, 0.8f, pitchJitter(rng));
+    invader.alive = false;
+    if (scored)
+      engine.get<GameState>(gameManager).score += invader.scoreValue;
   }
 
   void updateInvaders(Engine &engine, float deltaTime) {
     auto &cm = engine.getComponentManager();
     auto &state = engine.get<GameState>(gameManager);
-    auto &ig = engine.get<InvaderGroup>(gameManager);
+    state.time += deltaTime;
 
-    int totalAlive = 0;
-    cm.forEachComponent<Invader>([&](Entity, Invader &inv) {
-      if (inv.alive)
-        ++totalAlive;
-    });
-
-    bool allSpawned = ig.nextInvaderIndex >= ig.invaderSlots.size();
-
-    if (totalAlive == 0 && allSpawned) {
-      state.gameOver = true;
-      state.playerWon = true;
-      state.restartTimer = 4.0f;
+    // Between waves: count down, then spawn the next one (or win after the last). Not once the game is over: the
+    // survivors only keep flying until the restart.
+    if (state.nextWaveTimer > 0.0f && !state.gameOver) {
+      state.nextWaveTimer -= deltaTime;
+      if (state.nextWaveTimer <= 0.0f)
+        spawnWave(engine, state);
+      return;
+    }
+    if (aliveInvaders(engine) == 0 && !state.gameOver) {
+      if (++state.wave >= WAVE_COUNT) {
+        state.gameOver = true;
+        state.playerWon = true;
+        state.restartTimer = 4.0f;
+      } else {
+        state.nextWaveTimer = 2.0f;
+      }
       return;
     }
 
-    const float fractionAlive =
-        glm::clamp(static_cast<float>(totalAlive) / static_cast<float>(ig.invaderSlots.size()), 0.0f, 1.0f);
-    const float shootingFractionAlive = allSpawned ? fractionAlive : 1.0f;
-    ig.headPathDistance += invaderSpeed(ig, totalAlive) * deltaTime;
+    const glm::vec3 center = formationCenter(state.time);
+    const glm::vec3 &shipPosition = engine.get<Transform>(player).position;
+    std::vector<Entity> inFormation;
 
-    while (ig.nextInvaderIndex < ig.invaderSlots.size()) {
-      if (ig.headPathDistance < static_cast<float>(ig.nextInvaderIndex) * ig.spacing)
-        break;
-      const auto &slot = ig.invaderSlots[ig.nextInvaderIndex];
-      engine.entities()
-              .create("Invader")
-              .withModel("../assets/models/alien/alien.glb", glm::vec3(0.0f), glm::vec3(-90.0f), ig.scale)
-              .withCollision(ig.scale)
-              .withSolidColor(slot.color)
-              .withComponent<Invader>(true, slot.color, slot.scoreValue, static_cast<int>(ig.nextInvaderIndex), -1)
-              .build();
-      ++ig.nextInvaderIndex;
-    }
-
-    std::vector<Entity> aliveEntities;
     cm.forEachComponent<Invader>([&](Entity e, Invader &inv) {
       if (!inv.alive)
         return;
-      aliveEntities.push_back(e);
       auto &tf = engine.get<Transform>(e);
-      glm::vec3 prev = tf.position;
-      float travelD = ig.headPathDistance - inv.pathIndex * ig.spacing;
-      tf.position = pathPosition(travelD, ig.stepDown);
-      float dx = tf.position.x - prev.x;
-      tf.rotation.z = glm::mix(tf.rotation.z, -dx * 2.5f, 10.0f * deltaTime);
-      tf.rotation.x = glm::sin(travelD * 0.5f) * 0.08f;
+      const glm::vec3 previous = tf.position;
+      const glm::vec3 place = center + inv.slot;
 
-      const float W = 16.0f;
-      const float segLen = W + ig.stepDown;
-      float dClamped = glm::max(travelD, 0.0f);
-      int newRow = static_cast<int>(dClamped / segLen);
-      if (newRow != inv.currentRow) {
-        inv.currentRow = newRow;
-        glm::vec3 newColor = rowColor(newRow, ig.rows);
-        inv.color = newColor;
-        engine.setSolidColor(e, newColor);
+      switch (inv.state) {
+      case InvaderState::Entering: {
+        if (inv.delay > 0.0f) {
+          inv.delay -= deltaTime;
+          break;
+        }
+        inv.progress = glm::min(inv.progress + deltaTime / 2.4f, 1.0f);
+        // A curve from the start to its place, bending sideways on the way, slowing down to arrive
+        const float t = 1.0f - (1.0f - inv.progress) * (1.0f - inv.progress);
+        const glm::vec3 bend = inv.curve * (4.0f * t * (1.0f - t));
+        tf.position = glm::mix(inv.start, place, t) + bend;
+        if (inv.progress >= 1.0f)
+          inv.state = InvaderState::InFormation;
+        break;
       }
+      case InvaderState::InFormation:
+        tf.position = place;
+        inFormation.push_back(e);
+        break;
+      case InvaderState::Diving: {
+        // Steers toward the ship until close, then keeps going; past the camera it comes back from the far end
+        if (tf.position.z < shipPosition.z - 8.0f) {
+          const glm::vec3 wanted = glm::normalize(shipPosition - tf.position) * glm::length(inv.velocity);
+          inv.velocity = glm::mix(inv.velocity, wanted, glm::min(1.5f * deltaTime, 1.0f));
+        }
+        tf.position += inv.velocity * deltaTime;
+        if (tf.position.z > PLAYER_Z + 12.0f) {
+          inv.state = InvaderState::Entering;
+          inv.progress = 0.0f;
+          inv.start = glm::vec3(tf.position.x, tf.position.y, SPAWN_Z);
+          inv.curve = glm::vec3(0.0f);
+          tf.position = inv.start;
+        }
+        break;
+      }
+      }
+
+      // Leans into its sideways motion, and faces where it flies while diving
+      const glm::vec3 motion = deltaTime > 0.0f ? (tf.position - previous) / deltaTime : glm::vec3(0.0f);
+      const float roll = glm::clamp(-motion.x * 2.0f, -35.0f, 35.0f);
+      tf.rotation.z = glm::mix(tf.rotation.z, roll, glm::min(6.0f * deltaTime, 1.0f));
+      const float pitch = inv.state == InvaderState::Diving ? -20.0f : std::sin(state.time * 2.0f + inv.slot.x) * 6.0f;
+      tf.rotation.x = glm::mix(tf.rotation.x, ALIEN_ROTATION.x + pitch, glm::min(4.0f * deltaTime, 1.0f));
+
+      // The hitbox follows the tilt, so it keeps hugging the saucer
+      engine.fitCollisionToModel(e, ALIEN_FIT);
     });
 
-    ig.enemyShootTimer -= deltaTime;
-    if (ig.enemyShootTimer <= 0.0f && !aliveEntities.empty()) {
-      Entity shooter = aliveEntities[std::uniform_int_distribution<size_t>(0, aliveEntities.size() - 1)(rng)];
-      auto &tf = engine.get<Transform>(shooter);
-      spawnBullet(engine, tf.position + glm::vec3(0.0f, 0.0f, 1.0f), {0.0f, 0.0f, ig.bulletSpeed}, false);
-      engine.playSoundAt(SOUND_ENEMY_SHOT, tf.position, 0.5f, pitchJitter(rng));
-      float aggressionScale = glm::mix(0.25f, 1.0f, shootingFractionAlive);
-      ig.enemyShootTimer =
-          std::uniform_real_distribution<float>(ig.shootCooldownMin, ig.shootCooldownMax)(rng) * aggressionScale;
+    if (inFormation.empty())
+      return;
+    std::uniform_int_distribution<size_t> pick(0, inFormation.size() - 1);
+
+    // One of them breaks off to ram the ship
+    state.diveTimer -= deltaTime;
+    if (state.diveTimer <= 0.0f) {
+      Entity diver = inFormation[pick(rng)];
+      auto &inv = engine.get<Invader>(diver);
+      inv.state = InvaderState::Diving;
+      const glm::vec3 from = engine.get<Transform>(diver).position;
+      inv.velocity = glm::normalize(shipPosition - from) * (15.0f + state.wave * 2.5f);
+      state.diveTimer = waveDiveInterval(state.wave) * std::uniform_real_distribution<float>(0.7f, 1.3f)(rng);
+    }
+
+    // And one shoots at where the ship is
+    state.enemyShootTimer -= deltaTime;
+    if (state.enemyShootTimer <= 0.0f) {
+      const glm::vec3 from = engine.get<Transform>(inFormation[pick(rng)]).position + glm::vec3(0.0f, 0.0f, 1.0f);
+      const float speed = 16.0f + state.wave * 3.0f;
+      spawnBullet(engine, from, glm::normalize(shipPosition - from) * speed, false);
+      engine.playSoundAt(SOUND_ENEMY_SHOT, from, 0.5f, pitchJitter(rng));
+      state.enemyShootTimer =
+          waveShootInterval(state.wave) * std::uniform_real_distribution<float>(0.6f, 1.4f)(rng);
     }
   }
 
-  void updateBullets(Engine &engine, float deltaTime) {
+  void updateCollisions(Engine &engine, float deltaTime) {
     auto &cm = engine.getComponentManager();
     auto &state = engine.get<GameState>(gameManager);
     std::unordered_set<Entity> destroySet;
 
-    // Move every bullet first, retiring the old ones...
+    struct Hit {
+      Entity shot;
+      Entity invader;
+      glm::vec3 point;
+    };
+    std::vector<Hit> hits;
+
+    // Move every bullet first, retiring the old ones; the player's test the path their tip flew...
     cm.forEachComponent<Bullet>([&](Entity entity, Bullet &bullet) {
       auto &tf = engine.get<Transform>(entity);
+      if (bullet.friendly) {
+        const glm::vec3 tip = tf.position + glm::normalize(bullet.velocity) * 1.0f;
+        const float step = glm::length(bullet.velocity) * deltaTime;
+        if (auto hit = engine.raycast<Invader>(tip, bullet.velocity, step))
+          hits.push_back({entity, hit->entity, hit->point});
+      }
       tf.position += bullet.velocity * deltaTime;
       if (!bullet.friendly)
-        tf.rotation.z += 8.0f * deltaTime;
+        tf.rotation.z += 400.0f * deltaTime;
       bullet.ttl -= deltaTime;
       if (bullet.ttl <= 0.0f)
         destroySet.insert(entity);
     });
 
-    // ...then see what they hit: the player's bullets destroy invaders, the invaders' bullets hurt the player
-    engine.forEachCollision<Bullet, Invader>([&](Entity shot, Bullet &bullet, Entity inv, Invader &invader) {
-      if (!bullet.friendly || !invader.alive || destroySet.count(shot) || destroySet.count(inv))
-        return;
-      const glm::vec3 &invaderPos = engine.get<Transform>(inv).position;
-      createExplosion(engine, invaderPos, invader.color, 1.2f);
-      engine.playSoundAt(SOUND_EXPLOSION, invaderPos, 0.8f, pitchJitter(rng));
-      invader.alive = false;
-      state.score += invader.scoreValue;
-      destroySet.insert(shot);
-      destroySet.insert(inv);
-    });
+    // ...then what they hit: the player's bullets destroy invaders, the invaders' bullets hurt the player
+    for (const Hit &hit : hits) {
+      Invader &invader = engine.get<Invader>(hit.invader);
+      if (!invader.alive || destroySet.count(hit.shot))
+        continue;
+      destroyInvader(engine, hit.invader, invader, true);
+      destroySet.insert(hit.shot);
+      destroySet.insert(hit.invader);
+    }
+    if (state.gameOver) {
+      for (Entity e : destroySet)
+        engine.destroyEntity(e);
+      return;
+    }
     engine.forEachCollision<Bullet, Player>([&](Entity shot, Bullet &bullet, Entity, Player &) {
-      if (bullet.friendly || state.gameOver || destroySet.count(shot))
+      if (bullet.friendly || destroySet.count(shot))
         return;
       destroySet.insert(shot);
-      killPlayer(engine);
+      hitPlayer(engine);
+    });
+    // A diving alien that reaches the ship takes itself out with it
+    engine.forEachCollision<Invader, Player>([&](Entity inv, Invader &invader, Entity, Player &) {
+      if (!invader.alive || engine.get<Player>(player).hitCooldown > 0.0f)
+        return;
+      destroyInvader(engine, inv, invader, false);
+      destroySet.insert(inv);
+      hitPlayer(engine);
     });
 
     for (Entity e : destroySet)
       engine.destroyEntity(e);
-  }
-
-
-  void checkInvaderReach(Engine &engine) {
-    auto &state = engine.get<GameState>(gameManager);
-    if (state.gameOver)
-      return;
-
-    auto &playerTf = engine.get<Transform>(player);
-    auto &cm = engine.getComponentManager();
-
-    cm.forEachComponent<Invader>([&](Entity e, Invader &inv) {
-      if (!inv.alive || state.gameOver)
-        return;
-      if (engine.get<Transform>(e).position.z >= playerTf.position.z - 1.5f) {
-        killPlayer(engine);
-        state.gameOver = true;
-      }
-    });
   }
 
   void updateExplosions(Engine &engine, float deltaTime) {
@@ -500,14 +677,10 @@ class SpaceAliens : public App {
       engine.destroyEntity(e);
   }
 
-  void updatePlayerEmission(Engine &engine, float deltaTime) {
-    auto &state = engine.get<GameState>(gameManager);
-    auto &pData = engine.get<Player>(player);
-    if (state.gameOver)
-      return;
-
-    if (pData.hitCooldown > 0.0f) {
-      float blink = glm::sin(pData.hitCooldown * 24.0f) * 0.5f + 0.5f;
+  void updatePlayerEmission(Engine &engine) {
+    auto &ship = engine.get<Player>(player);
+    if (ship.hitCooldown > 0.0f) {
+      float blink = glm::sin(ship.hitCooldown * 24.0f) * 0.5f + 0.5f;
       engine.setEmission(player, glm::vec3(0.2f, 0.2f, 0.2f), 0.8f + blink * 5.0f);
     } else {
       engine.setEmission(player, glm::vec3(0.0f), 0.0f);
@@ -519,24 +692,25 @@ public:
     engine.setState(Toggle::CameraMovement, false);
     engine.setState(Toggle::CursorLock, false);
 
-    // A red and a blue sun from either side, and a wide spot from above
+    engine.entities().create("Sky").withSkybox(SKYBOX, 1.0f).build();
+
+    // A red and a blue sun from either side, and a soft white light from behind the camera on the aliens' faces
     engine.entities()
         .create("Sun")
-        .withLight(Light::directional({-0.8f, -0.25f, 0.1f}, {1.0f, 0.0f, 0.0f}, 1.4f))
+        .withLight(Light::directional({-0.8f, -0.25f, -0.3f}, {1.0f, 0.15f, 0.1f}, 1.3f))
         .build();
     engine.entities()
         .create("Fill")
-        .withLight(Light::directional({0.8f, -0.22f, 0.15f}, {0.0f, 0.0f, 1.0f}, 0.95f))
+        .withLight(Light::directional({0.8f, -0.22f, -0.3f}, {0.15f, 0.3f, 1.0f}, 1.0f))
         .build();
     engine.entities()
-        .create("Overhead")
-        .withTransform({0.0f, 12.0f, -15.0f})
-        .withLight(Light::spot({0.0f, -1.0f, 0.5f}, glm::vec3(1.0f), 10.0f, 80.0f, 85.0f))
+        .create("Front")
+        .withLight(Light::directional({0.0f, -0.35f, -1.0f}, {0.9f, 0.9f, 1.0f}, 0.55f))
         .build();
-    engine.createCameraEntity("Camera", glm::vec3(0.0f, 14.0f, 18.0f), 0.0f, -35.0f, 55.0f);
+    engine.createCameraEntity("Camera", cameraPosition, 0.0f, 0.0f, 60.0f);
 
     // The aliens spawn during play; read their model now instead of on the first spawn
-    engine.preloadModel("../assets/models/alien/alien.glb");
+    engine.preloadModel(MODEL_ALIEN);
     for (const char *sound : {SOUND_LASER, SOUND_ENEMY_SHOT, SOUND_EXPLOSION, SOUND_PLAYER_HIT})
       engine.preloadSound(sound);
     engine.playMusic(MUSIC, 0.4f);
@@ -546,8 +720,13 @@ public:
     createGameManager(engine);
     createStarfield(engine);
     createPlayer(engine);
+    createReticle(engine);
+    updateCamera(engine, 0.0f, true);
 
-    initInvaderSlots(engine.get<InvaderGroup>(gameManager));
+    checkFormationsReachable();
+    totalInvaders = 0;
+    for (int wave = 0; wave < WAVE_COUNT; ++wave)
+      totalInvaders += static_cast<int>(formation(wave).size());
 
     this->engine = &engine;
     createHud(engine);
@@ -586,6 +765,10 @@ public:
         float blink = glm::sin(state.restartTimer * 12.0f) * 0.5f + 0.5f;
         engine.setEmission(player, glm::vec3(0.15f, 1.0f, 0.2f), 1.2f + blink * 5.0f);
       }
+      // The aliens keep flying, the bullets keep moving
+      updateInvaders(engine, deltaTime);
+      updateCollisions(engine, deltaTime);
+      updateReticle(engine);
       if (state.restartTimer <= 0.0f)
         resetGame(engine);
       return;
@@ -593,8 +776,9 @@ public:
 
     updatePlayer(engine, deltaTime);
     updateInvaders(engine, deltaTime);
-    updateBullets(engine, deltaTime);
-    checkInvaderReach(engine);
-    updatePlayerEmission(engine, deltaTime);
+    updateCollisions(engine, deltaTime);
+    updateCamera(engine, deltaTime);
+    updateReticle(engine);
+    updatePlayerEmission(engine);
   }
 };
