@@ -16,6 +16,27 @@ void Renderer::init(SDL_Window *window) {
   // Point shadows are filtered across cube faces instead of showing seams at the edges
   glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
   glGenBuffers(1, &m_instanceVBO);
+  glGenVertexArrays(1, &m_skyboxVAO);
+}
+
+void Renderer::drawSkybox() const {
+  // At depth 1 (the cleared value), so LEQUAL keeps it behind everything; it writes no depth of its own
+  GLint polygonMode[2] = {GL_FILL, GL_FILL};
+  glGetIntegerv(GL_POLYGON_MODE, polygonMode);
+  const GLboolean culling = glIsEnabled(GL_CULL_FACE);
+  glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+  glDepthFunc(GL_LEQUAL);
+  glDepthMask(GL_FALSE);
+  glDisable(GL_CULL_FACE);
+  glBindVertexArray(m_skyboxVAO);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+  glBindVertexArray(0);
+  ++m_stats.drawCalls;
+  if (culling)
+    glEnable(GL_CULL_FACE);
+  glDepthMask(GL_TRUE);
+  glDepthFunc(GL_LESS);
+  glPolygonMode(GL_FRONT_AND_BACK, polygonMode[0]);
 }
 
 void Renderer::beginFrame() const {
@@ -332,6 +353,10 @@ void Renderer::endParticlePass() {
 
 void Renderer::shutdown() {
   m_postProcess.shutdown();
+  if (m_skyboxVAO) {
+    glDeleteVertexArrays(1, &m_skyboxVAO);
+    m_skyboxVAO = 0;
+  }
   if (m_instanceVBO) {
     glDeleteBuffers(1, &m_instanceVBO);
     m_instanceVBO = 0;

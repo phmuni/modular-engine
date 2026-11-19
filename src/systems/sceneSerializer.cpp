@@ -127,6 +127,7 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent<ParticleEmitter>("ParticleEmitter");
   registerComponent<GravityLens>("GravityLens");
   registerComponent<AudioSource>("AudioSource");
+  registerComponent<Skybox>("Skybox");
 
   registerComponent(
       "Hidden",

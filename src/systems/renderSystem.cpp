@@ -2,6 +2,7 @@
 #include "components/hidden.h"
 #include "components/light.h"
 #include "components/model.h"
+#include "components/skybox.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "systems/cameraSystem.h"
@@ -571,6 +572,9 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
         });
   }
 
+  // The sky fills what the opaque geometry left empty; transparent surfaces then blend over it
+  drawSkybox(componentManager, resourceSystem, view, projection, gammaCorrect);
+
   std::vector<TransparentDraw> softDraws;
   std::vector<TransparentDraw> transparentDraws;
 
@@ -630,6 +634,38 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   // Bloom of the HDR scene added onto the screen
   renderer.finishScene(resourceSystem.getShader(m_bloomDownsampleShader), resourceSystem.getShader(m_bloomUpsampleShader),
                        resourceSystem.getShader(m_compositeShader), post);
+}
+
+void RenderSystem::drawSkybox(ComponentManager &componentManager, ResourceSystem &resourceSystem,
+                              const glm::mat4 &view, const glm::mat4 &projection, bool gammaCorrect) {
+  if (!m_skyboxShader)
+    return;
+  const Skybox *sky = nullptr;
+  componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
+    if (!sky && !skybox.path.empty() && !componentManager.has<Hidden>(entity))
+      sky = &skybox;
+  });
+  if (!sky)
+    return;
+
+  // Loaded (and cached) once per path; the texture streams in like any other, smallest mip first
+  if (sky->path != m_skyboxPath) {
+    m_skyboxPath = sky->path;
+    m_skyboxTexture = resourceSystem.loadTexture(sky->path);
+    // Wrapping around horizontally is right for a panorama, but not past the poles
+    glBindTexture(GL_TEXTURE_2D, m_skyboxTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  }
+
+  Shader &shader = resourceSystem.getShader(m_skyboxShader);
+  shader.use();
+  const glm::mat4 rotationOnly = glm::mat4(glm::mat3(view));
+  shader.setMat4("inverseViewProjection", glm::inverse(projection * rotationOnly));
+  shader.setTex("skyTexture", m_skyboxTexture, 0);
+  shader.setFloat("intensity", sky->intensity);
+  shader.setFloat("rotation", glm::radians(sky->rotation));
+  shader.setInt("gammaCorrect", gammaCorrect ? 1 : 0);
+  m_renderer.drawSkybox();
 }
 
 Renderer &RenderSystem::getRenderer() { return m_renderer; }

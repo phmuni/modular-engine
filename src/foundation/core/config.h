@@ -102,6 +102,8 @@ constexpr const char *SHADER_FRAGMENT_BLOOM_DOWNSAMPLE = "../assets/shaders/bloo
 constexpr const char *SHADER_FRAGMENT_BLOOM_UPSAMPLE = "../assets/shaders/bloomUpsample.frag";
 constexpr const char *SHADER_FRAGMENT_TONEMAP = "../assets/shaders/tonemap.frag";
 constexpr const char *SHADER_FRAGMENT_COMPOSITE = "../assets/shaders/composite.frag";
+constexpr const char *SHADER_VERTEX_SKYBOX = "../assets/shaders/skybox.vert";
+constexpr const char *SHADER_FRAGMENT_SKYBOX = "../assets/shaders/skybox.frag";
 
 // Bloom (F10): light brighter than the threshold (emission, strong highlights) glows; strength scales the glow.
 // Above 1.0, so surfaces that are merely well lit do not glow.

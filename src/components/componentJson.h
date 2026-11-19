@@ -10,6 +10,7 @@
 #include "components/gravityLens.h"
 #include "components/light.h"
 #include "components/particleEmitter.h"
+#include "components/skybox.h"
 #include "components/transform.h"
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
@@ -48,6 +49,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Camera, position, yaw, pitch, fo
                                                 smoothFactor, isRelative)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Collision, min, max, isStatic)
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(GravityLens, schwarzschildRadius, maxMagnification)
 

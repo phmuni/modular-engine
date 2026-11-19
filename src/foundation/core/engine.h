@@ -3,6 +3,7 @@
 
 #include "components/audioSource.h"
 #include "components/light.h"
+#include "components/skybox.h"
 #include "components/transform.h"
 #include "foundation/core/app.h"
 #include "foundation/ecs/componentManager.h"
@@ -63,6 +64,10 @@ public:
     // Plays from the entity's position; see AudioSource for the other settings
     EntityBuilder &withSound(std::string_view path, bool loop = true, float volume = 1.0f) {
       return withComponent<AudioSource>(std::string(path), volume, 1.0f, loop);
+    }
+    // A panorama behind the scene (see Skybox); the first one in the scene is drawn
+    EntityBuilder &withSkybox(std::string_view path, float intensity = 1.0f, float rotationDegrees = 0.0f) {
+      return withComponent<Skybox>(std::string(path), intensity, rotationDegrees);
     }
     Entity build();
 

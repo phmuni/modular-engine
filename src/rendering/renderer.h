@@ -56,6 +56,7 @@ private:
   PostProcess m_postProcess;
 
   GLuint m_instanceVBO = 0;
+  GLuint m_skyboxVAO = 0; // empty: the skybox triangle comes from gl_VertexID
   void bindInstanceAttributes(const Mesh &mesh) const;
 
   // Particle GPU resources
@@ -97,6 +98,9 @@ public:
   void beginPointShadowFace(int slot, int face);
   // The slot's cube map, or an empty one (everything lit) if the slot was never used
   GLuint getPointShadowMap(int slot) const;
+
+  // Skybox: one screen-covering triangle at the far plane with the bound skybox shader, behind what was drawn
+  void drawSkybox() const;
 
   // Particle / transparent pass
   void beginTransparentPass();

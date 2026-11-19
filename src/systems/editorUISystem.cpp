@@ -8,6 +8,7 @@
 #include "components/model.h"
 #include "components/name.h"
 #include "components/particleEmitter.h"
+#include "components/skybox.h"
 #include "components/transform.h"
 #include "foundation/core/engine.h"
 #include "rendering/resources/material.h"
@@ -644,6 +645,36 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
     }
   }
 
+  // Skybox
+  if (!earlyOut && componentManager.has<Skybox>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##sky")) {
+        componentManager.removeComponent<Skybox>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        auto &sky = componentManager.get<Skybox>(selectedEntity);
+        // Applied on Enter or Load, like the audio path
+        static char skyPath[256] = "";
+        static Entity skyPathEntity = -1;
+        if (skyPathEntity != selectedEntity) {
+          skyPathEntity = selectedEntity;
+          std::strncpy(skyPath, sky.path.c_str(), sizeof(skyPath) - 1);
+          skyPath[sizeof(skyPath) - 1] = '\0';
+        }
+        ImGui::SetNextItemWidth(140.0f);
+        bool apply = ImGui::InputText("##skyPath", skyPath, sizeof(skyPath), ImGuiInputTextFlags_EnterReturnsTrue);
+        pickFileButton("pick_sky", skyPath, sizeof(skyPath), window);
+        ImGui::SameLine();
+        if (ImGui::Button("Load##sky") || apply)
+          sky.path = skyPath;
+        ImGui::DragFloat("Intensity##sky", &sky.intensity, 0.02f, 0.0f, 20.0f, "%.2f");
+        ImGui::SliderFloat("Rotation##sky", &sky.rotation, -180.0f, 180.0f, "%.0f deg");
+      }
+    }
+  }
+
   // Add Component section
   if (!earlyOut) {
     ImGui::Separator();
@@ -674,6 +705,11 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
           // Stopped until a file is chosen
           auto &src = componentManager.addInPlace<AudioSource>(selectedEntity);
           src.playing = false;
+        }
+      }
+      if (!componentManager.has<Skybox>(selectedEntity)) {
+        if (ImGui::Button("+ Skybox", ImVec2(-1, 0))) {
+          componentManager.addInPlace<Skybox>(selectedEntity);
         }
       }
       if (!componentManager.has<Model>(selectedEntity)) {

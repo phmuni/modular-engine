@@ -522,8 +522,10 @@ bool Engine::loadResources() {
   uint32_t bloomDownsample = fullscreen(EngineConfig::SHADER_FRAGMENT_BLOOM_DOWNSAMPLE);
   uint32_t bloomUpsample = fullscreen(EngineConfig::SHADER_FRAGMENT_BLOOM_UPSAMPLE);
   uint32_t composite = fullscreen(EngineConfig::SHADER_FRAGMENT_COMPOSITE);
+  uint32_t skybox = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_SKYBOX),
+                                              EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_SKYBOX));
   if (!baseShader || !shadowShader || !particleShader || !maskShader || !tonemap || !bloomDownsample ||
-      !bloomUpsample || !composite) {
+      !bloomUpsample || !composite || !skybox) {
     LOG_E("[Engine] Failed to load shaders.");
     return false;
   }
@@ -533,6 +535,7 @@ bool Engine::loadResources() {
   resourceSystem.getMaterial(0).setShaderHandle(baseShader);
   m_systemManager.getSystem<RenderSystem>().setShadowShaderHandle(shadowShader);
   m_systemManager.getSystem<RenderSystem>().setPostProcessShaders(tonemap, bloomDownsample, bloomUpsample, composite);
+  m_systemManager.getSystem<RenderSystem>().setSkyboxShader(skybox);
 
   auto &particleSystem = m_systemManager.getSystem<ParticleSystem>();
   particleSystem.setShaderHandle(particleShader);

@@ -5,6 +5,7 @@
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "rendering/renderer.h"
+#include <string>
 #include <unordered_map>
 
 class ResourceSystem;
@@ -25,6 +26,7 @@ public:
     m_bloomUpsampleShader = bloomUpsample;
     m_compositeShader = composite;
   }
+  void setSkyboxShader(uint32_t handle) { m_skyboxShader = handle; }
   void markBatchesDirty();
   // Models skipped by frustum culling in the last rendered frame
   int getCulledCount() const { return m_culledCount; }
@@ -57,6 +59,13 @@ private:
   uint32_t m_bloomUpsampleShader = 0;
   uint32_t m_compositeShader = 0;
   Renderer m_renderer;
+  // The first Skybox component's panorama, behind the opaque geometry
+  uint32_t m_skyboxShader = 0;
+  std::string m_skyboxPath; // what m_skyboxTexture shows
+  GLuint m_skyboxTexture = 0;
+  void drawSkybox(ComponentManager &componentManager, ResourceSystem &resourceSystem, const glm::mat4 &view,
+                  const glm::mat4 &projection, bool gammaCorrect);
+
   void rebuildRenderBatches(ComponentManager &componentManager, ResourceSystem &resourceSystem);
 
   // What the main pass needs from the sun's shadow cascades
