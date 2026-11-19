@@ -4,6 +4,7 @@
 #include "systems/editorUISystem.h"
 #include "components/audioSource.h"
 #include "components/collision.h"
+#include "components/hidden.h"
 #include "components/light.h"
 #include "components/model.h"
 #include "components/name.h"
@@ -11,6 +12,7 @@
 #include "components/skybox.h"
 #include "components/transform.h"
 #include "foundation/core/engine.h"
+#include "systems/modelQueries.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "rendering/resources/textureUploader.h"
@@ -27,11 +29,13 @@
 #include "systems/windowSystem.h"
 
 #include <algorithm>
+#include <limits>
 #include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_opengl3.h>
 #include <imgui/imgui_impl_sdl3.h>
@@ -317,10 +321,59 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
 
   renderSettingsPanel(engine, entityManager, systemManager, componentManager);
   renderSceneExplorer(engine, systemManager, componentManager);
+  m_gizmoShown = false;
   if (selectedEntity != -1) {
     renderPropertiesPanel(systemManager, componentManager);
+    drawSelectionBox(systemManager, componentManager);
     renderGizmo(systemManager, componentManager);
   }
+  handleClickSelection(engine, systemManager);
+}
+
+void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemManager) {
+  const ImGuiIO &io = ImGui::GetIO();
+  if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left) || io.WantCaptureMouse ||
+      systemManager.getSystem<StateSystem>().isToggled(Toggle::CursorLock))
+    return;
+  if (m_gizmoShown && (ImGuizmo::IsOver() || ImGuizmo::IsUsing()))
+    return; // the click grabs the gizmo
+  if (m_resizeHovered || m_resize.axis >= 0)
+    return; // the click grabs a resize handle
+  const auto hit = engine.pickModel(glm::vec2(io.MousePos.x, io.MousePos.y));
+  selectedEntity = hit ? hit->entity : -1;
+  m_scrollToSelection = hit.has_value();
+}
+
+void EditorUISystem::drawSelectionBox(SystemManager &systemManager, ComponentManager &componentManager) {
+  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  const auto *transform = componentManager.tryGet<Transform>(selectedEntity);
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
+  if (!model || !transform || !camera)
+    return;
+
+  const Mesh &mesh = systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle);
+  const glm::mat4 toClip = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera) *
+                           systemManager.getSystem<TransformSystem>().calculateModelMatrix(*transform);
+  const glm::vec3 low = mesh.getBoundsMin(), high = mesh.getBoundsMax();
+  glm::vec4 corners[8];
+  for (int i = 0; i < 8; ++i)
+    corners[i] = toClip * glm::vec4(i & 1 ? high.x : low.x, i & 2 ? high.y : low.y, i & 4 ? high.z : low.z, 1.0f);
+
+  const ImVec2 size = ImGui::GetIO().DisplaySize;
+  auto toScreen = [&](const glm::vec4 &clip) {
+    return ImVec2((clip.x / clip.w * 0.5f + 0.5f) * size.x, (0.5f - clip.y / clip.w * 0.5f) * size.y);
+  };
+  ImDrawList *drawList = ImGui::GetBackgroundDrawList();
+  // The 12 edges: corners that differ in one bit
+  for (int a = 0; a < 8; ++a)
+    for (int bit = 1; bit < 8; bit <<= 1) {
+      const int b = a | bit;
+      if (b == a || corners[a].w <= 0.01f || corners[b].w <= 0.01f) // skip edges behind the camera
+        continue;
+      drawList->AddLine(toScreen(corners[a]), toScreen(corners[b]), IM_COL32(255, 200, 60, 200), 1.5f);
+    }
 }
 
 void EditorUISystem::renderGizmoControls() {
@@ -334,12 +387,26 @@ void EditorUISystem::renderGizmoControls() {
   ImGui::SameLine();
   option("Scale##gizmo", GizmoOperation::Scale);
   ImGui::SameLine();
-  ImGui::TextDisabled("[W/E/R]");
+  option("Resize##gizmo", GizmoOperation::Resize);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("A handle on each face: dragging one moves that face alone, the opposite face stays put");
+  ImGui::SameLine();
+  ImGui::TextDisabled("[W/E/R/T]");
   ImGui::Checkbox("Local axes##gizmo", &m_gizmoLocal);
   ImGui::SameLine();
   ImGui::Checkbox("Snap##gizmo", &m_gizmoSnap);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("0.5 units, 15 degrees, 0.1 scale; holding Ctrl snaps too");
+  ImGui::SameLine();
+  ImGui::Checkbox("Solid##gizmo", &m_gizmoSolid);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Moving stops where it touches another model (by their triangles) and slides along it;\n"
+                      "a rotation or scale that would cut into one is not applied. It can still leave or slide\n"
+                      "along a model it already cuts into, but not sink deeper.");
+  ImGui::Checkbox("Align to surface##gizmo", &m_gizmoAlign);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Dragging the move gizmo places the entity on the surface under the cursor: its bottom on\n"
+                      "it and its up axis along the surface's slope, keeping its heading.");
 }
 
 void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager &componentManager) {
@@ -355,17 +422,25 @@ void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager 
 
   ImGuiIO &io = ImGui::GetIO();
   // Shortcuts, unless a text field has the keyboard (the free camera only reads WASD with the cursor locked)
-  if (!io.WantTextInput && !ImGuizmo::IsUsing()) {
+  if (!io.WantTextInput && !ImGuizmo::IsUsing() && m_resize.axis < 0) {
     if (ImGui::IsKeyPressed(ImGuiKey_W, false))
       m_gizmoOperation = GizmoOperation::Move;
     if (ImGui::IsKeyPressed(ImGuiKey_E, false))
       m_gizmoOperation = GizmoOperation::Rotate;
     if (ImGui::IsKeyPressed(ImGuiKey_R, false))
       m_gizmoOperation = GizmoOperation::Scale;
+    if (ImGui::IsKeyPressed(ImGuiKey_T, false))
+      m_gizmoOperation = GizmoOperation::Resize;
   }
 
   const glm::mat4 view = cameraSystem.getViewMatrix(*camera);
   const glm::mat4 projection = cameraSystem.getProjectionMatrix(*camera);
+  if (m_gizmoOperation == GizmoOperation::Resize) {
+    renderResizeHandles(systemManager, componentManager, *transform, view, projection);
+    return;
+  }
+  m_resize.axis = -1;
+  m_resizeHovered = false;
   glm::mat4 model = systemManager.getSystem<TransformSystem>().calculateModelMatrix(*transform);
 
   const ImGuizmo::OPERATION operation = m_gizmoOperation == GizmoOperation::Move     ? ImGuizmo::TRANSLATE
@@ -380,8 +455,16 @@ void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager 
   ImGuizmo::SetOrthographic(false);
   ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
   ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+  m_gizmoShown = true;
+  // The heading kept while aligning to surfaces is the one the entity had when the drag started
+  if (!ImGuizmo::IsUsing())
+    m_alignHeading = transform->rotation.y;
   if (!ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode,
                             glm::value_ptr(model), nullptr, m_gizmoSnap || io.KeyCtrl ? snap : nullptr))
+    return;
+  // Align to surface: moving follows the cursor over surfaces instead of the gizmo's axes (off any surface, the
+  // gizmo moves it as usual)
+  if (operation == ImGuizmo::TRANSLATE && m_gizmoAlign && alignToSurface(systemManager, componentManager, *transform))
     return;
 
   // Back to position, rotation and scale. TransformSystem rotates by Y, then X, then Z (qy * qx * qz), which is the
@@ -398,12 +481,329 @@ void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager 
   glm::extractEulerAngleYXZ(rotation, yaw, pitch, roll);
 
   // Only what this operation changes, so moving never nudges the rotation through float round-off
+  Transform wanted = *transform;
   if (operation == ImGuizmo::TRANSLATE)
-    transform->position = glm::vec3(model[3]);
+    wanted.position = glm::vec3(model[3]);
   else if (operation == ImGuizmo::ROTATE)
-    transform->rotation = glm::degrees(glm::vec3(pitch, yaw, roll));
+    wanted.rotation = glm::degrees(glm::vec3(pitch, yaw, roll));
   else
-    transform->scale = scale;
+    wanted.scale = scale;
+  applyGizmoChange(systemManager, componentManager, *transform, wanted, operation == ImGuizmo::TRANSLATE);
+}
+
+namespace {
+// The world box of a model as placed (its bounds, rotated and scaled, boxed again along the world axes)
+struct WorldBox {
+  glm::vec3 min, max;
+};
+WorldBox worldBox(const Mesh &mesh, const glm::mat4 &matrix) {
+  const glm::vec3 low = mesh.getBoundsMin(), high = mesh.getBoundsMax();
+  WorldBox box{glm::vec3(std::numeric_limits<float>::max()), glm::vec3(-std::numeric_limits<float>::max())};
+  for (int i = 0; i < 8; ++i) {
+    const glm::vec3 corner(i & 1 ? high.x : low.x, i & 2 ? high.y : low.y, i & 4 ? high.z : low.z);
+    const glm::vec3 world = glm::vec3(matrix * glm::vec4(corner, 1.0f));
+    box.min = glm::min(box.min, world);
+    box.max = glm::max(box.max, world);
+  }
+  return box;
+}
+bool boxesOverlap(const WorldBox &a, const WorldBox &b) {
+  return glm::all(glm::lessThan(a.min, b.max)) && glm::all(glm::lessThan(b.min, a.max));
+}
+} // namespace
+
+bool EditorUISystem::applyGizmoChange(SystemManager &systemManager, ComponentManager &componentManager,
+                                      Transform &transform, const Transform &wanted, bool translating) {
+  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  if (!m_gizmoSolid || !model) {
+    transform = wanted;
+    return true;
+  }
+  auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
+  auto &transformSystem = systemManager.getSystem<TransformSystem>();
+  const ModelQueries queries(componentManager, resourceSystem, transformSystem);
+  const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
+
+  // Models it already cuts into (a floor it is sunk into a little) cannot block every move, or it would be stuck:
+  // it may leave them or slide along them, just not sink deeper. Their boxes judge "deeper".
+  std::vector<Entity> alreadyIn;
+  std::vector<WorldBox> alreadyInBoxes;
+  const WorldBox startBox = worldBox(mesh, transformSystem.calculateModelMatrix(transform));
+  componentManager.forEachComponent<Model>([&](Entity entity, Model &other) {
+    const auto *otherTransform = componentManager.tryGet<Transform>(entity);
+    if (entity == selectedEntity || !otherTransform || componentManager.has<Hidden>(entity))
+      return;
+    const WorldBox box =
+        worldBox(resourceSystem.getMesh(other.meshHandle), transformSystem.calculateModelMatrix(*otherTransform));
+    if (boxesOverlap(startBox, box) && queries.intersects(selectedEntity, transform, entity)) {
+      alreadyIn.push_back(entity);
+      alreadyInBoxes.push_back(box);
+    }
+  });
+  const auto blocks = [&](Entity entity) { return std::find(alreadyIn.begin(), alreadyIn.end(), entity) == alreadyIn.end(); };
+
+  if (!translating) {
+    // Whether a pose cuts into another model, or deeper into one it already cuts into (by their boxes: sticking out
+    // past one side of it at the start, it may not reach further in on that side)
+    const auto collidesAt = [&](const Transform &pose) {
+      bool collides = false;
+      componentManager.forEachComponent<Model>([&](Entity entity, Model &) {
+        if (!collides && entity != selectedEntity && blocks(entity) && !componentManager.has<Hidden>(entity))
+          collides = queries.intersects(selectedEntity, pose, entity);
+      });
+      if (collides)
+        return true;
+      const WorldBox now = worldBox(mesh, transformSystem.calculateModelMatrix(pose));
+      for (const WorldBox &box : alreadyInBoxes)
+        for (int axis = 0; axis < 3; ++axis) {
+          const bool fromAbove = startBox.max[axis] > box.max[axis] && startBox.min[axis] > box.min[axis];
+          const bool fromBelow = startBox.min[axis] < box.min[axis] && startBox.max[axis] < box.max[axis];
+          if ((fromAbove && now.min[axis] < startBox.min[axis] - 1e-4f) ||
+              (fromBelow && now.max[axis] > startBox.max[axis] + 1e-4f))
+            return true;
+        }
+      return false;
+    };
+
+    // Rotation and scale: all or nothing
+    if (collidesAt(wanted))
+      return false;
+    transform = wanted;
+    return true;
+  }
+
+  // Moving: one axis at a time, each stopped where its triangles first touch another model's, so the rest of the
+  // move still happens and the entity slides along what it hits. The whole path is swept: a big (snapped) step
+  // cannot jump through a thin wall.
+  Transform pose = transform;
+  for (int axis = 0; axis < 3; ++axis) {
+    glm::vec3 delta(0.0f);
+    delta[axis] = wanted.position[axis] - pose.position[axis];
+    if (delta[axis] == 0.0f)
+      continue;
+    float fraction = queries.sweep(selectedEntity, pose, delta, blocks).fraction;
+
+    // Not deeper into what it already cuts into: sticking out past its top (resting on a floor), no further down,
+    // and so on for each side. Within it (a room) or across it on this axis there is nothing to sink into.
+    const WorldBox here = worldBox(mesh, transformSystem.calculateModelMatrix(pose));
+    for (const WorldBox &box : alreadyInBoxes) {
+      const bool inside = here.min[axis] >= box.min[axis] && here.max[axis] <= box.max[axis];
+      const bool around = here.min[axis] <= box.min[axis] && here.max[axis] >= box.max[axis];
+      if (inside || around)
+        continue;
+      if ((here.max[axis] > box.max[axis] && delta[axis] < 0.0f) || (here.min[axis] < box.min[axis] && delta[axis] > 0.0f))
+        fraction = 0.0f;
+    }
+    pose.position[axis] += delta[axis] * fraction;
+  }
+  transform.position = pose.position;
+  return true;
+}
+
+glm::vec3 EditorUISystem::oneSidedScalePosition(SystemManager &systemManager, ComponentManager &componentManager,
+                                                const Transform &transform, const glm::vec3 &newScale,
+                                                bool keepLowSide) const {
+  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  if (!model)
+    return transform.position;
+  const Mesh &mesh = systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle);
+  const glm::vec3 fixedSide = keepLowSide ? mesh.getBoundsMin() : mesh.getBoundsMax();
+  // The entity's own axes (unit length): its rotation alone
+  Transform rotationOnly = transform;
+  rotationOnly.position = glm::vec3(0.0f);
+  rotationOnly.scale = glm::vec3(1.0f);
+  const glm::mat3 axes(systemManager.getSystem<TransformSystem>().calculateModelMatrix(rotationOnly));
+  // A point at the fixed side stays put: position + axes * (scale * side) is the same before and after
+  glm::vec3 position = transform.position;
+  for (int axis = 0; axis < 3; ++axis)
+    position += axes[axis] * ((transform.scale[axis] - newScale[axis]) * fixedSide[axis]);
+  return position;
+}
+
+Transform EditorUISystem::resizedTransform(SystemManager &systemManager, ComponentManager &componentManager,
+                                          float offset) const {
+  Transform result = m_resize.start;
+  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  if (!model)
+    return result;
+  const Mesh &mesh = systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle);
+  const int axis = m_resize.axis;
+  const float localSize = mesh.getBoundsMax()[axis] - mesh.getBoundsMin()[axis];
+  if (localSize <= 0.0f)
+    return result;
+  // The face moves `offset` outward: the size along the axis changes by that much, at least a sliver remaining
+  const float startSize = localSize * m_resize.start.scale[axis];
+  const float size = std::max(startSize + offset, 0.01f);
+  glm::vec3 scale = m_resize.start.scale;
+  scale[axis] = m_resize.start.scale[axis] * size / startSize;
+  result.scale = scale;
+  // The opposite face stays: the low one when dragging the high face, and the other way round
+  result.position = oneSidedScalePosition(systemManager, componentManager, m_resize.start, scale, m_resize.side > 0.0f);
+  return result;
+}
+
+void EditorUISystem::renderResizeHandles(SystemManager &systemManager, ComponentManager &componentManager,
+                                         Transform &transform, const glm::mat4 &view, const glm::mat4 &projection) {
+  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  ImGuiIO &io = ImGui::GetIO();
+  if (!model || io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f) {
+    m_resize.axis = -1;
+    m_resizeHovered = false;
+    return;
+  }
+  auto &transformSystem = systemManager.getSystem<TransformSystem>();
+  const Mesh &mesh = systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle);
+  const glm::mat4 toWorld = transformSystem.calculateModelMatrix(transform);
+  const glm::mat4 toClip = projection * view;
+  const glm::vec3 low = mesh.getBoundsMin(), high = mesh.getBoundsMax(), center = (low + high) * 0.5f;
+  Transform rotationOnly = transform;
+  rotationOnly.position = glm::vec3(0.0f);
+  rotationOnly.scale = glm::vec3(1.0f);
+  const glm::mat3 axes(transformSystem.calculateModelMatrix(rotationOnly));
+
+  auto toScreen = [&](const glm::vec3 &world, ImVec2 &screen) {
+    const glm::vec4 clip = toClip * glm::vec4(world, 1.0f);
+    if (clip.w <= 0.01f)
+      return false;
+    screen = ImVec2((clip.x / clip.w * 0.5f + 0.5f) * io.DisplaySize.x, (0.5f - clip.y / clip.w * 0.5f) * io.DisplaySize.y);
+    return true;
+  };
+
+  // The six handles: each face's center, the cursor's nearest one within reach
+  constexpr float kRadius = 7.0f;
+  struct Handle {
+    int axis;
+    float side;
+    glm::vec3 world;
+    ImVec2 screen;
+  };
+  std::vector<Handle> handles;
+  int hovered = -1;
+  float hoveredDistance = kRadius + 3.0f;
+  for (int axis = 0; axis < 3; ++axis)
+    for (float side : {1.0f, -1.0f}) {
+      glm::vec3 local = center;
+      local[axis] = side > 0.0f ? high[axis] : low[axis];
+      Handle handle{axis, side, glm::vec3(toWorld * glm::vec4(local, 1.0f)), ImVec2()};
+      if (!toScreen(handle.world, handle.screen))
+        continue;
+      const float distance = std::hypot(io.MousePos.x - handle.screen.x, io.MousePos.y - handle.screen.y);
+      if (distance < hoveredDistance && !io.WantCaptureMouse) {
+        hoveredDistance = distance;
+        hovered = static_cast<int>(handles.size());
+      }
+      handles.push_back(handle);
+    }
+  m_resizeHovered = hovered >= 0;
+
+  // Grab
+  if (m_resize.axis < 0 && hovered >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    m_resize.axis = handles[hovered].axis;
+    m_resize.side = handles[hovered].side;
+    m_resize.start = transform;
+    m_resize.faceStart = handles[hovered].world;
+    m_resize.direction = glm::normalize(axes[m_resize.axis] * m_resize.side);
+    m_resize.applied = 0.0f;
+  }
+
+  // Drag: the face follows the point of its line nearest to the cursor's ray
+  if (m_resize.axis >= 0) {
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+      m_resize.axis = -1;
+    } else {
+      const glm::vec2 ndc(io.MousePos.x / io.DisplaySize.x * 2.0f - 1.0f, 1.0f - io.MousePos.y / io.DisplaySize.y * 2.0f);
+      const glm::mat4 inverse = glm::inverse(toClip);
+      glm::vec4 nearPoint = inverse * glm::vec4(ndc, -1.0f, 1.0f), farPoint = inverse * glm::vec4(ndc, 1.0f, 1.0f);
+      nearPoint /= nearPoint.w;
+      farPoint /= farPoint.w;
+      const glm::vec3 rayOrigin(nearPoint), rayDir = glm::normalize(glm::vec3(farPoint - nearPoint));
+      // Closest points of the face's line (faceStart + direction * t) and the ray
+      const glm::vec3 w0 = m_resize.faceStart - rayOrigin;
+      const float b = glm::dot(m_resize.direction, rayDir), d = glm::dot(m_resize.direction, w0),
+                  e = glm::dot(rayDir, w0);
+      const float denominator = 1.0f - b * b;
+      if (denominator > 1e-4f) { // not looking straight along the line
+        float offset = (b * e - d) / denominator;
+        if (m_gizmoSnap || io.KeyCtrl)
+          offset = std::round(offset / 0.5f) * 0.5f;
+        Transform wanted = resizedTransform(systemManager, componentManager, offset);
+        Transform result = transform;
+        if (applyGizmoChange(systemManager, componentManager, result, wanted, false)) {
+          m_resize.applied = offset;
+        } else {
+          // Solid refused it: grow as far as it fits between where it is and where the cursor wants it
+          float fits = m_resize.applied, blocked = offset;
+          for (int step = 0; step < 12; ++step) {
+            const float middle = (fits + blocked) * 0.5f;
+            Transform candidate = transform;
+            if (applyGizmoChange(systemManager, componentManager, candidate,
+                                 resizedTransform(systemManager, componentManager, middle), false))
+              fits = middle;
+            else
+              blocked = middle;
+          }
+          m_resize.applied = fits;
+          result = resizedTransform(systemManager, componentManager, fits);
+        }
+        transform = result;
+      }
+    }
+  }
+
+  // Drawn last, at the faces as they are now
+  ImDrawList *drawList = ImGui::GetBackgroundDrawList();
+  const ImU32 colors[3] = {IM_COL32(230, 70, 70, 255), IM_COL32(80, 200, 90, 255), IM_COL32(70, 120, 240, 255)};
+  for (size_t i = 0; i < handles.size(); ++i) {
+    const Handle &handle = handles[i];
+    const bool active = m_resize.axis == handle.axis && m_resize.side == handle.side;
+    ImVec2 screen = handle.screen;
+    if (active) { // the dragged face has moved since the handles were placed
+      glm::vec3 local = center;
+      local[handle.axis] = handle.side > 0.0f ? high[handle.axis] : low[handle.axis];
+      toScreen(glm::vec3(transformSystem.calculateModelMatrix(transform) * glm::vec4(local, 1.0f)), screen);
+    }
+    drawList->AddCircleFilled(screen, kRadius, colors[handle.axis]);
+    if (active || static_cast<int>(i) == hovered)
+      drawList->AddCircle(screen, kRadius + 2.5f, IM_COL32(255, 255, 255, 230), 0, 2.0f);
+  }
+}
+
+bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManager &componentManager,
+                                    Transform &transform) {
+  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
+  const ImGuiIO &io = ImGui::GetIO();
+  if (!model || !camera || io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
+    return false;
+
+  // The cursor's ray, onto the nearest surface of anything but the entity itself
+  const glm::vec2 ndc(io.MousePos.x / io.DisplaySize.x * 2.0f - 1.0f, 1.0f - io.MousePos.y / io.DisplaySize.y * 2.0f);
+  const glm::mat4 inverse = glm::inverse(cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera));
+  glm::vec4 nearPoint = inverse * glm::vec4(ndc, -1.0f, 1.0f), farPoint = inverse * glm::vec4(ndc, 1.0f, 1.0f);
+  nearPoint /= nearPoint.w;
+  farPoint /= farPoint.w;
+  auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
+  const ModelQueries queries(componentManager, resourceSystem, systemManager.getSystem<TransformSystem>());
+  const auto hit = queries.raycast(glm::vec3(nearPoint), glm::vec3(farPoint - nearPoint),
+                                   std::numeric_limits<float>::max(),
+                                   [&](Entity entity) { return entity != selectedEntity; });
+  if (!hit)
+    return false;
+
+  // Its up (+Y) along the surface's normal, keeping the heading it had when the drag started
+  const glm::vec3 up(0.0f, 1.0f, 0.0f);
+  const glm::quat tilt = glm::rotation(up, hit->normal);
+  const glm::quat heading = glm::angleAxis(glm::radians(m_alignHeading), up);
+  float yaw = 0.0f, pitch = 0.0f, roll = 0.0f;
+  glm::extractEulerAngleYXZ(glm::mat4_cast(tilt * heading), yaw, pitch, roll);
+  transform.rotation = glm::degrees(glm::vec3(pitch, yaw, roll));
+  // Its lowest point (the bottom of its bounds) on the surface
+  transform.position = hit->point - hit->normal * (model ? resourceSystem.getMesh(model->meshHandle).getBoundsMin().y *
+                                                                transform.scale.y
+                                                          : 0.0f);
+  return true;
 }
 
 void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager,
@@ -445,6 +845,10 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
       std::string label = entityLabel(entity, icon);
       if (ImGui::Selectable(label.c_str(), selectedEntity == entity))
         selectedEntity = (selectedEntity == entity) ? -1 : entity;
+      if (m_scrollToSelection && selectedEntity == entity) {
+        ImGui::SetScrollHereY();
+        m_scrollToSelection = false;
+      }
     }
     if (entities.empty())
       ImGui::TextDisabled("  (empty)");

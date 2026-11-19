@@ -3,6 +3,8 @@
 
 #include "foundation/ecs/systemManager.h"
 #include <SDL3/SDL.h>
+#include <glm/glm.hpp>
+#include "components/transform.h"
 
 class EntityManager;
 class SystemManager;
@@ -33,11 +35,48 @@ private:
   bool m_showStats = false;
 
   // Gizmo on the selected entity: move (W), rotate (E) or scale (R), in world or local axes, optionally snapped
-  enum class GizmoOperation { Move, Rotate, Scale };
+  enum class GizmoOperation { Move, Rotate, Scale, Resize };
   GizmoOperation m_gizmoOperation = GizmoOperation::Move;
   bool m_gizmoLocal = false;
   bool m_gizmoSnap = false;
+  // Solid: the gizmo does not push the entity into other models (it stops against them and slides along them)
+  bool m_gizmoSolid = false;
+  // Where the entity goes when scaled to newScale with one face kept in place: its low side on each axis when
+  // keepLowSide, else its high side
+  glm::vec3 oneSidedScalePosition(SystemManager &systemManager, ComponentManager &componentManager,
+                                  const Transform &transform, const glm::vec3 &newScale, bool keepLowSide) const;
+
+  // Resize (T): a handle on each face of the model; dragging one moves that face alone, the opposite one stays
+  struct ResizeDrag {
+    int axis = -1;        // the entity's own axis of the face being dragged, -1 when none
+    float side = 1.0f;    // +1: the face at the high end of that axis, -1: the low end
+    Transform start;      // the transform when the drag began
+    glm::vec3 faceStart;  // the face's center then, world space
+    glm::vec3 direction;  // the face's outward normal, world space
+    float applied = 0.0f; // how far the face has moved so far (world units, outward)
+  } m_resize;
+  bool m_resizeHovered = false; // the cursor is on a handle this frame (a click there drags, not selects)
+  void renderResizeHandles(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
+                           const glm::mat4 &view, const glm::mat4 &projection);
+  // The transform with the dragged face moved `offset` outward from where it started
+  Transform resizedTransform(SystemManager &systemManager, ComponentManager &componentManager, float offset) const;
+  // Align to surface: the move gizmo drags the entity over surfaces under the cursor, tilted to their slope
+  bool m_gizmoAlign = false;
+  float m_alignHeading = 0.0f; // degrees around +Y, from when the drag started
+  // Places the selected entity on the surface under the cursor; false if there is none
+  bool alignToSurface(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform);
+  // Applies a gizmo change to the transform: as is, or kept out of other models when m_gizmoSolid is on
+  // Returns false when Solid refused a rotation or scale
+  bool applyGizmoChange(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
+                        const Transform &wanted, bool translating);
   void renderGizmo(SystemManager &systemManager, ComponentManager &componentManager);
+  bool m_gizmoShown = false; // drawn this frame, so ImGuizmo::IsOver means something
+
+  // Clicking a model in the scene selects it, clicking empty space clears the selection (debug UI shown, cursor
+  // unlocked, not over a panel or the gizmo). The selected model's box is outlined.
+  void handleClickSelection(Engine &engine, SystemManager &systemManager);
+  void drawSelectionBox(SystemManager &systemManager, ComponentManager &componentManager);
+  bool m_scrollToSelection = false; // the scene explorer brings the entity a click selected into view
   void renderGizmoControls();
 
   // Performance overlay, averaged over kStatsWindow seconds so the numbers stay readable
