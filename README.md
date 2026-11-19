@@ -60,13 +60,15 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Input System**           | Keyboard and mouse handling via SDL3                                           |
 | **Lighting System**        | Directional, point, and spotlight types with intensity and cutoff controls; gamma-correct by default |
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
+| **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
+| **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
 | **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
 | **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
 | **Performance Overlay**    | `F5` shows FPS, frame time, work time before the buffer swap and the worst frame |
 | **VSync & Pause**          | `F6` toggles vsync; `F7` pauses the simulation while the camera keeps moving |
 | **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
 | **UI Integration**         | ImGui-based editor (`F2`) with material inspector, light tweaks, entity hierarchy and a settings panel |
-| **Settings Panel**         | Every toggle with its key (`F1`–`F8`), time scale, camera FOV/speed, screenshots and render stats (draw calls, culled meshes, particles) |
+| **Settings Panel**         | Every toggle with its key (`F1`–`F9`), time scale, camera FOV/speed, audio volumes, screenshots and render stats (draw calls, culled meshes, particles) |
 | **Scene Management**       | Entity lifecycle management and component composition                          |
 
 ---
@@ -126,7 +128,7 @@ git clone https://github.com/phmuni/modular-engine.git
 cd modular-engine
 ```
 
-Bundled dependencies (ImGui, glad, stb_image, Tiny_Obj, tinygltf) live in `external/`. SDL3, GLM and nlohmann/json are fetched automatically by CPM at configure time (internet required on first build).
+Bundled dependencies (ImGui, glad, stb_image, Tiny_Obj, tinygltf) live in `external/`. SDL3, GLM, nlohmann/json, miniaudio, RmlUi and FreeType are fetched automatically by CPM at configure time (internet required on first build).
 
 ---
 
@@ -192,6 +194,7 @@ In the black hole example and the model viewer the camera orbits on its own: `�
 | `F6` | VSync |
 | `F7` | Pause the simulation |
 | `F8` | Gamma-correct lighting |
+| `F9` | Game UI (RmlUi) debugger |
 | `F12` | Screenshot (`bin/screenshot.bmp`) |
 | `Right Alt` / `Right Option` | Cursor lock |
 | `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled |
@@ -375,6 +378,70 @@ engine.entities().create("Castle").withModel("../assets/models/castle/castle.glb
 
 For direct ResourceSystem access and full API reference, explore [`src/systems/resourceSystem.h`](src/systems/resourceSystem.h).
 
+### Audio
+
+Sounds are WAV, MP3 or FLAC files, with paths relative to `bin/` like models. The listener is the active camera.
+
+```cpp
+void setup(Engine& engine) override {
+    engine.preloadSound("../assets/sounds/explosion.wav"); // decoded in the background
+    engine.playMusic("../assets/sounds/music.wav", 0.4f);  // streamed from disk, loops
+}
+
+// Fire-and-forget effects: heard the same anywhere, or placed in the world
+engine.playSound("../assets/sounds/laser.wav", 0.35f);
+engine.playSoundAt("../assets/sounds/explosion.wav", position, 0.8f, /*pitch*/ 1.05f);
+
+// A sound that follows an entity
+Entity fan = engine.entities()
+                 .create("Fan")
+                 .withModel("../assets/models/box/box.obj", pos, rot, scale)
+                 .withSound("../assets/sounds/hum.wav", /*loop*/ true, /*volume*/ 0.6f)
+                 .build();
+engine.getOrThrow<AudioSource>(fan).playing = false; // stop it; true starts it again
+```
+
+`AudioSource` also sets pitch, whether it is spatial, and how it fades with distance (`minDistance`, `maxDistance`, `rolloff`). Effects (sources and one-shots) pause with `F7` and follow the time scale; music keeps playing. The Settings panel has master, effects and music volumes, and the Properties panel edits an entity's `AudioSource`. Without an audio device the engine runs silently. See [`src/systems/audioSystem.h`](src/systems/audioSystem.h).
+
+### Game UI
+
+Menus and HUDs are [RmlUi](https://mikke89.github.io/RmlUiDoc/) documents: RML (HTML-like) for structure and RCSS (CSS-like) for style, with flexbox, gradients, shadows, transitions and animations. They are drawn over the scene and under the ImGui debug panels. A data model ties them to game state:
+
+```cpp
+#include <RmlUi/Core.h>
+
+struct Hud { int score = 0; } hud;
+Rml::DataModelHandle hudModel;
+
+void setup(Engine& engine) override {
+    // Data models before the documents that use them
+    Rml::DataModelConstructor model = engine.getUIContext()->CreateDataModel("hud");
+    model.Bind("score", &hud.score);
+    model.BindEventCallback("restart", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) { /* ... */ });
+    hudModel = model.GetModelHandle();
+
+    engine.loadUIDocument("../assets/ui/hud.rml");
+}
+
+void update(Engine& engine, float dt) override {
+    hud.score = 42;
+    hudModel.DirtyVariable("score"); // shown this frame
+}
+```
+
+```html
+<!-- hud.rml -->
+<rml>
+<head><link type="text/rcss" href="hud.rcss"/></head>
+<body data-model="hud">
+    <div class="score">{{ score }}</div>
+    <button data-event-click="restart">Play again</button>
+</body>
+</rml>
+```
+
+RCSS has no default style sheet, so give `div` a `display: block`. Lato is loaded as `font-family: LatoLatin`; `engine.loadUIFont` adds others. Clicks and key presses the UI uses don't reach the game, and `pointer-events: none` lets clicks pass through HUD areas. `F9` opens RmlUi's debugger to inspect elements and see style errors. The Space Aliens HUD ([`assets/ui/aliens/`](assets/ui/aliens/)) is a complete example.
+
 ---
 
 <a id="technologies"></a>
@@ -389,7 +456,8 @@ For direct ResourceSystem access and full API reference, explore [`src/systems/r
 | Window & Input | SDL3                |
 | Mathematics    | GLM                 |
 | Asset Loading  | Tiny_Obj, tinygltf  |
-| UI Framework   | Dear ImGui          |
+| Audio          | miniaudio           |
+| UI Framework   | Dear ImGui (tools), RmlUi (game UI) |
 | Dependencies   | See `external/`     |
 
 ---
