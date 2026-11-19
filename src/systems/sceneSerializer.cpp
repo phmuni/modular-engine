@@ -130,6 +130,8 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent<GravityLens>("GravityLens");
   registerComponent<AudioSource>("AudioSource");
   registerComponent<Skybox>("Skybox");
+  registerComponent<RigidBody>("RigidBody");
+  registerComponent<CharacterController>("CharacterController");
 
   registerComponent(
       "Hidden",

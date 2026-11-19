@@ -11,6 +11,8 @@
 #include "components/light.h"
 #include "components/particleEmitter.h"
 #include "components/skybox.h"
+#include "components/characterController.h"
+#include "components/rigidBody.h"
 #include "components/transform.h"
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
@@ -51,6 +53,20 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Camera, position, yaw, pitch, fo
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Collision, min, max, isStatic)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation)
+
+NLOHMANN_JSON_SERIALIZE_ENUM(BodyType, {{BodyType::Static, "static"},
+                                        {BodyType::Dynamic, "dynamic"},
+                                        {BodyType::Kinematic, "kinematic"}})
+NLOHMANN_JSON_SERIALIZE_ENUM(BodyShape, {{BodyShape::Box, "box"},
+                                         {BodyShape::Sphere, "sphere"},
+                                         {BodyShape::Capsule, "capsule"},
+                                         {BodyShape::ConvexHull, "convexHull"},
+                                         {BodyShape::Mesh, "mesh"}})
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(RigidBody, type, shape, size, mass, friction, restitution, linearDamping,
+                                                angularDamping, gravityScale, lockRotation, sensor)
+// move, jump, onGround and velocity are per frame, not part of the scene
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(CharacterController, radius, height, maxSlope, stepHeight,
+                                                gravityScale)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(GravityLens, schwarzschildRadius, maxMagnification)
 

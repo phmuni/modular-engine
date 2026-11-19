@@ -66,6 +66,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
+| **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
 | **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
 | **Collisions**             | Axis-aligned boxes (`withCollision`, or fitted to the model with `withModelCollision`), queried by component pair (`forEachCollision<Bullet, Enemy>`) and by ray (`raycast<Enemy>`) |
@@ -413,6 +414,38 @@ engine.removeComponent<Velocity>(e);
 engine.destroyEntity(e);
 engine.isAlive(e);  // false: handles of destroyed entities, or of a scene that loadScene replaced
 ```
+
+### Physics
+
+[Jolt Physics](https://github.com/jrouwe/JoltPhysics) simulates entities with a `RigidBody`: static (floors, walls,
+level geometry), dynamic (falls, collides, slides, bounces) or kinematic (follows its Transform and pushes what it
+meets). The shape is a box, sphere, capsule, convex hull or the exact triangle mesh, sized from the model unless a size
+is given, and scaled by the Transform. A `CharacterController` walks on all of it: it stays on the ground, climbs
+slopes and steps, jumps and pushes dynamic bodies.
+
+```cpp
+engine.entities().create("Floor").withModel("../assets/models/level.glb", {0, 0, 0})
+    .withRigidBody(BodyType::Static, BodyShape::Mesh).build();
+Entity crate = engine.entities().create("Crate").withModel(EngineConfig::MODEL_BOX, {0, 5, 0})
+    .withRigidBody(BodyType::Dynamic, BodyShape::Box, 20.0f /* kg */).build();
+Entity hero = engine.entities().create("Hero").withModel("../assets/models/hero.glb", {0, 1, 4})
+    .withCharacter(0.35f /* radius */, 1.8f /* height */).build();
+
+// Each frame
+auto &character = engine.get<CharacterController>(hero);
+character.move = direction * 5.0f;              // horizontal velocity it wants
+if (jumpPressed && character.onGround)
+    character.jump = 6.0f;                      // upward speed
+
+engine.physics().addImpulse(crate, {0, 200, 0});  // also velocities, forces, gravity
+if (auto hit = engine.physics().raycast(origin, direction, 50.0f)) { /* hit->entity, point, normal */ }
+engine.forEachContact<Bullet, Enemy>([&](Entity bullet, Bullet &, Entity enemy, Enemy &) { /* ... */ });
+```
+
+The simulation steps at a fixed 60 Hz, writes dynamic bodies' and characters' Transforms, and takes Transforms moved
+by game code or the editor's gizmo as teleports; changing a `RigidBody` (or the entity's scale) rebuilds its body. Both
+components are saved in scenes and edited in the Properties panel, the simulation stands still while editing, and
+Stop rebuilds the bodies. [`assets/scenes/physics.json`](assets/scenes/physics.json) is a small example.
 
 ### Play and Stop
 

@@ -11,6 +11,8 @@
 #include "components/parent.h"
 #include "components/particleEmitter.h"
 #include "components/skybox.h"
+#include "components/characterController.h"
+#include "components/rigidBody.h"
 #include "components/transform.h"
 #include "foundation/core/engine.h"
 #include "systems/modelQueries.h"
@@ -1247,6 +1249,60 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
     }
   }
 
+  // Rigid body
+  if (!earlyOut && componentManager.has<RigidBody>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Rigid Body", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##body")) {
+        componentManager.removeComponent<RigidBody>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        // Edited on a copy: the body is rebuilt when its settings change, so not on every drag step's write
+        RigidBody body = componentManager.get<RigidBody>(selectedEntity);
+        int type = static_cast<int>(body.type);
+        ImGui::Combo("Type##body", &type, "Static\0Dynamic\0Kinematic\0");
+        body.type = static_cast<BodyType>(type);
+        int shape = static_cast<int>(body.shape);
+        ImGui::Combo("Shape##body", &shape, "Box\0Sphere\0Capsule\0Convex hull\0Mesh\0");
+        body.shape = static_cast<BodyShape>(shape);
+        ImGui::DragFloat3("Size##body", &body.size.x, 0.05f, 0.0f, 1000.0f, "%.2f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("All zero: the model's bounds");
+        if (body.type == BodyType::Dynamic) {
+          ImGui::DragFloat("Mass##body", &body.mass, 0.1f, 0.0f, 100000.0f, body.mass > 0.0f ? "%.1f kg" : "from volume");
+          ImGui::SliderFloat("Gravity##body", &body.gravityScale, -2.0f, 4.0f, "%.2fx");
+          ImGui::Checkbox("Lock rotation##body", &body.lockRotation);
+        }
+        ImGui::SliderFloat("Friction##body", &body.friction, 0.0f, 2.0f, "%.2f");
+        ImGui::SliderFloat("Bounce##body", &body.restitution, 0.0f, 1.0f, "%.2f");
+        ImGui::Checkbox("Sensor##body", &body.sensor);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Reports contacts but lets things pass through");
+        componentManager.get<RigidBody>(selectedEntity) = body;
+      }
+    }
+  }
+
+  // Character controller
+  if (!earlyOut && componentManager.has<CharacterController>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Character Controller", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##character")) {
+        componentManager.removeComponent<CharacterController>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        auto &character = componentManager.get<CharacterController>(selectedEntity);
+        ImGui::DragFloat("Radius##character", &character.radius, 0.01f, 0.05f, 5.0f, "%.2f");
+        ImGui::DragFloat("Height##character", &character.height, 0.01f, 0.1f, 10.0f, "%.2f");
+        ImGui::SliderFloat("Max slope##character", &character.maxSlope, 0.0f, 89.0f, "%.0f deg");
+        ImGui::DragFloat("Step height##character", &character.stepHeight, 0.01f, 0.0f, 2.0f, "%.2f");
+        ImGui::Text("On ground: %s   speed: %.2f", character.onGround ? "yes" : "no", glm::length(character.velocity));
+      }
+    }
+  }
+
   // Skybox
   if (!earlyOut && componentManager.has<Skybox>(selectedEntity)) {
     if (ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1308,6 +1364,12 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
           auto &src = componentManager.addInPlace<AudioSource>(selectedEntity);
           src.playing = false;
         }
+      }
+      if (!componentManager.has<RigidBody>(selectedEntity) && !componentManager.has<CharacterController>(selectedEntity)) {
+        if (ImGui::Button("+ Rigid Body", ImVec2(-1, 0)))
+          componentManager.addInPlace<RigidBody>(selectedEntity);
+        if (ImGui::Button("+ Character Controller", ImVec2(-1, 0)))
+          componentManager.addInPlace<CharacterController>(selectedEntity);
       }
       if (!componentManager.has<Skybox>(selectedEntity)) {
         if (ImGui::Button("+ Skybox", ImVec2(-1, 0))) {

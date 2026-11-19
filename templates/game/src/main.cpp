@@ -1,11 +1,11 @@
-// MyGame: a starting point for a game on modular-engine. Drive the box with W A S D and pick up the gold spheres.
+// MyGame: a starting point for a game on modular-engine. Walk with W A S D, jump with Space, push the crates around
+// and pick up the gold spheres.
 //
 // The level is a scene file, assets/scenes/level.json: press F2 for the editor, move things around (click to select,
 // W/E/R/T for the gizmos) and save it from the Settings panel. The code below builds what the level file does not
 // have (the player, the coins) once the level has loaded.
 
 #include "components/camera.h"
-#include "components/collision.h"
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
 #include "foundation/core/logger.h"
@@ -18,6 +18,7 @@
 struct Player {
   float speed = 6.0f;       // units per second
   float turnSpeed = 160.0f; // degrees per second
+  float jumpSpeed = 6.0f;   // units per second, upward
 };
 struct Coin {
   float spin = 120.0f; // degrees per second
@@ -26,6 +27,7 @@ struct Coin {
 class MyGame : public App {
   static constexpr const char *LEVEL = "../assets/scenes/level.json";
   static constexpr glm::vec3 GOLD{1.0f, 0.78f, 0.25f};
+  static constexpr glm::vec3 START{0.0f, 0.6f, 3.0f};
 
   Entity player = -1;
   int coinsLeft = 0;
@@ -33,9 +35,10 @@ class MyGame : public App {
   void spawnPlayer(Engine &engine) {
     player = engine.entities()
                  .create("Player")
-                 .withModel(EngineConfig::MODEL_BOX, glm::vec3(0.0f, 0.4f, 3.0f), glm::vec3(0.0f), glm::vec3(0.8f))
+                 .withModel(EngineConfig::MODEL_BOX, START, glm::vec3(0.0f), glm::vec3(0.8f))
                  .withSolidColor(glm::vec3(0.2f, 0.55f, 1.0f))
-                 .withModelCollision()
+                 .withCharacter(0.4f, 0.8f) // physics: walks on the level, pushes the crates
+                 .withModelCollision()       // and a box for picking up coins (forEachCollision below)
                  .withComponent<Player>()
                  .build();
   }
@@ -72,18 +75,16 @@ class MyGame : public App {
     if (input.isKeyDown(SDL_SCANCODE_S) || input.isKeyDown(SDL_SCANCODE_DOWN))
       drive -= 1.0f;
 
+    // Turning is ours; walking goes through the character controller, which keeps it on the ground and out of walls
     transform.rotation.y += turn * settings.turnSpeed * deltaTime;
-    const glm::vec3 previous = transform.position;
-    transform.position += forward(transform) * drive * settings.speed * deltaTime;
+    auto &character = engine.get<CharacterController>(player);
+    character.move = forward(transform) * drive * settings.speed;
+    if (input.wasKeyPressed(SDL_SCANCODE_SPACE) && character.onGround)
+      character.jump = settings.jumpSpeed;
 
-    // Static boxes (the crates, the wall) stop it: undo the step if it now overlaps one
-    for (const CollisionEvent &pair : engine.findCollisions()) {
-      const Entity other = pair.a == player ? pair.b : pair.b == player ? pair.a : -1;
-      if (other != -1 && engine.get<Collision>(other).isStatic) {
-        transform.position = previous;
-        break;
-      }
-    }
+    // Fell off the level: back to the start (moving the Transform moves the character there)
+    if (transform.position.y < -10.0f)
+      transform.position = START;
   }
 
   void updateCoins(Engine &engine, float deltaTime) {

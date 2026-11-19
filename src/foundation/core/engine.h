@@ -2,6 +2,8 @@
 // Main engine class: initialization, game loop, and entity creation interface.
 
 #include "components/audioSource.h"
+#include "components/characterController.h"
+#include "components/rigidBody.h"
 #include "components/light.h"
 #include "components/skybox.h"
 #include "components/transform.h"
@@ -10,6 +12,7 @@
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "systems/collisionSystem.h"
+#include "systems/physicsSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/stateSystem.h"
 #include <functional>
@@ -68,6 +71,21 @@ public:
     // Plays from the entity's position; see AudioSource for the other settings
     EntityBuilder &withSound(std::string_view path, bool loop = true, float volume = 1.0f) {
       return withComponent<AudioSource>(std::string(path), volume, 1.0f, loop);
+    }
+    // A physics body (see RigidBody): its shape fits the model unless a size is given
+    EntityBuilder &withRigidBody(BodyType type, BodyShape shape = BodyShape::Box, float mass = 0.0f) {
+      RigidBody body;
+      body.type = type;
+      body.shape = shape;
+      body.mass = mass;
+      return withComponent<RigidBody>(body);
+    }
+    // A walking character (see CharacterController), the Transform at the capsule's middle
+    EntityBuilder &withCharacter(float radius = 0.35f, float height = 1.8f) {
+      CharacterController controller;
+      controller.radius = radius;
+      controller.height = height;
+      return withComponent<CharacterController>(controller);
     }
     // Follows `parent` (see components/parent.h); the position, rotation and scale given to withModel or
     // withTransform are then relative to the parent
@@ -176,6 +194,26 @@ public:
   }
   // Every overlapping pair, each once
   const std::vector<CollisionEvent> &findCollisions();
+
+  // Physics (Jolt): bodies come from RigidBody components and characters from CharacterController ones. physics()
+  // gives velocities, impulses, gravity, raycasts against bodies and the contacts of the last update.
+  PhysicsSystem &physics();
+  // Bodies that started touching during the last update, one of them with component A and the other with B (each
+  // pair once, A's first), e.g. forEachContact<Player, Coin>
+  template <typename A, typename B, typename Fn> void forEachContact(Fn &&fn) {
+    const std::vector<PhysicsContact> contacts = physics().getContacts();
+    for (const PhysicsContact &contact : contacts) {
+      if (A *a = tryGet<A>(contact.a)) {
+        if (B *b = tryGet<B>(contact.b)) {
+          fn(contact.a, *a, contact.b, *b);
+          continue;
+        }
+      }
+      if (A *a = tryGet<A>(contact.b))
+        if (B *b = tryGet<B>(contact.a))
+          fn(contact.b, *a, contact.a, *b);
+    }
+  }
   // The nearest Collision box along a ray, within maxDistance; see CollisionSystem::raycast
   std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
                                 const std::function<bool(Entity)> &accept = nullptr);

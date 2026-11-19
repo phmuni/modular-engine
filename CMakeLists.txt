@@ -79,6 +79,32 @@ CPMAddPackage(
   GIT_TAG 105e4fde45e4e74aae8973d98750820ef7aca7e2
   DOWNLOAD_ONLY YES
 )
+# Physics: Jolt (rigid bodies, characters), built as a static library without its samples and tests
+CPMAddPackage(
+  NAME JoltPhysics
+  GITHUB_REPOSITORY jrouwe/JoltPhysics
+  GIT_TAG v5.6.0
+  SOURCE_SUBDIR Build
+  OPTIONS
+    "TARGET_UNIT_TESTS OFF"
+    "TARGET_HELLO_WORLD OFF"
+    "TARGET_PERFORMANCE_TEST OFF"
+    "TARGET_SAMPLES OFF"
+    "TARGET_VIEWER OFF"
+    "ENABLE_ALL_WARNINGS OFF"
+    "INTERPROCEDURAL_OPTIMIZATION OFF"
+    "USE_STATIC_MSVC_RUNTIME_LIBRARY OFF"
+    "OVERRIDE_CXX_FLAGS OFF"
+    "DEBUG_RENDERER_IN_DEBUG_AND_RELEASE OFF"
+    "PROFILER_IN_DEBUG_AND_RELEASE OFF"
+    "JPH_USE_DX12 OFF"
+    "JPH_USE_VK OFF"
+    "JPH_USE_MTL OFF"
+)
+# Optimized in every build type, like the particle update: an unoptimized physics step slows a Debug game down a lot
+if(TARGET Jolt AND NOT MSVC)
+  target_compile_options(Jolt PRIVATE "$<$<CONFIG:Debug>:-O2>")
+endif()
 # Audio: only the sources are used; miniaudio.c is compiled into the engine below
 CPMAddPackage(
   NAME miniaudio
@@ -133,6 +159,7 @@ target_link_libraries(modular_engine PUBLIC
     glm::glm
     nlohmann_json::nlohmann_json
     RmlUi::RmlUi
+    Jolt
 )
 if(MSVC)
   target_compile_definitions(modular_engine PUBLIC _CRT_SECURE_NO_WARNINGS)

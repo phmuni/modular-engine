@@ -265,7 +265,8 @@ void Engine::update(bool &isRunning) {
   // Scene switches wait until the app is done with this frame's entities
   applyPendingScene();
 
-  // Children follow where their parents went this frame
+  // Bodies fall, collide and push; then children follow where their parents went this frame
+  m_systemManager.getSystem<PhysicsSystem>().update(timeSystem.getDeltaTime());
   m_systemManager.getSystem<TransformSystem>().updateHierarchy(m_componentManager);
 
   if (m_sceneSave) {
@@ -353,6 +354,8 @@ Camera *Engine::getActiveCamera() {
 }
 
 InputSystem &Engine::input() { return m_systemManager.getSystem<InputSystem>(); }
+
+PhysicsSystem &Engine::physics() { return m_systemManager.getSystem<PhysicsSystem>(); }
 
 std::optional<RayHit> Engine::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
                                       const std::function<bool(Entity)> &accept) {
@@ -630,6 +633,7 @@ void Engine::applyPlayModeRequest() {
       cameraSystem.removeActiveCamera();
     m_systemManager.getSystem<LightSystem>().rebuild(m_componentManager);
     m_systemManager.getSystem<RenderSystem>().resetCaches();
+    m_systemManager.getSystem<PhysicsSystem>().reset();
     resourceSystem.setPinnedMaterials({});
     auto &editor = m_systemManager.getSystem<EditorUISystem>();
     if (!m_entityManager.isAlive(editor.selectedEntity))
@@ -743,6 +747,8 @@ void Engine::registerSystems() {
   m_systemManager.insert<SceneSerializer>(m_entityManager, m_componentManager, m_systemManager);
   m_systemManager.insert<ParticleSystem>(m_componentManager);
   m_systemManager.insert<CollisionSystem>();
+  m_systemManager.insert<PhysicsSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>(),
+                                        m_systemManager.getSystem<TransformSystem>());
   m_systemManager.insert<AudioSystem>(m_componentManager);
   m_systemManager.insert<GameUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow());
   m_systemManager.insert<EditorUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),

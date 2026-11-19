@@ -1,0 +1,589 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Camera",
+      "components": {
+        "Transform": {},
+        "Camera": {
+          "active": true,
+          "position": [
+            0.0,
+            6.5,
+            15.0
+          ],
+          "pitch": -20.0,
+          "fov": 60.0,
+          "moveSpeed": 6.0
+        }
+      }
+    },
+    {
+      "name": "Sun",
+      "components": {
+        "Transform": {},
+        "Light": {
+          "type": "directional",
+          "direction": [
+            -0.45,
+            -1.0,
+            -0.35
+          ],
+          "color": [
+            1.0,
+            0.96,
+            0.88
+          ],
+          "intensity": 1.0,
+          "castShadows": true
+        }
+      }
+    },
+    {
+      "name": "Floor",
+      "components": {
+        "Transform": {
+          "position": [
+            0,
+            -0.25,
+            0
+          ],
+          "scale": [
+            30,
+            0.5,
+            30
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.36,
+                0.38,
+                0.42
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Ramp",
+      "components": {
+        "Transform": {
+          "position": [
+            -5,
+            1.2,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            -22
+          ],
+          "scale": [
+            7,
+            0.3,
+            4
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.55,
+                0.5,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Crate 0",
+      "components": {
+        "Transform": {
+          "position": [
+            3.0,
+            0.4,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.85,
+                0.3,
+                0.25
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Crate 1",
+      "components": {
+        "Transform": {
+          "position": [
+            3.85,
+            0.4,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.85,
+                0.3,
+                0.25
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Crate 2",
+      "components": {
+        "Transform": {
+          "position": [
+            4.7,
+            0.4,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.85,
+                0.3,
+                0.25
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Crate 3",
+      "components": {
+        "Transform": {
+          "position": [
+            3.42,
+            1.2000000000000002,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.95,
+                0.7,
+                0.2
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Crate 4",
+      "components": {
+        "Transform": {
+          "position": [
+            4.2700000000000005,
+            1.2000000000000002,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.95,
+                0.7,
+                0.2
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Crate 5",
+      "components": {
+        "Transform": {
+          "position": [
+            3.0,
+            2.0,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.3,
+                0.65,
+                0.9
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Crate 6",
+      "components": {
+        "Transform": {
+          "position": [
+            3.85,
+            2.0,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.3,
+                0.65,
+                0.9
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Crate 7",
+      "components": {
+        "Transform": {
+          "position": [
+            4.7,
+            2.0,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.3,
+                0.65,
+                0.9
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Crate 8",
+      "components": {
+        "Transform": {
+          "position": [
+            3.42,
+            2.8000000000000003,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.85,
+                0.3,
+                0.25
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Crate 9",
+      "components": {
+        "Transform": {
+          "position": [
+            4.2700000000000005,
+            2.8000000000000003,
+            0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.85,
+                0.3,
+                0.25
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "name": "Ball 0",
+      "components": {
+        "Transform": {
+          "position": [
+            -7,
+            5.0,
+            0.3
+          ],
+          "scale": [
+            0.6,
+            0.6,
+            0.6
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/sphere/sphere.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.9,
+                0.9,
+                0.95
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "shape": "sphere",
+          "restitution": 0.6
+        }
+      }
+    },
+    {
+      "name": "Ball 1",
+      "components": {
+        "Transform": {
+          "position": [
+            -6,
+            6.5,
+            -0.6
+          ],
+          "scale": [
+            0.6,
+            0.6,
+            0.6
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/sphere/sphere.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.9,
+                0.9,
+                0.95
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "shape": "sphere",
+          "restitution": 0.6
+        }
+      }
+    },
+    {
+      "name": "Ball 2",
+      "components": {
+        "Transform": {
+          "position": [
+            -8,
+            8.0,
+            0.8
+          ],
+          "scale": [
+            0.6,
+            0.6,
+            0.6
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/sphere/sphere.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.9,
+                0.9,
+                0.95
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "shape": "sphere",
+          "restitution": 0.6
+        }
+      }
+    },
+    {
+      "name": "Alien",
+      "components": {
+        "Transform": {
+          "position": [
+            0.0,
+            6.0,
+            -2.0
+          ],
+          "rotation": [
+            20,
+            30,
+            0
+          ],
+          "scale": [
+            1.2,
+            1.2,
+            1.2
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/alien/alien.glb"
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "shape": "convexHull"
+        }
+      }
+    }
+  ]
+}
