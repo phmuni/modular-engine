@@ -41,6 +41,7 @@ private:
 
   // How many model slots use each material, recounted every frame by collectUnusedMaterials()
   std::unordered_map<uint32_t, uint32_t> m_materialUses;
+  std::vector<uint32_t> m_pinnedMaterials;
   bool m_hasBlendMaterials = false;
   std::unordered_map<uint32_t, uint32_t> m_maskVariants;
 
@@ -95,6 +96,9 @@ public:
   void ensureOwnMaterial(uint32_t &handle);
   // Frees materials no Model uses anymore; call once per frame, after entities were destroyed
   void collectUnusedMaterials();
+  // Materials kept alive (and counted as used, so changing one copies it first) while something outside the scene
+  // refers to them: the editor's Play snapshot
+  void setPinnedMaterials(std::vector<uint32_t> handles) { m_pinnedMaterials = std::move(handles); }
 
   // Material helpers
   void setMaterialShininess(uint32_t &handle, float shininess);

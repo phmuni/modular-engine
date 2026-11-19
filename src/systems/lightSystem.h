@@ -29,6 +29,8 @@ public:
 
   void createLight(Entity entity);
   void destroyLight(Entity entity);
+  // The lights are the entities with a Light again, after the entities were replaced wholesale
+  void rebuild(ComponentManager &componentManager);
   const std::vector<Entity> &getLights() const;
   // Picks the point and spot lights with castShadows (in light order, up to `maxCasters`) that render a cube shadow
   // map this frame; with `enabled` false, none do

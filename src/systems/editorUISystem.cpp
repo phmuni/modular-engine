@@ -328,6 +328,7 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
 
   renderSettingsPanel(engine, entityManager, systemManager, componentManager);
   renderSceneExplorer(engine, systemManager, componentManager);
+  renderPlayToolbar(engine);
   m_gizmoShown = false;
   if (selectedEntity != -1) {
     renderPropertiesPanel(systemManager, componentManager);
@@ -938,6 +939,66 @@ void EditorUISystem::renderParentAndPrefab(SystemManager &systemManager, Compone
     systemManager.getSystem<SceneSerializer>().savePrefab(selectedEntity, EngineConfig::resolvePath(prefabPath));
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Saves this entity and its children; Add Entity > Prefab places copies of it");
+}
+
+void EditorUISystem::renderPlayToolbar(Engine &engine) {
+  const ImGuiIO &io = ImGui::GetIO();
+  const Engine::PlayMode mode = engine.getPlayMode();
+
+  // Ctrl+P: Play from Editing, Stop while testing, and freeze a running game
+  if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_P, false) && !io.WantTextInput) {
+    if (mode == Engine::PlayMode::Editing)
+      engine.play();
+    else if (mode == Engine::PlayMode::Testing)
+      engine.stop();
+    else
+      engine.edit();
+  }
+
+  // A small bar at the top right of the view, left of the Properties panel when it is open
+  const float right = io.DisplaySize.x - (selectedEntity != -1 ? kPropertiesWidth : 0.0f) - 8.0f;
+  ImGui::SetNextWindowPos(ImVec2(right, 6.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+  ImGui::SetNextWindowBgAlpha(0.85f);
+  ImGui::Begin("##PlayToolbar", nullptr,
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
+                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing);
+  const ImVec4 green(0.25f, 0.65f, 0.3f, 1.0f), red(0.75f, 0.2f, 0.2f, 1.0f), blue(0.25f, 0.45f, 0.8f, 1.0f);
+  auto coloredButton = [](const char *label, const ImVec4 &color) {
+    ImGui::PushStyleColor(ImGuiCol_Button, color);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(color.x + 0.1f, color.y + 0.1f, color.z + 0.1f, 1.0f));
+    const bool pressed = ImGui::Button(label, ImVec2(70.0f, 0.0f));
+    ImGui::PopStyleColor(2);
+    return pressed;
+  };
+  if (mode == Engine::PlayMode::Running) {
+    if (coloredButton("Edit", blue))
+      engine.edit();
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Freezes the game to edit the scene (Ctrl+P); Play then tests it from there,\n"
+                        "and Stop puts the scene back as it was");
+    ImGui::SameLine();
+    ImGui::TextDisabled("Running");
+  } else if (mode == Engine::PlayMode::Editing) {
+    if (coloredButton("Play", green))
+      engine.play();
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Runs the game from the scene as it is now (Ctrl+P); Stop puts everything back");
+    ImGui::SameLine();
+    if (ImGui::Button("Resume", ImVec2(70.0f, 0.0f)))
+      engine.resume();
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Unfreezes the game and keeps whatever happens (nothing to go back to)");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "Editing (frozen)");
+  } else {
+    if (coloredButton("Stop", red))
+      engine.stop();
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Puts every entity back as it was at Play (Ctrl+P)");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.45f, 0.9f, 0.5f, 1.0f), "Playing");
+  }
+  ImGui::End();
 }
 
 void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager,

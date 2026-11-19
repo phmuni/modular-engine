@@ -268,6 +268,8 @@ void ResourceSystem::collectUnusedMaterials() {
     for (uint32_t handle : model.materialHandles)
       ++m_materialUses[handle];
   });
+  for (uint32_t handle : m_pinnedMaterials)
+    ++m_materialUses[handle];
 
   // Handle 0 is the default material and always stays
   m_hasBlendMaterials = false;

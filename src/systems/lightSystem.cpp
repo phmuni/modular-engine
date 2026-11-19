@@ -36,6 +36,12 @@ const std::array<LightUniformNames, kMaxLights> &lightUniformNames() {
 
 void LightSystem::createLight(Entity entity) { m_lights.push_back(entity); }
 
+void LightSystem::rebuild(ComponentManager &componentManager) {
+  m_lights.clear();
+  componentManager.forEachComponent<Light>([&](Entity entity, Light &) { m_lights.push_back(entity); });
+  std::sort(m_lights.begin(), m_lights.end()); // creation order, as they were added
+}
+
 void LightSystem::destroyLight(Entity entity) {
   auto it = std::remove(m_lights.begin(), m_lights.end(), entity);
   m_lights.erase(it, m_lights.end());

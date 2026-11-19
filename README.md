@@ -66,6 +66,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
+| **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
 | **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
 | **Collisions**             | Axis-aligned boxes (`withCollision`, or fitted to the model with `withModelCollision`), queried by component pair (`forEachCollision<Bullet, Enemy>`) and by ray (`raycast<Enemy>`) |
 | **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
@@ -218,6 +219,7 @@ In the black hole example and the model viewer the camera orbits on its own: `â†
 | `Right Alt` / `Right Option` | Cursor lock |
 | `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled (with the cursor locked) |
 | Left click in the scene | Editor: select the model under the cursor (empty space clears the selection; debug UI shown, cursor unlocked) |
+| `Ctrl` + `P` | Editor: freeze the game to edit the scene, Play from there, Stop to put the scene back (also the bar at the top) |
 | `W` / `E` / `R` / `T` | Editor gizmo on the selected entity: move / rotate / scale / resize (cursor unlocked; `Ctrl` snaps; **Resize** puts a handle on each face, and dragging one moves that face alone; **Solid** in the Properties panel stops it where its triangles touch another model's, and it slides along; **Align to surface** makes the move gizmo place it on the surface under the cursor, tilted to its slope) |
 
 To save a frame without a window manager screenshot, pass `--screenshot <file.bmp> [seconds]`; the engine waits that long (3 seconds by default), saves the frame and exits:
@@ -411,6 +413,18 @@ engine.removeComponent<Velocity>(e);
 engine.destroyEntity(e);
 engine.isAlive(e);  // false: handles of destroyed entities, or of a scene that loadScene replaced
 ```
+
+### Play and Stop
+
+With the editor open (`F2`), the bar at the top (or `Ctrl` + `P`) freezes the game for editing: the app's `update`
+stops and time stands still, while the camera and the editor keep working. **Play** then runs the game from the scene
+as it is, and **Stop** puts every entity and component back as they were at Play (game components too, since the
+snapshot copies the component storage itself), then returns to editing. Materials the game changes during play are
+copies, so the originals come back as well. **Resume** unfreezes without anything to go back to.
+
+The same from code: `engine.edit()`, `engine.play()`, `engine.stop()`, `engine.resume()` and `getPlayMode()`. Entity
+handles taken before Play are valid again after Stop; state an app keeps in its own members can be reset in
+`App::onPlayStopped`.
 
 ### Hierarchy and prefabs
 

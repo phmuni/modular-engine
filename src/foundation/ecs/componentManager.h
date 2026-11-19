@@ -13,6 +13,7 @@
 #include <memory>
 #include <new>
 #include <stdexcept>
+#include <type_traits>
 #include <typeinfo>
 #include <utility>
 #include <vector>
@@ -37,6 +38,8 @@ public:
   virtual ~IComponentPool() = default;
   virtual bool contains(Entity entity) const = 0;
   virtual void remove(Entity entity) = 0;
+  // A copy of every component, for snapshots; null for a type that cannot be copied
+  virtual std::unique_ptr<IComponentPool> clone() const = 0;
 };
 
 template <typename T> class ComponentPool final : public IComponentPool {
@@ -51,6 +54,17 @@ public:
   }
 
   bool contains(Entity entity) const override { return denseIndex(entity) != kAbsent; }
+
+  std::unique_ptr<IComponentPool> clone() const override {
+    if constexpr (std::is_copy_constructible_v<T>) {
+      auto copy = std::make_unique<ComponentPool<T>>();
+      for (size_t i = 0; i < m_entities.size(); ++i)
+        copy->emplace(m_entities[i], *m_components[i]);
+      return copy;
+    } else {
+      return nullptr;
+    }
+  }
 
   T *get(Entity entity) const {
     uint32_t index = denseIndex(entity);
@@ -169,6 +183,27 @@ private:
   }
 
 public:
+  // Every component of every type, copied: what restore() puts back. Types that cannot be copied are left out (with
+  // a warning), and restore() empties them.
+  struct Snapshot {
+    std::vector<std::unique_ptr<ecs_detail::IComponentPool>> pools;
+  };
+  Snapshot snapshot() const {
+    Snapshot result;
+    result.pools.resize(m_pools.size());
+    for (size_t id = 0; id < m_pools.size(); ++id) {
+      if (!m_pools[id])
+        continue;
+      result.pools[id] = m_pools[id]->clone();
+      if (!result.pools[id])
+        LOG_W("[ComponentManager] A component type cannot be copied, so snapshots leave it out");
+    }
+    return result;
+  }
+  // Replaces every component with the snapshot's. References to components taken before are invalid afterwards.
+  // Types first used after the snapshot come back empty, created again on their next use.
+  void restore(Snapshot snapshot) { m_pools = std::move(snapshot.pools); }
+
   template <typename T> void insert(Entity entity, std::unique_ptr<T> component) {
     pool<T>().emplace(entity, std::move(*component));
   }

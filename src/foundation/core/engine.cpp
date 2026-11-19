@@ -230,12 +230,15 @@ void Engine::update(bool &isRunning) {
   auto &inputSystem = m_systemManager.getSystem<InputSystem>();
   inputSystem.update(&isRunning, m_systemManager);
 
+  // Play, Stop and freezing, from the editor's last frame
+  applyPlayModeRequest();
+
   auto &state = m_systemManager.getSystem<StateSystem>();
   // Upload models whose background reads finished
   m_systemManager.getSystem<ResourceSystem>().update();
 
   auto &timeSystem = m_systemManager.getSystem<TimeSystem>();
-  timeSystem.setPaused(state.isToggled(Toggle::Paused));
+  timeSystem.setPaused(state.isToggled(Toggle::Paused) || m_playMode == PlayMode::Editing);
   timeSystem.update();
 
   // The camera runs on real time, so it can still fly around a paused scene
@@ -255,7 +258,7 @@ void Engine::update(bool &isRunning) {
   auto &editorUI = m_systemManager.getSystem<EditorUISystem>();
   editorUI.update(m_systemManager);
 
-  if (m_app) {
+  if (m_app && m_playMode != PlayMode::Editing) {
     m_app->update(*this, timeSystem.getDeltaTime());
   }
 
@@ -587,6 +590,60 @@ std::vector<Entity> Engine::getChildren(Entity entity) {
 
 void Engine::setLocalTransform(Entity entity, const Transform &local) {
   m_systemManager.getSystem<TransformSystem>().setLocalTransform(m_componentManager, entity, local);
+}
+
+void Engine::applyPlayModeRequest() {
+  if (!m_requestedPlayMode)
+    return;
+  const PlayMode requested = *m_requestedPlayMode;
+  m_requestedPlayMode.reset();
+  auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
+  auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
+
+  if (requested == PlayMode::Testing && m_playMode != PlayMode::Testing) {
+    // Play: everything as it is now, to come back to
+    m_playSnapshot = std::make_unique<PlaySnapshot>();
+    m_playSnapshot->components = m_componentManager.snapshot();
+    m_playSnapshot->entities = m_entityManager;
+    m_playSnapshot->activeCamera = cameraSystem.getActiveCamera();
+    // Its materials stay alive, and count as used: a game changing one during play changes a copy
+    std::vector<uint32_t> materials;
+    m_componentManager.forEachComponent<Model>([&](Entity, Model &model) {
+      materials.insert(materials.end(), model.materialHandles.begin(), model.materialHandles.end());
+    });
+    resourceSystem.setPinnedMaterials(std::move(materials));
+    resourceSystem.collectUnusedMaterials();
+    m_playMode = PlayMode::Testing;
+    LOG_I("[Engine] Play: %zu entities saved", m_entityManager.count());
+    return;
+  }
+
+  if (m_playMode == PlayMode::Testing && requested != PlayMode::Testing && m_playSnapshot) {
+    // Stop: every entity and component back as they were at Play
+    m_componentManager.restore(std::move(m_playSnapshot->components));
+    m_entityManager = m_playSnapshot->entities;
+    const Entity camera = m_playSnapshot->activeCamera;
+    m_playSnapshot.reset();
+    if (camera != -1 && m_entityManager.isAlive(camera))
+      cameraSystem.setActiveCamera(camera);
+    else
+      cameraSystem.removeActiveCamera();
+    m_systemManager.getSystem<LightSystem>().rebuild(m_componentManager);
+    m_systemManager.getSystem<RenderSystem>().resetCaches();
+    resourceSystem.setPinnedMaterials({});
+    auto &editor = m_systemManager.getSystem<EditorUISystem>();
+    if (!m_entityManager.isAlive(editor.selectedEntity))
+      editor.selectedEntity = -1;
+    LOG_I("[Engine] Stop: %zu entities restored", m_entityManager.count());
+    m_playMode = PlayMode::Editing;
+    if (m_app)
+      m_app->onPlayStopped(*this);
+    return;
+  }
+
+  // Freezing and unfreezing without a snapshot (Editing <-> Running)
+  if (m_playMode != PlayMode::Testing)
+    m_playMode = requested == PlayMode::Testing ? m_playMode : requested;
 }
 
 bool Engine::savePrefab(Entity root, std::string_view path) {

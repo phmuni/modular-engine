@@ -28,6 +28,12 @@ public:
   }
   void setSkyboxShader(uint32_t handle) { m_skyboxShader = handle; }
   void markBatchesDirty();
+  // Forgets what was drawn before (batches, point shadows), after the entities were replaced wholesale
+  void resetCaches() {
+    m_batchesDirty = true;
+    for (uint64_t &signature : m_pointShadowSignatures)
+      signature = 0;
+  }
   // Models skipped by frustum culling in the last rendered frame
   int getCulledCount() const { return m_culledCount; }
   // Point lights with a cube shadow map, and how many of them had to render it again in the last frame

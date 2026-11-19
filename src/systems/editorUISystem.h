@@ -95,6 +95,8 @@ private:
   void renderSettingsPanel(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
                            ComponentManager &componentManager);
   void renderSceneExplorer(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  // Edit (freeze), Play and Stop, at the top of the screen
+  void renderPlayToolbar(Engine &engine);
   // Hierarchy: the families (entities with a parent or children) as trees; drag an entity onto another to attach it,
   // onto the empty space below to detach it
   void renderHierarchy(SystemManager &systemManager, ComponentManager &componentManager);

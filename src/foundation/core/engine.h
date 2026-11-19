@@ -16,6 +16,7 @@
 #include <limits>
 #include <glm/glm.hpp>
 #include <typeinfo>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -252,6 +253,18 @@ public:
   // Saves the scene after `delaySeconds` of running; `quitAfter` closes the engine
   void saveSceneAfter(std::string path, float delaySeconds, bool quitAfter = false);
 
+  // Play mode, the editor's Play and Stop. Running is the default: the app updates as usual. Editing freezes the app
+  // and the simulation (time stands still) while the camera and the editor keep working. play() saves every entity
+  // and component (game components too) and runs the app from there; stop() puts them all back, calls
+  // App::onPlayStopped and returns to Editing; edit() freezes without saving anything, resume() unfreezes. Each takes
+  // effect at the start of the next frame.
+  enum class PlayMode { Running, Editing, Testing };
+  PlayMode getPlayMode() const { return m_playMode; }
+  void edit() { m_requestedPlayMode = PlayMode::Editing; }
+  void resume() { m_requestedPlayMode = PlayMode::Running; }
+  void play() { m_requestedPlayMode = PlayMode::Testing; }
+  void stop() { m_requestedPlayMode = PlayMode::Editing; }
+
   // Prefabs: an entity and its children saved to a file (the same format as scenes, with the entity at the origin)
   // and copied into the scene as often as needed. instantiate puts the copy's root at `position`, turned `rotation`
   // degrees, and returns it (-1 if the file cannot be read). Its models load on the spot: preloadModel them for a
@@ -336,6 +349,16 @@ private:
   };
   std::optional<ScreenshotRequest> m_screenshot;
   std::optional<ScreenshotRequest> m_sceneSave;
+
+  PlayMode m_playMode = PlayMode::Running;
+  std::optional<PlayMode> m_requestedPlayMode;
+  struct PlaySnapshot {
+    ComponentManager::Snapshot components;
+    EntityManager entities;
+    Entity activeCamera = -1;
+  };
+  std::unique_ptr<PlaySnapshot> m_playSnapshot;
+  void applyPlayModeRequest();
   std::optional<std::string> m_pendingScene;
   std::vector<std::string> m_pendingSceneModels;
   std::string m_scenePath;
