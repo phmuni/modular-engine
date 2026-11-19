@@ -66,16 +66,16 @@ public:
 
     Entity model = engine.entities()
                        .create("Model")
-                       .withModel(m_path, glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f))
+                       .withModel(m_path, glm::vec3(0.0f))
                        .build();
 
     // Scale the model to a 2-unit radius so the camera's fixed near/far planes always fit it
     auto &resources = engine.getSystemManager().getSystem<ResourceSystem>();
-    const Mesh &mesh = resources.getMesh(engine.getOrThrow<Model>(model).meshHandle);
+    const Mesh &mesh = resources.getMesh(engine.get<Model>(model).meshHandle);
     float boundsRadius = glm::max(mesh.getBoundsRadius(), 1e-4f);
     float scale = 2.0f / boundsRadius;
 
-    auto &transform = engine.getOrThrow<Transform>(model);
+    auto &transform = engine.get<Transform>(model);
     transform.scale = glm::vec3(scale);
     transform.position = -mesh.getBoundsCenter() * scale;
 

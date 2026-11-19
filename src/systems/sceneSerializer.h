@@ -32,7 +32,7 @@ public:
     registerComponent(
         key,
         [this](Entity entity) -> std::optional<json> {
-          if (const T *component = m_componentManager.getOrNil<T>(entity))
+          if (const T *component = m_componentManager.tryGet<T>(entity))
             return json(*component);
           return std::nullopt;
         },

@@ -74,17 +74,17 @@ class BlackHole : public App {
   void createStars(Engine &engine) {
     Entity dim = engine.entities()
                      .create("Stars")
-                     .withTransform(glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f))
+                     .withTransform(glm::vec3(0.0f))
                      .withComponent<ParticleEmitter>()
                      .build();
-    configureStars(engine.getOrThrow<ParticleEmitter>(dim), 6000, 0.45f, {0.75f, 0.8f, 1.0f, 0.55f});
+    configureStars(engine.get<ParticleEmitter>(dim), 6000, 0.45f, {0.75f, 0.8f, 1.0f, 0.55f});
 
     Entity bright = engine.entities()
                         .create("Bright Stars")
-                        .withTransform(glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f))
+                        .withTransform(glm::vec3(0.0f))
                         .withComponent<ParticleEmitter>()
                         .build();
-    configureStars(engine.getOrThrow<ParticleEmitter>(bright), 400, 0.9f, {1.0f, 0.92f, 0.8f, 0.9f});
+    configureStars(engine.get<ParticleEmitter>(bright), 400, 0.9f, {1.0f, 0.92f, 0.8f, 0.9f});
   }
 
   void createBlackHole(Engine &engine) {
@@ -97,25 +97,25 @@ class BlackHole : public App {
                .withComponent<GravityLens>(kSchwarzschildRadius)
                .withSound("../assets/sounds/blackhole.flac", true, 1.0f)
                .build();
-    auto &hum = engine.getOrThrow<AudioSource>(hole);
+    auto &hum = engine.get<AudioSource>(hole);
     hum.minDistance = 12.0f; // the closest the camera gets
     hum.maxDistance = 40.0f;
 
     Entity disk = engine.entities()
                       .create("Accretion Disk")
-                      .withTransform(glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f))
+                      .withTransform(glm::vec3(0.0f))
                       .withComponent<ParticleEmitter>()
                       .build();
-    configureDisk(engine.getOrThrow<ParticleEmitter>(disk), 70000, 0.1f, {1.0f, 0.3f, 0.06f, 0.35f},
+    configureDisk(engine.get<ParticleEmitter>(disk), 70000, 0.1f, {1.0f, 0.3f, 0.06f, 0.35f},
                   {1.0f, 0.9f, 0.72f, 1.0f});
 
     // Large, faint particles on the same orbits give the disk a smooth glow
     Entity haze = engine.entities()
                       .create("Disk Glow")
-                      .withTransform(glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f))
+                      .withTransform(glm::vec3(0.0f))
                       .withComponent<ParticleEmitter>()
                       .build();
-    configureDisk(engine.getOrThrow<ParticleEmitter>(haze), 16000, 0.9f, {0.9f, 0.25f, 0.04f, 0.03f},
+    configureDisk(engine.get<ParticleEmitter>(haze), 16000, 0.9f, {0.9f, 0.25f, 0.04f, 0.03f},
                   {1.0f, 0.7f, 0.4f, 0.09f});
   }
 
@@ -149,7 +149,7 @@ class BlackHole : public App {
     camera->lookAt(offset, glm::vec3(0.0f));
 
     // Redshift: the drone drops in pitch the deeper the camera sits in the well
-    if (auto *hum = engine.getOrNil<AudioSource>(hole))
+    if (auto *hum = engine.tryGet<AudioSource>(hole))
       hum->pitch = glm::mix(0.8f, 1.0f, (distance - 12.0f) / 28.0f);
   }
 

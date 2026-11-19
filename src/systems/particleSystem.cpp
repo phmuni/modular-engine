@@ -52,7 +52,7 @@ void ParticleSystem::emitParticles(ParticleEmitter &emitter, Entity entity, cons
 
   glm::vec3 worldAttractPoint = emitter.attractPoint;
   if (emitter.attractPointRelative) {
-    auto *transform = m_componentManager.getOrNil<Transform>(entity);
+    auto *transform = m_componentManager.tryGet<Transform>(entity);
     if (transform) {
       worldAttractPoint += transform->position;
     }
@@ -128,7 +128,7 @@ void ParticleSystem::emitParticles(ParticleEmitter &emitter, Entity entity, cons
 void ParticleSystem::updateParticles(ParticleEmitter &emitter, Entity entity, float deltaTime) {
   glm::vec3 worldAttractPoint = emitter.attractPoint;
   if (emitter.attractPointRelative) {
-    auto *transform = m_componentManager.getOrNil<Transform>(entity);
+    auto *transform = m_componentManager.tryGet<Transform>(entity);
     if (transform) {
       worldAttractPoint += transform->position;
     }
@@ -210,7 +210,7 @@ void ParticleSystem::updateParticles(ParticleEmitter &emitter, Entity entity, fl
 
 void ParticleSystem::update(float deltaTime) {
   m_componentManager.forEachComponent<ParticleEmitter>([&](Entity entity, ParticleEmitter &emitter) {
-    auto *transform = m_componentManager.getOrNil<Transform>(entity);
+    auto *transform = m_componentManager.tryGet<Transform>(entity);
     glm::vec3 origin = (transform ? transform->position : glm::vec3(0.0f)) + emitter.offset;
 
     emitParticles(emitter, entity, origin, deltaTime);
@@ -227,7 +227,7 @@ void ParticleSystem::render(SystemManager &systemManager) {
   if (camEntity == -1)
     return;
 
-  const auto &cam = m_componentManager.getOrThrow<Camera>(camEntity);
+  const auto &cam = m_componentManager.get<Camera>(camEntity);
   glm::mat4 view = cameraSystem.getViewMatrix(cam);
   glm::mat4 projection = cameraSystem.getProjectionMatrix(cam);
 
@@ -266,8 +266,8 @@ void ParticleSystem::render(SystemManager &systemManager) {
   const GravityLens *lens = nullptr;
   glm::vec3 lensPosition(0.0f);
   m_componentManager.forEachComponent<GravityLens>([&](Entity entity, GravityLens &candidate) {
-    auto *transform = m_componentManager.getOrNil<Transform>(entity);
-    if (lens || !transform || m_componentManager.containsComponent<Hidden>(entity))
+    auto *transform = m_componentManager.tryGet<Transform>(entity);
+    if (lens || !transform || m_componentManager.has<Hidden>(entity))
       return;
     lens = &candidate;
     lensPosition = transform->position;

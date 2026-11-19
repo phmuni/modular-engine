@@ -316,13 +316,13 @@ void Engine::throwMissingComponent(Entity entity, const std::type_info &type) co
               "has no " + typeName(type);
   else
     message = "entity " + std::to_string(entity) + " has no " + typeName(type) + " component";
-  LOG_E("[Engine] getOrThrow: %s", message.c_str());
+  LOG_E("[Engine] get: %s", message.c_str());
   throw std::runtime_error(message);
 }
 
 Camera *Engine::getActiveCamera() {
   Entity camera = m_systemManager.getSystem<CameraSystem>().getActiveCamera();
-  return camera == -1 ? nullptr : m_componentManager.getOrNil<Camera>(camera);
+  return camera == -1 ? nullptr : m_componentManager.tryGet<Camera>(camera);
 }
 
 InputSystem &Engine::input() { return m_systemManager.getSystem<InputSystem>(); }

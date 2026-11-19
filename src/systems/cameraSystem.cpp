@@ -11,11 +11,11 @@
 void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
 
   Entity entity = getActiveCamera();
-  if (entity == -1 || !m_componentManager.containsComponent<Camera>(entity)) {
+  if (entity == -1 || !m_componentManager.has<Camera>(entity)) {
     return;
   }
 
-  auto &cam = m_componentManager.getOrThrow<Camera>(entity);
+  auto &cam = m_componentManager.get<Camera>(entity);
   auto &state = systemManager.getSystem<StateSystem>();
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
 
@@ -31,8 +31,8 @@ void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
 }
 
 glm::mat4 CameraSystem::getViewMatrix(const Camera &cam) const {
-  if (m_componentManager.containsComponent<Transform>(getActiveCamera()) && cam.isRelative) {
-    auto &transform = m_componentManager.getOrThrow<Transform>(getActiveCamera());
+  if (m_componentManager.has<Transform>(getActiveCamera()) && cam.isRelative) {
+    auto &transform = m_componentManager.get<Transform>(getActiveCamera());
     auto finalPosition = transform.position + cam.position;
     return glm::lookAt(finalPosition, finalPosition + cam.front, cam.up);
   }

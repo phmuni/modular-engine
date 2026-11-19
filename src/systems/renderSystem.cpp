@@ -73,7 +73,7 @@ void forEachDrawRange(const Mesh &mesh, const Model &model, bool singlePartInclu
 
 // Entities without a Transform or marked Hidden are never drawn.
 bool isHidden(ComponentManager &componentManager, Entity entity) {
-  return componentManager.containsComponent<Hidden>(entity) || !componentManager.containsComponent<Transform>(entity);
+  return componentManager.has<Hidden>(entity) || !componentManager.has<Transform>(entity);
 }
 
 // Frustum planes (ax + by + cz + d >= 0 inside), extracted from a view-projection matrix
@@ -183,7 +183,7 @@ void RenderSystem::gatherShadowCasters(ComponentManager &componentManager, Resou
     if (isHidden(componentManager, entity))
       return;
     const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
-    const glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(componentManager.getOrThrow<Transform>(entity));
+    const glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(componentManager.get<Transform>(entity));
     m_shadowCasters.push_back({model.meshHandle, modelMatrix,
                                glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f)),
                                mesh.getBoundsRadius() * maxScaleOf(modelMatrix)});
@@ -234,7 +234,7 @@ RenderSystem::renderDirectionalShadow(ComponentManager &componentManager, Resour
   DirectionalShadow shadow;
   const Light *sun = nullptr;
   for (Entity lightEntity : lightSystem.getLights()) {
-    const Light &light = componentManager.getOrThrow<Light>(lightEntity);
+    const Light &light = componentManager.get<Light>(lightEntity);
     if (light.type == LightType::Directional) {
       sun = &light;
       break;
@@ -408,7 +408,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   if (cameraEntity == -1)
     return;
 
-  const auto &camera = componentManager.getOrThrow<Camera>(cameraEntity);
+  const auto &camera = componentManager.get<Camera>(cameraEntity);
   glm::mat4 view = cameraSystem.getViewMatrix(camera);
   glm::mat4 projection = cameraSystem.getProjectionMatrix(camera);
   // From the view matrix rather than Camera::position, which a relative camera offsets by its Transform
@@ -489,8 +489,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   // Per-draw path: shaders without instancing support and transparent models
   auto drawRange = [&](Shader &shader, Entity entity, uint32_t indexStart, uint32_t indexCount,
                        uint32_t materialHandle, float opacity) {
-    const auto *transform = componentManager.getOrNil<Transform>(entity);
-    const auto *model = componentManager.getOrNil<Model>(entity);
+    const auto *transform = componentManager.tryGet<Transform>(entity);
+    const auto *model = componentManager.tryGet<Model>(entity);
     if (!transform || !model)
       return;
 
@@ -525,7 +525,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
 
     if (!shader.supportsInstancing()) {
       for (Entity entity : batch) {
-        const auto *model = componentManager.getOrNil<Model>(entity);
+        const auto *model = componentManager.tryGet<Model>(entity);
         if (!model)
           continue;
         forEachDrawRange(resourceSystem.getMesh(model->meshHandle), *model, !anyBlend, includeOpaque,
@@ -539,8 +539,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     // Opaque draws of the same mesh range with the same material go out as one instanced call
     m_instanceItems.clear();
     for (Entity entity : batch) {
-      auto *transform = componentManager.getOrNil<Transform>(entity);
-      auto *model = componentManager.getOrNil<Model>(entity);
+      auto *transform = componentManager.tryGet<Transform>(entity);
+      auto *model = componentManager.tryGet<Model>(entity);
       if (!transform || !model)
         continue;
 
@@ -579,7 +579,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     if (isHidden(componentManager, entity) || (!transparentModel && !anyBlend))
       return;
 
-    const auto &transform = componentManager.getOrThrow<Transform>(entity);
+    const auto &transform = componentManager.get<Transform>(entity);
     const float distance = glm::length(camera.position - transform.position);
     auto &draws = transparentModel && model.opacity >= kSoftOpacityExit ? softDraws : transparentDraws;
 
@@ -604,7 +604,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       Shader &shader = resourceSystem.getShader(draw.shaderHandle);
       shader.use();
       configureShader(shader);
-      const auto *model = componentManager.getOrNil<Model>(draw.entity);
+      const auto *model = componentManager.tryGet<Model>(draw.entity);
       drawRange(shader, draw.entity, draw.indexStart, draw.indexCount, draw.materialHandle,
                 model ? model->opacity : 1.0f);
     }

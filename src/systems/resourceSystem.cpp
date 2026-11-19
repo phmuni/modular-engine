@@ -343,7 +343,7 @@ void ResourceSystem::setMaterialShininess(uint32_t &handle, float shininess) {
 }
 
 int ResourceSystem::findSubmesh(Entity entity, std::string_view part) {
-  const auto *model = m_componentManager.getOrNil<Model>(entity);
+  const auto *model = m_componentManager.tryGet<Model>(entity);
   int index = model ? getMesh(model->meshHandle).findSubmesh(part) : -1;
   if (index < 0)
     LOG_W("[Resources] Entity %d has no part named \"%.*s\"", entity, static_cast<int>(part.size()), part.data());
@@ -351,7 +351,7 @@ int ResourceSystem::findSubmesh(Entity entity, std::string_view part) {
 }
 
 void ResourceSystem::setEmission(Entity entity, int submesh, const glm::vec3 &color, float strength) {
-  auto *modelPtr = m_componentManager.getOrNil<Model>(entity);
+  auto *modelPtr = m_componentManager.tryGet<Model>(entity);
   if (!modelPtr) {
     return;
   }
@@ -366,7 +366,7 @@ void ResourceSystem::setEmission(Entity entity, int submesh, const glm::vec3 &co
 }
 
 void ResourceSystem::setTexture(Entity entity, int submesh, TextureSlot slot, std::string_view path) {
-  auto *modelPtr = m_componentManager.getOrNil<Model>(entity);
+  auto *modelPtr = m_componentManager.tryGet<Model>(entity);
   if (!modelPtr) {
     return;
   }
@@ -383,7 +383,7 @@ void ResourceSystem::setTexture(Entity entity, int submesh, TextureSlot slot, st
 }
 
 void ResourceSystem::removeTexture(Entity entity, int submesh, TextureSlot slot) {
-  auto *modelPtr = m_componentManager.getOrNil<Model>(entity);
+  auto *modelPtr = m_componentManager.tryGet<Model>(entity);
   if (!modelPtr) {
     return;
   }
@@ -398,7 +398,7 @@ void ResourceSystem::removeTexture(Entity entity, int submesh, TextureSlot slot)
 }
 
 void ResourceSystem::setShininess(Entity entity, int submesh, float shininess) {
-  auto *modelPtr = m_componentManager.getOrNil<Model>(entity);
+  auto *modelPtr = m_componentManager.tryGet<Model>(entity);
   if (!modelPtr) {
     return;
   }
@@ -444,7 +444,7 @@ void ResourceSystem::setSolidColorToMaterial(uint32_t &handle, const glm::vec3 &
 }
 
 void ResourceSystem::setSolidColor(Entity entity, int submesh, const glm::vec3 &color) {
-  auto *modelPtr = m_componentManager.getOrNil<Model>(entity);
+  auto *modelPtr = m_componentManager.tryGet<Model>(entity);
   if (!modelPtr) {
     return;
   }

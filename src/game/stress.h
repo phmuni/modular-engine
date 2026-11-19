@@ -25,7 +25,7 @@ public:
       glm::vec3 color(0.5f + 0.5f * std::cos(angle), 0.5f + 0.5f * std::sin(angle), 1.0f - 0.25f * i);
       engine.entities()
           .create("Point " + std::to_string(i))
-          .withTransform({std::cos(angle) * 15.0f, 4.0f, std::sin(angle) * 15.0f}, glm::vec3(0.0f), glm::vec3(1.0f))
+          .withTransform({std::cos(angle) * 15.0f, 4.0f, std::sin(angle) * 15.0f})
           .withLight(Light::point(color, 3.0f))
           .build();
     }
@@ -48,7 +48,7 @@ public:
 
   void update(Engine &engine, float deltaTime) override {
     engine.getComponentManager().forEachComponent<Spinner>([&](Entity entity, Spinner &spinner) {
-      engine.getOrThrow<Transform>(entity).rotation += spinner.speed * deltaTime;
+      engine.get<Transform>(entity).rotation += spinner.speed * deltaTime;
     });
   }
 };

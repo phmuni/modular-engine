@@ -112,10 +112,10 @@ class SpaceAliens : public App {
   void createStarfield(Engine &engine) {
     starfield = engine.entities()
                     .create("Starfield")
-                    .withTransform(glm::vec3(0.0f, 7.0f, -40.0f), glm::vec3(0.0f), glm::vec3(1.0f))
+                    .withTransform(glm::vec3(0.0f, 7.0f, -40.0f))
                     .withComponent<ParticleEmitter>()
                     .build();
-    auto &p = engine.getOrThrow<ParticleEmitter>(starfield);
+    auto &p = engine.get<ParticleEmitter>(starfield);
     p.emitRate = 100.0f;
     p.particleLifetime = 9.0f;
     p.speed = 12.0f;
@@ -139,11 +139,11 @@ class SpaceAliens : public App {
   void createExplosion(Engine &engine, const glm::vec3 &position, const glm::vec3 &color, float scale = 1.0f) {
     Entity expl = engine.entities()
                       .create("Explosion")
-                      .withTransform(position, glm::vec3(0.0f), glm::vec3(1.0f))
+                      .withTransform(position)
                       .withComponent<ParticleEmitter>()
                       .withComponent<Explosion>(0.1f, 0.55f * scale)
                       .build();
-    auto &p = engine.getOrThrow<ParticleEmitter>(expl);
+    auto &p = engine.get<ParticleEmitter>(expl);
     p.emitRate = 350.0f;
     p.particleLifetime = 0.55f * scale;
     p.speed = 5.5f * scale;
@@ -211,8 +211,8 @@ class SpaceAliens : public App {
   }
 
   void updateHud(Engine &engine, float deltaTime) {
-    auto &state = engine.getOrThrow<GameState>(gameManager);
-    auto &ig = engine.getOrThrow<InvaderGroup>(gameManager);
+    auto &state = engine.get<GameState>(gameManager);
+    auto &ig = engine.get<InvaderGroup>(gameManager);
 
     int alive = 0;
     engine.getComponentManager().forEachComponent<Invader>([&](Entity, Invader &inv) {
@@ -269,10 +269,10 @@ class SpaceAliens : public App {
     for (Entity e : toDestroy)
       engine.destroyEntity(e);
 
-    auto &state = engine.getOrThrow<GameState>(gameManager);
-    auto &ig = engine.getOrThrow<InvaderGroup>(gameManager);
-    auto &pData = engine.getOrThrow<Player>(player);
-    auto &tf = engine.getOrThrow<Transform>(player);
+    auto &state = engine.get<GameState>(gameManager);
+    auto &ig = engine.get<InvaderGroup>(gameManager);
+    auto &pData = engine.get<Player>(player);
+    auto &tf = engine.get<Transform>(player);
 
     initInvaderSlots(ig);
     ig.headPathDistance = 0.0f;
@@ -290,8 +290,8 @@ class SpaceAliens : public App {
 
   void updatePlayer(Engine &engine, float deltaTime) {
     auto &input = engine.input();
-    auto &tf = engine.getOrThrow<Transform>(player);
-    auto &pData = engine.getOrThrow<Player>(player);
+    auto &tf = engine.get<Transform>(player);
+    auto &pData = engine.get<Player>(player);
 
     float axis = 0.0f;
     if (input.isKeyDown(SDL_SCANCODE_A) || input.isKeyDown(SDL_SCANCODE_LEFT))
@@ -328,14 +328,14 @@ class SpaceAliens : public App {
   }
 
   void killPlayer(Engine &engine) {
-    auto &pData = engine.getOrThrow<Player>(player);
+    auto &pData = engine.get<Player>(player);
     if (pData.hitCooldown > 0.0f)
       return;
 
     pData.hitCooldown = pData.hitInvincibility;
 
-    auto &state = engine.getOrThrow<GameState>(gameManager);
-    auto &tf = engine.getOrThrow<Transform>(player);
+    auto &state = engine.get<GameState>(gameManager);
+    auto &tf = engine.get<Transform>(player);
     createExplosion(engine, tf.position, glm::vec3(0.2f, 1.0f, 0.8f), 2.5f);
     engine.playSoundAt(SOUND_PLAYER_HIT, tf.position, 1.0f);
 
@@ -351,8 +351,8 @@ class SpaceAliens : public App {
 
   void updateInvaders(Engine &engine, float deltaTime) {
     auto &cm = engine.getComponentManager();
-    auto &state = engine.getOrThrow<GameState>(gameManager);
-    auto &ig = engine.getOrThrow<InvaderGroup>(gameManager);
+    auto &state = engine.get<GameState>(gameManager);
+    auto &ig = engine.get<InvaderGroup>(gameManager);
 
     int totalAlive = 0;
     cm.forEachComponent<Invader>([&](Entity, Invader &inv) {
@@ -393,7 +393,7 @@ class SpaceAliens : public App {
       if (!inv.alive)
         return;
       aliveEntities.push_back(e);
-      auto &tf = engine.getOrThrow<Transform>(e);
+      auto &tf = engine.get<Transform>(e);
       glm::vec3 prev = tf.position;
       float travelD = ig.headPathDistance - inv.pathIndex * ig.spacing;
       tf.position = pathPosition(travelD, ig.stepDown);
@@ -416,7 +416,7 @@ class SpaceAliens : public App {
     ig.enemyShootTimer -= deltaTime;
     if (ig.enemyShootTimer <= 0.0f && !aliveEntities.empty()) {
       Entity shooter = aliveEntities[std::uniform_int_distribution<size_t>(0, aliveEntities.size() - 1)(rng)];
-      auto &tf = engine.getOrThrow<Transform>(shooter);
+      auto &tf = engine.get<Transform>(shooter);
       spawnBullet(engine, tf.position + glm::vec3(0.0f, 0.0f, 1.0f), {0.0f, 0.0f, ig.bulletSpeed}, false);
       engine.playSoundAt(SOUND_ENEMY_SHOT, tf.position, 0.5f, pitchJitter(rng));
       float aggressionScale = glm::mix(0.25f, 1.0f, shootingFractionAlive);
@@ -428,7 +428,7 @@ class SpaceAliens : public App {
   void updateBullets(Engine &engine, float deltaTime) {
     auto &collisionSystem = engine.getSystemManager().getSystem<CollisionSystem>();
     auto &cm = engine.getComponentManager();
-    auto &state = engine.getOrThrow<GameState>(gameManager);
+    auto &state = engine.get<GameState>(gameManager);
 
     std::unordered_set<Entity> destroySet;
 
@@ -436,7 +436,7 @@ class SpaceAliens : public App {
       if (destroySet.count(entity))
         return;
 
-      auto &tf = engine.getOrThrow<Transform>(entity);
+      auto &tf = engine.get<Transform>(entity);
       tf.position += bullet.velocity * deltaTime;
 
       if (!bullet.friendly)
@@ -453,7 +453,7 @@ class SpaceAliens : public App {
           if (!invader.alive || destroySet.count(entity) || destroySet.count(inv))
             return;
           if (collisionSystem.checkEntitiesCollision(entity, inv, cm)) {
-            const glm::vec3 &invaderPos = engine.getOrThrow<Transform>(inv).position;
+            const glm::vec3 &invaderPos = engine.get<Transform>(inv).position;
             createExplosion(engine, invaderPos, invader.color, 1.2f);
             engine.playSoundAt(SOUND_EXPLOSION, invaderPos, 0.8f, pitchJitter(rng));
             invader.alive = false;
@@ -473,17 +473,17 @@ class SpaceAliens : public App {
   }
 
   void checkInvaderReach(Engine &engine) {
-    auto &state = engine.getOrThrow<GameState>(gameManager);
+    auto &state = engine.get<GameState>(gameManager);
     if (state.gameOver)
       return;
 
-    auto &playerTf = engine.getOrThrow<Transform>(player);
+    auto &playerTf = engine.get<Transform>(player);
     auto &cm = engine.getComponentManager();
 
     cm.forEachComponent<Invader>([&](Entity e, Invader &inv) {
       if (!inv.alive || state.gameOver)
         return;
-      if (engine.getOrThrow<Transform>(e).position.z >= playerTf.position.z - 1.5f) {
+      if (engine.get<Transform>(e).position.z >= playerTf.position.z - 1.5f) {
         killPlayer(engine);
         state.gameOver = true;
       }
@@ -497,7 +497,7 @@ class SpaceAliens : public App {
     cm.forEachComponent<Explosion>([&](Entity e, Explosion &exp) {
       exp.emitTimer -= deltaTime;
       if (exp.emitTimer <= 0.0f)
-        if (auto *emitter = cm.getOrNil<ParticleEmitter>(e))
+        if (auto *emitter = cm.tryGet<ParticleEmitter>(e))
           emitter->active = false;
       exp.ttl -= deltaTime;
       if (exp.ttl <= 0.0f)
@@ -509,8 +509,8 @@ class SpaceAliens : public App {
   }
 
   void updatePlayerEmission(Engine &engine, float deltaTime) {
-    auto &state = engine.getOrThrow<GameState>(gameManager);
-    auto &pData = engine.getOrThrow<Player>(player);
+    auto &state = engine.get<GameState>(gameManager);
+    auto &pData = engine.get<Player>(player);
     if (state.gameOver)
       return;
 
@@ -538,7 +538,7 @@ public:
         .build();
     engine.entities()
         .create("Overhead")
-        .withTransform({0.0f, 12.0f, -15.0f}, glm::vec3(0.0f), glm::vec3(1.0f))
+        .withTransform({0.0f, 12.0f, -15.0f})
         .withLight(Light::spot({0.0f, -1.0f, 0.5f}, glm::vec3(1.0f), 10.0f, 80.0f, 85.0f))
         .build();
     engine.createCameraEntity("Camera", glm::vec3(0.0f, 14.0f, 18.0f), 0.0f, -35.0f, 55.0f);
@@ -555,7 +555,7 @@ public:
     createStarfield(engine);
     createPlayer(engine);
 
-    initInvaderSlots(engine.getOrThrow<InvaderGroup>(gameManager));
+    initInvaderSlots(engine.get<InvaderGroup>(gameManager));
 
     this->engine = &engine;
     createHud(engine);
@@ -576,7 +576,7 @@ public:
       return;
     updateExplosions(engine, deltaTime);
 
-    auto &state = engine.getOrThrow<GameState>(gameManager);
+    auto &state = engine.get<GameState>(gameManager);
     updateHud(engine, deltaTime);
 
     if (restartRequested) {

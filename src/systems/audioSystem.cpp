@@ -143,10 +143,10 @@ void AudioSystem::update(SystemManager &systemManager, bool paused, float timeSc
   // Listener at the active camera
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   Entity cameraEntity = cameraSystem.getActiveCamera();
-  if (auto *camera = cameraEntity != -1 ? m_componentManager.getOrNil<Camera>(cameraEntity) : nullptr) {
+  if (auto *camera = cameraEntity != -1 ? m_componentManager.tryGet<Camera>(cameraEntity) : nullptr) {
     glm::vec3 position = camera->position;
     if (camera->isRelative)
-      if (auto *transform = m_componentManager.getOrNil<Transform>(cameraEntity))
+      if (auto *transform = m_componentManager.tryGet<Transform>(cameraEntity))
         position += transform->position;
     ma_engine_listener_set_position(&impl.engine, 0, position.x, position.y, position.z);
     ma_engine_listener_set_direction(&impl.engine, 0, camera->front.x, camera->front.y, camera->front.z);
@@ -181,7 +181,7 @@ void AudioSystem::update(SystemManager &systemManager, bool paused, float timeSc
     ma_sound_set_pitch(sound, std::max(source.pitch, 0.01f));
     ma_sound_set_looping(sound, source.loop);
 
-    auto *transform = m_componentManager.getOrNil<Transform>(entity);
+    auto *transform = m_componentManager.tryGet<Transform>(entity);
     bool spatial = source.spatial && transform;
     ma_sound_set_spatialization_enabled(sound, spatial);
     if (spatial) {

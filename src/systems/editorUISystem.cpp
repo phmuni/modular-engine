@@ -218,7 +218,7 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     toggleCheckbox("Cursor lock", Toggle::CursorLock);
 
     Entity cameraEntity = cameraSystem.getActiveCamera();
-    if (auto *camera = cameraEntity != -1 ? componentManager.getOrNil<Camera>(cameraEntity) : nullptr) {
+    if (auto *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr) {
       ImGui::SliderFloat("FOV", &camera->fov, 20.0f, 120.0f, "%.0f deg");
       ImGui::SliderFloat("Move speed", &camera->moveSpeed, 0.5f, 50.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
       ImGui::SliderFloat("Sensitivity", &camera->mouseSensitivity, 0.1f, 5.0f, "%.2f");
@@ -343,12 +343,12 @@ void EditorUISystem::renderGizmoControls() {
 
 void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager &componentManager) {
   // Cameras place themselves from their Camera component, not the Transform the gizmo would move
-  auto *transform = componentManager.getOrNil<Transform>(selectedEntity);
-  if (!transform || componentManager.containsComponent<Camera>(selectedEntity))
+  auto *transform = componentManager.tryGet<Transform>(selectedEntity);
+  if (!transform || componentManager.has<Camera>(selectedEntity))
     return;
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();
-  const Camera *camera = cameraEntity != -1 ? componentManager.getOrNil<Camera>(cameraEntity) : nullptr;
+  const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
   if (!camera)
     return;
 
@@ -424,7 +424,7 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
   ImGui::BeginChild("SceneTree", ImVec2(avail.x, avail.y - buttonHeight), true);
 
   auto entityLabel = [&](Entity e, const char *icon) -> std::string {
-    auto *nc = componentManager.getOrNil<Name>(e);
+    auto *nc = componentManager.tryGet<Name>(e);
     std::string name;
     if (nc && !nc->name.empty()) {
       name = nc->name;
@@ -493,7 +493,7 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
   ImGui::BeginChild("PropertiesScroll", ImVec2(0, 0), false, ImGuiWindowFlags_None);
 
   if (!earlyOut) {
-    auto *nc = componentManager.getOrNil<Name>(selectedEntity);
+    auto *nc = componentManager.tryGet<Name>(selectedEntity);
     if (nc) {
       char buf[64];
       std::strncpy(buf, nc->name.c_str(), sizeof(buf) - 1);
@@ -507,7 +507,7 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
   }
 
   // Transform
-  if (!earlyOut && componentManager.containsComponent<Transform>(selectedEntity)) {
+  if (!earlyOut && componentManager.has<Transform>(selectedEntity)) {
     bool open = ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen);
     if (open) {
       if (ImGui::SmallButton("Remove##transform")) {
@@ -516,8 +516,8 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
       }
       if (!earlyOut) {
         ImGui::Separator();
-        auto &t = componentManager.getOrThrow<Transform>(selectedEntity);
-        if (!componentManager.containsComponent<Camera>(selectedEntity))
+        auto &t = componentManager.get<Transform>(selectedEntity);
+        if (!componentManager.has<Camera>(selectedEntity))
           renderGizmoControls();
         ImGui::DragFloat3("Position##t", &t.position.x, 0.1f);
         ImGui::DragFloat3("Rotation##t", &t.rotation.x, 0.1f);
@@ -527,12 +527,12 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
   }
 
   // Camera
-  if (!earlyOut && componentManager.containsComponent<Camera>(selectedEntity)) {
+  if (!earlyOut && componentManager.has<Camera>(selectedEntity)) {
     earlyOut = renderCameraInspector(selectedEntity, systemManager, componentManager, resourceSystem, window);
   }
 
   // Light
-  if (!earlyOut && componentManager.containsComponent<Light>(selectedEntity)) {
+  if (!earlyOut && componentManager.has<Light>(selectedEntity)) {
     bool open = ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen);
     if (open) {
       if (ImGui::SmallButton("Remove##light")) {
@@ -542,7 +542,7 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
       }
       if (!earlyOut) {
         ImGui::Separator();
-        auto &light = componentManager.getOrThrow<Light>(selectedEntity);
+        auto &light = componentManager.get<Light>(selectedEntity);
         const char *types[] = {"Directional", "Point", "Spot"};
         int type = static_cast<int>(light.type);
         if (ImGui::Combo("Type##light", &type, types, IM_ARRAYSIZE(types))) {
@@ -573,17 +573,17 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
   }
 
   // Model / Material
-  if (!earlyOut && componentManager.containsComponent<Model>(selectedEntity)) {
+  if (!earlyOut && componentManager.has<Model>(selectedEntity)) {
     earlyOut = renderMaterialInspector(selectedEntity, componentManager, resourceSystem, renderSystem, window);
   }
 
   // Particle
-  if (!earlyOut && componentManager.containsComponent<ParticleEmitter>(selectedEntity)) {
+  if (!earlyOut && componentManager.has<ParticleEmitter>(selectedEntity)) {
     earlyOut = renderParticleInspector(selectedEntity, componentManager);
   }
 
   // Collision
-  if (!earlyOut && componentManager.containsComponent<Collision>(selectedEntity)) {
+  if (!earlyOut && componentManager.has<Collision>(selectedEntity)) {
     bool open = ImGui::CollapsingHeader("Collision (AABB)", ImGuiTreeNodeFlags_DefaultOpen);
     if (open) {
       if (ImGui::SmallButton("Remove##collision")) {
@@ -592,7 +592,7 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
       }
       if (!earlyOut) {
         ImGui::Separator();
-        auto &col = componentManager.getOrThrow<Collision>(selectedEntity);
+        auto &col = componentManager.get<Collision>(selectedEntity);
         ImGui::Checkbox("Static", &col.isStatic);
         ImGui::DragFloat3("Min##col", &col.min.x, 0.05f);
         ImGui::DragFloat3("Max##col", &col.max.x, 0.05f);
@@ -601,7 +601,7 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
   }
 
   // Audio source
-  if (!earlyOut && componentManager.containsComponent<AudioSource>(selectedEntity)) {
+  if (!earlyOut && componentManager.has<AudioSource>(selectedEntity)) {
     bool open = ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen);
     if (open) {
       if (ImGui::SmallButton("Remove##audio")) {
@@ -610,7 +610,7 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
       }
       if (!earlyOut) {
         ImGui::Separator();
-        auto &src = componentManager.getOrThrow<AudioSource>(selectedEntity);
+        auto &src = componentManager.get<AudioSource>(selectedEntity);
         // Static: the file dialog fills it after this frame. Applied on Enter or Load, not on every keystroke.
         static char audioPath[256] = "";
         static Entity audioPathEntity = -1;
@@ -648,42 +648,42 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
   if (!earlyOut) {
     ImGui::Separator();
     if (ImGui::CollapsingHeader("Add Component", ImGuiTreeNodeFlags_None)) {
-      if (!componentManager.containsComponent<Transform>(selectedEntity)) {
+      if (!componentManager.has<Transform>(selectedEntity)) {
         if (ImGui::Button("+ Transform", ImVec2(-1, 0))) {
           componentManager.addInPlace<Transform>(selectedEntity);
         }
       }
-      if (!componentManager.containsComponent<Light>(selectedEntity)) {
+      if (!componentManager.has<Light>(selectedEntity)) {
         if (ImGui::Button("+ Light", ImVec2(-1, 0))) {
           componentManager.addInPlace<Light>(selectedEntity);
           systemManager.getSystem<LightSystem>().createLight(selectedEntity);
         }
       }
-      if (!componentManager.containsComponent<ParticleEmitter>(selectedEntity)) {
+      if (!componentManager.has<ParticleEmitter>(selectedEntity)) {
         if (ImGui::Button("+ ParticleEmitter Emitter", ImVec2(-1, 0))) {
           componentManager.addInPlace<ParticleEmitter>(selectedEntity);
         }
       }
-      if (!componentManager.containsComponent<Collision>(selectedEntity)) {
+      if (!componentManager.has<Collision>(selectedEntity)) {
         if (ImGui::Button("+ Collision (AABB)", ImVec2(-1, 0))) {
           componentManager.addInPlace<Collision>(selectedEntity);
         }
       }
-      if (!componentManager.containsComponent<AudioSource>(selectedEntity)) {
+      if (!componentManager.has<AudioSource>(selectedEntity)) {
         if (ImGui::Button("+ Audio Source", ImVec2(-1, 0))) {
           // Stopped until a file is chosen
           auto &src = componentManager.addInPlace<AudioSource>(selectedEntity);
           src.playing = false;
         }
       }
-      if (!componentManager.containsComponent<Model>(selectedEntity)) {
+      if (!componentManager.has<Model>(selectedEntity)) {
         static char addModelPath[256] = "";
         ImGui::SetNextItemWidth(140.0f);
         ImGui::InputText("##addModelPath", addModelPath, 256);
         pickFileButton("pick_add_model", addModelPath, 256, window);
         ImGui::SameLine();
         if (ImGui::Button("+ Model", ImVec2(-1, 0)) && addModelPath[0] != '\0') {
-          if (!componentManager.containsComponent<Transform>(selectedEntity)) {
+          if (!componentManager.has<Transform>(selectedEntity)) {
             componentManager.addInPlace<Transform>(selectedEntity);
           }
           auto &rs = resourceSystem;
@@ -695,7 +695,7 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
           addModelPath[0] = '\0';
         }
       }
-      if (!componentManager.containsComponent<Camera>(selectedEntity)) {
+      if (!componentManager.has<Camera>(selectedEntity)) {
         if (ImGui::Button("+ Camera", ImVec2(-1, 0))) {
           componentManager.addInPlace<Camera>(selectedEntity);
         }
@@ -736,7 +736,7 @@ bool EditorUISystem::renderCameraInspector(Entity entity, SystemManager &systemM
   }
 
   ImGui::Separator();
-  auto &cam = componentManager.getOrThrow<Camera>(entity);
+  auto &cam = componentManager.get<Camera>(entity);
 
   bool camToogle = (camSys.getActiveCamera() == entity);
 
@@ -770,7 +770,7 @@ bool EditorUISystem::renderParticleInspector(Entity entity, ComponentManager &co
   }
 
   ImGui::Separator();
-  auto &p = componentManager.getOrThrow<ParticleEmitter>(entity);
+  auto &p = componentManager.get<ParticleEmitter>(entity);
 
   ImGui::Checkbox("Active##pe", &p.active);
   ImGui::SameLine();
@@ -849,7 +849,7 @@ bool EditorUISystem::renderMaterialInspector(Entity entity, ComponentManager &co
   }
 
   ImGui::Separator();
-  auto &model = componentManager.getOrThrow<Model>(entity);
+  auto &model = componentManager.get<Model>(entity);
   const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
   const auto &submeshes = mesh.getSubmeshes();
 
@@ -1125,7 +1125,7 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
     Entity e = builder.build();
 
     if (createModel) {
-      auto &model = componentManager.getOrThrow<Model>(e);
+      auto &model = componentManager.get<Model>(e);
       model.opacity = modelOpacity;
       renderSystem.markBatchesDirty();
       if (modelUseSolidTexture) {
@@ -1138,7 +1138,7 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
     }
 
     if (addParticle) {
-      auto &p = componentManager.getOrThrow<ParticleEmitter>(e);
+      auto &p = componentManager.get<ParticleEmitter>(e);
       p.emitRate = pemitRate;
       p.particleLifetime = plifetime;
       p.speed = pspeed;
@@ -1148,7 +1148,7 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
     }
 
     if (addCamera) {
-      auto &cam = componentManager.getOrThrow<Camera>(e);
+      auto &cam = componentManager.get<Camera>(e);
       cam.position = glm::vec3(cpos[0], cpos[1], cpos[2]);
       cam.yaw = cyaw;
       cam.pitch = cpitch;

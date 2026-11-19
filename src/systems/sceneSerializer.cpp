@@ -96,7 +96,7 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent(
       "Light",
       [this](Entity entity) -> std::optional<json> {
-        if (const Light *light = m_componentManager.getOrNil<Light>(entity))
+        if (const Light *light = m_componentManager.tryGet<Light>(entity))
           return json(*light);
         return std::nullopt;
       },
@@ -108,7 +108,7 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent(
       "Camera",
       [this](Entity entity) -> std::optional<json> {
-        const Camera *camera = m_componentManager.getOrNil<Camera>(entity);
+        const Camera *camera = m_componentManager.tryGet<Camera>(entity);
         if (!camera)
           return std::nullopt;
         json data = *camera;
@@ -131,7 +131,7 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent(
       "Hidden",
       [this](Entity entity) -> std::optional<json> {
-        if (m_componentManager.containsComponent<Hidden>(entity))
+        if (m_componentManager.has<Hidden>(entity))
           return json::object();
         return std::nullopt;
       },
@@ -140,7 +140,7 @@ void SceneSerializer::registerBuiltIns() {
 
 // A model is its file plus, per part, what the entity changed from the file's materials
 std::optional<SceneSerializer::json> SceneSerializer::saveModel(Entity entity) const {
-  const Model *model = m_componentManager.getOrNil<Model>(entity);
+  const Model *model = m_componentManager.tryGet<Model>(entity);
   if (!model)
     return std::nullopt;
 
@@ -236,7 +236,7 @@ bool SceneSerializer::save(const std::string &path) const {
       continue; // nothing that can be saved, e.g. only game components without a serializer
 
     json entry;
-    if (const Name *name = m_componentManager.getOrNil<Name>(entity))
+    if (const Name *name = m_componentManager.tryGet<Name>(entity))
       entry["name"] = name->name;
     entry["components"] = std::move(components);
     list.push_back(std::move(entry));

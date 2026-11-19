@@ -57,7 +57,7 @@ const std::vector<PointShadowCaster> &LightSystem::updatePointShadows(ComponentM
   const size_t visible = std::min(m_lights.size(), static_cast<size_t>(kMaxLights));
   static bool warned = false; // once per run, not every frame
   for (size_t i = 0; i < visible; ++i) {
-    const Light *light = componentManager.getOrNil<Light>(m_lights[i]);
+    const Light *light = componentManager.tryGet<Light>(m_lights[i]);
     if (!light || !light->castShadows || light->type == LightType::Directional || light->shadowRange <= 0.0f)
       continue;
     if (static_cast<int>(m_pointShadows.size()) >= maxCasters) {
@@ -67,7 +67,7 @@ const std::vector<PointShadowCaster> &LightSystem::updatePointShadows(ComponentM
       continue;
     }
     m_pointShadows.push_back({m_lights[i], static_cast<int>(m_pointShadows.size()),
-                              worldPosition(*light, componentManager.getOrNil<Transform>(m_lights[i])),
+                              worldPosition(*light, componentManager.tryGet<Transform>(m_lights[i])),
                               light->shadowRange});
   }
   return m_pointShadows;
@@ -83,9 +83,9 @@ void LightSystem::uploadLightsToShader(Shader &shader, ComponentManager &compone
       break;
     }
 
-    const auto &light = componentManager.getOrThrow<Light>(lightEntity);
+    const auto &light = componentManager.get<Light>(lightEntity);
 
-    const glm::vec3 worldPos = worldPosition(light, componentManager.getOrNil<Transform>(lightEntity));
+    const glm::vec3 worldPos = worldPosition(light, componentManager.tryGet<Transform>(lightEntity));
     int shadowSlot = -1;
     for (const PointShadowCaster &caster : m_pointShadows)
       if (caster.entity == lightEntity)

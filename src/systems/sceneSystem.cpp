@@ -11,13 +11,13 @@
 #include "systems/resourceSystem.h"
 
 void SceneSystem::destroyEntity(Entity entity) {
-  const bool hadModel = m_componentManager.containsComponent<Model>(entity);
+  const bool hadModel = m_componentManager.has<Model>(entity);
 
-  if (m_componentManager.containsComponent<Light>(entity)) {
+  if (m_componentManager.has<Light>(entity)) {
     auto &lightSystem = m_systemManager.getSystem<LightSystem>();
     lightSystem.destroyLight(entity);
 
-  } else if (m_componentManager.containsComponent<Camera>(entity)) {
+  } else if (m_componentManager.has<Camera>(entity)) {
     auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
     if (cameraSystem.getActiveCamera() == entity) {
       cameraSystem.removeActiveCamera();

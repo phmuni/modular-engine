@@ -34,8 +34,9 @@ public:
   public:
     EntityBuilder(Engine &engine, std::string_view name);
 
-    EntityBuilder &withModel(std::string_view modelPath, glm::vec3 position, glm::vec3 rotation, glm::vec3 scale,
-                             uint32_t shaderHandle = 0);
+    // Rotation in degrees (applied Y, then X, then Z); unrotated and at full size by default
+    EntityBuilder &withModel(std::string_view modelPath, glm::vec3 position, glm::vec3 rotation = glm::vec3(0.0f),
+                             glm::vec3 scale = glm::vec3(1.0f), uint32_t shaderHandle = 0);
     EntityBuilder &withCollision(const glm::vec3 &scale, bool isStatic = false);
 
     template <typename T, typename... Args> EntityBuilder &withComponent(Args &&...args) {
@@ -48,7 +49,8 @@ public:
       return *this;
     }
 
-    EntityBuilder &withTransform(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
+    EntityBuilder &withTransform(glm::vec3 position, glm::vec3 rotation = glm::vec3(0.0f),
+                                 glm::vec3 scale = glm::vec3(1.0f)) {
       return withComponent<Transform>(position, rotation, scale);
     }
 
@@ -108,18 +110,18 @@ public:
   // Whether the entity exists: handles of destroyed entities (or of a scene that loadScene replaced) do not
   bool isAlive(Entity entity) const;
 
-  // Component access. getOrThrow throws, with a message saying whether the entity lacks the component or no longer
-  // exists; getOrNil returns null instead.
-  template <typename T> T &getOrThrow(Entity entity) {
-    if (T *component = m_componentManager.getOrNil<T>(entity))
+  // Component access. get throws, with a message saying whether the entity lacks the component or no longer
+  // exists; tryGet returns null instead.
+  template <typename T> T &get(Entity entity) {
+    if (T *component = m_componentManager.tryGet<T>(entity))
       return *component;
     throwMissingComponent(entity, typeid(T));
   }
 
-  template <typename T> T *getOrNil(Entity entity) { return m_componentManager.getOrNil<T>(entity); }
+  template <typename T> T *tryGet(Entity entity) { return m_componentManager.tryGet<T>(entity); }
 
-  template <typename T> bool containsComponent(Entity entity) {
-    return m_componentManager.containsComponent<T>(entity);
+  template <typename T> bool has(Entity entity) {
+    return m_componentManager.has<T>(entity);
   }
 
   template <typename T> void removeComponent(Entity entity) { m_componentManager.removeComponent<T>(entity); }

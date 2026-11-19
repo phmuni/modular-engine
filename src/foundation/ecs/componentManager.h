@@ -177,19 +177,19 @@ public:
     return pool<T>().emplace(entity, std::forward<Args>(args)...);
   }
 
-  template <typename T> T &getOrThrow(Entity entity) {
-    if (T *component = getOrNil<T>(entity))
+  template <typename T> T &get(Entity entity) {
+    if (T *component = tryGet<T>(entity))
       return *component;
     LOG_E("[ComponentManager] Entity %d has no %s component", entity, typeName(typeid(T)).c_str());
     throw std::runtime_error("Component not found for entity");
   }
 
-  template <typename T> T *getOrNil(Entity entity) {
+  template <typename T> T *tryGet(Entity entity) {
     auto *components = findPool<T>();
     return components ? components->get(entity) : nullptr;
   }
 
-  template <typename T> bool containsComponent(Entity entity) {
+  template <typename T> bool has(Entity entity) {
     auto *components = findPool<T>();
     return components && components->contains(entity);
   }
