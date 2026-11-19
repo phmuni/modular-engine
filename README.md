@@ -57,6 +57,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Asset Loading**          | OBJ (Tiny_Obj) and glTF/GLB (tinygltf) with named parts, shared materials, background loading (`preloadModel`) and a binary mesh cache (`bin/cache/meshes`) |
 | **Texture Streaming**      | Textures converted once to GPU-compressed BC1/BC3 (BC5 for normal maps) with mipmaps, cached in `bin/cache/textures`, and uploaded over several frames, smallest mip first |
 | **Normal Maps**            | Tangent-space normal maps on OBJ and glTF models; tangents read from glTF or generated from UVs |
+| **Skybox**                 | Equirectangular panorama (png/jpg/hdr) behind the scene: `withSkybox(path, intensity, rotation)`, saved in scene files, editable in the Properties panel |
 | **HDR & Bloom**            | Lighting rendered in HDR, highlights rolled off instead of clipped, and bloom around emission and strong highlights (`F10`) |
 | **glTF Materials**         | Base color tint, alpha modes (opaque, mask, blend), double-sided and unlit (`KHR_materials_unlit`) materials |
 | **Camera System**          | Flexible camera control with quaternion-based rotations                        |
@@ -65,14 +66,14 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
-| **Collisions**             | Axis-aligned boxes (`withCollision`), queried by component pair: `forEachCollision<Bullet, Enemy>` |
+| **Collisions**             | Axis-aligned boxes (`withCollision`, or fitted to the model with `withModelCollision`), queried by component pair (`forEachCollision<Bullet, Enemy>`) and by ray (`raycast<Enemy>`) |
 | **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
 | **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
 | **Performance Overlay**    | `F5` shows FPS, frame time, work time before the buffer swap and the worst frame |
 | **VSync & Pause**          | `F6` toggles vsync; `F7` pauses the simulation while the camera keeps moving |
 | **Scenes**                 | Save the running scene to JSON and load or switch scenes at runtime (`Engine::saveScene`/`loadScene`, Settings panel) |
 | **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
-| **UI Integration**         | ImGui-based editor (`F2`) with move/rotate/scale gizmos (ImGuizmo), material inspector, light tweaks, entity hierarchy and a settings panel |
+| **UI Integration**         | ImGui-based editor (`F2`) with click-to-select in the scene, move/rotate/scale gizmos (ImGuizmo), material inspector, light tweaks, entity hierarchy and a settings panel |
 | **Regression Tests**       | `tools/regression.py` compares screenshots and frame times of every example and scene with references, on repeatable `--deterministic` runs |
 | **Settings Panel**         | Every toggle with its key (`F1`–`F10`), time scale, camera FOV/speed, audio volumes, screenshots and render stats (draw calls, culled meshes, particles) |
 | **Scene Management**       | Entity lifecycle management and component composition                          |
@@ -194,6 +195,8 @@ cmake --build build
 ./bin/engine scene [file.json]        # scene files in assets/scenes; [ and ] switch between them
 ```
 
+In Space Aliens a chase camera follows the ship: `W` `A` `S` `D` or the arrows fly up, down and sideways, `Space` fires, and four waves of aliens fly in from the far end into formations, shoot at the ship and dive at it.
+
 In the black hole example and the model viewer the camera orbits on its own: `←` `→` orbit, `↑` `↓` change the elevation and `W` `S` zoom.
 
 **Controls (all examples):**
@@ -213,7 +216,8 @@ In the black hole example and the model viewer the camera orbits on its own: `�
 | `F12` | Screenshot (`bin/screenshot.bmp`) |
 | `Right Alt` / `Right Option` | Cursor lock |
 | `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled (with the cursor locked) |
-| `W` / `E` / `R` | Editor gizmo on the selected entity: move / rotate / scale (cursor unlocked; `Ctrl` snaps) |
+| Left click in the scene | Editor: select the model under the cursor (empty space clears the selection; debug UI shown, cursor unlocked) |
+| `W` / `E` / `R` / `T` | Editor gizmo on the selected entity: move / rotate / scale / resize (cursor unlocked; `Ctrl` snaps; **Resize** puts a handle on each face, and dragging one moves that face alone; **Solid** in the Properties panel stops it where its triangles touch another model's, and it slides along; **Align to surface** makes the move gizmo place it on the surface under the cursor, tilted to its slope) |
 
 To save a frame without a window manager screenshot, pass `--screenshot <file.bmp> [seconds]`; the engine waits that long (3 seconds by default), saves the frame and exits:
 
@@ -400,6 +404,29 @@ if (engine.isColliding(player, door))
 
 Two static boxes (`Collision::isStatic`) are never reported. Pairs are found by sorting the boxes along one axis, not by testing every pair.
 
+`withModelCollision(fit)` sizes the box to the model's bounds as rotated and scaled, instead of a size you guess; `fit` below 1 makes a forgiving hitbox (Space Aliens uses 0.6 for the ship). The box does not rotate with the entity: after turning it a lot, call `engine.fitCollisionToModel(entity, fit)` again.
+
+Rays find the nearest box along a line, optionally only entities with a given component. With the distance a fast object moves in a frame, they are a swept test that thin targets cannot slip through:
+
+Models can be picked without a `Collision` box, against their triangles (the editor's click-to-select uses it). Hits carry the surface normal:
+
+```cpp
+if (engine.input().wasMouseButtonPressed(MouseButton::Left))
+    if (auto hit = engine.pickModel(engine.input().getMousePosition()))
+        select(hit->entity);
+// Or with any ray: engine.screenRay(point) gives the camera's ray through a window point,
+// engine.raycastModels(origin, direction) the nearest model triangle along it (hit->point, hit->normal)
+```
+
+```cpp
+if (auto hit = engine.raycast<Enemy>(muzzle, forward, 100.0f))
+    aimAt(hit->point);  // also hit->entity and hit->distance
+
+// A fast bullet: test the path it flies this frame, then move it
+if (auto hit = engine.raycast<Enemy>(bullet.position, bullet.velocity, glm::length(bullet.velocity) * dt))
+    explode(hit->entity);
+```
+
 ### Material & Resource Management
 
 The Engine provides convenient helpers for applying colors, emission, and textures:
@@ -447,6 +474,20 @@ Textures go through the same idea. The first time one is loaded, a worker thread
 Lit geometry renders into a 16-bit floating-point target, so light can go past white. A tone mapping pass leaves colors below about 0.76 untouched and rolls brighter ones off smoothly, keeping their hue instead of clipping them; particles then draw on top in display space, where their colors and additive blending were tuned. Bloom (`F10`) spreads light brighter than `EngineConfig::BLOOM_THRESHOLD` (emission, strong highlights) through a mip chain and adds it at the end. [`assets/scenes/normal_maps.json`](assets/scenes/normal_maps.json) shows normal maps lit from the side by a point light with shadows.
 
 For direct ResourceSystem access and full API reference, explore [`src/systems/resourceSystem.h`](src/systems/resourceSystem.h).
+
+### Skybox
+
+A `Skybox` component draws an equirectangular panorama (360 by 180 degrees, twice as wide as tall, the usual format of HDRI sites) behind everything. The first one in the scene is drawn, from any entity:
+
+```cpp
+engine.entities().create("Sky").withSkybox("../assets/textures/skybox/space.png", 1.0f /* intensity */, 0.0f /* rotation, degrees */).build();
+```
+
+```json
+{ "name": "Sky", "components": { "Skybox": { "path": "../assets/textures/skybox/space.png", "intensity": 1.0 } } }
+```
+
+The image goes through the same texture cache and streaming as model textures. Its center column is straight ahead (-Z); `intensity` above 1 lets bright stars reach the bloom. [`tools/generateSpaceSkybox.c`](tools/generateSpaceSkybox.c) generated the space panorama used by Space Aliens.
 
 ### Audio
 
@@ -502,7 +543,7 @@ engine.loadScene("../assets/scenes/level2.json");  // reads its models in the ba
 void onSceneLoaded(Engine& engine, const std::string& path) override { /* ... */ }
 ```
 
-Saved: `Transform`, `Model` (the file plus per-part color, textures, emission and shininess changes), `Light`, `Camera` (and which one is active), `Collision`, `ParticleEmitter`, `GravityLens`, `AudioSource` and `Hidden`. Runtime state such as live particles is not. Game components are saved once registered; plain data only needs `to_json`/`from_json`:
+Saved: `Transform`, `Model` (the file plus per-part color, textures, emission and shininess changes), `Light`, `Camera` (and which one is active), `Collision`, `ParticleEmitter`, `GravityLens`, `AudioSource`, `Skybox` and `Hidden`. Runtime state such as live particles is not. Game components are saved once registered; plain data only needs `to_json`/`from_json`:
 
 ```cpp
 #include "systems/sceneSerializer.h"
