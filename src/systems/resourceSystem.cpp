@@ -32,7 +32,7 @@ bool ResourceSystem::isModelPending(std::string_view path) const {
 }
 
 void ResourceSystem::update() {
-  TextureUploader::pump(EngineConfig::TEXTURE_UPLOAD_BUDGET);
+  TextureUploader::pump(m_textureUploadBudget);
   for (auto it = m_pendingMeshes.begin(); it != m_pendingMeshes.end();) {
     if (it->second.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
       ++it;

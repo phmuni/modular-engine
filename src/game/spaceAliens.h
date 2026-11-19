@@ -12,6 +12,7 @@
 #include "systems/stateSystem.h"
 #include <RmlUi/Core.h>
 #include <cmath>
+#include "foundation/core/random.h"
 #include <random>
 #include <unordered_set>
 
@@ -20,7 +21,7 @@ class SpaceAliens : public App {
   Entity starfield = -1;
   Entity gameManager = -1;
 
-  std::mt19937 rng{std::random_device{}()};
+  std::mt19937 &rng = Random::generator();
   std::uniform_real_distribution<float> pitchJitter{0.92f, 1.08f};
 
   static constexpr const char *SOUND_LASER = "../assets/sounds/laser.wav";

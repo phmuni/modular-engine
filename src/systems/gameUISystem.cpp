@@ -15,6 +15,10 @@ class LoggingSystemInterface final : public SystemInterface_SDL {
 public:
   using SystemInterface_SDL::SystemInterface_SDL;
 
+  // The engine's time rather than the wall clock, so animations follow fixed-step runs too
+  double GetElapsedTime() override { return clock; }
+  double clock = 0.0;
+
   bool LogMessage(Rml::Log::Type type, const Rml::String &message) override {
     switch (type) {
     case Rml::Log::LT_ERROR:
@@ -137,10 +141,11 @@ bool GameUISystem::processEvent(SDL_Event &event, bool mouseAllowed, bool keysAl
   return !RmlSDL::InputEventHandler(impl.context, impl.window, event);
 }
 
-void GameUISystem::update(bool showDebugger) {
+void GameUISystem::update(bool showDebugger, float seconds) {
   auto &impl = *m_impl;
   if (!impl.context)
     return;
+  impl.system->clock += seconds;
   if (showDebugger != impl.debuggerVisible) {
     impl.debuggerVisible = showDebugger;
     Rml::Debugger::SetVisible(showDebugger);

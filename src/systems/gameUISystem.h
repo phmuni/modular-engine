@@ -30,7 +30,8 @@ public:
   // Feeds an SDL event to the UI. Returns true when the UI handled it, so the game should ignore it.
   // `mouseAllowed`/`keysAllowed` are false while something else owns that input (cursor lock, ImGui).
   bool processEvent(SDL_Event &event, bool mouseAllowed, bool keysAllowed);
-  void update(bool showDebugger);
+  // `seconds` advances the clock RmlUi animates with: the engine's frame time, so fixed-step runs repeat exactly
+  void update(bool showDebugger, float seconds);
   void render();
   // Frees RmlUi and its GPU resources; must run while the OpenGL context is alive
   void shutdown();

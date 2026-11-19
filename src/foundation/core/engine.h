@@ -159,6 +159,10 @@ public:
   // Lato (font-family: LatoLatin) is loaded by default; fonts are used by the family name inside the file
   bool loadUIFont(std::string_view path, bool fallback = false);
 
+  // Repeatable runs for regression tests: fixed 1/60 s frames, seeded randomness, scene switches and texture
+  // uploads that do not depend on background threads. Call before the app is set up.
+  void setDeterministic();
+
   // Runs with vsync off for `seconds` (after a 1 s warm-up), logs frame-time statistics and closes the engine.
   void runBenchmark(float seconds);
 
@@ -194,6 +198,7 @@ private:
 
   App *m_app = nullptr;
   bool m_shutdown = false;
+  bool m_deterministic = false;
 
   struct ScreenshotRequest {
     std::string path;

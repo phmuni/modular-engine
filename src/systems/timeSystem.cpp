@@ -18,7 +18,7 @@ void TimeSystem::begin() {
 
 void TimeSystem::update() {
   float currentTime = nowSeconds();
-  m_unscaledDeltaTime = currentTime - m_lastFrameTime;
+  m_unscaledDeltaTime = m_fixedStep > 0.0f ? m_fixedStep : currentTime - m_lastFrameTime;
   m_deltaTime = m_paused ? 0.0f : m_unscaledDeltaTime * m_timeScale;
   m_lastFrameTime = currentTime;
 }

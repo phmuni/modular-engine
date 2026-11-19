@@ -1,6 +1,7 @@
 #pragma once
 // Resource system for loading and managing meshes, materials, shaders, and textures.
 
+#include "foundation/core/config.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
@@ -43,6 +44,7 @@ private:
   bool m_hasBlendMaterials = false;
   std::unordered_map<uint32_t, uint32_t> m_maskVariants;
 
+  size_t m_textureUploadBudget = EngineConfig::TEXTURE_UPLOAD_BUDGET;
   uint32_t m_nextMesh = 0;
   uint32_t m_nextMaterial = 0;
   uint32_t m_nextShader = 1;
@@ -62,8 +64,10 @@ public:
   void preloadModel(std::string_view path);
   // Whether a preloadModel read of this path is still going on
   bool isModelPending(std::string_view path) const;
-  // Uploads background reads that finished; call once per frame
+  // Uploads background reads that finished and sends waiting texture data; call once per frame
   void update();
+  // Texture bytes sent to the GPU per frame (EngineConfig::TEXTURE_UPLOAD_BUDGET by default)
+  void setTextureUploadBudget(size_t bytes) { m_textureUploadBudget = bytes; }
   uint32_t loadMesh(std::string_view path);
   ModelLoadResult loadModel(std::string_view path, uint32_t shaderHandle);
   Mesh &getMesh(uint32_t handle);

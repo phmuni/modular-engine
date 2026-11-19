@@ -31,3 +31,5 @@ assets/models/*
 
 # macOS
 .DS_Store
+# Regression test data (tools/regression.py): references and baselines are specific to this machine
+/tests/regression/

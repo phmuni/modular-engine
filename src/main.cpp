@@ -1,7 +1,7 @@
 // Main entry point for the application. Sets up the engine and runs the main loop with the provided application logic.
 //
 // Usage: engine [aliens|blackhole|stress|view <model.obj|.glb>|scene [file.json]] [--screenshot <file.bmp> [seconds]]
-//               [--benchmark [seconds]] [--save-scene <file.json> [seconds]]
+//               [--benchmark [seconds]] [--save-scene <file.json> [seconds]] [--deterministic]
 
 #include "foundation/core/engine.h"
 #include "game/blackHole.h"
@@ -23,6 +23,7 @@ int main(int argc, char **argv) {
   std::string sceneFile;
   std::string saveScenePath;
   float saveSceneDelay = 0.0f;
+  bool deterministic = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -34,6 +35,8 @@ int main(int argc, char **argv) {
       benchmarkSeconds = 10.0f;
       if (i + 1 < argc && argv[i + 1][0] != '-')
         benchmarkSeconds = std::strtof(argv[++i], nullptr);
+    } else if (arg == "--deterministic") {
+      deterministic = true;
     } else if (arg == "--save-scene" && i + 1 < argc) {
       saveScenePath = std::filesystem::absolute(argv[++i]).string();
       if (i + 1 < argc && argv[i + 1][0] != '-')
@@ -50,6 +53,9 @@ int main(int argc, char **argv) {
   Engine engine;
   if (!engine.initialize())
     return 1;
+  // Before the app exists, so its setup already runs on fixed frames and seeded randomness
+  if (deterministic)
+    engine.setDeterministic();
 
   std::unique_ptr<App> application;
   if (example == "blackhole")

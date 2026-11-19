@@ -11,6 +11,7 @@ private:
   bool m_paused = false;
   float m_lastFrameTime = 0.0f;
   float m_startTime = 0.0f;
+  float m_fixedStep = 0.0f; // when set, every frame lasts exactly this long, whatever the clock says
 
 public:
   TimeSystem() = default;
@@ -30,6 +31,9 @@ public:
   void setPaused(bool paused) { m_paused = paused; }
   float getLastFrameTime() const;
   float getTimeSinceStart() const;
+
+  // Repeatable runs: each frame advances time by `seconds` (0 goes back to real time)
+  void setFixedStep(float seconds) { m_fixedStep = seconds; }
 
   void setDeltaTime(float dt);
   void setLastFrameTime(float time);

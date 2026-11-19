@@ -6,6 +6,8 @@
 #include "components/name.h"
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
+#include "foundation/core/random.h"
+#include <cstdint>
 #include "rendering/resources/material.h"
 #include "rendering/resources/textureProcessing.h"
 #include "systems/audioSystem.h"
@@ -131,12 +133,22 @@ void Engine::shutdown() {
 }
 
 void Engine::loop(bool &isRunning) {
+  // The first frame measures from here, not from engine start-up (which includes the app's setup)
+  m_systemManager.getSystem<TimeSystem>().begin();
   while (isRunning) {
     update(isRunning);
     render();
     if (m_benchmark)
       recordBenchmarkFrame();
   }
+}
+
+void Engine::setDeterministic() {
+  m_deterministic = true;
+  Random::seed(1);
+  m_systemManager.getSystem<TimeSystem>().setFixedStep(1.0f / 60.0f);
+  // Whole textures each frame: streaming would depend on when background reads finish
+  m_systemManager.getSystem<ResourceSystem>().setTextureUploadBudget(SIZE_MAX);
 }
 
 void Engine::runBenchmark(float seconds) {
@@ -234,7 +246,8 @@ void Engine::update(bool &isRunning) {
   m_systemManager.getSystem<AudioSystem>().update(m_systemManager, state.isToggled(Toggle::Paused),
                                                   timeSystem.getTimeScale());
   // After the app, so data models it changed this frame are shown this frame
-  m_systemManager.getSystem<GameUISystem>().update(state.isToggled(Toggle::UIDebugger));
+  m_systemManager.getSystem<GameUISystem>().update(state.isToggled(Toggle::UIDebugger),
+                                                   timeSystem.getUnscaledDeltaTime());
 
   bool screenshotKey = inputSystem.isKeyPressed(EngineConfig::SCREENSHOT_KEY);
   if (screenshotKey && !m_screenshotKeyDown)
@@ -334,10 +347,11 @@ void Engine::saveSceneAfter(std::string path, float delaySeconds, bool quitAfter
 void Engine::applyPendingScene() {
   if (!m_pendingScene)
     return;
-  // Waits while the scene's models are read in the background; ResourceSystem::update uploads each as it finishes
+  // Waits while the scene's models are read in the background; ResourceSystem::update uploads each as it finishes.
+  // Deterministic runs switch on the next frame and wait for the reads there, so the frame does not vary.
   auto &resources = m_systemManager.getSystem<ResourceSystem>();
   for (const std::string &model : m_pendingSceneModels)
-    if (resources.isModelPending(model))
+    if (!m_deterministic && resources.isModelPending(model))
       return;
   m_pendingSceneModels.clear();
   std::string path = std::move(*m_pendingScene);

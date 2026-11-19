@@ -11,10 +11,11 @@
 #include "systems/resourceSystem.h"
 #include <cmath>
 #include <glm/gtc/constants.hpp>
+#include "foundation/core/random.h"
 #include <random>
 
 namespace {
-std::mt19937 rng{std::random_device{}()};
+std::mt19937 &rng = Random::generator();
 std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
 std::uniform_real_distribution<float> distSym(-1.0f, 1.0f);
 
