@@ -11,6 +11,8 @@ void Renderer::init(SDL_Window *window) {
   m_window = window;
   initShadowMapping();
   initParticleBuffers();
+  // Point shadows are filtered across cube faces instead of showing seams at the edges
+  glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
   glGenBuffers(1, &m_instanceVBO);
 }
 
@@ -82,9 +84,10 @@ void Renderer::drawIndexRangeInstanced(const Mesh &mesh, uint32_t indexStart, ui
   glBindVertexArray(0);
 }
 
-void Renderer::beginShadowPass() {
-  glViewport(0, 0, m_shadowWidth, m_shadowHeight);
+void Renderer::beginShadowPass(int cascade) {
+  glViewport(0, 0, EngineConfig::SHADOW_CASCADE_SIZE, EngineConfig::SHADOW_CASCADE_SIZE);
   glBindFramebuffer(GL_FRAMEBUFFER, m_depthMapFBO);
+  glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, m_depthMap, 0, cascade);
   glClear(GL_DEPTH_BUFFER_BIT);
 }
 
@@ -97,22 +100,23 @@ void Renderer::initShadowMapping() {
   glGenFramebuffers(1, &m_depthMapFBO);
   glGenTextures(1, &m_depthMap);
 
-  glBindTexture(GL_TEXTURE_2D, m_depthMap);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, m_shadowWidth, m_shadowHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT,
+  glBindTexture(GL_TEXTURE_2D_ARRAY, m_depthMap);
+  glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT24, EngineConfig::SHADOW_CASCADE_SIZE,
+               EngineConfig::SHADOW_CASCADE_SIZE, EngineConfig::SHADOW_CASCADES, 0, GL_DEPTH_COMPONENT, GL_FLOAT,
                nullptr);
 
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+  glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+  glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
   float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
-  glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-  // Sampled through sampler2DShadow: the hardware compares depths and filters the results
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+  glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
+  // Sampled through sampler2DArrayShadow: the hardware compares depths and filters the results
+  glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+  glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
   glBindFramebuffer(GL_FRAMEBUFFER, m_depthMapFBO);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_depthMap, 0);
+  glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, m_depthMap, 0, 0);
   glDrawBuffer(GL_NONE);
   glReadBuffer(GL_NONE);
 
@@ -124,9 +128,55 @@ void Renderer::initShadowMapping() {
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-GLuint Renderer::getDepthMap() const { return m_depthMap; }
+GLuint Renderer::createDepthCubeMap(int size) {
+  GLuint cubeMap = 0;
+  glGenTextures(1, &cubeMap);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap);
+  for (int face = 0; face < 6; ++face)
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_DEPTH_COMPONENT24, size, size, 0, GL_DEPTH_COMPONENT,
+                 GL_FLOAT, nullptr);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  // Sampled through samplerCubeShadow, like the directional map: hardware comparison with bilinear filtering
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+  return cubeMap;
+}
 
-GLuint Renderer::getDepthMapFBO() const { return m_depthMapFBO; }
+void Renderer::beginPointShadowFace(int slot, int face) {
+  if (!m_pointShadowFBO) {
+    glGenFramebuffers(1, &m_pointShadowFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_pointShadowFBO);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+  }
+  GLuint &cubeMap = m_pointShadowMaps[slot];
+  if (!cubeMap)
+    cubeMap = createDepthCubeMap(EngineConfig::POINT_SHADOW_SIZE);
+
+  glViewport(0, 0, EngineConfig::POINT_SHADOW_SIZE, EngineConfig::POINT_SHADOW_SIZE);
+  glBindFramebuffer(GL_FRAMEBUFFER, m_pointShadowFBO);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, cubeMap, 0);
+  glClear(GL_DEPTH_BUFFER_BIT);
+}
+
+GLuint Renderer::getPointShadowMap(int slot) const {
+  if (slot >= 0 && slot < EngineConfig::MAX_POINT_SHADOWS && m_pointShadowMaps[slot])
+    return m_pointShadowMaps[slot];
+  if (!m_emptyCubeMap) {
+    // 1x1 faces at the far plane: every comparison passes, so nothing is shadowed
+    m_emptyCubeMap = createDepthCubeMap(1);
+    const float far = 1.0f;
+    for (int face = 0; face < 6; ++face)
+      glTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, 0, 0, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &far);
+  }
+  return m_emptyCubeMap;
+}
+
+GLuint Renderer::getDepthMap() const { return m_depthMap; }
 
 bool Renderer::saveScreenshot(const std::string &path) const {
   const int width = m_screenWidth;
@@ -276,6 +326,19 @@ void Renderer::shutdown() {
   if (m_depthMap) {
     glDeleteTextures(1, &m_depthMap);
     m_depthMap = 0;
+  }
+  for (GLuint &cubeMap : m_pointShadowMaps)
+    if (cubeMap) {
+      glDeleteTextures(1, &cubeMap);
+      cubeMap = 0;
+    }
+  if (m_emptyCubeMap) {
+    glDeleteTextures(1, &m_emptyCubeMap);
+    m_emptyCubeMap = 0;
+  }
+  if (m_pointShadowFBO) {
+    glDeleteFramebuffers(1, &m_pointShadowFBO);
+    m_pointShadowFBO = 0;
   }
   if (m_particleVAO) {
     glDeleteVertexArrays(1, &m_particleVAO);

@@ -12,6 +12,9 @@
 #include <algorithm>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <cmath>
+#include <iterator>
+#include <string>
 #include <tuple>
 
 namespace {
@@ -97,18 +100,47 @@ struct Frustum {
   }
 };
 
-// Mesh bounds moved to world space; rotation keeps the radius, scale stretches it by its largest axis.
+// The largest scale along any axis: rotation keeps a bounding sphere's radius, scale stretches it by this much
+float maxScaleOf(const glm::mat4 &modelMatrix) {
+  return glm::sqrt(glm::max(glm::max(glm::dot(glm::vec3(modelMatrix[0]), glm::vec3(modelMatrix[0])),
+                                     glm::dot(glm::vec3(modelMatrix[1]), glm::vec3(modelMatrix[1]))),
+                            glm::dot(glm::vec3(modelMatrix[2]), glm::vec3(modelMatrix[2]))));
+}
+
+// Mesh bounds moved to world space
 bool isMeshVisible(const Frustum &frustum, const Mesh &mesh, const glm::mat4 &modelMatrix) {
   const glm::vec3 center = glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f));
-  const float maxScale = glm::sqrt(glm::max(glm::max(glm::dot(glm::vec3(modelMatrix[0]), glm::vec3(modelMatrix[0])),
-                                                     glm::dot(glm::vec3(modelMatrix[1]), glm::vec3(modelMatrix[1]))),
-                                            glm::dot(glm::vec3(modelMatrix[2]), glm::vec3(modelMatrix[2]))));
-  return frustum.intersectsSphere(center, mesh.getBoundsRadius() * maxScale);
+  return frustum.intersectsSphere(center, mesh.getBoundsRadius() * maxScaleOf(modelMatrix));
 }
 
 glm::mat3 calculateNormalMatrix(const glm::mat4 &modelMatrix) {
   return glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
 }
+
+// Uniform names for each sun shadow cascade, built once
+struct CascadeUniforms {
+  std::string matrix, split, texel;
+};
+const CascadeUniforms kCascadeUniforms[4] = {
+    {"cascadeMatrices[0]", "cascadeSplits[0]", "cascadeTexels[0]"},
+    {"cascadeMatrices[1]", "cascadeSplits[1]", "cascadeTexels[1]"},
+    {"cascadeMatrices[2]", "cascadeSplits[2]", "cascadeTexels[2]"},
+    {"cascadeMatrices[3]", "cascadeSplits[3]", "cascadeTexels[3]"},
+};
+static_assert(EngineConfig::SHADOW_CASCADES >= 1 && EngineConfig::SHADOW_CASCADES <= 4,
+              "the shader's cascade arrays hold 4");
+
+// Texture units 0-2 hold material textures and 4 the directional shadow map; point shadow cube maps follow
+constexpr int kFirstPointShadowUnit = 5;
+constexpr const char *kPointShadowSamplers[] = {"pointShadowMaps0", "pointShadowMaps1", "pointShadowMaps2",
+                                                "pointShadowMaps3"};
+static_assert(std::size(kPointShadowSamplers) == EngineConfig::MAX_POINT_SHADOWS,
+              "one sampler name (and one sampler in fragmentShader.frag) per point shadow slot");
+
+// Cube faces in GL order (+X, -X, +Y, -Y, +Z, -Z): where each looks and which way is up, as cube maps expect
+const glm::vec3 kCubeFaceDirections[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+const glm::vec3 kCubeFaceUps[6] = {{0, -1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}, {0, -1, 0}, {0, -1, 0}};
+constexpr float kPointShadowNear = 0.05f;
 
 constexpr float kSoftOpacityEnter = 0.95f;
 constexpr float kSoftOpacityExit = 0.90f;
@@ -140,6 +172,212 @@ template <typename SameRun, typename DrawRun> void RenderSystem::drawInstanceRun
 }
 
 void RenderSystem::markBatchesDirty() { m_batchesDirty = true; }
+
+void RenderSystem::gatherShadowCasters(ComponentManager &componentManager, ResourceSystem &resourceSystem,
+                                       TransformSystem &transformSystem) {
+  if (m_shadowCastersGathered)
+    return;
+  m_shadowCastersGathered = true;
+  m_shadowCasters.clear();
+  componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
+    if (isHidden(componentManager, entity))
+      return;
+    const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
+    const glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(componentManager.getOrThrow<Transform>(entity));
+    m_shadowCasters.push_back({model.meshHandle, modelMatrix,
+                               glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f)),
+                               mesh.getBoundsRadius() * maxScaleOf(modelMatrix)});
+  });
+  // Sorted once, so every pass finds the instances of a mesh next to each other
+  std::sort(m_shadowCasters.begin(), m_shadowCasters.end(),
+            [](const ShadowCaster &a, const ShadowCaster &b) { return a.meshHandle < b.meshHandle; });
+}
+
+void RenderSystem::drawShadowCasters(Shader &depthShader, const glm::mat4 &viewProjection,
+                                     ResourceSystem &resourceSystem) {
+  const Frustum frustum(viewProjection);
+  depthShader.setMat4("lightSpaceMatrix", viewProjection);
+  const bool instanced = depthShader.supportsInstancing();
+  depthShader.setInt("useInstancing", instanced ? 1 : 0);
+
+  // Instances of one mesh go out together; the list is sorted by mesh
+  uint32_t runMesh = 0;
+  m_instanceData.clear();
+  auto flush = [&] {
+    if (m_instanceData.empty())
+      return;
+    m_renderer.uploadInstances(m_instanceData.data(), static_cast<int>(m_instanceData.size()));
+    m_renderer.drawMeshInstanced(resourceSystem.getMesh(runMesh), static_cast<int>(m_instanceData.size()));
+    m_instanceData.clear();
+  };
+
+  for (const ShadowCaster &caster : m_shadowCasters) {
+    if (!frustum.intersectsSphere(caster.center, caster.radius))
+      continue;
+    if (!instanced) {
+      depthShader.setMat4("model", caster.model);
+      m_renderer.drawMesh(resourceSystem.getMesh(caster.meshHandle));
+      continue;
+    }
+    if (caster.meshHandle != runMesh)
+      flush();
+    runMesh = caster.meshHandle;
+    m_instanceData.push_back({caster.model, {}});
+  }
+  flush();
+}
+
+RenderSystem::DirectionalShadow
+RenderSystem::renderDirectionalShadow(ComponentManager &componentManager, ResourceSystem &resourceSystem,
+                                      TransformSystem &transformSystem, LightSystem &lightSystem, const Camera &camera,
+                                      const glm::mat4 &view) {
+  DirectionalShadow shadow;
+  const Light *sun = nullptr;
+  for (Entity lightEntity : lightSystem.getLights()) {
+    const Light &light = componentManager.getOrThrow<Light>(lightEntity);
+    if (light.type == LightType::Directional) {
+      sun = &light;
+      break;
+    }
+  }
+  if (!sun || m_shadowShaderHandle == 0)
+    return shadow;
+  shadow.active = true;
+
+  gatherShadowCasters(componentManager, resourceSystem, transformSystem);
+  constexpr int cascades = EngineConfig::SHADOW_CASCADES;
+  constexpr float size = static_cast<float>(EngineConfig::SHADOW_CASCADE_SIZE);
+  const float nearPlane = EngineConfig::CAMERA_NEAR;
+  const float farPlane = std::min(EngineConfig::SHADOW_DISTANCE, EngineConfig::CAMERA_FAR);
+  const glm::mat4 cameraToWorld = glm::inverse(view);
+  const float tanY = std::tan(glm::radians(camera.fov) * 0.5f);
+  const float tanX = tanY * camera.aspectRatio;
+  const glm::vec3 lightDir = glm::normalize(sun->direction);
+  const glm::vec3 up = std::abs(lightDir.y) > 0.99f ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
+
+  Shader &depthShader = resourceSystem.getShader(m_shadowShaderHandle);
+  depthShader.use();
+
+  float sliceNear = nearPlane;
+  for (int cascade = 0; cascade < cascades; ++cascade) {
+    // Split between even and logarithmic spacing: logarithmic keeps the texel size proportional to distance
+    const float t = static_cast<float>(cascade + 1) / cascades;
+    const float even = nearPlane + (farPlane - nearPlane) * t;
+    const float logarithmic = nearPlane * std::pow(farPlane / nearPlane, t);
+    const float sliceFar = glm::mix(even, logarithmic, EngineConfig::SHADOW_CASCADE_SPLIT);
+
+    // The slice's corners in the world, and a sphere around them. A sphere keeps the map the same size however the
+    // camera turns, so shadow edges do not swim; rounding the radius keeps it from changing by tiny amounts.
+    glm::vec3 corners[8];
+    glm::vec3 center(0.0f);
+    for (int i = 0; i < 8; ++i) {
+      const float depth = (i & 4) ? sliceFar : sliceNear;
+      const glm::vec4 local((i & 1 ? 1.0f : -1.0f) * depth * tanX, (i & 2 ? 1.0f : -1.0f) * depth * tanY, -depth, 1.0f);
+      corners[i] = glm::vec3(cameraToWorld * local);
+      center += corners[i] / 8.0f;
+    }
+    float radius = 0.0f;
+    for (const glm::vec3 &corner : corners)
+      radius = std::max(radius, glm::length(corner - center));
+    radius = std::ceil(radius * 16.0f) / 16.0f;
+
+    // Looking along the light from just outside the sphere, pulled back further so casters up to
+    // SHADOW_CASTER_REACH beyond it still land in the map
+    const float reach = EngineConfig::SHADOW_CASTER_REACH;
+    const glm::mat4 lightView = glm::lookAt(center - lightDir * (radius + reach), center, up);
+    glm::mat4 lightProjection = glm::ortho(-radius, radius, -radius, radius, 0.0f, 2.0f * radius + reach);
+
+    // Snap to whole texels: as the camera moves the map slides in texel steps instead of re-sampling the scene
+    // a fraction of a texel off each frame, which makes edges shimmer
+    const glm::vec4 origin = lightProjection * lightView * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    const glm::vec2 texelOrigin = glm::vec2(origin) * (size * 0.5f);
+    const glm::vec2 snap = (glm::round(texelOrigin) - texelOrigin) * (2.0f / size);
+    lightProjection[3][0] += snap.x;
+    lightProjection[3][1] += snap.y;
+
+    shadow.matrices[cascade] = lightProjection * lightView;
+    shadow.splits[cascade] = sliceFar;
+    shadow.texels[cascade] = 2.0f * radius / size;
+
+    m_renderer.beginShadowPass(cascade);
+    drawShadowCasters(depthShader, shadow.matrices[cascade], resourceSystem);
+    sliceNear = sliceFar;
+  }
+  m_renderer.endShadowPass();
+  return shadow;
+}
+
+namespace {
+// 64-bit FNV-1a over raw bytes, then a final mix so nearby inputs spread over all bits
+uint64_t hashBytes(const void *data, size_t size, uint64_t hash = 1469598103934665603ull) {
+  const auto *bytes = static_cast<const unsigned char *>(data);
+  for (size_t i = 0; i < size; ++i) {
+    hash ^= bytes[i];
+    hash *= 1099511628211ull;
+  }
+  hash ^= hash >> 33;
+  hash *= 0xff51afd7ed558ccdull;
+  return hash ^ (hash >> 33);
+}
+} // namespace
+
+// The light's position and range, plus the mesh and matrix of every caster within range: everything the cube map
+// depends on. Casters are combined by addition, so the order the ECS lists them in does not matter.
+uint64_t RenderSystem::pointShadowSignature(const PointShadowCaster &light) const {
+  struct LightKey {
+    glm::vec3 position;
+    float range;
+  } lightKey{light.position, light.range};
+  uint64_t casters = 0;
+  uint32_t count = 0;
+  for (const ShadowCaster &caster : m_shadowCasters) {
+    if (glm::length(caster.center - light.position) > caster.radius + light.range)
+      continue;
+    const uint64_t meshHash = hashBytes(&caster.meshHandle, sizeof(caster.meshHandle));
+    casters += hashBytes(&caster.model, sizeof(caster.model), meshHash);
+    ++count;
+  }
+  uint64_t signature = hashBytes(&lightKey, sizeof(lightKey));
+  signature = hashBytes(&casters, sizeof(casters), signature);
+  signature = hashBytes(&count, sizeof(count), signature);
+  return signature == 0 ? 1 : signature; // 0 means "nothing rendered yet"
+}
+
+void RenderSystem::renderPointShadows(ComponentManager &componentManager, ResourceSystem &resourceSystem,
+                                      TransformSystem &transformSystem,
+                                      const std::vector<PointShadowCaster> &casters) {
+  m_pointShadowCount = static_cast<int>(casters.size());
+  m_pointShadowUpdates = 0;
+  if (casters.empty() || m_shadowShaderHandle == 0)
+    return;
+
+  gatherShadowCasters(componentManager, resourceSystem, transformSystem);
+  Shader &depthShader = resourceSystem.getShader(m_shadowShaderHandle);
+  bool rendering = false;
+  for (const PointShadowCaster &caster : casters) {
+    // Unchanged since this slot's cube map was rendered: keep it
+    const uint64_t signature = pointShadowSignature(caster);
+    if (signature == m_pointShadowSignatures[caster.slot])
+      continue;
+    m_pointShadowSignatures[caster.slot] = signature;
+    ++m_pointShadowUpdates;
+    if (!rendering) {
+      depthShader.use();
+      rendering = true;
+    }
+
+    // The far plane is the light's range; the shader rebuilds the same depth from the distance to compare
+    const glm::mat4 projection = glm::perspective(glm::radians(90.0f), 1.0f, kPointShadowNear, caster.range);
+    for (int face = 0; face < 6; ++face) {
+      const glm::mat4 view =
+          glm::lookAt(caster.position, caster.position + kCubeFaceDirections[face], kCubeFaceUps[face]);
+      m_renderer.beginPointShadowFace(caster.slot, face);
+      drawShadowCasters(depthShader, projection * view, resourceSystem);
+    }
+  }
+  if (rendering)
+    m_renderer.endShadowPass();
+}
 
 void RenderSystem::rebuildRenderBatches(ComponentManager &componentManager, ResourceSystem &resourceSystem) {
   m_renderBatches.clear();
@@ -173,86 +411,23 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   const auto &camera = componentManager.getOrThrow<Camera>(cameraEntity);
   glm::mat4 view = cameraSystem.getViewMatrix(camera);
   glm::mat4 projection = cameraSystem.getProjectionMatrix(camera);
-  glm::vec3 viewPos = camera.position;
+  // From the view matrix rather than Camera::position, which a relative camera offsets by its Transform
+  const glm::vec3 viewPos = glm::vec3(glm::inverse(view)[3]);
   const Frustum frustum(projection * view);
   m_culledCount = 0;
 
-  glm::mat4 lightSpaceMatrix = glm::mat4(1.0f);
-  glm::vec3 shadowLightDir = glm::vec3(0.0f, -1.0f, 0.0f);
-  bool useShadows = false;
-
   auto &state = systemManager.getSystem<StateSystem>();
-  bool shadowsEnabled = state.isToggled(Toggle::Shadows);
+  const bool shadowsEnabled = state.isToggled(Toggle::Shadows);
   const bool gammaCorrect = state.isToggled(Toggle::GammaCorrect);
-  const auto &lights = lightSystem.getLights();
 
-  // Shadow pass
-  if (shadowsEnabled && !lights.empty()) {
-    for (const Entity &lightEntity : lights) {
-      const auto &light = componentManager.getOrThrow<Light>(lightEntity);
-
-      if (light.type == LightType::Directional) {
-        useShadows = true;
-        if (m_shadowShaderHandle == 0)
-          break;
-
-        Shader &depthShader = resourceSystem.getShader(m_shadowShaderHandle);
-
-        glm::vec3 sceneCenter = glm::vec3(0.0f);
-        float sceneRadius = 30.0f;
-
-        glm::vec3 lightDir = glm::normalize(light.direction);
-        glm::vec3 lightPos = sceneCenter - lightDir * sceneRadius * 2.0f;
-
-        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-        if (abs(glm::dot(lightDir, up)) > 0.99f) {
-          up = glm::vec3(1.0f, 0.0f, 0.0f);
-        }
-
-        float orthoSize = sceneRadius * 1.5f;
-        glm::mat4 lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.1f, sceneRadius * 4.0f);
-        glm::mat4 lightView = glm::lookAt(lightPos, sceneCenter, up);
-        lightSpaceMatrix = lightProjection * lightView;
-
-        depthShader.use();
-        depthShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-        renderer.beginShadowPass();
-        if (depthShader.supportsInstancing()) {
-          depthShader.setInt("useInstancing", 1);
-          m_instanceItems.clear();
-          componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
-            if (isHidden(componentManager, entity))
-              return;
-            const auto &transform = componentManager.getOrThrow<Transform>(entity);
-            m_instanceItems.push_back(
-                {model.meshHandle, 0, 0, 0, {transformSystem.calculateModelMatrix(transform), {}}});
-          });
-          drawInstanceRuns([](const InstanceItem &a, const InstanceItem &b) { return a.meshHandle == b.meshHandle; },
-                           [&](const InstanceItem &first, int count) {
-                             renderer.drawMeshInstanced(resourceSystem.getMesh(first.meshHandle), count);
-                           });
-        } else {
-          componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
-            if (isHidden(componentManager, entity))
-              return;
-
-            const auto &transform = componentManager.getOrThrow<Transform>(entity);
-
-            const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
-
-            glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(transform);
-            depthShader.setMat4("model", modelMatrix);
-            renderer.drawMesh(mesh);
-          });
-        }
-        renderer.endShadowPass();
-        shadowLightDir = light.direction;
-
-        break;
-      }
-    }
-  }
+  // Shadow passes
+  m_shadowCastersGathered = false;
+  DirectionalShadow sunShadow;
+  if (shadowsEnabled)
+    sunShadow = renderDirectionalShadow(componentManager, resourceSystem, transformSystem, lightSystem, camera, view);
+  const auto &pointShadows =
+      lightSystem.updatePointShadows(componentManager, shadowsEnabled, EngineConfig::MAX_POINT_SHADOWS);
+  renderPointShadows(componentManager, resourceSystem, transformSystem, pointShadows);
 
   // Main pass - grouped by shader
   if (m_batchesDirty) {
@@ -263,10 +438,20 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setMat4("view", view);
     shader.setMat4("projection", projection);
     shader.setVec3("viewPos", viewPos);
-    shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
-    shader.setInt("useShadows", useShadows ? 1 : 0);
-    shader.setVec3("shadowLightDir", shadowLightDir);
-    shader.setTex("shadowMap", renderer.getDepthMap(), 4);
+    shader.setInt("useShadows", sunShadow.active ? 1 : 0);
+    shader.setInt("cascadeCount", EngineConfig::SHADOW_CASCADES);
+    shader.setVec3("viewForward", glm::normalize(camera.front));
+    for (int cascade = 0; cascade < EngineConfig::SHADOW_CASCADES; ++cascade) {
+      shader.setMat4(kCascadeUniforms[cascade].matrix, sunShadow.matrices[cascade]);
+      shader.setFloat(kCascadeUniforms[cascade].split, sunShadow.splits[cascade]);
+      shader.setFloat(kCascadeUniforms[cascade].texel, sunShadow.texels[cascade]);
+    }
+    shader.setTex("shadowMap", renderer.getDepthMap(), 4, GL_TEXTURE_2D_ARRAY);
+    // Every cube sampler gets its own unit and a cube map, even unused slots (see Renderer::getPointShadowMap)
+    for (int slot = 0; slot < EngineConfig::MAX_POINT_SHADOWS; ++slot)
+      shader.setTex(kPointShadowSamplers[slot], renderer.getPointShadowMap(slot), kFirstPointShadowUnit + slot,
+                    GL_TEXTURE_CUBE_MAP);
+    shader.setFloat("pointShadowTexel", 2.0f / static_cast<float>(EngineConfig::POINT_SHADOW_SIZE));
     shader.setInt("gammaCorrect", gammaCorrect ? 1 : 0);
 
     lightSystem.uploadLightsToShader(shader, componentManager);

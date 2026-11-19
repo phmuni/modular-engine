@@ -60,7 +60,9 @@ public:
   void setVec4(std::string_view name, glm::vec4 value) const;
   void setMat3(std::string_view name, glm::mat3 value) const;
   void setMat4(std::string_view name, glm::mat4 value) const;
-  void setTex(std::string_view name, GLuint, int) const;
+  // Binds a texture to `textureUnit` for the sampler `name`; `target` is GL_TEXTURE_CUBE_MAP for cube samplers,
+  // GL_TEXTURE_2D_ARRAY for array samplers
+  void setTex(std::string_view name, GLuint textureID, int textureUnit, GLenum target = GL_TEXTURE_2D) const;
 
   GLuint getShaderID() const;
 

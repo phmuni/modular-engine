@@ -18,6 +18,11 @@ struct Light {
   float cutOff = glm::cos(glm::radians(12.5f));
   float outerCutOff = glm::cos(glm::radians(17.5f));
 
+  // Point and spot lights: render a cube shadow map (up to EngineConfig::MAX_POINT_SHADOWS lights at once).
+  // Directional lights ignore it; the first directional light always casts the sun shadow.
+  bool castShadows = false;
+  float shadowRange = 25.0f; // world units; nothing beyond it casts or receives this light's shadow
+
   Light() = default;
   Light(LightType type, glm::vec3 position, glm::vec3 direction, glm::vec3 color, float intensity = 1.0f,
         float cutOff = glm::cos(glm::radians(12.5f)), float outerCutOff = glm::cos(glm::radians(17.5f)))

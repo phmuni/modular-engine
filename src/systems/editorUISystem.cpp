@@ -173,6 +173,9 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     ImGui::Text("Work before swap: %.2f ms", m_shownWorkMs);
     ImGui::Text("Draw calls: %d", stats.drawCalls);
     ImGui::Text("Meshes drawn: %d  (culled: %d)", stats.meshesDrawn, renderSystem.getCulledCount());
+    if (int pointShadows = renderSystem.getPointShadowCount())
+      ImGui::Text("Point shadows: %d  (re-rendered this frame: %d)", pointShadows,
+                  renderSystem.getPointShadowUpdates());
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Includes the shadow pass; culled meshes were outside the camera");
     ImGui::Text("Particles: %d", stats.particles);
@@ -462,6 +465,11 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
           ImGui::DragFloat("Outer Cutoff", &light.outerCutOff, 0.01f, light.cutOff + 0.01f, 0.98f);
         }
         if (light.type == LightType::Point || light.type == LightType::Spot) {
+          ImGui::Checkbox("Cast shadows##light", &light.castShadows);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Cube shadow map; up to %d lights at once", EngineConfig::MAX_POINT_SHADOWS);
+          if (light.castShadows)
+            ImGui::DragFloat("Shadow range", &light.shadowRange, 0.5f, 1.0f, 500.0f);
           ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.01f, 5.0f);
           ImGui::DragFloat("Linear", &light.linear, 0.01f, 0.0f, 1.0f);
           ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);

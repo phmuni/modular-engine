@@ -37,11 +37,16 @@ private:
 
   SDL_Window *m_window = nullptr;
 
-  // Shadow mapping
+  // Sun shadow cascades: one layer of a depth texture array per cascade
   GLuint m_depthMapFBO = 0;
   GLuint m_depthMap = 0;
-  const int m_shadowWidth = EngineConfig::SHADOW_MAP_WIDTH;
-  const int m_shadowHeight = EngineConfig::SHADOW_MAP_HEIGHT;
+
+  // Point light shadows: one depth cube map per slot, created the first time a light uses the slot. Unused slots
+  // read m_emptyCubeMap, since a cube sampler must never share a texture unit with a 2D texture.
+  GLuint m_pointShadowFBO = 0;
+  GLuint m_pointShadowMaps[EngineConfig::MAX_POINT_SHADOWS] = {};
+  mutable GLuint m_emptyCubeMap = 0;
+  static GLuint createDepthCubeMap(int size);
 
   int m_screenWidth = 1280;
   int m_screenHeight = 720;
@@ -75,9 +80,13 @@ public:
   void drawSubmeshInstanced(const Mesh &mesh, const Submesh &submesh, int count) const;
   void drawIndexRangeInstanced(const Mesh &mesh, uint32_t indexStart, uint32_t indexCount, int count) const;
 
-  // Shadow pass
-  void beginShadowPass();
+  // Shadow pass: renders into one sun cascade (a layer of getDepthMap)
+  void beginShadowPass(int cascade);
   void endShadowPass();
+  // Renders into one face (0-5: +X, -X, +Y, -Y, +Z, -Z) of a point shadow slot; end with endShadowPass()
+  void beginPointShadowFace(int slot, int face);
+  // The slot's cube map, or an empty one (everything lit) if the slot was never used
+  GLuint getPointShadowMap(int slot) const;
 
   // Particle / transparent pass
   void beginTransparentPass();
@@ -90,8 +99,8 @@ public:
   void drawParticles(int count, int images = 1);
   void endParticlePass();
 
+  // The sun's cascades, a GL_TEXTURE_2D_ARRAY of EngineConfig::SHADOW_CASCADES layers
   GLuint getDepthMap() const;
-  GLuint getDepthMapFBO() const;
 
   // Saves the current back buffer as a BMP; call before endFrame()
   bool saveScreenshot(const std::string &path) const;

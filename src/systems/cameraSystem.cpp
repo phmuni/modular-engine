@@ -2,6 +2,7 @@
 // Camera system implementation for handling camera movement, orientation, and view/projection matrix calculations.
 
 #include "systems/cameraSystem.h"
+#include "foundation/core/config.h"
 #include "components/transform.h"
 #include "systems/windowSystem.h"
 #include <glm/ext/matrix_clip_space.hpp>
@@ -40,7 +41,7 @@ glm::mat4 CameraSystem::getViewMatrix(const Camera &cam) const {
 }
 
 glm::mat4 CameraSystem::getProjectionMatrix(const Camera &cam) const {
-  return glm::perspective(glm::radians(cam.fov), cam.aspectRatio, 0.1f, 100.0f);
+  return glm::perspective(glm::radians(cam.fov), cam.aspectRatio, EngineConfig::CAMERA_NEAR, EngineConfig::CAMERA_FAR);
 }
 
 void CameraSystem::updateFrontVector(Camera &cam) {

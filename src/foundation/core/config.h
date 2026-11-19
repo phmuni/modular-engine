@@ -72,8 +72,23 @@ constexpr float DEFAULT_CLEAR_COLOR_G = 0.4f;
 constexpr float DEFAULT_CLEAR_COLOR_B = 0.4f;
 constexpr float DEFAULT_CLEAR_COLOR_A = 1.0f;
 
-constexpr int SHADOW_MAP_WIDTH = 4096;
-constexpr int SHADOW_MAP_HEIGHT = 4096;
+// Camera clip planes; the sun's shadow cascades split the same depth range
+constexpr float CAMERA_NEAR = 0.1f;
+constexpr float CAMERA_FAR = 100.0f;
+
+// Sun (directional) shadows: cascaded shadow maps. The view from the camera out to SHADOW_DISTANCE is cut into
+// SHADOW_CASCADES slices, each with its own map that follows the camera; nearer slices cover less and look sharper.
+constexpr int SHADOW_CASCADES = 3; // at most 4, the size of the arrays in fragmentShader.frag
+constexpr int SHADOW_CASCADE_SIZE = 2048;
+constexpr float SHADOW_DISTANCE = 80.0f;
+// 0 splits the distance evenly, 1 logarithmically (much more detail up close)
+constexpr float SHADOW_CASCADE_SPLIT = 0.75f;
+// How far toward the sun, beyond a cascade, objects still cast into it (tall things outside the view)
+constexpr float SHADOW_CASTER_REACH = 60.0f;
+// Point and spot lights with Light::castShadows each render a depth cube map of this size per face (4 bytes per
+// texel: 1024 is 24 MB a light). Beyond the limit, further lights light without shadows.
+constexpr int POINT_SHADOW_SIZE = 1024;
+constexpr int MAX_POINT_SHADOWS = 4; // also the number of cube samplers in fragmentShader.frag
 
 // Shaders
 constexpr const char *SHADER_VERTEX = "../assets/shaders/vertexShader.vert";

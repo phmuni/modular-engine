@@ -1,0 +1,547 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Camera",
+      "components": {
+        "Transform": {},
+        "Camera": {
+          "active": true,
+          "position": [
+            0.0,
+            7.5,
+            13.0
+          ],
+          "pitch": -30.0,
+          "fov": 60.0,
+          "moveSpeed": 5.0
+        }
+      }
+    },
+    {
+      "name": "Warm Light",
+      "components": {
+        "Transform": {
+          "position": [
+            -1.5,
+            2.2,
+            0.5
+          ]
+        },
+        "Light": {
+          "type": "point",
+          "color": [
+            1.0,
+            0.72,
+            0.42
+          ],
+          "intensity": 2.4,
+          "ambient": 0.04,
+          "linear": 0.07,
+          "quadratic": 0.02,
+          "castShadows": true,
+          "shadowRange": 30.0
+        }
+      }
+    },
+    {
+      "name": "Cool Light",
+      "components": {
+        "Transform": {
+          "position": [
+            3.2,
+            1.6,
+            -2.5
+          ]
+        },
+        "Light": {
+          "type": "point",
+          "color": [
+            0.45,
+            0.65,
+            1.0
+          ],
+          "intensity": 1.8,
+          "ambient": 0.03,
+          "linear": 0.09,
+          "quadratic": 0.03,
+          "castShadows": true,
+          "shadowRange": 30.0
+        }
+      }
+    },
+    {
+      "name": "Floor",
+      "components": {
+        "Transform": {
+          "position": [
+            0,
+            -0.5,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            20,
+            0.2,
+            20
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.62,
+                0.66
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Back Wall",
+      "components": {
+        "Transform": {
+          "position": [
+            0,
+            2.5,
+            -7
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            20,
+            6,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.55,
+                0.55,
+                0.6
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Pillar 1",
+      "components": {
+        "Transform": {
+          "position": [
+            4.2,
+            1.0,
+            -0.5
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.45,
+            3.0,
+            0.45
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.8,
+                0.78,
+                0.74
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Pillar 2",
+      "components": {
+        "Transform": {
+          "position": [
+            2.1,
+            1.0,
+            3.137
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.45,
+            3.0,
+            0.45
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.8,
+                0.78,
+                0.74
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Pillar 3",
+      "components": {
+        "Transform": {
+          "position": [
+            -2.1,
+            1.0,
+            3.137
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.45,
+            3.0,
+            0.45
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.8,
+                0.78,
+                0.74
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Pillar 4",
+      "components": {
+        "Transform": {
+          "position": [
+            -4.2,
+            1.0,
+            -0.5
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.45,
+            3.0,
+            0.45
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.8,
+                0.78,
+                0.74
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Pillar 5",
+      "components": {
+        "Transform": {
+          "position": [
+            -2.1,
+            1.0,
+            -4.137
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.45,
+            3.0,
+            0.45
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.8,
+                0.78,
+                0.74
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Pillar 6",
+      "components": {
+        "Transform": {
+          "position": [
+            2.1,
+            1.0,
+            -4.137
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.45,
+            3.0,
+            0.45
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.8,
+                0.78,
+                0.74
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Crate",
+      "components": {
+        "Transform": {
+          "position": [
+            0.6,
+            0.0,
+            1.6
+          ],
+          "rotation": [
+            0,
+            30,
+            0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.75,
+                0.45,
+                0.25
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Small Crate",
+      "components": {
+        "Transform": {
+          "position": [
+            -2.6,
+            -0.15,
+            -1.2
+          ],
+          "rotation": [
+            0,
+            -20,
+            0
+          ],
+          "scale": [
+            0.7,
+            0.7,
+            0.7
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.35,
+                0.6,
+                0.4
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Ball",
+      "components": {
+        "Transform": {
+          "position": [
+            -0.2,
+            0.1,
+            -1.6
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.6,
+            0.6,
+            0.6
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/sphere/sphere.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.85,
+                0.85,
+                0.9
+              ],
+              "shininess": 64.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Lamp Bulb",
+      "components": {
+        "Transform": {
+          "position": [
+            -1.5,
+            2.2,
+            0.5
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.12,
+            0.12,
+            0.12
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/sphere/sphere.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                1.0,
+                0.8,
+                0.5
+              ],
+              "emission": {
+                "color": [
+                  1.0,
+                  0.8,
+                  0.5
+                ],
+                "strength": 4.0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Cool Bulb",
+      "components": {
+        "Transform": {
+          "position": [
+            3.2,
+            1.6,
+            -2.5
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.12,
+            0.12,
+            0.12
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/sphere/sphere.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.5,
+                0.7,
+                1.0
+              ],
+              "emission": {
+                "color": [
+                  0.5,
+                  0.7,
+                  1.0
+                ],
+                "strength": 4.0
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

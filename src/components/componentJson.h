@@ -41,7 +41,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(EmissionShape, {{EmissionShape::Cone, "cone"},
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Transform, position, rotation, scale)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Light, type, position, direction, color, intensity, ambient, constant,
-                                                linear, quadratic, cutOff, outerCutOff)
+                                                linear, quadratic, cutOff, outerCutOff, castShadows, shadowRange)
 
 // front/up follow from yaw and pitch; aspectRatio from the window
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Camera, position, yaw, pitch, fov, moveSpeed, mouseSensitivity,

@@ -122,9 +122,9 @@ bool Shader::supportsInstancing() const {
   return m_instancingSupport == 1;
 }
 
-void Shader::setTex(std::string_view name, GLuint textureID, int textureUnit) const {
+void Shader::setTex(std::string_view name, GLuint textureID, int textureUnit, GLenum target) const {
   glActiveTexture(GL_TEXTURE0 + textureUnit);
-  glBindTexture(GL_TEXTURE_2D, textureID);
+  glBindTexture(target, textureID);
   GLint loc = getUniformLocation(name);
   if (loc != -1)
     glUniform1i(loc, textureUnit);

@@ -23,6 +23,8 @@ struct Light {
     float cutOff;
     float outerCutOff;
     int type;
+    int shadowSlot;  // point shadow cube map, -1 for none
+    float shadowFar; // its far plane (Light::shadowRange)
 };
 
 in vec3 FragPos;  
@@ -34,10 +36,22 @@ uniform Material material;
 uniform int numLights;
 uniform Light lights[10];
 
-uniform sampler2DShadow shadowMap; // hardware depth comparison with bilinear filtering
-uniform mat4 lightSpaceMatrix;
+// Sun shadow: cascades fitted to the view (EngineConfig::SHADOW_CASCADES layers), compared and filtered in hardware
+uniform sampler2DArrayShadow shadowMap;
+uniform mat4 cascadeMatrices[4];
+uniform float cascadeSplits[4]; // where each cascade ends, as distance along viewForward
+uniform float cascadeTexels[4]; // world size of one texel in each cascade
+uniform int cascadeCount;
+uniform vec3 viewForward;
+
+// Point light shadows, one cube map per slot (EngineConfig::MAX_POINT_SHADOWS). Separate samplers rather than an
+// array: GLSL 3.30 only indexes sampler arrays with constants.
+uniform samplerCubeShadow pointShadowMaps0;
+uniform samplerCubeShadow pointShadowMaps1;
+uniform samplerCubeShadow pointShadowMaps2;
+uniform samplerCubeShadow pointShadowMaps3;
+uniform float pointShadowTexel; // one texel of a cube face at distance 1 (2 / POINT_SHADOW_SIZE)
 uniform int useShadows;
-uniform vec3 shadowLightDir;
 uniform float opacity;
 uniform int useSolidDiffuseColor;
 uniform vec3 solidDiffuseColor;
@@ -56,35 +70,84 @@ uniform int gammaCorrect;
 vec3 toLinear(vec3 c) { return gammaCorrect == 1 ? pow(c, vec3(2.2)) : c; }
 vec3 toDisplay(vec3 c) { return gammaCorrect == 1 ? pow(max(c, vec3(0.0)), vec3(1.0 / 2.2)) : c; }
 
-float calculateShadow(vec4 fragPosLightSpace)
+float calculateShadow(vec3 normal)
 {
     if (useShadows == 0) return 0.0;
 
-    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = projCoords * 0.5 + 0.5;
+    // The cascade that covers this distance; beyond the last there is no sun shadow
+    float depth = dot(FragPos - viewPos, viewForward);
+    int cascade = -1;
+    for (int i = 0; i < cascadeCount; ++i) {
+        if (depth < cascadeSplits[i]) {
+            cascade = i;
+            break;
+        }
+    }
+    if (cascade < 0) return 0.0;
 
+    // Normal offset of a couple of texels against acne; texels grow from cascade to cascade, so the offset does too
+    vec3 offsetPos = FragPos + normal * cascadeTexels[cascade] * 1.5;
+    vec3 projCoords = (cascadeMatrices[cascade] * vec4(offsetPos, 1.0)).xyz * 0.5 + 0.5;
     if (projCoords.z > 1.0) return 0.0;
 
-    float currentDepth = projCoords.z;
-
-    vec3 nGeom   = normalize(Normal);
-    vec3 lightDir = normalize(-shadowLightDir);
-    
-    float bias = max(0.005 * (1.0 - dot(nGeom, lightDir)), 0.0005);
-
+    // 3x3 PCF: each tap is already a filtered 2x2 comparison. Taps outside the map read the border (lit).
     float lit = 0.0;
-    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-
-    // 3x3 PCF: each tap is already a filtered 2x2 comparison, so this covers about the same area as a manual 5x5.
-    // Taps outside the map read the border depth (1.0) and count as lit.
+    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0).xy);
     for (int x = -1; x <= 1; ++x) {
         for (int y = -1; y <= 1; ++y) {
             vec2 offset = vec2(float(x), float(y)) * texelSize * 1.5;
-            lit += texture(shadowMap, vec3(projCoords.xy + offset, currentDepth - bias));
+            lit += texture(shadowMap, vec4(projCoords.xy + offset, float(cascade), projCoords.z - 0.0005));
         }
     }
+    float shadow = 1.0 - lit / 9.0;
 
-    return 1.0 - lit / 9.0;
+    // Fades out over the last tenth of the shadow distance instead of ending in a line
+    float end = cascadeSplits[cascadeCount - 1];
+    return shadow * (1.0 - smoothstep(end * 0.9, end, depth));
+}
+
+float samplePointShadow(int slot, vec4 coord)
+{
+    if (slot == 0) return texture(pointShadowMaps0, coord);
+    if (slot == 1) return texture(pointShadowMaps1, coord);
+    if (slot == 2) return texture(pointShadowMaps2, coord);
+    return texture(pointShadowMaps3, coord);
+}
+
+// The depth the cube face facing `toFrag` stored for that point: a perspective depth along the major axis, with
+// near 0.05 (RenderSystem's kPointShadowNear) and far = shadowFar
+float cubeFaceDepth(vec3 toFrag, float far)
+{
+    const float near = 0.05;
+    vec3 a = abs(toFrag);
+    float z = max(a.x, max(a.y, a.z));
+    float ndc = (far + near) / (far - near) - (2.0 * far * near) / ((far - near) * z);
+    return ndc * 0.5 + 0.5;
+}
+
+float calculatePointShadow(Light light, vec3 normal)
+{
+    if (light.shadowSlot < 0) return 0.0;
+    vec3 toFrag = FragPos - light.position;
+    float dist = length(toFrag);
+    if (dist >= light.shadowFar) return 0.0;
+
+    // Normal offset of about two texels at this distance keeps lit surfaces from shadowing themselves (acne);
+    // it grows with distance, as the texels do
+    float texel = pointShadowTexel * dist;
+    vec3 offsetPos = FragPos + normal * texel * 2.0;
+    vec3 dir = offsetPos - light.position;
+
+    // 5 taps across the face (each a filtered 2x2 comparison) soften the edge
+    vec3 side = normalize(abs(dir.y) < 0.99 * length(dir) ? cross(dir, vec3(0.0, 1.0, 0.0)) : cross(dir, vec3(1.0, 0.0, 0.0)));
+    vec3 up = normalize(cross(dir, side));
+    vec3 taps[5] = vec3[](vec3(0.0), side, -side, up, -up);
+    float lit = 0.0;
+    for (int i = 0; i < 5; ++i) {
+        vec3 tapDir = dir + taps[i] * texel * 1.5;
+        lit += samplePointShadow(light.shadowSlot, vec4(tapDir, cubeFaceDepth(tapDir, light.shadowFar)));
+    }
+    return 1.0 - lit / 5.0;
 }
 
 void main()
@@ -112,8 +175,7 @@ void main()
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
     vec3 emissionResult = toLinear(material.emissionColor) * material.emissionStrength * toLinear(emissionTex);
 
-    vec4 fragPosLightSpace = lightSpaceMatrix * vec4(FragPos, 1.0);
-    float shadow = calculateShadow(fragPosLightSpace);
+    float shadow = calculateShadow(normal);
 
     vec3 result = emissionResult;
 
@@ -157,7 +219,7 @@ void main()
                 spotFactor = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
             }
 
-            float shadowFactor = (light.type == 0) ? shadow : 0.0;
+            float shadowFactor = (light.type == 0) ? shadow : calculatePointShadow(light, normal);
 
             vec3 lightResult =
                 ambient +
