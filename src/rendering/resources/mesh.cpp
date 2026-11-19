@@ -47,7 +47,7 @@ MeshData Mesh::parse(std::string filename) {
     } else {
       data = MeshData{};
       loaded = parseGLB(normalized, data);
-      if (loaded)
+      if (loaded && !data.animation) // animated models are read from the file each time (the cache has no skeletons)
         MeshCache::write(normalized, data);
     }
   } else if (extension == ".obj") {
@@ -73,18 +73,38 @@ MeshData Mesh::parse(std::string filename) {
     return MeshData{};
   }
 
-  glm::vec3 boundsMin = data.vertices.front().position;
+  // Where the vertices are at rest: an animated model's sit in their joints' spaces until skinned
+  std::vector<glm::vec3> rest(data.vertices.size());
+  for (size_t i = 0; i < data.vertices.size(); ++i)
+    rest[i] = data.vertices[i].position;
+  if (data.animation && data.skin.size() == data.vertices.size()) {
+    const auto &joints = data.animation->restJointMatrices;
+    for (size_t i = 0; i < rest.size(); ++i) {
+      const VertexSkin &skin = data.skin[i];
+      glm::mat4 matrix(0.0f);
+      for (int k = 0; k < 4; ++k) {
+        const int joint = static_cast<int>(skin.joints[k]);
+        if (skin.weights[k] > 0.0f && joint >= 0 && joint < static_cast<int>(joints.size()))
+          matrix += joints[joint] * skin.weights[k];
+      }
+      rest[i] = glm::vec3(matrix * glm::vec4(rest[i], 1.0f));
+    }
+  }
+
+  glm::vec3 boundsMin = rest.front();
   glm::vec3 boundsMax = boundsMin;
-  for (const auto &vertex : data.vertices) {
-    boundsMin = glm::min(boundsMin, vertex.position);
-    boundsMax = glm::max(boundsMax, vertex.position);
+  for (const glm::vec3 &position : rest) {
+    boundsMin = glm::min(boundsMin, position);
+    boundsMax = glm::max(boundsMax, position);
   }
   data.boundsCenter = (boundsMin + boundsMax) * 0.5f;
   data.boundsMin = boundsMin;
   data.boundsMax = boundsMax;
-  buildCollisionGeometry(data);
-  for (const auto &vertex : data.vertices)
-    data.boundsRadius = glm::max(data.boundsRadius, glm::length(vertex.position - data.boundsCenter));
+  buildCollisionGeometry(data, rest);
+  for (const glm::vec3 &position : rest)
+    data.boundsRadius = glm::max(data.boundsRadius, glm::length(position - data.boundsCenter));
+  if (data.animation)
+    data.boundsRadius *= 1.5f; // animation reaches past the rest pose: culled a little later
 
   // Texture files are decoded here too, so the main thread only uploads them; several at once when there are several
   std::vector<std::pair<std::string, TextureKind>> textures;
@@ -174,6 +194,18 @@ void Mesh::upload(MeshData &data) {
   // Location 10: 3-9 hold the per-instance matrices (Renderer::InstanceData)
   glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)offsetof(Vertex, tangent));
   glEnableVertexAttribArray(10);
+
+  // Skinned: joints and weights in a second buffer, so static meshes do not carry them
+  if (data.animation && data.skin.size() == data.vertices.size()) {
+    glGenBuffers(1, &m_skinVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, m_skinVBO);
+    glBufferData(GL_ARRAY_BUFFER, data.skin.size() * sizeof(VertexSkin), data.skin.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(11, 4, GL_FLOAT, GL_FALSE, sizeof(VertexSkin), (void *)offsetof(VertexSkin, joints));
+    glEnableVertexAttribArray(11);
+    glVertexAttribPointer(12, 4, GL_FLOAT, GL_FALSE, sizeof(VertexSkin), (void *)offsetof(VertexSkin, weights));
+    glEnableVertexAttribArray(12);
+    m_animation = std::move(data.animation);
+  }
 
   glBindVertexArray(0);
 
@@ -274,7 +306,7 @@ Mesh::~Mesh() {
   resetMesh();
 }
 
-void Mesh::buildCollisionGeometry(MeshData &data) {
+void Mesh::buildCollisionGeometry(MeshData &data, const std::vector<glm::vec3> &positions) {
   // Welds vertices that share a position, by their exact bits
   struct PositionHash {
     size_t operator()(const glm::vec3 &p) const {
@@ -304,6 +336,11 @@ void Mesh::buildCollisionGeometry(MeshData &data) {
 }
 
 void Mesh::resetMesh() {
+  if (m_skinVBO) {
+    glDeleteBuffers(1, &m_skinVBO);
+    m_skinVBO = 0;
+  }
+  m_animation.reset();
   m_collisionVertices.clear();
   m_collisionIndices.clear();
   m_submeshes.clear();

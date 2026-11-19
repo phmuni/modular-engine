@@ -2,6 +2,7 @@
 // UI that games build with RmlUi (GameUISystem).
 
 #include "systems/editorUISystem.h"
+#include "components/animator.h"
 #include "components/audioSource.h"
 #include "components/collision.h"
 #include "components/hidden.h"
@@ -1284,6 +1285,46 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
     }
   }
 
+  // Animator
+  if (!earlyOut && componentManager.has<Animator>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##anim")) {
+        componentManager.removeComponent<Animator>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        auto &animator = componentManager.get<Animator>(selectedEntity);
+        const Model *model = componentManager.tryGet<Model>(selectedEntity);
+        const MeshAnimation *animation =
+            model ? systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle).getAnimation() : nullptr;
+        if (!animation || animation->clips.empty()) {
+          ImGui::TextDisabled("Its model has no animations");
+        } else {
+          const int current = animator.clip.empty() ? 0 : animation->findClip(animator.clip);
+          const char *preview = current >= 0 ? animation->clips[current].name.c_str() : animator.clip.c_str();
+          if (ImGui::BeginCombo("Clip##anim", preview)) {
+            for (size_t i = 0; i < animation->clips.size(); ++i)
+              if (ImGui::Selectable(animation->clips[i].name.c_str(), static_cast<int>(i) == current)) {
+                animator.clip = animation->clips[i].name;
+                animator.time = 0.0f;
+                animator.playing = true;
+              }
+            ImGui::EndCombo();
+          }
+          const float duration = current >= 0 ? animation->clips[current].duration : 0.0f;
+          ImGui::SliderFloat("Time##anim", &animator.time, 0.0f, std::max(duration, 0.01f), "%.2f s");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Drag to scrub through the clip (pause it first to hold a pose)");
+          ImGui::SliderFloat("Speed##anim", &animator.speed, -2.0f, 3.0f, "%.2fx");
+          ImGui::Checkbox("Playing##anim", &animator.playing);
+          ImGui::SameLine();
+          ImGui::Checkbox("Loop##anim", &animator.loop);
+        }
+      }
+    }
+  }
+
   // Character controller
   if (!earlyOut && componentManager.has<CharacterController>(selectedEntity)) {
     if (ImGui::CollapsingHeader("Character Controller", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1370,6 +1411,12 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
           componentManager.addInPlace<RigidBody>(selectedEntity);
         if (ImGui::Button("+ Character Controller", ImVec2(-1, 0)))
           componentManager.addInPlace<CharacterController>(selectedEntity);
+      }
+      if (!componentManager.has<Animator>(selectedEntity)) {
+        const Model *model = componentManager.tryGet<Model>(selectedEntity);
+        if (model && systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle).getAnimation() &&
+            ImGui::Button("+ Animator", ImVec2(-1, 0)))
+          componentManager.addInPlace<Animator>(selectedEntity);
       }
       if (!componentManager.has<Skybox>(selectedEntity)) {
         if (ImGui::Button("+ Skybox", ImVec2(-1, 0))) {

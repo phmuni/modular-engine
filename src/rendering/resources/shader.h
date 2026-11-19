@@ -61,6 +61,8 @@ public:
   void setVec4(std::string_view name, glm::vec4 value) const;
   void setMat3(std::string_view name, glm::mat3 value) const;
   void setMat4(std::string_view name, glm::mat4 value) const;
+  // A uniform array of matrices from its first element: setMat4Array("bones", data, count)
+  void setMat4Array(std::string_view name, const glm::mat4 *values, int count) const;
   // Binds a texture to `textureUnit` for the sampler `name`; `target` is GL_TEXTURE_CUBE_MAP for cube samplers,
   // GL_TEXTURE_2D_ARRAY for array samplers
   void setTex(std::string_view name, GLuint textureID, int textureUnit, GLenum target = GL_TEXTURE_2D) const;

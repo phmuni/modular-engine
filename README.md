@@ -66,6 +66,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
+| **Skeletal Animation**     | glTF skins and clips (linear, step, cubic spline), crossfades, rigid parts following their nodes, animated shadows |
 | **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
 | **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
@@ -446,6 +447,26 @@ The simulation steps at a fixed 60 Hz, writes dynamic bodies' and characters' Tr
 by game code or the editor's gizmo as teleports; changing a `RigidBody` (or the entity's scale) rebuilds its body. Both
 components are saved in scenes and edited in the Properties panel, the simulation stands still while editing, and
 Stop rebuilds the bodies. [`assets/scenes/physics.json`](assets/scenes/physics.json) is a small example.
+
+### Skeletal animation
+
+glTF models with skins and animations play their clips: vertices follow up to four joints each, parts without a skin
+follow their own node (a sword in a hand), clips use linear, step or cubic-spline keys, and switching clips crossfades.
+Shadows, sun and point lights alike, follow the pose.
+
+```cpp
+Entity hero = engine.entities().create("Hero").withModel("../assets/models/hero.glb", {0, 0, 0})
+    .withAnimation("Idle").build();
+engine.playAnimation(hero, "Run");          // fades over from Idle in 0.2 s; also (clip, fadeSeconds, loop)
+engine.getAnimationClips(hero);             // the model's clips, in file order
+
+auto &animator = engine.get<Animator>(hero); // speed, time, loop, playing
+```
+
+`./bin/engine view model.glb` plays an animated model's first clip and switches clips with `1`-`9`. The Properties
+panel picks a clip and scrubs through it; `Animator` is saved in scenes ([`assets/scenes/animation.json`](assets/scenes/animation.json)).
+[`tools/generateAnimatedTestModel.py`](tools/generateAnimatedTestModel.py) writes the small test model it uses. Up to
+128 joints per model are animated (`EngineConfig::MAX_JOINTS`); morph targets are not supported.
 
 ### Play and Stop
 

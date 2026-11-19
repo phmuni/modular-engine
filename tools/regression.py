@@ -49,6 +49,7 @@ CASES = {
     "scene-black-hole": ["scene", "../assets/scenes/black_hole.json"],
     "scene-normal-maps": ["scene", "../assets/scenes/normal_maps.json"],
     "scene-physics": ["scene", "../assets/scenes/physics.json"],  # Jolt is deterministic, threads and all
+    "scene-animation": ["scene", "../assets/scenes/animation.json"],
 }
 
 SCREENSHOT_SECONDS = 2.0     # 120 fixed frames

@@ -168,6 +168,12 @@ void Shader::setMat3(std::string_view name, glm::mat3 value) const {
     glUniformMatrix3fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 }
 
+void Shader::setMat4Array(std::string_view name, const glm::mat4 *values, int count) const {
+  GLint loc = getUniformLocation(name);
+  if (loc != -1 && count > 0)
+    glUniformMatrix4fv(loc, count, GL_FALSE, glm::value_ptr(values[0]));
+}
+
 void Shader::setMat4(std::string_view name, glm::mat4 value) const {
   GLint loc = getUniformLocation(name);
   if (loc != -1)

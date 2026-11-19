@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 
 constexpr char kMagic[8] = {'M', 'E', 'S', 'H', 'C', 'A', 'C', 'H'};
 // Bump when the layout below or what a loader produces changes, so old entries are parsed again
-constexpr uint32_t kVersion = 2;
+constexpr uint32_t kVersion = 3; // 3: animated models are no longer cached, so older entries of them are dropped
 // The cache is binary-identical only for this layout of Vertex
 constexpr uint32_t kVertexSize = sizeof(Vertex);
 

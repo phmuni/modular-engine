@@ -15,6 +15,7 @@
 #include <cstdint>
 #include "rendering/resources/material.h"
 #include "rendering/resources/textureProcessing.h"
+#include "systems/animationSystem.h"
 #include "systems/audioSystem.h"
 #include "systems/cameraSystem.h"
 #include "systems/collisionSystem.h"
@@ -268,6 +269,8 @@ void Engine::update(bool &isRunning) {
   // Bodies fall, collide and push; then children follow where their parents went this frame
   m_systemManager.getSystem<PhysicsSystem>().update(timeSystem.getDeltaTime());
   m_systemManager.getSystem<TransformSystem>().updateHierarchy(m_componentManager);
+  // Skeletons posed from their clips (time stands still while paused or editing)
+  m_systemManager.getSystem<AnimationSystem>().update(timeSystem.getDeltaTime());
 
   if (m_sceneSave) {
     m_sceneSave->delay -= timeSystem.getUnscaledDeltaTime();
@@ -356,6 +359,46 @@ Camera *Engine::getActiveCamera() {
 InputSystem &Engine::input() { return m_systemManager.getSystem<InputSystem>(); }
 
 PhysicsSystem &Engine::physics() { return m_systemManager.getSystem<PhysicsSystem>(); }
+
+void Engine::playAnimation(Entity entity, std::string_view clip, float fadeSeconds, bool loop) {
+  Animator *animator = tryGet<Animator>(entity);
+  if (!animator) {
+    animator = &addComponent<Animator>(entity);
+    fadeSeconds = 0.0f; // nothing to fade from
+  }
+  const Model *model = tryGet<Model>(entity);
+  const MeshAnimation *animation =
+      model ? m_systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle).getAnimation() : nullptr;
+  if (animation && !clip.empty() && animation->findClip(clip) < 0)
+    LOG_W("[Engine] playAnimation: entity %d's model has no clip \"%.*s\"", entity, static_cast<int>(clip.size()),
+          clip.data());
+  const bool same = animator->clip == clip && animator->playing;
+  animator->loop = loop;
+  animator->playing = true;
+  if (same)
+    return; // already playing it: keep going rather than restart
+  if (fadeSeconds > 0.0f) {
+    animator->fadeFrom = animator->clip.empty() && animation && !animation->clips.empty() ? animation->clips[0].name
+                                                                                         : animator->clip;
+    animator->fadeFromTime = animator->time;
+    animator->fadeElapsed = 0.0f;
+    animator->fadeDuration = fadeSeconds;
+  } else {
+    animator->fadeFrom.clear();
+  }
+  animator->clip = std::string(clip);
+  animator->time = 0.0f;
+}
+
+std::vector<std::string> Engine::getAnimationClips(Entity entity) {
+  std::vector<std::string> names;
+  const Model *model = tryGet<Model>(entity);
+  if (const MeshAnimation *animation =
+          model ? m_systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle).getAnimation() : nullptr)
+    for (const AnimationClip &clip : animation->clips)
+      names.push_back(clip.name);
+  return names;
+}
 
 std::optional<RayHit> Engine::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
                                       const std::function<bool(Entity)> &accept) {
@@ -749,6 +792,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<CollisionSystem>();
   m_systemManager.insert<PhysicsSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>(),
                                         m_systemManager.getSystem<TransformSystem>());
+  m_systemManager.insert<AnimationSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>());
   m_systemManager.insert<AudioSystem>(m_componentManager);
   m_systemManager.insert<GameUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow());
   m_systemManager.insert<EditorUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),

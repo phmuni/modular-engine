@@ -82,6 +82,17 @@ public:
     m_radius = 2.0f;
     distance = m_radius * 2.6f;
     engine.createCameraEntity("Camera", glm::vec3(0.0f, 0.0f, distance), 0.0f, 0.0f, 50.0f);
+
+    // An animated model plays its first clip; keys 1 to 9 switch between its clips
+    m_model = model;
+    m_clips = engine.getAnimationClips(model);
+    if (!m_clips.empty()) {
+      engine.playAnimation(model, m_clips.front(), 0.0f);
+      std::string list;
+      for (size_t i = 0; i < m_clips.size(); ++i)
+        list += (i ? ", " : "") + std::to_string(i + 1) + " " + m_clips[i];
+      LOG_I("[Viewer] Animations: %s (keys 1-9 switch)", list.c_str());
+    }
   }
 
   // A loaded scene brings its own camera; stop orbiting it around this example's target
@@ -91,6 +102,9 @@ public:
   }
 
   void update(Engine &engine, float deltaTime) override {
+    for (size_t i = 0; i < m_clips.size() && i < 9; ++i)
+      if (engine.input().wasKeyPressed(static_cast<SDL_Scancode>(SDL_SCANCODE_1 + i)))
+        engine.playAnimation(m_model, m_clips[i], 0.3f);
     // The orbit steps aside while the free camera is on (Settings), and picks up again when it is turned off
     if (!sceneReplaced && !engine.getState(Toggle::CameraMovement))
       updateCamera(engine, deltaTime);
@@ -98,4 +112,6 @@ public:
 
 private:
   bool sceneReplaced = false;
+  Entity m_model = -1;
+  std::vector<std::string> m_clips;
 };

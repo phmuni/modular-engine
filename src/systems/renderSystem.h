@@ -95,7 +95,11 @@ private:
     glm::mat4 model;
     glm::vec3 center;
     float radius;
+    const std::vector<glm::mat4> *joints = nullptr; // skinned: its pose this frame, drawn on its own
   };
+  // Skinned models: this frame's joint matrices, set on the shader (useSkinning); false for a static mesh
+  class AnimationSystem *m_animation = nullptr;
+  bool applySkinning(Shader &shader, Entity entity, const class Mesh &mesh) const;
   std::vector<ShadowCaster> m_shadowCasters;
   bool m_shadowCastersGathered = false; // reset every frame; gathered by the first shadow pass that needs them
 

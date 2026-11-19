@@ -1,6 +1,7 @@
 #pragma once
 // Main engine class: initialization, game loop, and entity creation interface.
 
+#include "components/animator.h"
 #include "components/audioSource.h"
 #include "components/characterController.h"
 #include "components/rigidBody.h"
@@ -79,6 +80,13 @@ public:
       body.shape = shape;
       body.mass = mass;
       return withComponent<RigidBody>(body);
+    }
+    // Plays a clip of its animated model (see Animator); empty: the first
+    EntityBuilder &withAnimation(std::string_view clip = {}, bool loop = true) {
+      Animator animator;
+      animator.clip = std::string(clip);
+      animator.loop = loop;
+      return withComponent<Animator>(animator);
     }
     // A walking character (see CharacterController), the Transform at the capsule's middle
     EntityBuilder &withCharacter(float radius = 0.35f, float height = 1.8f) {
@@ -198,6 +206,12 @@ public:
   // Physics (Jolt): bodies come from RigidBody components and characters from CharacterController ones. physics()
   // gives velocities, impulses, gravity, raycasts against bodies and the contacts of the last update.
   PhysicsSystem &physics();
+
+  // Skeletal animation (glTF): plays a clip of the entity's model, fading over from the one playing for
+  // `fadeSeconds`; adds an Animator if it has none. Playing the clip already playing keeps it going.
+  void playAnimation(Entity entity, std::string_view clip, float fadeSeconds = 0.2f, bool loop = true);
+  // The clips of the entity's model, in file order (empty for a model without animations)
+  std::vector<std::string> getAnimationClips(Entity entity);
   // Bodies that started touching during the last update, one of them with component A and the other with B (each
   // pair once, A's first), e.g. forEachContact<Player, Coin>
   template <typename A, typename B, typename Fn> void forEachContact(Fn &&fn) {

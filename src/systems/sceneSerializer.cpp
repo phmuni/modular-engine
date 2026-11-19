@@ -132,6 +132,7 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent<Skybox>("Skybox");
   registerComponent<RigidBody>("RigidBody");
   registerComponent<CharacterController>("CharacterController");
+  registerComponent<Animator>("Animator");
 
   registerComponent(
       "Hidden",

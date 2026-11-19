@@ -5,6 +5,8 @@
 #include "rendering/resources/decodedImage.h"
 #include <glad/glad.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -60,6 +62,59 @@ struct Submesh {
   std::string name;
 };
 
+// Skeletal animation (glTF skins and animations). A vertex follows up to four joints, by weight; the joints are nodes
+// of the model's node tree, which the clips animate. Parts of an animated model that have no skin follow their own
+// node as a single joint, so a sword parented to a hand moves with it.
+struct VertexSkin {
+  glm::vec4 joints{0.0f};  // joint indices
+  glm::vec4 weights{0.0f}; // summing to 1
+};
+
+struct SkeletonNode {
+  std::string name;
+  int parent = -1; // index in Skeleton::nodes
+  // Rest pose, relative to the parent
+  glm::vec3 translation{0.0f};
+  glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+  glm::vec3 scale{1.0f};
+};
+
+struct Skeleton {
+  std::vector<SkeletonNode> nodes;
+  std::vector<int> order;                // node indices, parents before children
+  std::vector<int> jointNodes;           // joint -> node
+  std::vector<glm::mat4> inverseBind;    // per joint: from the model's space into the joint's, at rest
+};
+
+struct AnimationChannel {
+  enum class Path { Translation, Rotation, Scale };
+  enum class Interpolation { Linear, Step, CubicSpline };
+  int node = -1;
+  Path path = Path::Translation;
+  Interpolation interpolation = Interpolation::Linear;
+  std::vector<float> times;
+  std::vector<glm::vec4> values; // xyz (rotation: xyzw); CubicSpline: in-tangent, value, out-tangent per key
+};
+
+struct AnimationClip {
+  std::string name;
+  float duration = 0.0f; // seconds
+  std::vector<AnimationChannel> channels;
+};
+
+// What a skinned or animated mesh keeps for the animation system
+struct MeshAnimation {
+  Skeleton skeleton;
+  std::vector<AnimationClip> clips;
+  std::vector<glm::mat4> restJointMatrices; // the rest pose, for entities without an Animator
+  int findClip(std::string_view name) const {
+    for (size_t i = 0; i < clips.size(); ++i)
+      if (clips[i].name == name)
+        return static_cast<int>(i);
+    return -1;
+  }
+};
+
 // A part as a loader produces it, before Mesh::layoutParts places its indices
 struct PendingPart {
   std::string name;
@@ -79,6 +134,9 @@ struct MeshData {
   glm::vec3 boundsCenter{0.0f};
   float boundsRadius = 0.0f;
   glm::vec3 boundsMin{0.0f}, boundsMax{0.0f};
+  // Skinned or animated models: one entry per vertex, and the skeleton and clips (empty for static models)
+  std::vector<VertexSkin> skin;
+  std::shared_ptr<MeshAnimation> animation;
   // Welded positions and triangles for queries, built by parse (on the loading thread); Mesh keeps them
   std::vector<glm::vec3> collisionVertices;
   std::vector<uint32_t> collisionIndices;
@@ -104,7 +162,10 @@ private:
   // repeats positions for each normal and UV), three indices per triangle
   std::vector<glm::vec3> m_collisionVertices;
   std::vector<uint32_t> m_collisionIndices;
-  static void buildCollisionGeometry(MeshData &data);
+  // Skinned or animated meshes: joint indices and weights (vertex attributes 11 and 12), and the skeleton and clips
+  GLuint m_skinVBO = 0;
+  std::shared_ptr<const MeshAnimation> m_animation;
+  static void buildCollisionGeometry(MeshData &data, const std::vector<glm::vec3> &positions);
 
   std::vector<uint32_t> m_drawOrder; // submesh indices sorted by indexStart
   uint32_t m_indexCount = 0;
@@ -143,7 +204,8 @@ public:
         m_mtlMaterials(std::move(other.m_mtlMaterials)), m_baseDir(std::move(other.m_baseDir)),
         m_boundsCenter(other.m_boundsCenter), m_boundsRadius(other.m_boundsRadius), m_boundsMin(other.m_boundsMin),
         m_boundsMax(other.m_boundsMax), m_collisionVertices(std::move(other.m_collisionVertices)),
-        m_collisionIndices(std::move(other.m_collisionIndices)),
+        m_collisionIndices(std::move(other.m_collisionIndices)), m_skinVBO(std::exchange(other.m_skinVBO, 0)),
+        m_animation(std::move(other.m_animation)),
         m_drawOrder(std::move(other.m_drawOrder)), m_indexCount(other.m_indexCount) {}
 
   Mesh &operator=(Mesh &&other) noexcept {
@@ -163,6 +225,10 @@ public:
       m_boundsMax = other.m_boundsMax;
       m_collisionVertices = std::move(other.m_collisionVertices);
       m_collisionIndices = std::move(other.m_collisionIndices);
+      if (m_skinVBO)
+        glDeleteBuffers(1, &m_skinVBO);
+      m_skinVBO = std::exchange(other.m_skinVBO, 0);
+      m_animation = std::move(other.m_animation);
       m_drawOrder = std::move(other.m_drawOrder);
       m_indexCount = other.m_indexCount;
     }
@@ -187,4 +253,7 @@ public:
   // Model-space triangles for queries (see ModelQueries): positions, and three indices per triangle
   const std::vector<glm::vec3> &getCollisionVertices() const { return m_collisionVertices; }
   const std::vector<uint32_t> &getCollisionIndices() const { return m_collisionIndices; }
+  // Skinned or animated: drawn with its joints' matrices (see AnimationSystem); null for static meshes
+  const MeshAnimation *getAnimation() const { return m_animation.get(); }
+  bool isSkinned() const { return m_animation != nullptr; }
 };

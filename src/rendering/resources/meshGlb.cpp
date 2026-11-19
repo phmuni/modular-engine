@@ -13,6 +13,7 @@
 #include <fstream>
 #include <functional>
 #include <glm/gtc/matrix_transform.hpp>
+#include "rendering/resources/skeletonPose.h"
 #include <glm/gtc/quaternion.hpp>
 #include <stb_image/stb_image.h>
 #include <tiny_gltf_loader/tiny_gltf_v3.h>
@@ -280,6 +281,29 @@ glm::mat4 composeNodeTransform(const tg3_node &node) {
   matrix *= glm::mat4_cast(rotation);
   matrix = glm::scale(matrix, scale);
   return matrix;
+}
+
+// A node's place relative to its parent, as translation, rotation and scale (what animations change)
+NodePose nodePose(const tg3_node &node) {
+  NodePose pose;
+  if (node.has_matrix) {
+    const glm::mat4 matrix = composeNodeTransform(node);
+    pose.translation = glm::vec3(matrix[3]);
+    for (int axis = 0; axis < 3; ++axis)
+      pose.scale[axis] = glm::length(glm::vec3(matrix[axis]));
+    glm::mat3 rotation;
+    for (int axis = 0; axis < 3; ++axis)
+      rotation[axis] = glm::vec3(matrix[axis]) / (pose.scale[axis] > 0.0f ? pose.scale[axis] : 1.0f);
+    pose.rotation = glm::normalize(glm::quat_cast(rotation));
+    return pose;
+  }
+  pose.translation = glm::vec3(static_cast<float>(node.translation[0]), static_cast<float>(node.translation[1]),
+                               static_cast<float>(node.translation[2]));
+  pose.rotation = glm::normalize(glm::quat(static_cast<float>(node.rotation[3]), static_cast<float>(node.rotation[0]),
+                                           static_cast<float>(node.rotation[1]), static_cast<float>(node.rotation[2])));
+  pose.scale = glm::vec3(static_cast<float>(node.scale[0]), static_cast<float>(node.scale[1]),
+                         static_cast<float>(node.scale[2]));
+  return pose;
 }
 
 int decodeBase64Char(unsigned char c) {
@@ -561,6 +585,113 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
     data.materials.push_back(std::move(material));
   }
 
+  // Animated models (skins or animations): the node tree becomes a skeleton, and vertices stay in the space of the
+  // joints that move them instead of being placed once
+  const bool animated = gltf->skins_count > 0 || gltf->animations_count > 0;
+  std::shared_ptr<MeshAnimation> animation;
+  std::vector<int> rigidJoint(gltf->nodes_count, -1); // the joint a node's unskinned parts follow
+  std::vector<int> skinJointOffset(gltf->skins_count, 0);
+  if (animated) {
+    animation = std::make_shared<MeshAnimation>();
+    Skeleton &skeleton = animation->skeleton;
+    skeleton.nodes.resize(gltf->nodes_count);
+    for (uint32_t i = 0; i < gltf->nodes_count; ++i) {
+      const tg3_node &node = gltf->nodes[i];
+      const NodePose pose = nodePose(node);
+      skeleton.nodes[i].name = toStdString(node.name);
+      skeleton.nodes[i].translation = pose.translation;
+      skeleton.nodes[i].rotation = pose.rotation;
+      skeleton.nodes[i].scale = pose.scale;
+    }
+    for (uint32_t i = 0; i < gltf->nodes_count; ++i) {
+      const tg3_node &node = gltf->nodes[i];
+      for (uint32_t c = 0; c < node.children_count; ++c) {
+        const int32_t child = node.children ? node.children[c] : -1;
+        if (child >= 0 && child < static_cast<int32_t>(gltf->nodes_count))
+          skeleton.nodes[child].parent = static_cast<int>(i);
+      }
+    }
+    // Parents before children: breadth first from the roots
+    for (uint32_t i = 0; i < gltf->nodes_count; ++i)
+      if (skeleton.nodes[i].parent < 0)
+        skeleton.order.push_back(static_cast<int>(i));
+    for (size_t k = 0; k < skeleton.order.size() && skeleton.order.size() <= gltf->nodes_count; ++k)
+      for (uint32_t i = 0; i < gltf->nodes_count; ++i)
+        if (skeleton.nodes[i].parent == skeleton.order[k])
+          skeleton.order.push_back(static_cast<int>(i));
+
+    for (uint32_t s = 0; s < gltf->skins_count; ++s) {
+      const tg3_skin &skin = gltf->skins[s];
+      skinJointOffset[s] = static_cast<int>(skeleton.jointNodes.size());
+      const tg3_accessor *inverseBinds = skin.inverse_bind_matrices >= 0 &&
+                                                 skin.inverse_bind_matrices < static_cast<int32_t>(gltf->accessors_count)
+                                             ? &gltf->accessors[skin.inverse_bind_matrices]
+                                             : nullptr;
+      const AccessorView binds = makeAccessorView(*gltf, inverseBinds);
+      for (uint32_t j = 0; j < skin.joints_count; ++j) {
+        skeleton.jointNodes.push_back(skin.joints ? skin.joints[j] : 0);
+        glm::mat4 inverseBind(1.0f);
+        if (binds.valid() && j < binds.count && binds.componentType == TG3_COMPONENT_TYPE_FLOAT) {
+          const uint8_t *element = binds.base + j * binds.stride;
+          for (int k = 0; k < 16; ++k)
+            inverseBind[k / 4][k % 4] = readPod<float>(element + k * sizeof(float));
+        }
+        skeleton.inverseBind.push_back(inverseBind);
+      }
+    }
+
+    // Clips: channels of translation, rotation and scale (morph weights are not supported)
+    for (uint32_t a = 0; a < gltf->animations_count; ++a) {
+      const tg3_animation &source = gltf->animations[a];
+      AnimationClip clip;
+      clip.name = toStdString(source.name);
+      if (clip.name.empty())
+        clip.name = "animation " + std::to_string(a);
+      for (uint32_t c = 0; c < source.channels_count; ++c) {
+        const tg3_animation_channel &channelSource = source.channels[c];
+        const std::string path = toStdString(channelSource.target.path);
+        if (channelSource.sampler < 0 || channelSource.sampler >= static_cast<int32_t>(source.samplers_count) ||
+            channelSource.target.node < 0 || channelSource.target.node >= static_cast<int32_t>(gltf->nodes_count) ||
+            (path != "translation" && path != "rotation" && path != "scale"))
+          continue;
+        const tg3_animation_sampler &sampler = source.samplers[channelSource.sampler];
+        if (sampler.input < 0 || sampler.output < 0 || sampler.input >= static_cast<int32_t>(gltf->accessors_count) ||
+            sampler.output >= static_cast<int32_t>(gltf->accessors_count))
+          continue;
+        AnimationChannel channel;
+        channel.node = channelSource.target.node;
+        channel.path = path == "translation" ? AnimationChannel::Path::Translation
+                       : path == "rotation"  ? AnimationChannel::Path::Rotation
+                                             : AnimationChannel::Path::Scale;
+        const std::string interpolation = toStdString(sampler.interpolation);
+        channel.interpolation = interpolation == "STEP"          ? AnimationChannel::Interpolation::Step
+                                : interpolation == "CUBICSPLINE" ? AnimationChannel::Interpolation::CubicSpline
+                                                                 : AnimationChannel::Interpolation::Linear;
+        const AccessorView times = makeAccessorView(*gltf, &gltf->accessors[sampler.input]);
+        const AccessorView values = makeAccessorView(*gltf, &gltf->accessors[sampler.output]);
+        for (size_t k = 0; k < times.count; ++k)
+          channel.times.push_back(times.read<1>(k).x);
+        for (size_t k = 0; k < values.count; ++k)
+          channel.values.push_back(values.read<4>(k));
+        const size_t perKey = channel.interpolation == AnimationChannel::Interpolation::CubicSpline ? 3 : 1;
+        if (channel.times.empty() || channel.values.size() < channel.times.size() * perKey)
+          continue;
+        clip.duration = std::max(clip.duration, channel.times.back());
+        clip.channels.push_back(std::move(channel));
+      }
+      animation->clips.push_back(std::move(clip));
+    }
+  }
+  // An unskinned mesh node of an animated model becomes a joint of its own
+  auto jointForNode = [&](int32_t nodeIndex) {
+    if (rigidJoint[nodeIndex] < 0) {
+      rigidJoint[nodeIndex] = static_cast<int>(animation->skeleton.jointNodes.size());
+      animation->skeleton.jointNodes.push_back(nodeIndex);
+      animation->skeleton.inverseBind.push_back(glm::mat4(1.0f));
+    }
+    return rigidJoint[nodeIndex];
+  };
+
   std::vector<Vertex> &vertices = data.vertices;
   std::vector<uint32_t> &indices = data.indices;
   vertices.reserve(4096);
@@ -568,7 +699,9 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
 
   std::vector<PendingPart> parts;
 
-  auto appendPrimitive = [&](const tg3_primitive &primitive, const glm::mat4 &worldMatrix, std::string name) {
+  // skinIndex >= 0: skinned by that skin; else rigidJointIndex >= 0: follows that joint; both -1: a static model
+  auto appendPrimitive = [&](const tg3_primitive &primitive, const glm::mat4 &worldMatrix, std::string name,
+                             int skinIndex, int rigidJointIndex) {
     const tg3_accessor *positionAccessor = findAccessor(*gltf, primitive, "POSITION");
     if (!positionAccessor) {
       LOG_W("[Mesh] GLB primitive missing POSITION attribute");
@@ -583,6 +716,8 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
     const AccessorView normals = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "NORMAL"));
     const AccessorView texcoords = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "TEXCOORD_0"));
     const AccessorView tangents = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "TANGENT"));
+    const AccessorView joints = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "JOINTS_0"));
+    const AccessorView weights = makeAccessorView(*gltf, findAccessor(*gltf, primitive, "WEIGHTS_0"));
     // A mirroring node transform flips which side the bitangent is on
     const float mirror = glm::determinant(glm::mat3(worldMatrix)) < 0.0f ? -1.0f : 1.0f;
 
@@ -616,6 +751,20 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
       }
 
       vertices.push_back(vertex);
+
+      if (animation) {
+        VertexSkin skin;
+        if (skinIndex >= 0 && joints.valid() && weights.valid()) {
+          skin.joints = joints.read<4>(i) + glm::vec4(static_cast<float>(skinJointOffset[skinIndex]));
+          skin.weights = weights.read<4>(i);
+          const float total = skin.weights.x + skin.weights.y + skin.weights.z + skin.weights.w;
+          skin.weights = total > 0.0f ? skin.weights / total : glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+        } else {
+          skin.joints = glm::vec4(static_cast<float>(std::max(rigidJointIndex, 0)), 0.0f, 0.0f, 0.0f);
+          skin.weights = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+        }
+        data.skin.push_back(skin);
+      }
     }
 
     std::vector<uint32_t> primitiveIndices;
@@ -689,9 +838,15 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
         name = toStdString(mesh.name);
       if (name.empty())
         name = "node " + std::to_string(nodeIndex);
+      // Animated models keep vertices where their joints are: a skin's in the mesh's space (glTF ignores a skinned
+      // mesh node's transform), an unskinned part in its node's, which it follows as a joint
+      const bool skinned = animation && node.skin >= 0 && node.skin < static_cast<int32_t>(gltf->skins_count);
+      const int rigid = animation && !skinned ? jointForNode(nodeIndex) : -1;
+      const glm::mat4 placement = animation ? glm::mat4(1.0f) : worldMatrix;
       for (uint32_t primitiveIndex = 0; primitiveIndex < mesh.primitives_count; ++primitiveIndex) {
         std::string partName = mesh.primitives_count > 1 ? name + "/" + std::to_string(primitiveIndex) : name;
-        appendPrimitive(mesh.primitives[primitiveIndex], worldMatrix, std::move(partName));
+        appendPrimitive(mesh.primitives[primitiveIndex], placement, std::move(partName), skinned ? node.skin : -1,
+                        rigid);
       }
     }
 
@@ -727,6 +882,17 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
   }
 
   layoutParts(parts, data);
+
+  if (animation) {
+    // The rest pose, for bounds, picking and entities without an Animator
+    std::vector<glm::mat4> globals;
+    SkeletonPose::jointMatrices(animation->skeleton, SkeletonPose::rest(animation->skeleton), globals,
+                                animation->restJointMatrices);
+    if (animation->skeleton.jointNodes.size() > EngineConfig::MAX_JOINTS)
+      LOG_W("[Mesh] %s has %zu joints; only %d are drawn moving", normalized.c_str(),
+            animation->skeleton.jointNodes.size(), EngineConfig::MAX_JOINTS);
+    data.animation = std::move(animation);
+  }
 
   if (vertices.empty() || indices.empty()) {
     LOG_W("[Mesh] GLB produced no drawable geometry: %s", normalized.c_str());

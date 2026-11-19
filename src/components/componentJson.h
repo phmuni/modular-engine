@@ -4,6 +4,7 @@
 // Reading fills missing fields with the component's defaults, so older scene files keep loading as components grow.
 // Runtime state (live particles, sound voices, derived camera vectors) is not saved.
 
+#include "components/animator.h"
 #include "components/audioSource.h"
 #include "components/camera.h"
 #include "components/collision.h"
@@ -64,6 +65,8 @@ NLOHMANN_JSON_SERIALIZE_ENUM(BodyShape, {{BodyShape::Box, "box"},
                                          {BodyShape::Mesh, "mesh"}})
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(RigidBody, type, shape, size, mass, friction, restitution, linearDamping,
                                                 angularDamping, gravityScale, lockRotation, sensor)
+// The clip and how it plays; a crossfade in progress is not saved
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Animator, clip, time, speed, loop, playing)
 // move, jump, onGround and velocity are per frame, not part of the scene
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(CharacterController, radius, height, maxSlope, stepHeight,
                                                 gravityScale)

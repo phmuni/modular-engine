@@ -5,6 +5,7 @@
 #include "components/skybox.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
+#include "systems/animationSystem.h"
 #include "systems/cameraSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/particleSystem.h"
@@ -187,7 +188,8 @@ void RenderSystem::gatherShadowCasters(ComponentManager &componentManager, Resou
     const glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(componentManager.get<Transform>(entity));
     m_shadowCasters.push_back({model.meshHandle, modelMatrix,
                                glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f)),
-                               mesh.getBoundsRadius() * maxScaleOf(modelMatrix)});
+                               mesh.getBoundsRadius() * maxScaleOf(modelMatrix),
+                               mesh.isSkinned() && m_animation ? m_animation->getJointMatrices(entity) : nullptr});
   });
   // Sorted once, so every pass finds the instances of a mesh next to each other
   std::sort(m_shadowCasters.begin(), m_shadowCasters.end(),
@@ -200,6 +202,7 @@ void RenderSystem::drawShadowCasters(Shader &depthShader, const glm::mat4 &viewP
   depthShader.setMat4("lightSpaceMatrix", viewProjection);
   const bool instanced = depthShader.supportsInstancing();
   depthShader.setInt("useInstancing", instanced ? 1 : 0);
+  depthShader.setInt("useSkinning", 0);
 
   // Instances of one mesh go out together; the list is sorted by mesh
   uint32_t runMesh = 0;
@@ -215,9 +218,21 @@ void RenderSystem::drawShadowCasters(Shader &depthShader, const glm::mat4 &viewP
   for (const ShadowCaster &caster : m_shadowCasters) {
     if (!frustum.intersectsSphere(caster.center, caster.radius))
       continue;
-    if (!instanced) {
+    if (!instanced || caster.joints) {
+      // Skinned casters carry their own pose: drawn one at a time
+      if (caster.joints) {
+        flush();
+        depthShader.setInt("useInstancing", 0);
+        depthShader.setInt("useSkinning", 1);
+        depthShader.setMat4Array("bones", caster.joints->data(),
+                                 std::min(static_cast<int>(caster.joints->size()), EngineConfig::MAX_JOINTS));
+      }
       depthShader.setMat4("model", caster.model);
       m_renderer.drawMesh(resourceSystem.getMesh(caster.meshHandle));
+      if (caster.joints) {
+        depthShader.setInt("useSkinning", 0);
+        depthShader.setInt("useInstancing", instanced ? 1 : 0);
+      }
       continue;
     }
     if (caster.meshHandle != runMesh)
@@ -334,7 +349,9 @@ uint64_t RenderSystem::pointShadowSignature(const PointShadowCaster &light) cons
   for (const ShadowCaster &caster : m_shadowCasters) {
     if (glm::length(caster.center - light.position) > caster.radius + light.range)
       continue;
-    const uint64_t meshHash = hashBytes(&caster.meshHandle, sizeof(caster.meshHandle));
+    uint64_t meshHash = hashBytes(&caster.meshHandle, sizeof(caster.meshHandle));
+    if (caster.joints && !caster.joints->empty()) // an animated pose changes the shadow without moving the model
+      meshHash = hashBytes(caster.joints->data(), caster.joints->size() * sizeof(glm::mat4), meshHash);
     casters += hashBytes(&caster.model, sizeof(caster.model), meshHash);
     ++count;
   }
@@ -408,6 +425,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   Entity cameraEntity = cameraSystem.getActiveCamera();
   if (cameraEntity == -1)
     return;
+  m_animation = systemManager.hasSystem<AnimationSystem>() ? &systemManager.getSystem<AnimationSystem>() : nullptr;
 
   const auto &camera = componentManager.get<Camera>(cameraEntity);
   glm::mat4 view = cameraSystem.getViewMatrix(camera);
@@ -443,6 +461,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setMat4("projection", projection);
     shader.setVec3("viewPos", viewPos);
     shader.setInt("useShadows", sunShadow.active ? 1 : 0);
+    shader.setInt("useSkinning", 0);
     shader.setInt("cascadeCount", EngineConfig::SHADOW_CASCADES);
     shader.setVec3("viewForward", glm::normalize(camera.front));
     for (int cascade = 0; cascade < EngineConfig::SHADOW_CASCADES; ++cascade) {
@@ -507,8 +526,11 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setMat4("model", modelMatrix);
     shader.setMat3("normalMatrix", calculateNormalMatrix(modelMatrix));
     applyMaterial(shader, resourceSystem.getMaterial(materialHandle), opacity);
+    const bool skinned = applySkinning(shader, entity, mesh);
 
     renderer.drawIndexRange(mesh, indexStart, indexCount);
+    if (skinned)
+      shader.setInt("useSkinning", 0);
   };
 
   for (auto &[shaderHandle, batch] : m_renderBatches) {
@@ -537,8 +559,10 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       continue;
     }
 
-    // Opaque draws of the same mesh range with the same material go out as one instanced call
+    // Opaque draws of the same mesh range with the same material go out as one instanced call; skinned models,
+    // each in its own pose, go one at a time after them
     m_instanceItems.clear();
+    std::vector<Entity> skinnedEntities;
     for (Entity entity : batch) {
       auto *transform = componentManager.tryGet<Transform>(entity);
       auto *model = componentManager.tryGet<Model>(entity);
@@ -546,6 +570,10 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
         continue;
 
       const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
+      if (mesh.isSkinned()) {
+        skinnedEntities.push_back(entity);
+        continue;
+      }
       glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(*transform);
       if (!isMeshVisible(frustum, mesh, modelMatrix)) {
         ++m_culledCount;
@@ -570,6 +598,13 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
           renderer.drawIndexRangeInstanced(resourceSystem.getMesh(first.meshHandle), first.indexStart,
                                            first.indexCount, count);
         });
+    for (Entity entity : skinnedEntities) {
+      const Model &model = componentManager.get<Model>(entity);
+      forEachDrawRange(resourceSystem.getMesh(model.meshHandle), model, !anyBlend, includeOpaque,
+                       [&](uint32_t start, uint32_t count, uint32_t material) {
+                         drawRange(shader, entity, start, count, material, 1.0f);
+                       });
+    }
   }
 
   // The sky fills what the opaque geometry left empty; transparent surfaces then blend over it
@@ -666,6 +701,17 @@ void RenderSystem::drawSkybox(ComponentManager &componentManager, ResourceSystem
   shader.setFloat("rotation", glm::radians(sky->rotation));
   shader.setInt("gammaCorrect", gammaCorrect ? 1 : 0);
   m_renderer.drawSkybox();
+}
+
+bool RenderSystem::applySkinning(Shader &shader, Entity entity, const Mesh &mesh) const {
+  if (!mesh.isSkinned() || !m_animation)
+    return false;
+  const std::vector<glm::mat4> *joints = m_animation->getJointMatrices(entity);
+  if (!joints || joints->empty())
+    return false;
+  shader.setInt("useSkinning", 1);
+  shader.setMat4Array("bones", joints->data(), std::min(static_cast<int>(joints->size()), EngineConfig::MAX_JOINTS));
+  return true;
 }
 
 Renderer &RenderSystem::getRenderer() { return m_renderer; }
