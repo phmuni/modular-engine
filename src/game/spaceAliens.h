@@ -777,7 +777,8 @@ public:
     updatePlayer(engine, deltaTime);
     updateInvaders(engine, deltaTime);
     updateCollisions(engine, deltaTime);
-    updateCamera(engine, deltaTime);
+    if (!engine.getState(Toggle::CameraMovement)) // the chase camera steps aside while the free camera is on
+      updateCamera(engine, deltaTime);
     updateReticle(engine);
     updatePlayerEmission(engine);
   }

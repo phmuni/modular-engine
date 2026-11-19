@@ -91,7 +91,8 @@ public:
   }
 
   void update(Engine &engine, float deltaTime) override {
-    if (!sceneReplaced)
+    // The orbit steps aside while the free camera is on (Settings), and picks up again when it is turned off
+    if (!sceneReplaced && !engine.getState(Toggle::CameraMovement))
       updateCamera(engine, deltaTime);
   }
 

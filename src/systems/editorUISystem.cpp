@@ -218,7 +218,12 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
   }
 
   if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-    toggleCheckbox("Free camera", Toggle::CameraMovement, "WASD + mouse; some examples drive the camera themselves");
+    toggleCheckbox("Free camera", Toggle::CameraMovement,
+                   "WASD + mouse while the cursor is locked; examples that drive the camera let go of it meanwhile");
+    if (state.isToggled(Toggle::CameraMovement) && !state.isToggled(Toggle::CursorLock)) {
+      const char *lockKey = toggleKeyName(Toggle::CursorLock);
+      ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "  Lock the cursor (%s) to look around", lockKey ? lockKey : "Cursor lock");
+    }
     toggleCheckbox("Fly mode", Toggle::CameraFly, "Space and Shift move up and down");
     toggleCheckbox("Cursor lock", Toggle::CursorLock);
 
