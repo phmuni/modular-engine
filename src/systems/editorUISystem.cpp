@@ -13,6 +13,7 @@
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "systems/audioSystem.h"
+#include "systems/sceneSerializer.h"
 #include "systems/cameraSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/renderSystem.h"
@@ -210,6 +211,44 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
       ImGui::SliderFloat("Sensitivity", &camera->mouseSensitivity, 0.1f, 5.0f, "%.2f");
     } else {
       ImGui::TextDisabled("No active camera");
+    }
+  }
+
+  if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen)) {
+    // Follows the engine's current scene, so Save writes back to the file that was loaded
+    static char scenePath[256] = "../assets/scenes/untitled.json";
+    static std::string followedPath;
+    if (!engine.getScenePath().empty() && engine.getScenePath() != followedPath) {
+      followedPath = engine.getScenePath();
+      std::string shown = EngineConfig::relativePath(EngineConfig::resolvePath(followedPath));
+      std::strncpy(scenePath, shown.c_str(), sizeof(scenePath) - 1);
+      scenePath[sizeof(scenePath) - 1] = '\0';
+    }
+    ImGui::InputText("File##scene", scenePath, sizeof(scenePath));
+    // Listed again every second, so files saved meanwhile show up
+    static std::vector<std::string> scenes;
+    static float listAge = 1.0f;
+    listAge += ImGui::GetIO().DeltaTime;
+    if (ImGui::Button("Save##scene")) {
+      engine.saveScene(scenePath);
+      listAge = 1.0f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Load##scene"))
+      engine.loadScene(scenePath);
+    if (listAge >= 1.0f) {
+      scenes = systemManager.getSystem<SceneSerializer>().listScenes(EngineConfig::SCENES_DIR);
+      listAge = 0.0f;
+    }
+    if (scenes.empty())
+      ImGui::TextDisabled("No scenes in %s", EngineConfig::SCENES_DIR);
+    std::string current = engine.getScenePath().empty()
+                              ? std::string()
+                              : EngineConfig::relativePath(EngineConfig::resolvePath(engine.getScenePath()));
+    for (const std::string &scene : scenes) {
+      std::string label = std::filesystem::path(scene).filename().string();
+      if (ImGui::Selectable(label.c_str(), scene == current))
+        engine.loadScene(scene);
     }
   }
 

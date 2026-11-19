@@ -23,6 +23,7 @@ namespace Rml {
 class Context;
 class ElementDocument;
 } // namespace Rml
+class SceneSerializer;
 
 class Engine {
 public:
@@ -136,6 +137,18 @@ public:
   void playMusic(std::string_view path, float volume = 1.0f, bool loop = true);
   void stopMusic();
 
+  // Scenes (JSON). Saving writes every entity with components that have a serializer; see SceneSerializer.
+  bool saveScene(std::string_view path);
+  // Replaces all entities with the file's at the end of this frame, then calls App::onSceneLoaded
+  void loadScene(std::string_view path);
+  // The file last loaded or saved, empty before that
+  const std::string &getScenePath() const { return m_scenePath; }
+  // Lets scene files hold game components: include "systems/sceneSerializer.h" and call registerComponent<T>(key)
+  // on it. Kept out of this header, so files that include the engine do not compile the JSON library.
+  SceneSerializer &getSceneSerializer();
+  // Saves the scene after `delaySeconds` of running; `quitAfter` closes the engine
+  void saveSceneAfter(std::string path, float delaySeconds, bool quitAfter = false);
+
   // Game UI (RmlUi). Create data models on the context before loading the documents that bind to them.
   Rml::Context *getUIContext();
   // Loads an RML document (relative to bin/ like models) and shows it unless `show` is false
@@ -185,6 +198,10 @@ private:
     bool quitAfter = false;
   };
   std::optional<ScreenshotRequest> m_screenshot;
+  std::optional<ScreenshotRequest> m_sceneSave;
+  std::optional<std::string> m_pendingScene;
+  std::string m_scenePath;
+  void applyPendingScene();
   bool m_screenshotKeyDown = false;
   bool m_quitRequested = false;
   uint64_t m_frameStartNs = 0;
@@ -199,6 +216,8 @@ private:
   std::optional<Benchmark> m_benchmark;
   void recordBenchmarkFrame();
 
+  // Shows an error that is about to close the engine, so it does not just vanish
+  void reportFatalError(const std::string &message);
   void registerSystems();
   bool loadResources();
 

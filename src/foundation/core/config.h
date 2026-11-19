@@ -51,6 +51,16 @@ inline std::string resolvePath(std::string_view relativePath) {
   return PathUtils::normalizeSeparators(std::move(result));
 }
 
+// The inverse of resolvePath: a path relative to the executable's folder (e.g. "../assets/x.obj"), so files that
+// store paths keep working when the project moves. Paths on another drive stay absolute.
+inline std::string relativePath(std::string_view absolutePath) {
+  std::filesystem::path path(absolutePath);
+  if (!path.is_absolute())
+    return PathUtils::normalizeSeparators(std::string(absolutePath));
+  std::filesystem::path relative = path.lexically_relative(getBasePath());
+  return PathUtils::normalizeSeparators(relative.empty() ? path.string() : relative.string());
+}
+
 // Window
 constexpr float DEFAULT_SCREEN_WIDTH = 1280.0f;
 constexpr float DEFAULT_SCREEN_HEIGHT = 720.0f;
@@ -80,6 +90,9 @@ constexpr const char *MODEL_SPHERE = "../assets/models/sphere/sphere.obj";
 // Game UI fonts loaded at start-up, available to every document as font-family: LatoLatin
 inline const char *const UI_FONTS[] = {"../assets/ui/fonts/LatoLatin-Regular.ttf",
                                        "../assets/ui/fonts/LatoLatin-Bold.ttf"};
+
+// Scene files listed by the editor and the scene browser example
+constexpr const char *SCENES_DIR = "../assets/scenes";
 
 // Screenshots (F12), saved next to the executable
 constexpr SDL_Scancode SCREENSHOT_KEY = SDL_SCANCODE_F12;

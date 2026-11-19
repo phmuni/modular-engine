@@ -7,6 +7,7 @@
 #include "rendering/resources/mesh.h"
 #include <future>
 #include <glm/glm.hpp>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -64,6 +65,10 @@ public:
   uint32_t loadMesh(std::string_view path);
   ModelLoadResult loadModel(std::string_view path, uint32_t shaderHandle);
   Mesh &getMesh(uint32_t handle);
+  // Path a mesh was loaded from, empty if unknown
+  std::string getMeshPath(uint32_t handle) const;
+  // Materials a model file starts with for this shader (before any per-entity change), or null if not loaded
+  const std::vector<uint32_t> *getModelMaterials(uint32_t meshHandle, uint32_t shaderHandle) const;
 
   // Shader
   uint32_t loadShader(std::string_view vertexPath, std::string_view fragmentPath, std::string_view defines = {});
@@ -93,6 +98,8 @@ public:
 
   // Texture
   GLuint loadTexture(std::string_view path);
+  // Path a texture was loaded from ("solid_r_g_b" for solid colors), empty if unknown
+  std::string getTexturePath(GLuint texture) const;
 
   // Entity API
   // Index of the entity's part with this name, or -1 (with a warning)

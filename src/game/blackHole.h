@@ -172,5 +172,17 @@ public:
     createBlackHole(engine);
   }
 
-  void update(Engine &engine, float deltaTime) override { updateCamera(engine, deltaTime); }
+  // A loaded scene brings its own camera; stop orbiting it around this example's target
+  void onSceneLoaded(Engine &engine, const std::string &) override {
+    sceneReplaced = true;
+    engine.setState(Toggle::CameraMovement, true);
+  }
+
+  void update(Engine &engine, float deltaTime) override {
+    if (!sceneReplaced)
+      updateCamera(engine, deltaTime);
+  }
+
+private:
+  bool sceneReplaced = false;
 };

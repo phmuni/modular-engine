@@ -173,6 +173,25 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
   return result;
 }
 
+std::string ResourceSystem::getMeshPath(uint32_t handle) const {
+  for (const auto &[path, cached] : m_meshCache)
+    if (cached == handle)
+      return path;
+  return {};
+}
+
+const std::vector<uint32_t> *ResourceSystem::getModelMaterials(uint32_t meshHandle, uint32_t shaderHandle) const {
+  auto it = m_modelMaterials.find((static_cast<uint64_t>(meshHandle) << 32) | shaderHandle);
+  return it == m_modelMaterials.end() ? nullptr : &it->second;
+}
+
+std::string ResourceSystem::getTexturePath(GLuint texture) const {
+  for (const auto &[path, cached] : m_textures)
+    if (cached == texture)
+      return path;
+  return {};
+}
+
 // Cached by the full path: "rock.png" and "rock.jpg" are different textures
 GLuint ResourceSystem::loadTexture(std::string_view path) {
   std::string normalized = PathUtils::normalizeSeparators(std::string(path));

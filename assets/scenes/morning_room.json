@@ -1,0 +1,86 @@
+{
+  "entities": [
+    {
+      "components": {
+        "Light": {
+          "ambient": 0.2,
+          "color": [1.0, 1.0, 1.0],
+          "constant": 1.0,
+          "cutOff": 0.0,
+          "direction": [-0.4, -1.0, -0.6],
+          "intensity": 1.0,
+          "linear": 0.09,
+          "outerCutOff": 0.0,
+          "position": [0.0, 0.0, 0.0],
+          "quadratic": 0.032,
+          "type": "directional"
+        },
+        "Transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [1.0, 1.0, 1.0]
+        }
+      },
+      "name": "Sun"
+    },
+    {
+      "components": {
+        "Light": {
+          "ambient": 0.2,
+          "color": [0.55, 0.6, 0.7],
+          "constant": 1.0,
+          "cutOff": 0.0,
+          "direction": [0.6, -0.3, 0.7],
+          "intensity": 0.5,
+          "linear": 0.09,
+          "outerCutOff": 0.0,
+          "position": [0.0, 0.0, 0.0],
+          "quadratic": 0.032,
+          "type": "directional"
+        },
+        "Transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [1.0, 1.0, 1.0]
+        }
+      },
+      "name": "Fill"
+    },
+    {
+      "components": {
+        "Model": {
+          "path": "../assets/models/the morning room/model.obj"
+        },
+        "Transform": {
+          "position": [-0.03000914, -0.9524512, -0.04468615],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [0.08163352, 0.08163352, 0.08163352]
+        }
+      },
+      "name": "Model"
+    },
+    {
+      "components": {
+        "Camera": {
+          "active": true,
+          "fov": 50.0,
+          "isRelative": false,
+          "mouseSensitivity": 1.0,
+          "moveSpeed": 3.0,
+          "pitch": -20.0,
+          "position": [4.791586, 1.778505, 0.9579267],
+          "smoothFactor": 9.0,
+          "yaw": -78.69456
+        },
+        "Transform": {
+          "position": [0.0, 0.0, 5.2],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [1.0, 1.0, 1.0]
+        }
+      },
+      "name": "Camera"
+    }
+  ],
+  "format": "modular-engine-scene",
+  "version": 1
+}

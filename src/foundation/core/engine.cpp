@@ -16,6 +16,7 @@
 #include "systems/particleSystem.h"
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
+#include "systems/sceneSerializer.h"
 #include "systems/sceneSystem.h"
 #include "systems/timeSystem.h"
 #include "systems/transformSystem.h"
@@ -96,13 +97,24 @@ void Engine::run(App &app) {
     loop(running);
   } catch (const std::exception &ex) {
     LOG_E("[Engine] Uncaught exception in Engine::run: %s", ex.what());
+    reportFatalError(ex.what());
     shutdown();
     return;
   } catch (...) {
     LOG_E("[Engine] Uncaught unknown exception in Engine::run");
+    reportFatalError("Unknown error");
     shutdown();
     return;
   }
+}
+
+void Engine::reportFatalError(const std::string &message) {
+  // Unattended runs (screenshots, benchmarks, scene saves) must not wait on a dialog
+  if (m_screenshot || m_benchmark || m_sceneSave)
+    return;
+  std::string text = message + "\n\nThe engine will close. Details are in the log.";
+  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Modular Engine", text.c_str(),
+                           m_systemManager.getSystem<WindowSystem>().getWindow());
 }
 
 void Engine::shutdown() {
@@ -204,6 +216,18 @@ void Engine::update(bool &isRunning) {
     m_app->update(*this, timeSystem.getDeltaTime());
   }
 
+  // Scene switches wait until the app is done with this frame's entities
+  applyPendingScene();
+
+  if (m_sceneSave) {
+    m_sceneSave->delay -= timeSystem.getUnscaledDeltaTime();
+    if (m_sceneSave->delay <= 0.0f) {
+      saveScene(m_sceneSave->path);
+      m_quitRequested = m_quitRequested || m_sceneSave->quitAfter;
+      m_sceneSave.reset();
+    }
+  }
+
   // After the app had its chance to destroy entities this frame
   m_systemManager.getSystem<ResourceSystem>().collectUnusedMaterials();
   m_systemManager.getSystem<AudioSystem>().update(m_systemManager, state.isToggled(Toggle::Paused),
@@ -283,6 +307,33 @@ Entity Engine::createLightEntity(std::string_view name, glm::vec3 position, glm:
 void Engine::setState(Toggle toggle, bool value) {
   auto &stateSystem = m_systemManager.getSystem<StateSystem>();
   stateSystem.setToggle(toggle, value);
+}
+
+bool Engine::saveScene(std::string_view path) {
+  if (!m_systemManager.getSystem<SceneSerializer>().save(std::string(path)))
+    return false;
+  m_scenePath = path;
+  return true;
+}
+
+SceneSerializer &Engine::getSceneSerializer() { return m_systemManager.getSystem<SceneSerializer>(); }
+
+void Engine::loadScene(std::string_view path) { m_pendingScene = std::string(path); }
+
+void Engine::saveSceneAfter(std::string path, float delaySeconds, bool quitAfter) {
+  m_sceneSave = ScreenshotRequest{std::move(path), delaySeconds, quitAfter};
+}
+
+void Engine::applyPendingScene() {
+  if (!m_pendingScene)
+    return;
+  std::string path = std::move(*m_pendingScene);
+  m_pendingScene.reset();
+  if (!m_systemManager.getSystem<SceneSerializer>().load(path))
+    return;
+  m_scenePath = path;
+  if (m_app)
+    m_app->onSceneLoaded(*this, path);
 }
 
 void Engine::preloadSound(std::string_view path) {
@@ -372,6 +423,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<CameraSystem>(m_componentManager, m_systemManager.getSystem<InputSystem>());
   m_systemManager.insert<LightSystem>();
   m_systemManager.insert<SceneSystem>(m_entityManager, m_componentManager, m_systemManager);
+  m_systemManager.insert<SceneSerializer>(m_entityManager, m_componentManager, m_systemManager);
   m_systemManager.insert<ParticleSystem>(m_componentManager);
   m_systemManager.insert<CollisionSystem>();
   m_systemManager.insert<AudioSystem>(m_componentManager);

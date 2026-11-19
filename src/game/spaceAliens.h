@@ -45,6 +45,9 @@ class SpaceAliens : public App {
     int restartIn = 0;
   } hud;
   Rml::DataModelHandle hudModel;
+  Rml::ElementDocument *hudDocument = nullptr;
+  // Set when a scene file replaced the game's entities (Engine::loadScene, e.g. from the Settings panel)
+  bool sceneReplaced = false;
   float bumpTimer = 0.0f;
   float hintTimer = 6.0f;
   bool restartRequested = false;
@@ -195,7 +198,7 @@ class SpaceAliens : public App {
     });
     hudModel = model.GetModelHandle();
 
-    engine.loadUIDocument("../assets/ui/aliens/hud.rml");
+    hudDocument = engine.loadUIDocument("../assets/ui/aliens/hud.rml");
   }
 
   // Copies the game state into the HUD, marking only what changed
@@ -556,7 +559,19 @@ public:
     createHud(engine);
   }
 
+  // The game's entities (player, invaders, game state) are gone, so the game steps aside and leaves the loaded scene
+  // to be explored with the free camera
+  void onSceneLoaded(Engine &engine, const std::string &) override {
+    sceneReplaced = true;
+    if (hudDocument)
+      hudDocument->Hide();
+    engine.stopMusic();
+    engine.setState(Toggle::CameraMovement, true);
+  }
+
   void update(Engine &engine, float deltaTime) override {
+    if (sceneReplaced)
+      return;
     updateExplosions(engine, deltaTime);
 
     auto &state = engine.getOrThrow<GameState>(gameManager);

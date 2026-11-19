@@ -1,0 +1,245 @@
+{
+  "entities": [
+    {
+      "components": {
+        "Camera": {
+          "active": true,
+          "fov": 55.0,
+          "isRelative": false,
+          "mouseSensitivity": 1.0,
+          "moveSpeed": 3.0,
+          "pitch": -8.999999,
+          "position": [11.14532, 4.693034, 27.45464],
+          "smoothFactor": 9.0,
+          "yaw": -22.09489
+        },
+        "Transform": {
+          "position": [0.0, 0.0, 30.0],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [1.0, 1.0, 1.0]
+        }
+      },
+      "name": "Camera"
+    },
+    {
+      "components": {
+        "ParticleEmitter": {
+          "active": true,
+          "additiveBlending": true,
+          "attractMode": false,
+          "attractPoint": [0.0, 0.0, 0.0],
+          "attractPointRelative": false,
+          "attractStrength": 0.0,
+          "boxHalfExtents": [1.0, 1.0, 1.0],
+          "colorRadius": 1.0,
+          "distBasedColor": false,
+          "emissionShape": "sphere",
+          "emitDirection": [0.0, 1.0, 0.0],
+          "emitRate": 1000000.0,
+          "emitTangentially": false,
+          "enableRecycling": true,
+          "endColor": [0.75, 0.8, 1.0, 0.55],
+          "friction": 0.0,
+          "gravity": [0.0, 0.0, 0.0],
+          "maxParticles": 6000,
+          "offset": [0.0, 0.0, 0.0],
+          "particleLifetime": 1000000000.0,
+          "resetRadius": 0.0,
+          "ringInnerRadius": 1.0,
+          "ringOuterRadius": 2.0,
+          "ringThickness": 0.0,
+          "size": 0.45,
+          "sizeDecay": 0.0,
+          "speed": 0.0,
+          "speedVariance": 0.0,
+          "sphereRadius": 62.0,
+          "sphereSurfaceOnly": true,
+          "spread": 0.5,
+          "startColor": [0.75, 0.8, 1.0, 0.55],
+          "tangentStrength": 0.0,
+          "tangentVariance": 0.0
+        },
+        "Transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [1.0, 1.0, 1.0]
+        }
+      },
+      "name": "Stars"
+    },
+    {
+      "components": {
+        "ParticleEmitter": {
+          "active": true,
+          "additiveBlending": true,
+          "attractMode": false,
+          "attractPoint": [0.0, 0.0, 0.0],
+          "attractPointRelative": false,
+          "attractStrength": 0.0,
+          "boxHalfExtents": [1.0, 1.0, 1.0],
+          "colorRadius": 1.0,
+          "distBasedColor": false,
+          "emissionShape": "sphere",
+          "emitDirection": [0.0, 1.0, 0.0],
+          "emitRate": 1000000.0,
+          "emitTangentially": false,
+          "enableRecycling": true,
+          "endColor": [1.0, 0.92, 0.8, 0.9],
+          "friction": 0.0,
+          "gravity": [0.0, 0.0, 0.0],
+          "maxParticles": 400,
+          "offset": [0.0, 0.0, 0.0],
+          "particleLifetime": 1000000000.0,
+          "resetRadius": 0.0,
+          "ringInnerRadius": 1.0,
+          "ringOuterRadius": 2.0,
+          "ringThickness": 0.0,
+          "size": 0.9,
+          "sizeDecay": 0.0,
+          "speed": 0.0,
+          "speedVariance": 0.0,
+          "sphereRadius": 62.0,
+          "sphereSurfaceOnly": true,
+          "spread": 0.5,
+          "startColor": [1.0, 0.92, 0.8, 0.9],
+          "tangentStrength": 0.0,
+          "tangentVariance": 0.0
+        },
+        "Transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [1.0, 1.0, 1.0]
+        }
+      },
+      "name": "Bright Stars"
+    },
+    {
+      "components": {
+        "AudioSource": {
+          "loop": true,
+          "maxDistance": 40.0,
+          "minDistance": 12.0,
+          "path": "../assets/sounds/blackhole.flac",
+          "pitch": 0.9285714,
+          "playing": true,
+          "rolloff": 1.0,
+          "spatial": true,
+          "volume": 1.0
+        },
+        "GravityLens": {
+          "maxMagnification": 6.0,
+          "schwarzschildRadius": 1.2
+        },
+        "Model": {
+          "parts": [
+            {
+              "color": [0.0, 0.0, 0.0],
+              "part": 0
+            }
+          ],
+          "path": "../assets/models/sphere/sphere.obj"
+        },
+        "Transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [3.12, 3.12, 3.12]
+        }
+      },
+      "name": "Black Hole"
+    },
+    {
+      "components": {
+        "ParticleEmitter": {
+          "active": true,
+          "additiveBlending": true,
+          "attractMode": true,
+          "attractPoint": [0.0, 0.0, 0.0],
+          "attractPointRelative": true,
+          "attractStrength": 120.0,
+          "boxHalfExtents": [1.0, 1.0, 1.0],
+          "colorRadius": 14.0,
+          "distBasedColor": true,
+          "emissionShape": "ring",
+          "emitDirection": [0.0, 1.0, 0.0],
+          "emitRate": 1000000.0,
+          "emitTangentially": true,
+          "enableRecycling": true,
+          "endColor": [1.0, 0.9, 0.72, 1.0],
+          "friction": 0.02,
+          "gravity": [0.0, 0.0, 0.0],
+          "maxParticles": 70000,
+          "offset": [0.0, 0.0, 0.0],
+          "particleLifetime": 1000000000.0,
+          "resetRadius": 3.4,
+          "ringInnerRadius": 3.6,
+          "ringOuterRadius": 14.0,
+          "ringThickness": 0.05,
+          "size": 0.1,
+          "sizeDecay": 0.0,
+          "speed": 2.0,
+          "speedVariance": 0.5,
+          "sphereRadius": 1.0,
+          "sphereSurfaceOnly": false,
+          "spread": 0.5,
+          "startColor": [1.0, 0.3, 0.06, 0.35],
+          "tangentStrength": 1.0,
+          "tangentVariance": 0.03
+        },
+        "Transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [1.0, 1.0, 1.0]
+        }
+      },
+      "name": "Accretion Disk"
+    },
+    {
+      "components": {
+        "ParticleEmitter": {
+          "active": true,
+          "additiveBlending": true,
+          "attractMode": true,
+          "attractPoint": [0.0, 0.0, 0.0],
+          "attractPointRelative": true,
+          "attractStrength": 120.0,
+          "boxHalfExtents": [1.0, 1.0, 1.0],
+          "colorRadius": 14.0,
+          "distBasedColor": true,
+          "emissionShape": "ring",
+          "emitDirection": [0.0, 1.0, 0.0],
+          "emitRate": 1000000.0,
+          "emitTangentially": true,
+          "enableRecycling": true,
+          "endColor": [1.0, 0.7, 0.4, 0.09],
+          "friction": 0.02,
+          "gravity": [0.0, 0.0, 0.0],
+          "maxParticles": 16000,
+          "offset": [0.0, 0.0, 0.0],
+          "particleLifetime": 1000000000.0,
+          "resetRadius": 3.4,
+          "ringInnerRadius": 3.6,
+          "ringOuterRadius": 14.0,
+          "ringThickness": 0.05,
+          "size": 0.9,
+          "sizeDecay": 0.0,
+          "speed": 2.0,
+          "speedVariance": 0.5,
+          "sphereRadius": 1.0,
+          "sphereSurfaceOnly": false,
+          "spread": 0.5,
+          "startColor": [0.9, 0.25, 0.04, 0.03],
+          "tangentStrength": 1.0,
+          "tangentVariance": 0.03
+        },
+        "Transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [1.0, 1.0, 1.0]
+        }
+      },
+      "name": "Disk Glow"
+    }
+  ],
+  "format": "modular-engine-scene",
+  "version": 1
+}
