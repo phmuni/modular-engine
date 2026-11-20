@@ -122,8 +122,8 @@ private:
   // Align to surface: the move gizmo drags the entity over surfaces under the cursor, tilted to their slope
   bool m_gizmoAlign = false;
   float m_alignHeading = 0.0f; // degrees around +Y, from when the drag started
-  // Where the entity's base was on screen from the cursor when the drag started, in pixels: the gizmo is grabbed away
-  // from the base, so the base follows the cursor at that distance (1:1 on screen) instead of jumping under it
+  // Where the entity's origin (the gizmo's center) was on screen from the cursor when the drag started, in pixels: it
+  // stays at that distance from the cursor, so nothing jumps when the drag starts
   glm::vec2 m_alignGrabOffset{0.0f};
   bool m_alignGrabbed = false; // m_alignGrabOffset is set for this drag
   // Places the selected entity on the surface under the cursor; false if there is none. With `snapped`, its place on

@@ -1571,35 +1571,71 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   const glm::vec2 display(io.DisplaySize.x, io.DisplaySize.y);
   const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
 
-  // The first frame: where the base (its lowest point, under its own up) is on screen from the cursor. The gizmo is
-  // grabbed on the entity, away from its base, and the cursor's ray there passes through the entity onto whatever is
-  // far behind it: followed as it is, the entity would jump, then move more than the mouse does.
+  // The first frame: where the grabbed point (the entity's origin, the gizmo's center) is on screen from the cursor,
+  // a few pixels at most. From then on the origin stays under the cursor (plus that), the way the gizmo moves it
+  // anywhere else; keeping the base there instead would drift with perspective, the base and the origin being further
+  // apart on screen near the camera than far from it.
   if (!m_alignGrabbed) {
-    const glm::vec3 base = transform.position + rotationOf(transform) * glm::vec3(0.0f, baseHeight, 0.0f);
-    const glm::vec4 clip = viewProjection * glm::vec4(base, 1.0f);
+    const glm::vec4 clip = viewProjection * glm::vec4(transform.position, 1.0f);
     m_alignGrabOffset = glm::vec2(0.0f);
     if (clip.w > 1e-4f) {
-      const glm::vec2 baseNdc = glm::vec2(clip) / clip.w;
-      m_alignGrabOffset = glm::vec2((baseNdc.x + 1.0f) * 0.5f, (1.0f - baseNdc.y) * 0.5f) * display - mouse;
+      const glm::vec2 originNdc = glm::vec2(clip) / clip.w;
+      m_alignGrabOffset = glm::vec2((originNdc.x + 1.0f) * 0.5f, (1.0f - originNdc.y) * 0.5f) * display - mouse;
     }
     m_alignGrabbed = true;
   }
 
-  // The ray through where the base is to be on screen (the cursor, kept at that offset), onto the nearest surface of
-  // anything but the entity itself: the base stays under the same screen point it was grabbed at
+  // The cursor's ray
   const glm::vec2 screen = mouse + m_alignGrabOffset;
   const glm::vec2 ndc(screen.x / display.x * 2.0f - 1.0f, 1.0f - screen.y / display.y * 2.0f);
   const glm::mat4 inverse = glm::inverse(viewProjection);
   glm::vec4 nearPoint = inverse * glm::vec4(ndc, -1.0f, 1.0f), farPoint = inverse * glm::vec4(ndc, 1.0f, 1.0f);
   nearPoint /= nearPoint.w;
   farPoint /= farPoint.w;
-  const ModelQueries queries(componentManager, resourceSystem, systemManager.getSystem<TransformSystem>());
-  const auto hit = queries.raycast(glm::vec3(nearPoint), glm::vec3(farPoint - nearPoint),
-                                   std::numeric_limits<float>::max(),
-                                   [&](Entity entity) { return entity != m_gizmoEntity && !isSelected(entity); });
+  const glm::vec3 origin(nearPoint);
+  const glm::vec3 direction = glm::normalize(glm::vec3(farPoint - nearPoint));
+
+  // Surfaces of anything but what is being moved: the entity, the other selected ones, and their children (a
+  // prefab's parts), which it would otherwise climb onto
+  auto &transformSystem = systemManager.getSystem<TransformSystem>();
+  const auto other = [&](Entity entity) {
+    for (int guard = 0; guard < 256 && entity != -1; ++guard) {
+      if (entity == m_gizmoEntity || isSelected(entity))
+        return false;
+      entity = transformSystem.getParent(componentManager, entity);
+    }
+    return true;
+  };
+  const ModelQueries queries(componentManager, resourceSystem, transformSystem);
+  const auto hit = queries.raycast(origin, direction, std::numeric_limits<float>::max(), other);
   if (!hit)
     return false;
-  const ModelHit &target = *hit;
+
+  // The origin sits `height` above the surface along its normal (its base on it). So it is where the cursor's ray
+  // meets the surface raised by that height: the ray's own hit is behind it, by the entity's thickness. The surface
+  // under that spot may not be the one the ray hit (the edge of a step, a slope): found by looking down from it, and
+  // the spot found again on that one, a few times.
+  const float height = -baseHeight;
+  ModelHit target = *hit;
+  glm::vec3 placed = hit->point + hit->normal * height;
+  for (int pass = 0; pass < 3 && height > 1e-4f; ++pass) {
+    const float facing = glm::dot(direction, target.normal);
+    if (facing > -0.05f) // the ray grazes the surface: the raised one would be met far away, if at all
+      break;
+    const float along = glm::dot(target.point + target.normal * height - origin, target.normal) / facing;
+    if (along <= 0.0f)
+      break;
+    placed = origin + direction * along;
+    const auto below = queries.raycast(placed, -target.normal, height * 2.0f + 0.5f, other);
+    if (!below)
+      break;
+    const bool same = glm::dot(below->normal, target.normal) > 0.9999f &&
+                      std::abs(glm::dot(below->point - target.point, target.normal)) < 1e-4f;
+    target = *below;
+    placed = below->point + below->normal * height;
+    if (same)
+      break;
+  }
 
   // Its up (+Y) along the surface's normal, keeping the heading it had when the drag started (to 15 degrees when
   // snapping: the rotation around the normal)
@@ -1609,8 +1645,9 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   const glm::quat heading = glm::angleAxis(glm::radians(headingDegrees), up);
   transform.rotation = eulerOf(tilt * heading);
   // Its lowest point (the bottom of its bounds) on the surface, which is on the grid when snapping
-  const glm::vec3 point = snapped ? snapToSurfaceGrid(target.point, target.normal, kSnapStep) : target.point;
-  transform.position = point - target.normal * baseHeight;
+  const glm::vec3 base = placed - target.normal * height;
+  const glm::vec3 point = snapped ? snapToSurfaceGrid(base, target.normal, kSnapStep) : base;
+  transform.position = point + target.normal * height;
   return true;
 }
 
