@@ -114,7 +114,7 @@ void Renderer::beginShadowPass(int cascade) {
   glClear(GL_DEPTH_BUFFER_BIT);
 }
 
-void Renderer::beginScene() { m_postProcess.beginScene(); }
+void Renderer::beginScene(const glm::vec3 &clearColor) { m_postProcess.beginScene(clearColor); }
 
 void Renderer::resolveScene(Shader &tonemap, const PostProcess::Settings &settings) {
   m_postProcess.resolveToDisplay(tonemap, settings);

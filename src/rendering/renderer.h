@@ -72,7 +72,8 @@ public:
 
   void beginFrame() const;
   // The scene's passes draw into the HDR target between these; finishScene adds bloom and tone maps onto the screen
-  void beginScene();
+  // Clears it to `clearColor` first, the sky color (linear)
+  void beginScene(const glm::vec3 &clearColor);
   // Lit passes done: tone maps into the display target, where particles draw next
   void resolveScene(Shader &tonemap, const PostProcess::Settings &settings);
   void finishScene(Shader &bloomDownsample, Shader &bloomUpsample, Shader &composite,

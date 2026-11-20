@@ -1774,6 +1774,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
           sky.path = skyPath;
         ImGui::DragFloat("Intensity##sky", &sky.intensity, 0.02f, 0.0f, 20.0f, "%.2f");
         ImGui::SliderFloat("Rotation##sky", &sky.rotation, -180.0f, 180.0f, "%.0f deg");
+        ImGui::ColorEdit3("Sky color##sky", &sky.color.x); // the background; the panorama draws over it
       }
     }
   }

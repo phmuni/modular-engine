@@ -448,8 +448,21 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       lightSystem.updatePointShadows(componentManager, shadowsEnabled, EngineConfig::MAX_POINT_SHADOWS);
   renderPointShadows(componentManager, resourceSystem, transformSystem, pointShadows);
 
+  // The first Skybox's color is the sky behind everything (shown as written: the scene target is linear). The
+  // panorama, if it has one, draws over it.
+  glm::vec3 skyColor(0.0f);
+  bool skyFound = false;
+  componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
+    if (!skyFound && !componentManager.has<Hidden>(entity)) {
+      skyColor = skybox.color;
+      skyFound = true;
+    }
+  });
+  if (gammaCorrect)
+    skyColor = glm::pow(skyColor, glm::vec3(2.2f));
+
   // Everything from here draws into the HDR scene target
-  renderer.beginScene();
+  renderer.beginScene(skyColor);
 
   // Main pass - grouped by shader
   if (m_batchesDirty) {

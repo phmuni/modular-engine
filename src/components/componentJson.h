@@ -54,7 +54,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Camera, position, yaw, pitch, fo
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Collision, min, max, isStatic)
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation, color)
 
 NLOHMANN_JSON_SERIALIZE_ENUM(BodyType, {{BodyType::Static, "static"},
                                         {BodyType::Dynamic, "dynamic"},

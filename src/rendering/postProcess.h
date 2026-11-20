@@ -4,6 +4,7 @@
 // space (their colors and additive blending were tuned there); finish adds the bloom of the HDR scene onto the screen.
 
 #include <glad/glad.h>
+#include <glm/glm.hpp>
 #include <vector>
 
 class Shader;
@@ -19,8 +20,8 @@ public:
 
   // (Re)creates the targets for this screen size; cheap when the size has not changed
   void resize(int width, int height);
-  // Binds the HDR target and clears it; the lit passes draw into it
-  void beginScene();
+  // Binds the HDR target and clears it to `clearColor` (linear); the lit passes draw into it
+  void beginScene(const glm::vec3 &clearColor);
   // Tone maps the HDR scene into the display target and binds it, depth included, for the passes that follow
   void resolveToDisplay(Shader &tonemap, const Settings &settings);
   // The framebuffer the scene draws into (0 before resize): passes that bind their own targets come back to it

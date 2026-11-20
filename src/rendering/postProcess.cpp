@@ -73,10 +73,10 @@ void PostProcess::resize(int width, int height) {
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void PostProcess::beginScene() {
+void PostProcess::beginScene(const glm::vec3 &clearColor) {
   glBindFramebuffer(GL_FRAMEBUFFER, m_sceneFBO);
   glViewport(0, 0, m_width, m_height);
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClearColor(clearColor.r, clearColor.g, clearColor.b, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
