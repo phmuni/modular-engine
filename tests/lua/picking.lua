@@ -2,15 +2,15 @@
 -- and the Collision box query between two entities
 
 test.run(function()
-  local width, height = engine.windowSize()
-  local cx, cy = width / 2, height / 2
-
   camera.lookAt(vec3(0, 0, 10), vec3(0, 0, 0))
   -- A box (1 unit wide, its front face at z = 0.5) in front of the camera, at the screen's center, and one behind it
   local target = engine.create("Target", { model = "box", position = vec3(0, 0, 0), collision = true })
   local behind = engine.create("Behind", { model = "box", position = vec3(0, 0, -20), collision = true })
   wait()
   wait()
+  -- The window's size once it is shown (a window system may apply a resize only then), as screenRay sees it
+  local width, height = engine.windowSize()
+  local cx, cy = width / 2, height / 2
 
   -- screenRay: from the camera, through the center of the window, straight ahead
   local origin, direction = engine.screenRay(cx, cy)
