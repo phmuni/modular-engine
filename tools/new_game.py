@@ -102,7 +102,7 @@ def create(folder, name, kind):
         return [f"./bin/{name}"]
     copy_template("cpp", folder)
     if kind == "mixed":
-        copy_template("mixed", folder)  # over the C++ one: its main.cpp, level, scripts and HUD
+        copy_template("mixed", folder)  # over the C++ one: its main.cpp, scripts, prefab and HUD
         copy_template("common/lua", folder)  # the editor's Lua settings and API definitions
     fill_placeholders(folder, name)
     return ["cmake -B build && cmake --build build -j", f"./bin/{name}"]
