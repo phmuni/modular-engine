@@ -33,7 +33,7 @@ test.run(function()
   test.eq(b:shaderParam("dissolve"), nil, "no shader on b, no parameters")
 
   -- Vectors of 2 and 4 are tables; textures are paths (a shader file written for the test)
-  local file = os.tmpname() .. ".glsl"
+  local file = (os.tmpname() .. ".glsl"):gsub("\\", "/") -- the engine reports "/" paths
   local out = io.open(file, "w")
   out:write("uniform vec2 scroll = vec2(1.0, 2.0);\nuniform vec4 extra;\nuniform sampler2D maskTexture;\n")
   out:write("void surface(inout Surface s) { s.albedo *= extra.rgb + texture(maskTexture, s.uv + scroll).rgb; }\n")
@@ -58,7 +58,7 @@ test.run(function()
   test.ok(not ok, "one number in a table is not a vector")
 
   -- A file that does not compile: the entity keeps drawing, remembers the file, and the game goes on
-  local broken = os.tmpname() .. ".glsl"
+  local broken = (os.tmpname() .. ".glsl"):gsub("\\", "/")
   out = io.open(broken, "w")
   out:write("void surface(inout Surface s) { s.albedo = vec3(; }\n")
   out:close()
