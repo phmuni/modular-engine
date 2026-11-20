@@ -9,6 +9,7 @@
 #include "components/characterController.h"
 #include "components/rigidBody.h"
 #include "foundation/ecs/entityManager.h"
+#include "rendering/resources/customShader.h"
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <optional>
@@ -97,6 +98,20 @@ public:
   void fitCollision(float fit = 1.0f, bool isStatic = false);
   // Whether its Collision box overlaps the other's now (see Engine::isColliding)
   bool isTouching(const GameEntity &other) const;
+
+  // Custom surface shaders (see rendering/resources/customShader.h and the README): a GLSL file in assets/ with a
+  // surface() and/or vertex() function that the engine adds to its lit shader, so lights, shadows and fog still apply.
+  // `submesh` is the model's part, counting from 0 as the editor lists them; -1 means every part. Only this entity's
+  // parts change, not others made from the same model file. setShader("") returns to the standard shader. A file that
+  // does not compile is logged with its name and the part draws with the standard shader.
+  void setShader(const std::string &path, int submesh = -1);
+  // The part's shader file, "" for the standard shader (or without a model)
+  std::string shader(int submesh = 0) const;
+  // A value for one of the shader's uniforms: a number, vec2/vec3/vec4, or a texture's path (relative to assets/).
+  // Needs the part to have a custom shader; a name it does not declare or a value of another kind is a warning.
+  void setShaderParam(const std::string &name, const ShaderValue &value, int submesh = -1);
+  // The part's value for a uniform (the file's default until set); nothing for a name the shader does not have
+  std::optional<ShaderValue> shaderParam(const std::string &name, int submesh = 0) const;
 
   // Physics body (RigidBody): its velocity, and a push now (impulse) or this frame (force)
   glm::vec3 velocity() const;

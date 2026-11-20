@@ -253,7 +253,7 @@ function(modular_engine_add_game target)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:SDL3::SDL3>" "$<TARGET_FILE_DIR:${target}>")
   if(NOT GAME_ENGINE_ASSETS_IN_PLACE)
     set(engine_assets "$<TARGET_FILE_DIR:${target}>/engine-assets")
-    foreach(folder shaders ui/fonts ui/engine models/box models/sphere models/cylinder)
+    foreach(folder shaders ui/fonts ui/engine models/box models/sphere models/cylinder models/grid)
       add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${MODULAR_ENGINE_ROOT}/assets/${folder}" "${engine_assets}/${folder}")
     endforeach()

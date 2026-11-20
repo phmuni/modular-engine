@@ -40,6 +40,8 @@ public:
   }
   void setSkyboxShader(uint32_t handle) { m_skyboxShader = handle; }
   void markBatchesDirty();
+  // The seconds custom surface shaders see as `time`: the game clock (the engine sets it every frame)
+  void setShaderTime(float seconds) { m_shaderTime = seconds; }
   // Forgets what was drawn before (batches, point shadows), after the entities were replaced wholesale
   void resetCaches() {
     m_batchesDirty = true;
@@ -72,6 +74,8 @@ private:
   std::vector<InstanceItem> m_instanceItems;
   std::vector<InstanceData> m_instanceData;
   bool m_batchesDirty = true;
+  uint32_t m_seenShaderRevision = 0; // ResourceSystem::shaderRevision() when the batches were last built
+  float m_shaderTime = 0.0f;
   int m_culledCount = 0;
   uint32_t m_shadowShaderHandle = 0;
   uint32_t m_tonemapShader = 0;

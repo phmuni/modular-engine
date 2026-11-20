@@ -997,6 +997,63 @@ Lit geometry renders into a 16-bit floating-point target, so light can go past w
 
 For direct ResourceSystem access and full API reference, explore [`src/systems/resourceSystem.h`](src/systems/resourceSystem.h).
 
+### Custom surface shaders
+
+A material can run a small GLSL file of your own, in the style of Godot's spatial shaders. You write only the part that changes the surface; the engine puts it into its standard lit shader, so lights, shadows, fog, instancing, skinning and alpha masks keep working. A part (submesh) uses one file, and its own values for the file's parameters:
+
+```cpp
+entity.setShader("shaders/examples/water.glsl");              // every part; a part number (from 0) picks one
+entity.setShaderParam("waveHeight", 0.3f);                    // float, vec2, vec3, vec4, or a texture path
+entity.setShader("");                                         // back to the standard shader
+```
+
+```lua
+e:setShader("shaders/examples/dissolve.glsl")                 -- e:setShader(path, part) for one part
+e:setShaderParam("dissolve", 0.5)                             -- a number, vec3, a table of 2 to 4 numbers, or a texture path
+e:setShaderParam("edgeColor", vec3(1, 0.4, 0.1))
+print(e:shader(), e:shaderParam("dissolve"))
+e:setShader(nil)                                              -- standard shader again
+```
+
+The file is GLSL 330 with a few additions, all optional (but it needs at least one of the two functions). [`assets/shaders/examples/`](assets/shaders/examples/) has three: `water.glsl` (waves and a see-through tint), `hologram.glsl` (emission, alpha and scan lines) and `dissolve.glsl` (a noise threshold with a burning edge). [`assets/scenes/custom_shaders.json`](assets/scenes/custom_shaders.json) shows them.
+
+```glsl
+#pragma blend                          // draw with alpha blending (the transparent pass)
+#pragma noshadow                       // the model casts no shadow (see below)
+
+uniform vec3 tintColor = vec3(1.0);    // parameters: float, vec2, vec3, vec4 and sampler2D, one per line, with a default
+uniform float speed = 1.0;
+uniform sampler2D noiseTexture;        // a texture path; white until one is set
+
+void vertex(inout VertexData v) {      // moves the vertex, after skinning and the model matrix
+    v.position.y += sin(v.position.x + time * speed) * 0.1;
+}
+
+void surface(inout Surface s) {        // after base color and textures, before lighting
+    s.albedo *= tintColor;
+    s.emission = tintColor * 0.2;
+    s.alpha = 0.8;                     // `discard;` works too (a dissolve)
+}
+```
+
+| `Surface` field | Meaning |
+|---|---|
+| `albedo` (vec3), `alpha` | the base color after the texture and tint, and its opacity (alpha only shows with `#pragma blend`, or as `discard` and alpha-masked materials) |
+| `emission` (vec3) | starts at zero and is added to the material's own emission; HDR values glow (and bloom) |
+| `specular` (vec3), `shininess` | the specular map and the material's shininess |
+| `normal` | world space, after the normal map; changing it changes the lighting |
+| `uv`, `worldPos`, `viewDir` | read-only in practice: texture coordinates, world position, the direction to the camera |
+
+`VertexData` has `position` and `normal` (both world space; change them), `uv`, and `localPosition` (in the model's own space, read only). `time` is the game clock in seconds (frozen with the game; in the editor with the game stopped it runs on its own, so a surface still moves); do not declare it. Colors are the authored ones, like the material's own (the engine converts them for lighting), and a vec3 or vec4 uniform whose name contains "color" gets a color picker in the editor. Other names the engine uses in its shader (`opacity`, `view`, `projection`, `model`, `material`, `lights`, ...) cannot be used for your own uniforms or functions.
+
+Paths are relative to `assets/` like any asset path. Files shipped with the engine (the examples) resolve from any game.
+
+- **Errors never crash the game.** A file that does not compile (or has neither function) is logged with its name and the part draws with the standard shader; the compiler's "1:N" line numbers are lines of your file. The part keeps the file name and its values, so fixing the file brings the effect back.
+- **Reloading.** With the editor open, a file edited on disk is compiled again within half a second and the parts follow; if the edit has an error, the last working version keeps running.
+- **Caching.** One program is compiled per file and variant (normal, and alpha mask when a cut-out part uses it); every part using the file shares it, with its own parameter values, and parts are grouped by program for drawing.
+- **Editor.** Each part's Material section has a Shader field (type a path, or drop a `.glsl` from the asset browser), a Reset button, and a widget per parameter read from the `uniform` lines (a drag field per float or vector, a color picker for names with "color", a path field and drop target for textures). "Apply to All Submeshes" has one for the whole model. Changes are one undo step each. Scenes and prefabs save the shader and its values with the part, and a linked prefab instance's change of them counts as an override.
+- **Limits.** The shadow pass draws the original geometry with its own shader, so `vertex()` movement and `discard` or alpha in `surface()` are not in shadows (waves cast the flat plane's shadow; a dissolved model still casts its whole shadow). A model whose parts all use files with `#pragma noshadow` casts no shadow at all, which suits water. Frustum culling uses the original mesh bounds, so a large `vertex()` offset can make a model vanish at the screen's edge. Parts with `#pragma blend` are sorted per entity like other transparent draws, not per triangle. Texture parameters use texture units 9 to 15 (7 per material); `int` and `bool` uniforms are not parameters (they keep the shader's own value).
+
 ### Skybox
 
 A `Skybox` component draws an equirectangular panorama (360 by 180 degrees, twice as wide as tall, the usual format of HDRI sites) behind everything. The first one in the scene is drawn, from any entity:

@@ -227,6 +227,35 @@ function Entity:fitCollision(fit, isStatic) end
 ---@return boolean
 function Entity:isTouching(other) end
 
+---Draws a part (or all of them) of its model with a custom surface shader: a .glsl file with a
+---`void surface(inout Surface s)` and/or `void vertex(inout VertexData v)` function that the engine adds to its lit
+---shader, so lights, shadows and fog still apply (see "Custom surface shaders" in the README; examples in
+---shaders/examples/). Only this entity changes, not others made from the same model. A file that does not compile is
+---logged with its name and the model keeps the standard shader.
+---@param path? string Relative to assets/ ("shaders/examples/water.glsl"); nil or "" is back to the standard shader
+---@param submesh? integer The model's part, counting from 0 as the editor lists them; nil is every part
+function Entity:setShader(path, submesh) end
+
+---The shader file a part uses ("" for the standard shader).
+---@param submesh? integer The part, counting from 0 (the first by default)
+---@return string
+function Entity:shader(submesh) end
+
+---Gives one of its custom shader's uniforms a value (set the shader first). A name the shader does not declare, or a
+---value of the wrong kind, is a warning.
+---@param name string The uniform's name in the .glsl file
+---@param value number|vec3|number[]|string A number for a float; a vec3 or a table of 2, 3 or 4 numbers for a vecN; a
+--- texture path relative to assets/ for a sampler2D
+---@param submesh? integer The part, counting from 0; nil is every part
+function Entity:setShaderParam(name, value, submesh) end
+
+---A custom shader uniform's value on a part: what was set, or the file's default. Floats come back as numbers, vec3 as a
+---vec3, vec2 and vec4 as tables of numbers, textures as their path; nil for a name the shader does not have.
+---@param name string
+---@param submesh? integer The part, counting from 0 (the first by default)
+---@return number|vec3|number[]|string|nil
+function Entity:shaderParam(name, submesh) end
+
 ---Adds an impulse to its physics body.
 ---@param impulse vec3
 function Entity:impulse(impulse) end

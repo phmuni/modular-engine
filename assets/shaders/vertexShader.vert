@@ -28,6 +28,19 @@ out vec3 Normal;
 out vec2 TexCoords;
 out vec4 Tangent;
 
+#ifdef CUSTOM_SURFACE
+// A custom surface shader (see README, "Custom surface shaders"): its code goes in at the marker, and vertex() moves
+// the vertex after skinning and the model matrix, in world space
+uniform float time; // seconds of game time
+struct VertexData {
+    vec3 position;      // world space; change it to move the vertex
+    vec3 normal;        // world space
+    vec2 uv;
+    vec3 localPosition; // in the model's own space (read only)
+};
+//@CUSTOM_SURFACE_CODE
+#endif
+
 void main() {
     // Skinning: the vertex moved by its joints' matrices, in the model's space
     mat4 skin = mat4(1.0);
@@ -50,4 +63,19 @@ void main() {
         gl_Position = MVP * position;
     }
     TexCoords = aTex;
+
+#ifdef CUSTOM_SURFACE
+    VertexData vertexData;
+    vertexData.position = FragPos;
+    vertexData.normal = Normal;
+    vertexData.uv = aTex;
+    vertexData.localPosition = aPos;
+#ifdef CUSTOM_HAS_VERTEX
+    vertex(vertexData);
+#endif
+    FragPos = vertexData.position;
+    Normal = normalize(vertexData.normal);
+    TexCoords = vertexData.uv;
+    gl_Position = projection * view * vec4(FragPos, 1.0);
+#endif
 }

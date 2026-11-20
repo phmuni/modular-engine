@@ -59,6 +59,59 @@ std::filesystem::file_time_type modifiedTime(const std::string &path) {
   return error ? std::filesystem::file_time_type{} : time;
 }
 
+// Custom shader values (Entity:setShaderParam / shaderParam): a number, a vec3, a table of 2 to 4 numbers (vec2, vec3
+// or vec4), or a texture's path
+ShaderValue luaToShaderValue(const sol::object &value) {
+  switch (value.get_type()) {
+  case sol::type::number:
+    return value.as<float>();
+  case sol::type::string:
+    return value.as<std::string>();
+  case sol::type::userdata:
+    if (value.is<glm::vec3>())
+      return value.as<glm::vec3>();
+    break;
+  case sol::type::table: {
+    const sol::table table = value.as<sol::table>();
+    const size_t length = table.size();
+    float v[4] = {0, 0, 0, 0};
+    if (length >= 2 && length <= 4) {
+      for (size_t i = 0; i < length; ++i) {
+        const sol::object item = table[i + 1];
+        if (item.get_type() != sol::type::number)
+          throw std::runtime_error("setShaderParam: a vector is a table of numbers");
+        v[i] = item.as<float>();
+      }
+      if (length == 2)
+        return glm::vec2(v[0], v[1]);
+      if (length == 3)
+        return glm::vec3(v[0], v[1], v[2]);
+      return glm::vec4(v[0], v[1], v[2], v[3]);
+    }
+    break;
+  }
+  default:
+    break;
+  }
+  throw std::runtime_error("setShaderParam: the value is a number, a vec3, a table of 2 to 4 numbers or a texture path");
+}
+
+sol::object shaderValueToLua(sol::state_view lua, const std::optional<ShaderValue> &value) {
+  if (!value)
+    return sol::lua_nil;
+  return std::visit(
+      [&](const auto &v) -> sol::object {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, glm::vec2>)
+          return sol::make_object(lua, lua.create_table_with(1, v.x, 2, v.y));
+        else if constexpr (std::is_same_v<T, glm::vec4>)
+          return sol::make_object(lua, lua.create_table_with(1, v.x, 2, v.y, 3, v.z, 4, v.w));
+        else
+          return sol::make_object(lua, v);
+      },
+      *value);
+}
+
 // Saved data holds JSON: numbers, strings, booleans and tables of those (a table of 1..n is an array, any other an
 // object with string keys). Returns false for anything else (functions, userdata, mixed keys, tables nested too deep).
 bool luaToJson(const sol::object &value, nlohmann::json &out, int depth = 0) {
@@ -638,6 +691,19 @@ struct ScriptSystem::Impl {
           e.fitCollision(fit.value_or(1.0f), isStatic.value_or(false));
         },
         "isTouching", [](GameEntity &e, sol::optional<GameEntity> other) { return other && e.isTouching(*other); },
+
+        // Custom surface shaders; the submesh counts from 0 and none means every part
+        "setShader", [](GameEntity &e, sol::optional<std::string> path, sol::optional<int> submesh) {
+          e.setShader(path.value_or(""), submesh.value_or(-1));
+        },
+        "shader", [](GameEntity &e, sol::optional<int> submesh) { return e.shader(submesh.value_or(0)); },
+        "setShaderParam", [](GameEntity &e, const std::string &name, const sol::object &value,
+                             sol::optional<int> submesh) {
+          e.setShaderParam(name, luaToShaderValue(value), submesh.value_or(-1));
+        },
+        "shaderParam", [](sol::this_state state, GameEntity &e, const std::string &name, sol::optional<int> submesh) {
+          return shaderValueToLua(sol::state_view(state), e.shaderParam(name, submesh.value_or(0)));
+        },
 
         // Physics bodies
         "velocity", sol::property(&GameEntity::velocity, &GameEntity::setVelocity),
