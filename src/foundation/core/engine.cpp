@@ -251,6 +251,9 @@ void Engine::update(bool &isRunning) {
   inputSystem.setGameInputBlocked(pauseMenu.isOpen());
 
   auto &state = m_systemManager.getSystem<StateSystem>();
+  // A cursor the game hid comes back where it has to be clicked
+  m_systemManager.getSystem<WindowSystem>().setCursorVisible(m_cursorVisible || pauseMenu.isOpen() ||
+                                                              state.isToggled(Toggle::ShowUI));
   // Upload models whose background reads finished
   m_systemManager.getSystem<ResourceSystem>().update();
 
@@ -507,6 +510,16 @@ const std::vector<CollisionEvent> &Engine::findCollisions() {
 bool Engine::isColliding(Entity a, Entity b) {
   return m_systemManager.getSystem<CollisionSystem>().overlaps(a, b, m_componentManager);
 }
+
+void Engine::setMouseCaptured(bool captured) {
+  auto &pauseMenu = m_systemManager.getSystem<PauseMenu>();
+  if (pauseMenu.isOpen())
+    pauseMenu.setCursorLockOnClose(captured); // the menu has the mouse now; the game gets what it asked for after
+  else
+    setState(Toggle::CursorLock, captured);
+}
+
+bool Engine::isMouseCaptured() { return getState(Toggle::CursorLock); }
 
 bool Engine::getState(Toggle toggle) { return m_systemManager.getSystem<StateSystem>().isToggled(toggle); }
 
@@ -965,8 +978,14 @@ GameEntity Engine::create(std::string_view name, const EntityDesc &desc) {
     builder.withSolidColor(*desc.color);
   if (desc.emission)
     builder.withEmission(*desc.emission, desc.glow);
-  if (desc.body)
+  if (desc.character) {
+    if (desc.body)
+      LOG_W("[Engine] create(\"%.*s\"): a character is its own physics body, so `body` is ignored",
+            static_cast<int>(name.size()), name.data());
+    builder.withComponent<CharacterController>(*desc.character);
+  } else if (desc.body) {
     builder.withRigidBody(*desc.body, desc.shape, desc.mass);
+  }
   if (desc.collision)
     builder.withModelCollision();
   if (!desc.script.empty())
@@ -974,6 +993,16 @@ GameEntity Engine::create(std::string_view name, const EntityDesc &desc) {
   GameEntity created(*this, builder.build());
   for (const std::string &tag : desc.tags)
     created.addTag(tag);
+  for (const std::string &component : desc.components) {
+    const auto reflected = std::find_if(m_reflectedComponents.begin(), m_reflectedComponents.end(),
+                                        [&](const ReflectedComponent &candidate) { return candidate.name == component; });
+    if (reflected != m_reflectedComponents.end() && reflected->add)
+      reflected->add(m_componentManager, created.id());
+    else
+      LOG_W("[Engine] create(\"%.*s\"): no game component \"%s\" is registered (Engine::registerComponent), or it has no "
+            "default constructor",
+            static_cast<int>(name.size()), name.data(), component.c_str());
+  }
   return created;
 }
 

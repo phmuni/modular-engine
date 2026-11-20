@@ -6,6 +6,7 @@
 // A handle is an engine pointer and an entity number: cheap to copy and to keep, and safe to keep after the entity
 // is gone (valid() says; getters then return defaults and setters do nothing).
 
+#include "components/characterController.h"
 #include "components/rigidBody.h"
 #include "foundation/ecs/entityManager.h"
 #include <cstdint>
@@ -136,6 +137,12 @@ struct EntityDesc {
   BodyShape shape = BodyShape::Box;
   float mass = 0.0f;
   bool collision = false; // a Collision box that hugs the model (see Engine::fitCollisionToModel)
+  // A walking character (see CharacterController): radius, height, maxSlope and stepHeight; the Transform is the
+  // capsule's middle. A character is its own physics body, so it replaces `body` when both are given.
+  std::optional<CharacterController> character;
+  // Game components registered with Engine::registerComponent, by their name, added with the values their default
+  // constructor gives ("Player"); one nothing registered is skipped with a warning
+  std::vector<std::string> components;
   std::string script;     // a Lua script, relative to assets/ ("scripts/coin.lua")
   std::vector<std::string> tags; // see GameEntity::addTag
 };

@@ -315,6 +315,18 @@ public:
   // Keyboard and mouse: isKeyDown while held, wasKeyPressed on the frame it went down, mouse buttons and position
   InputSystem &input();
 
+  // Mouse capture, for mouse-look: captured, the cursor is hidden and held in the window, and InputSystem::
+  // getMouseDelta keeps moving at the window's edge. It is the same switch as Settings' "Cursor lock" and its key
+  // (Right Alt), so the editor and a person at the keyboard can still flip it; the pause menu frees the mouse while
+  // it is open and puts back what the game asked for when it closes. The engine starts with it captured: a game
+  // with menus to click releases it in setup. While captured the game UI and the editor get no mouse.
+  void setMouseCaptured(bool captured);
+  bool isMouseCaptured();
+  // Hides or shows the cursor when it is not captured (a game that draws its own crosshair or cursor). It is shown
+  // anyway while the pause menu is open and while the editor's panels are (F2), which need clicking.
+  void setCursorVisible(bool visible) { m_cursorVisible = visible; }
+  bool isCursorVisible() const { return m_cursorVisible; }
+
   // Reads a model on a worker thread so a later withModel/createModelEntity of it does not stall the frame
   void preloadModel(std::string_view modelPath);
 
@@ -549,6 +561,7 @@ private:
   void applyPendingScene();
   bool m_screenshotKeyDown = false;
   bool m_quitRequested = false;
+  bool m_cursorVisible = true;
   uint64_t m_frameStartNs = 0;
 
   struct Benchmark {

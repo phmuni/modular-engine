@@ -67,6 +67,16 @@ void WindowSystem::setVSync(bool enabled) {
 
 void WindowSystem::setCursor(bool boolean) { SDL_SetWindowRelativeMouseMode(m_window, boolean); }
 
+void WindowSystem::setCursorVisible(bool visible) {
+  if (visible == m_cursorVisible)
+    return;
+  m_cursorVisible = visible;
+  if (visible)
+    SDL_ShowCursor();
+  else
+    SDL_HideCursor();
+}
+
 void WindowSystem::setFullscreen(bool enabled) {
   if (enabled != isFullscreen() && !SDL_SetWindowFullscreen(m_window, enabled))
     LOG_W("[Window System] Failed to change fullscreen: %s", SDL_GetError());

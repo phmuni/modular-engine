@@ -13,7 +13,6 @@
 // assets/prefabs/coin.json (a prefab is an entity saved to a file: in the editor, select a coin, change it and use Save
 // as prefab).
 
-#include "foundation/core/config.h"
 #include "foundation/core/engine.h"
 #include "foundation/core/logger.h"
 #include "systems/inputSystem.h"
@@ -49,16 +48,21 @@ class MyGame : public App {
   int coinsLeft = 0;
 
   void spawnPlayer(Engine &engine) {
-    // The Lua template's level file holds its player; here the code makes it, with the builder (the C++ way to add
-    // components, including the game's own)
-    player = engine.entity(engine.entities()
-                               .create("Player")
-                               .withModel(EngineConfig::MODEL_BOX, START, glm::vec3(0.0f), glm::vec3(0.8f))
-                               .withSolidColor(glm::vec3(0.2f, 0.55f, 1.0f))
-                               .withCharacter(0.4f, 0.8f) // physics: walks on the level, pushes the crates
-                               .withModelCollision()       // and a box for picking up coins (forEachCollision below)
-                               .withComponent<Player>()
-                               .build());
+    // The Lua template's level file holds its player; here the code makes it with engine.create, from a description of
+    // what it has (Lua's engine.create takes the same as a table). The character controller walks on the level and
+    // pushes the crates; the collision box picks up coins (forEachCollision below); "Player" is the game
+    // component registered in main.
+    EntityDesc desc;
+    desc.model = "box";
+    desc.position = START;
+    desc.scale = glm::vec3(0.8f);
+    desc.color = glm::vec3(0.2f, 0.55f, 1.0f);
+    desc.character = CharacterController();
+    desc.character->radius = 0.4f;
+    desc.character->height = 0.8f;
+    desc.collision = true;
+    desc.components = {"Player"};
+    player = engine.create("Player", desc);
 
     // The camera trails it from behind and above, looking a little ahead. The engine moves it after the physics and
     // the game's update, so it does not jitter; a bit of smoothing keeps it calm when the player turns. (Lua:

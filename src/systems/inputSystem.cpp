@@ -36,6 +36,37 @@ void InputSystem::setDefaultToggleKeyBinds() {
   }
 }
 
+namespace {
+// The keys of text entry that make no characters, and the F keys (the engine's own toggles)
+bool isEditingKey(SDL_Scancode key) {
+  switch (key) {
+  case SDL_SCANCODE_BACKSPACE:
+  case SDL_SCANCODE_DELETE:
+  case SDL_SCANCODE_RETURN:
+  case SDL_SCANCODE_KP_ENTER:
+  case SDL_SCANCODE_ESCAPE:
+  case SDL_SCANCODE_TAB:
+  case SDL_SCANCODE_LEFT:
+  case SDL_SCANCODE_RIGHT:
+  case SDL_SCANCODE_UP:
+  case SDL_SCANCODE_DOWN:
+  case SDL_SCANCODE_HOME:
+  case SDL_SCANCODE_END:
+    return true;
+  default:
+    return key >= SDL_SCANCODE_F1 && key <= SDL_SCANCODE_F12;
+  }
+}
+
+size_t characterCount(const std::string &utf8) {
+  size_t count = 0;
+  for (unsigned char c : utf8)
+    if ((c & 0xC0) != 0x80) // not a continuation byte
+      ++count;
+  return count;
+}
+} // namespace
+
 void InputSystem::update(bool *running, SystemManager &systemManager) {
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
   auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
@@ -51,6 +82,20 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
   std::fill(std::begin(m_mouseReleased), std::end(m_mouseReleased), false);
   std::fill(std::begin(m_gamepadPressed), std::end(m_gamepadPressed), false);
   m_escapePressed = false;
+  m_typedText.clear();
+
+  // Text input is SDL's own switch, and something else (a game UI text field) may turn it off: asked again each frame
+  // while the game wants it, at no cost otherwise
+  m_window = windowSystem.getWindow();
+  if (m_textInputWanted != m_textInputApplied) {
+    m_textInputApplied = m_textInputWanted;
+    if (m_textInputWanted)
+      SDL_StartTextInput(m_window);
+    else
+      SDL_StopTextInput(m_window);
+  } else if (m_textInputWanted && !SDL_TextInputActive(m_window)) {
+    SDL_StartTextInput(m_window);
+  }
 
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
@@ -82,6 +127,13 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
       // redo (Ctrl+Z, Ctrl+Y) and edit keys (Ctrl+D, Ctrl+C, Ctrl+V, Delete). Releases always count.
       if (!usedByUI) {
         const SDL_Scancode key = event.key.scancode;
+        if (m_textInputWanted) {
+          // Typing: Backspace edits the text (auto-repeat too); the other keys that make characters are not the game's
+          if (key == SDL_SCANCODE_BACKSPACE)
+            eraseLastCharacter();
+          if (!isEditingKey(key))
+            break;
+        }
         if (state.isToggled(Toggle::ShowUI) &&
             ((io.KeyCtrl && (key == SDL_SCANCODE_Z || key == SDL_SCANCODE_Y || key == SDL_SCANCODE_D ||
                              key == SDL_SCANCODE_C || key == SDL_SCANCODE_V)) ||
@@ -90,6 +142,11 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
         m_pressed[key] = m_pressed[key] || (!event.key.repeat && !m_keys[key]);
         m_keys[key] = true;
       }
+      break;
+
+    case SDL_EVENT_TEXT_INPUT:
+      if (m_textInputWanted && !usedByUI && !io.WantTextInput)
+        typeText(event.text.text);
       break;
 
     case SDL_EVENT_KEY_UP:
@@ -175,6 +232,49 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
     state.second = state.first;
     state.first = readAction(bindings);
   }
+}
+
+void InputSystem::typeText(const char *utf8) {
+  for (const char *c = utf8; *c;) {
+    // One character at a time, so the limit never cuts one in half
+    const char *next = c + 1;
+    while ((static_cast<unsigned char>(*next) & 0xC0) == 0x80)
+      ++next;
+    if (m_textMaxLength == 0 || characterCount(m_text) < m_textMaxLength) {
+      m_text.append(c, next);
+      m_typedText.append(c, next);
+    }
+    c = next;
+  }
+}
+
+void InputSystem::eraseLastCharacter() {
+  if (m_text.empty())
+    return;
+  size_t last = m_text.size() - 1;
+  while (last > 0 && (static_cast<unsigned char>(m_text[last]) & 0xC0) == 0x80)
+    --last;
+  m_text.erase(last);
+}
+
+void InputSystem::startTextInput(const std::string &initial, size_t maxLength) {
+  m_text = initial;
+  m_textMaxLength = maxLength;
+  m_textInputWanted = true;
+  // What is held now was not typed: the game stops seeing it until it is let go
+  std::fill(std::begin(m_keys), std::end(m_keys), false);
+}
+
+void InputSystem::stopTextInput() { m_textInputWanted = false; }
+
+bool InputSystem::rumble(float low, float high, float seconds) {
+  auto strength = [](float value) { return static_cast<Uint16>(std::clamp(value, 0.0f, 1.0f) * 65535.0f); };
+  const Uint32 milliseconds = seconds > 0.0f ? static_cast<Uint32>(std::min(seconds, 1000.0f) * 1000.0f) : 0;
+  bool any = false;
+  for (const auto &[id, state] : m_gamepads)
+    if (state.gamepad && SDL_RumbleGamepad(state.gamepad, strength(low), strength(high), milliseconds))
+      any = true;
+  return any;
 }
 
 void InputSystem::openGamepad(SDL_JoystickID id) {

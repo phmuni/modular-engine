@@ -10,7 +10,6 @@
 // The level is a scene file, assets/scenes/level.json (its sky color too): press F2 for the editor, move things around
 // (click to select, W/E/R/T for the gizmos) and save it from the Settings panel.
 
-#include "foundation/core/config.h"
 #include "foundation/core/engine.h"
 #include "foundation/core/logger.h"
 #include "systems/inputSystem.h"
@@ -33,16 +32,21 @@ class MyGame : public App {
   float celebration = 0.0f; // seconds of glowing left
 
   void spawnPlayer(Engine &engine) {
-    // The Lua template's level file holds its player; here the code makes it, with the builder (the C++ way to add
-    // components, including the game's own)
-    player = engine.entity(engine.entities()
-                               .create("Player")
-                               .withModel(EngineConfig::MODEL_BOX, START, glm::vec3(0.0f), glm::vec3(0.8f))
-                               .withSolidColor(glm::vec3(0.2f, 0.55f, 1.0f))
-                               .withCharacter(0.4f, 0.8f) // physics: walks on the level, pushes the crates
-                               .withModelCollision()       // and a box the coins notice it with (coin.lua's onOverlap)
-                               .withComponent<Player>()
-                               .build());
+    // The Lua template's level file holds its player; here the code makes it with engine.create, from a description of
+    // what it has (Lua's engine.create takes the same as a table). The character controller walks on the level and
+    // pushes the crates; the collision box is what the coins notice it with (coin.lua's onOverlap); "Player" is the game
+    // component registered in main.
+    EntityDesc desc;
+    desc.model = "box";
+    desc.position = START;
+    desc.scale = glm::vec3(0.8f);
+    desc.color = glm::vec3(0.2f, 0.55f, 1.0f);
+    desc.character = CharacterController();
+    desc.character->radius = 0.4f;
+    desc.character->height = 0.8f;
+    desc.collision = true;
+    desc.components = {"Player"};
+    player = engine.create("Player", desc);
 
     // The camera trails it from behind and above, looking a little ahead. The engine moves it after the physics and
     // the game's update, so it does not jitter; a bit of smoothing keeps it calm when the player turns. (Lua:

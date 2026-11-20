@@ -269,6 +269,15 @@ function Entity:sound(path, volume) end
 ---@field collision? boolean Adds collision from its model
 ---@field script? string Script path relative to assets/ ("scripts/coin.lua")
 ---@field tags? string[] Tags to give it, e.g. {"enemy"}
+---@field character? CharacterOptions|boolean A walking character (true for the defaults); it is its own physics body, so it replaces `body`. Its position is the capsule's middle
+---@field components? string[] Game components registered by C++ (Engine::registerComponent), by name, added with their default values: {"Player"}. A project with no C++ has none
+
+---Options for a character in engine.create. Everything is optional.
+---@class CharacterOptions
+---@field radius? number Defaults to 0.35
+---@field height? number Total, round ends included. Defaults to 1.8
+---@field maxSlope? number Steepest slope it climbs, in degrees. Defaults to 50
+---@field stepHeight? number Highest step it climbs. Defaults to 0.35
 
 ---Entities, scenes and the window.
 ---@class engine
@@ -546,6 +555,69 @@ function input.mouseDown(button) end
 ---How far the wheel turned this frame (positive: away from you).
 ---@return number
 function input.wheel() end
+
+---How far the mouse moved this frame, in pixels (zero while a menu has the input): for mouse-look, with the mouse
+---captured so it never reaches the window's edge.
+---@return number dx To the right
+---@return number dy Down
+function input.mouseDelta() end
+
+---Captures the mouse (hidden, held in the window, delta keeps moving) for mouse-look, or frees it for clicking menus.
+---The same switch as Settings' "Cursor lock" (Right Alt), so the editor and the player can still flip it; the pause menu
+---frees it while open and puts back what you asked for after. The engine starts with it captured. While captured, the
+---game UI and the editor get no mouse.
+---@param captured boolean
+function input.captureMouse(captured) end
+
+---Whether the mouse is captured.
+---@return boolean
+function input.isMouseCaptured() end
+
+---Shows or hides the cursor while the mouse is free (a game that draws its own). It is shown anyway while the pause
+---menu is open and the editor panels (F2) are.
+---@param visible boolean
+function input.showCursor(visible) end
+
+---Whether the cursor is meant to be shown.
+---@return boolean
+function input.isCursorVisible() end
+
+---Starts text entry, e.g. a name: typed characters (and Backspace, UTF-8 aware) go to input.text() instead of the game.
+---While it is on, keys and actions read as idle (W does not walk while a name is typed), except Backspace, Delete,
+---Enter, Escape, Tab, the arrows, Home, End and the F keys, which input.keyPressed still sees (Enter to finish).
+---@param initial? string The text to start from. Defaults to ""
+---@param maxLength? integer Most characters allowed. Defaults to no limit
+function input.startText(initial, maxLength) end
+
+---Ends text entry; input.text() keeps what was typed until the next start.
+function input.stopText() end
+
+---Whether text entry is on.
+---@return boolean
+function input.isTextActive() end
+
+---The text typed so far, with Backspace applied.
+---@return string
+function input.text() end
+
+---Replaces the text typed so far.
+---@param text string
+function input.setText(text) end
+
+---Only what was typed this frame, for a buffer of your own.
+---@return string
+function input.typed() end
+
+---Rumbles the connected gamepads: `low` is the big motor (a deep rumble), `high` the small one (a buzz), 0 to 1 each, for
+---some seconds of real time (a pause does not hold it). A new call replaces the one running.
+---@param low number
+---@param high number
+---@param seconds? number Defaults to 0.2
+---@return boolean taken Whether a gamepad that can rumble took it (false with none connected)
+function input.rumble(low, high, seconds) end
+
+---Stops the rumble.
+function input.stopRumble() end
 
 ---Loads actions and axes from a JSON file; false if it cannot be read.
 ---@param path string Relative to assets/

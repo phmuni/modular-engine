@@ -232,4 +232,5 @@ bool PauseMenu::isEnabled() const { return m_impl->enabled; }
 void PauseMenu::open() { m_impl->setOpen(); }
 void PauseMenu::close() { m_impl->setClosed(); }
 bool PauseMenu::isOpen() const { return m_impl->open; }
+void PauseMenu::setCursorLockOnClose(bool locked) { m_impl->wasCursorLocked = locked; }
 void PauseMenu::update(bool escapePressed) { m_impl->update(escapePressed); }

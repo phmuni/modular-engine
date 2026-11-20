@@ -683,6 +683,20 @@ struct ScriptSystem::Impl {
     desc.mass = o.get_or("mass", desc.mass);
     desc.collision = o.get_or("collision", false);
     desc.script = o.get_or<std::string>("script", "");
+    // character = true for the defaults, or { radius, height, maxSlope, stepHeight } (every field optional)
+    if (const sol::optional<sol::table> character = o["character"]) {
+      desc.character = CharacterController();
+      desc.character->radius = character->get_or("radius", desc.character->radius);
+      desc.character->height = character->get_or("height", desc.character->height);
+      desc.character->maxSlope = character->get_or("maxSlope", desc.character->maxSlope);
+      desc.character->stepHeight = character->get_or("stepHeight", desc.character->stepHeight);
+    } else if (o.get_or("character", false)) {
+      desc.character = CharacterController();
+    }
+    if (const sol::optional<sol::table> components = o["components"])
+      for (const auto &entry : *components)
+        if (entry.second.get_type() == sol::type::string)
+          desc.components.push_back(entry.second.as<std::string>());
     if (const sol::optional<sol::table> tags = o["tags"])
       for (const auto &entry : *tags)
         if (entry.second.get_type() == sol::type::string)
@@ -777,7 +791,7 @@ struct ScriptSystem::Impl {
     //                         color = vec3(1, 0.8, 0.2), body = "dynamic", shape = "sphere", script = "scripts/coin.lua" })
     // engine.create(name, { model = "box" | "sphere" | "cylinder" | path, position, rotation, scale, color, emission, glow,
     //                       body = "static" | "dynamic" | "kinematic", shape, mass, collision = true, script,
-    //                       tags = {"enemy"} })
+    //                       tags = {"enemy"}, character = { radius = 0.4, height = 1.8 }, components = {"Player"} })
     api.set_function("create", [this](const std::string &name, sol::optional<sol::table> options) {
       return entityObject(engine.create(name, entityDesc(options)));
     });
@@ -888,6 +902,32 @@ struct ScriptSystem::Impl {
       return engine.input().isMouseButtonDown(static_cast<MouseButton>(button.value_or(1)));
     });
     input.set_function("wheel", [this]() { return engine.input().getMouseWheel(); });
+    // How far the mouse moved this frame, in pixels: dx, dy (for mouse-look, with the mouse captured)
+    input.set_function("mouseDelta", [this]() {
+      const glm::vec2 delta = engine.input().getMouseDelta();
+      return std::make_tuple(delta.x, delta.y);
+    });
+    // input.captureMouse(true) hides and holds the cursor for mouse-look; false frees it for clicking (see
+    // Engine::setMouseCaptured). input.showCursor(false) hides it while it is free.
+    input.set_function("captureMouse", [this](bool captured) { engine.setMouseCaptured(captured); });
+    input.set_function("isMouseCaptured", [this]() { return engine.isMouseCaptured(); });
+    input.set_function("showCursor", [this](bool visible) { engine.setCursorVisible(visible); });
+    input.set_function("isCursorVisible", [this]() { return engine.isCursorVisible(); });
+    // Text entry: input.startText("", 12) takes the typed characters (and Backspace) into input.text() instead of the
+    // game's keys, until input.stopText(); input.typed() is only this frame's characters
+    input.set_function("startText", [this](sol::optional<std::string> initial, sol::optional<size_t> maxLength) {
+      engine.input().startTextInput(initial.value_or(""), maxLength.value_or(0));
+    });
+    input.set_function("stopText", [this]() { engine.input().stopTextInput(); });
+    input.set_function("isTextActive", [this]() { return engine.input().isTextInputActive(); });
+    input.set_function("text", [this]() { return engine.input().getText(); });
+    input.set_function("setText", [this](const std::string &text) { engine.input().setText(text); });
+    input.set_function("typed", [this]() { return engine.input().getTypedText(); });
+    // Gamepad rumble: low (big motor) and high (small motor) strengths 0 to 1, for some seconds; true if a gamepad took it
+    input.set_function("rumble", [this](float low, float high, sol::optional<float> seconds) {
+      return engine.input().rumble(low, high, seconds.value_or(0.2f));
+    });
+    input.set_function("stopRumble", [this]() { engine.input().stopRumble(); });
     input.set_function("bindings", [this](const std::string &path) { return engine.input().loadBindings(path); });
 
     // physics

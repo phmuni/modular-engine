@@ -103,10 +103,39 @@ public:
   float getGamepadAxis(SDL_GamepadAxis axis) const; // -1 to 1 (triggers 0 to 1), past the dead zone
   void setGamepadDeadZone(float deadZone) { m_deadZone = deadZone; }
 
+  // Rumble on every connected gamepad that can: `low` is the big motor (a deep rumble), `high` the small one (a buzz),
+  // each 0 to 1, for `seconds` of real time (a pause does not hold it). A new call replaces the one running; 0 for
+  // both, or no seconds, stops it. Returns whether any gamepad took it (false with none, or none that can rumble).
+  bool rumble(float low, float high, float seconds);
+  void stopRumble() { rumble(0.0f, 0.0f, 0.0f); }
+
+  // Text entry (a name for the high-score table): while it is on, typed characters go to the text below instead of
+  // the game, and the keys that typing uses stop being game input: keys, actions and the movement keys read as idle,
+  // so W does not walk while a name is typed. Still readable are Backspace, Delete, Enter, Escape, Tab, the arrows,
+  // Home, End and the F keys. A menu or a game UI field that has the keyboard gets the typing instead.
+  // start clears the text (or starts it from `initial`); `maxLength` counts characters, 0 for no limit.
+  void startTextInput(const std::string &initial = "", size_t maxLength = 0);
+  void stopTextInput();
+  bool isTextInputActive() const { return m_textInputWanted; }
+  // The text so far: what was typed, with Backspace applied; kept readable after stopTextInput until the next start
+  const std::string &getText() const { return m_text; }
+  void setText(const std::string &text) { m_text = text; }
+  // What was typed this frame alone (UTF-8), for games that keep their own buffer
+  const std::string &getTypedText() const { return m_typedText; }
+
   void setKeyBind(Action action, SDL_Scancode keyCode);
   void bindToggleKey(SDL_Scancode key, Toggle toggle);
 
 private:
+  SDL_Window *m_window = nullptr;
+  bool m_textInputWanted = false;
+  bool m_textInputApplied = false; // what SDL was last told
+  size_t m_textMaxLength = 0;
+  std::string m_text;
+  std::string m_typedText; // this frame
+  void typeText(const char *utf8);
+  void eraseLastCharacter();
+
   bool m_gameInputBlocked = false;
   bool m_escapePressed = false; // this frame
   bool m_keys[SDL_SCANCODE_COUNT]{false};

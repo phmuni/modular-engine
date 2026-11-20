@@ -24,6 +24,8 @@ public:
   void open();
   void close();
   bool isOpen() const;
+  // Whether the mouse is captured again when the menu closes (the game asked for a change while it was open)
+  void setCursorLockOnClose(bool locked);
 
   // Once per frame, right after the input was read
   void update(bool escapePressed);
