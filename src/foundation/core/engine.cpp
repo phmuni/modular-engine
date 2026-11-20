@@ -41,6 +41,8 @@
 #include "systems/windowSystem.h"
 #include <algorithm>
 #include <cstdlib>
+#include <exception>
+#include <utility>
 #include <filesystem>
 #include <limits>
 
@@ -178,12 +180,50 @@ void Engine::shutdown() {
 void Engine::loop(bool &isRunning) {
   // The first frame measures from here, not from engine start-up (which includes the app's setup)
   m_systemManager.getSystem<TimeSystem>().begin();
+  SDL_AddEventWatch(&Engine::onSdlEvent, this);
+  m_loopRunning = true;
   while (isRunning) {
     update(isRunning);
+    if (m_liveFrameError)
+      break;
     render();
     if (m_benchmark)
       recordBenchmarkFrame();
   }
+  m_loopRunning = false;
+  SDL_RemoveEventWatch(&Engine::onSdlEvent, this);
+  if (m_liveFrameError)
+    std::rethrow_exception(std::exchange(m_liveFrameError, nullptr));
+}
+
+bool SDLCALL Engine::onSdlEvent(void *userdata, SDL_Event *event) {
+  Engine &engine = *static_cast<Engine *>(userdata);
+  // Only from the event pump of the main loop (not, say, a fullscreen switch in a handler), and never in a
+  // deterministic run, whose frame count is its output
+  if (!engine.m_loopRunning || engine.m_inLiveFrame || engine.m_deterministic || !SDL_IsMainThread() ||
+      !engine.m_systemManager.getSystem<InputSystem>().isPolling())
+    return true;
+  if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+    // The next frame draws at the new size before the queued event is read
+    auto &renderer = engine.m_systemManager.getSystem<RenderSystem>().getRenderer();
+    engine.m_systemManager.getSystem<WindowSystem>().onResize(event->window.data1, event->window.data2, renderer);
+  } else if (event->type == SDL_EVENT_WINDOW_EXPOSED) {
+    engine.runFrameInEventPump();
+  }
+  return true;
+}
+
+void Engine::runFrameInEventPump() {
+  m_inLiveFrame = true;
+  try {
+    bool running = true;
+    update(running, false);
+    render();
+  } catch (...) {
+    m_liveFrameError = std::current_exception();
+    m_quitRequested = true;
+  }
+  m_inLiveFrame = false;
 }
 
 void Engine::setDeterministic() {
@@ -236,7 +276,7 @@ void Engine::recordBenchmarkFrame() {
 }
 
 
-void Engine::update(bool &isRunning) {
+void Engine::update(bool &isRunning, bool pollInput) {
   m_frameStartNs = SDL_GetTicksNS();
 
   auto &inputSystem = m_systemManager.getSystem<InputSystem>();
@@ -248,7 +288,10 @@ void Engine::update(bool &isRunning) {
     cameraSystem.setEditorNavigation(m_playMode == PlayMode::Editing, toggles.isToggled(Toggle::ShowUI));
     inputSystem.setEditorFlyAllowed(cameraSystem.canNavigate(toggles));
   }
-  inputSystem.update(&isRunning, m_systemManager);
+  if (pollInput)
+    inputSystem.update(&isRunning, m_systemManager);
+  else
+    inputSystem.clearFrameState();
 
   // Play, Stop and freezing, from the editor's last frame
   applyPlayModeRequest();

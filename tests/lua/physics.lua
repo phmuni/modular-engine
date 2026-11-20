@@ -43,6 +43,20 @@ test.run(function()
   wait(0.1)
   test.ok(crate.velocity.z > 0.1, "an impulse pushes: " .. crate.velocity.z)
 
+  -- Set on the frame the entity is created, before its body is in the physics world
+  physics.gravity(vec3(0, 0, 0))
+  local bullet = engine.create("Bullet", { model = "sphere", position = vec3(0, 20, -20), body = "dynamic", shape = "sphere" })
+  bullet.velocity = vec3(0, 0, 20)
+  local pushed = engine.create("Pushed", { model = "sphere", position = vec3(5, 20, -20), body = "dynamic", shape = "sphere" })
+  pushed:impulse(vec3(0, 0, 2000))
+  local pulled = engine.create("Pulled", { model = "sphere", position = vec3(10, 20, -20), body = "dynamic", shape = "sphere" })
+  pulled:force(vec3(0, 0, 5000))
+  wait(0.2)
+  test.ok(bullet.position.z > -20 + 1, "velocity on the creation frame: " .. bullet.position.z)
+  test.ok(pushed.position.z > -20 + 0.05, "impulse on the creation frame: " .. pushed.position.z)
+  test.ok(pulled.position.z > -20, "force on the creation frame: " .. pulled.position.z)
+  physics.gravity(vec3(0, -9.81, 0))
+
   -- Gravity can be changed
   physics.gravity(vec3(0, 0, 0))
   test.near(physics.gravity(), vec3(0, 0, 0), 0.0001)
