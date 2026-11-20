@@ -78,6 +78,9 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Navigation**             | A walkable grid built from the physics world and A* paths around obstacles, smoothed (`engine.navigation().findPath`, `nav.path` in Lua), drawn by the editor's "Show navigation" |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
 | **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
+| **Linked Prefabs**         | Instances remember their prefab file and follow it when it changes (in the editor or on disk), keeping what they changed themselves; Apply, Revert and Unpack in the Properties panel |
+| **Asset Browser**          | The editor's Assets panel lists `assets/` by kind with a search box: drag models and prefabs into the view, scripts and sounds onto entities, double-click to open |
+| **Multi-select**           | Ctrl/Cmd+click, Shift+click ranges and a box in the view select several entities; the gizmo, Properties, duplicate, copy, paste and delete work on all of them |
 | **Collisions**             | Axis-aligned boxes (`withCollision`, or fitted to the model with `withModelCollision`), queried by component pair (`forEachCollision<Bullet, Enemy>`) and by ray (`raycast<Enemy>`) |
 | **Particle System**        | Advanced emitter with cone/sphere/box/ring shapes, attraction, and recycling   |
 | **Gravitational Lensing**  | `GravityLens` component bends particles behind it into primary and secondary images |
@@ -764,6 +767,58 @@ In the editor, the Scene Explorer's Hierarchy shows the families: drag an entity
 the empty space to detach it; the Properties panel has a Parent field and **Save as prefab**, and **Add Entity** places
 a prefab in front of the camera.
 
+#### Linked instances
+
+An instance is not a plain copy: `instantiate` (and `spawn`, in Lua too) and the editor mark the root with a
+`PrefabInstance` (the file) and every entity that came from the file with a `PrefabPart` (its place in the file's
+list). When the prefab file changes, the instances change with it, in place (same entities, so selections and
+references stay valid):
+
+- In the editor, **Save as prefab** writes the file and links the entity to it; **Apply** (Properties, on any entity of
+  an instance) writes an instance back to its file, and every other instance follows. A file edited on disk is noticed
+  within half a second while the editor is open (`F2`); nothing is watched with it closed, and a game that spawns a
+  prefab notices a changed file at that spawn (one `stat`, no per-frame work).
+- What an instance changed from the file is kept through an update: any field of any component (a wheel's opacity,
+  a renamed part, a script property), entities it removed, and entities added under it. They are not stored anywhere:
+  they are the JSON diff (RFC 6902 patch) between the instance as it is and the file as it was when the instance last
+  matched it. The root's own Transform and parent always belong to the instance (moving it is never an override).
+- The Properties panel shows the link: the file, how many overrides there are (hover for the list), **Apply**,
+  **Revert** (drops the overrides, the root keeps its place), **Unpack** (breaks the link) and **Select prefab file**
+  (shows it in the Assets panel). Linked entities are blue in the Scene Explorer, the root marked `[P]`.
+- Scene files keep every entity in full as before, plus the link on the root (`"PrefabInstance": {"path", "overrides"}`)
+  and `"PrefabPart": {"index"}` on the others. Loading brings an instance up to date with its file when the file exists
+  (applying the saved overrides to it); when the file is missing the entities stay as saved, so a scene never loses
+  content. Scenes saved before links load as they are: plain entities.
+- Not covered: a prefab inside a prefab (a prefab file never holds links, so applying an instance that has another
+  inside flattens it) and files with several roots (they are placed unlinked). A prefab file written by hand with fields
+  left out shows those fields as overrides until it is saved by the editor once. Undo restores the scene, not the
+  prefab file Apply wrote.
+
+### Assets and selection in the editor
+
+**Assets** (a strip along the bottom of the view; starts as its title bar, open it from the arrow; `Tab` hides it with
+the other panels) lists the project's `assets/` folder: folders with breadcrumbs, filtered by kind (models, prefabs
+in `prefabs/*.json`, scenes in `scenes/*.json`, sounds, scripts, textures, UI) and a search box over every folder.
+It is listed again with **Refresh**, when the window gets focus back, and every few seconds while open (spaced out
+by how long a listing takes); nothing is read while it is closed or the editor is hidden.
+
+| Do this | To get |
+|---|---|
+| Drag a model or a prefab into the view | It is placed at the surface under the cursor (its lowest point on it), selected, as one undo step |
+| Drag a script or a sound onto an entity (in the view, or its row in the Scene Explorer) | It gets that `Script` (replacing one, keeping its property values) or `AudioSource` |
+| Drag a scene into the view, or double-click it | It loads; with unsaved edits it asks first (Save and load, Load without saving, Cancel) |
+| Double-click a model or a prefab | It is placed in front of the camera |
+| Double-click a script | It opens in the system's editor for `.lua` files |
+| Right-click | Reveal in file manager, Copy relative path (`prefabs/coin.json`, as games write it), and **Select instances** for a prefab |
+
+**Multi-select.** `Ctrl` (`Cmd` on macOS) + click toggles an entity in the Scene Explorer or the view, `Shift` + click
+selects a range in a list, and dragging a box over empty space in the view selects the models whose center is inside
+(`Ctrl` keeps the earlier selection). The last one clicked is the primary: the Properties panel shows it, and position,
+rotation and scale edits there are made on all of them as changes. The gizmo (move, rotate, scale) acts on the primary
+and the rest follow as one body around it; only roots move, so a parent and its selected child move once (Resize and
+Solid act on one entity). Duplicate, copy, paste and delete (`Ctrl` + `D`, `C`, `V`, `Delete`) work on the whole selection
+as one undo step, and every selected entity gets its outline (the primary's brighter).
+
 ### Collisions
 
 Entities with a `Collision` box (`withCollision(size)`, centered on their Transform position) can be asked what they touch. Positions are read when you ask, so move things first and then query; each pair comes once, already split by component type:
@@ -970,7 +1025,7 @@ engine.loadScene("../assets/scenes/level2.json");  // reads its models in the ba
 void onSceneLoaded(Engine& engine, const std::string& path) override { /* ... */ }
 ```
 
-Saved: `Transform`, `Model` (the file plus per-part color, textures, emission and shininess changes), `Light`, `Camera` (and which one is active), `Collision`, `ParticleEmitter`, `GravityLens`, `AudioSource`, `Skybox` and `Hidden`. Runtime state such as live particles is not. Game components are saved once registered; plain data only needs `to_json`/`from_json`:
+Saved: `Transform`, `Model` (the file plus per-part color, textures, emission and shininess changes), `Light`, `Camera` (and which one is active), `Collision`, `ParticleEmitter`, `GravityLens`, `AudioSource`, `Skybox`, `Hidden` and the links of prefab instances (see Hierarchy and prefabs). Runtime state such as live particles is not. Game components are saved once registered; plain data only needs `to_json`/`from_json`:
 
 ```cpp
 #include "systems/sceneSerializer.h"

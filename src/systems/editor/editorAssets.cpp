@@ -9,6 +9,7 @@
 #include "components/model.h"
 #include "components/name.h"
 #include "components/parent.h"
+#include "components/prefabInstance.h"
 #include "components/script.h"
 #include "components/transform.h"
 #include "foundation/core/config.h"
@@ -27,6 +28,14 @@
 #include <limits>
 
 namespace {
+const ImVec4 kLinkColor(0.45f, 0.7f, 1.0f, 1.0f);
+
+// "../assets/prefabs/car.json" as the browser knows it, "prefabs/car.json"; empty for a file outside assets/
+std::string assetRelative(const std::string &path) {
+  const std::string prefix(EngineConfig::ASSETS_PREFIX);
+  return path.compare(0, prefix.size(), prefix) == 0 ? path.substr(prefix.size()) : std::string();
+}
+
 std::string nameOfAsset(const std::string &asset) { return std::filesystem::path(asset).stem().string(); }
 } // namespace
 
@@ -105,6 +114,16 @@ void EditorUISystem::renderSceneLoadDialog(Engine &engine) {
 void EditorUISystem::handleAssetEvent(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
                                       const AssetBrowser::Event &event) {
   using Kind = AssetBrowser::Kind;
+  if (event.type == AssetBrowser::Event::Type::SelectInstances) {
+    const auto roots =
+        systemManager.getSystem<SceneSerializer>().instancesOf(EngineConfig::resolveAsset(event.path));
+    setSelection(roots);
+    m_selectionAnchor = selectedEntity;
+    m_scrollToSelection = true;
+    if (roots.empty())
+      LOG_I("[Editor] No instance of %s in the scene", event.path.c_str());
+    return;
+  }
   if (event.type != AssetBrowser::Event::Type::Open)
     return;
   switch (event.kind) {
@@ -248,4 +267,82 @@ void EditorUISystem::handleAssetDrop(Engine &engine, SystemManager &systemManage
   } else if (kind == Kind::Scene && released) {
     requestSceneLoad(engine, asset);
   }
+}
+
+void EditorUISystem::renderPrefabLink(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
+  auto &serializer = systemManager.getSystem<SceneSerializer>();
+  const Entity root = serializer.instanceRoot(selectedEntity);
+  if (root == -1)
+    return;
+  const PrefabInstance *instance = componentManager.tryGet<PrefabInstance>(root);
+  if (!instance)
+    return;
+  const std::string assetPath = assetRelative(instance->path);
+
+  ImGui::Separator();
+  ImGui::TextColored(kLinkColor, "Prefab instance");
+  ImGui::SameLine();
+  ImGui::TextDisabled("%s", assetPath.empty() ? instance->path.c_str() : assetPath.c_str());
+  if (root != selectedEntity) {
+    const Name *name = componentManager.tryGet<Name>(root);
+    ImGui::TextDisabled("Part of %s", name && !name->name.empty() ? name->name.c_str() : "its instance");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Select root"))
+      selectOnly(root);
+  }
+  if (!serializer.prefabFileExists(root))
+    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "The prefab file is missing; the entities keep what was saved");
+
+  // What the instance changed from the file; found twice a second, not every frame
+  const double now = ImGui::GetTime();
+  if (m_overrideRoot != root || now - m_overrideTime > 0.5) {
+    m_overrideList = serializer.instanceOverrides(root);
+    m_overrideRoot = root;
+    m_overrideTime = now;
+  }
+  if (m_overrideList.empty()) {
+    ImGui::TextDisabled("Matches the prefab");
+  } else {
+    ImGui::Text("%zu override(s)", m_overrideList.size());
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      for (size_t i = 0; i < m_overrideList.size() && i < 20; ++i)
+        ImGui::TextUnformatted(m_overrideList[i].c_str());
+      if (m_overrideList.size() > 20)
+        ImGui::TextDisabled("... and %zu more", m_overrideList.size() - 20);
+      ImGui::EndTooltip();
+    }
+  }
+
+  // Each is one edit (a click on the panel opened the undo step); undo does not touch the prefab file
+  if (ImGui::SmallButton("Apply")) {
+    serializer.applyInstance(root);
+    m_overrideTime = -1000.0;
+  }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Writes this instance into the prefab file; every instance of it follows");
+  ImGui::SameLine();
+  ImGui::BeginDisabled(m_overrideList.empty());
+  if (ImGui::SmallButton("Revert")) {
+    serializer.revertInstance(root);
+    m_overrideTime = -1000.0;
+  }
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    ImGui::SetTooltip("Drops what this instance changed from the prefab (its place stays)");
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Unpack")) {
+    serializer.unpackInstance(root);
+    m_overrideTime = -1000.0;
+  }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Breaks the link: plain entities from now on");
+  ImGui::SameLine();
+  ImGui::BeginDisabled(assetPath.empty());
+  if (ImGui::SmallButton("Select prefab file")) {
+    m_assets.reveal(assetPath);
+    m_assetsOpenRequest = true;
+  }
+  ImGui::EndDisabled();
+  (void)engine;
 }

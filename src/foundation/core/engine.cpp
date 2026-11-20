@@ -286,6 +286,16 @@ void Engine::update(bool &isRunning) {
   auto &editorUI = m_systemManager.getSystem<EditorUISystem>();
   editorUI.update(m_systemManager);
 
+  // Prefab files edited while the editor is open: their linked instances follow. A stat per prefab in use, a few
+  // times a second, and never in a game without the editor up.
+  if (editorUI.m_renderUI && m_playMode != PlayMode::Testing) {
+    m_prefabPollTime += timeSystem.getUnscaledDeltaTime();
+    if (m_prefabPollTime >= kPrefabPollSeconds) {
+      m_prefabPollTime = 0.0f;
+      getSceneSerializer().refreshPrefabs();
+    }
+  }
+
   if (m_playMode != PlayMode::Editing) {
     m_time.tick(timeSystem.getDeltaTime()); // the game clock and timers, before the app
     m_tween.tick(timeSystem.getDeltaTime());

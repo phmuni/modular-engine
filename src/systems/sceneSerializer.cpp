@@ -6,6 +6,7 @@
 #include "components/model.h"
 #include "components/name.h"
 #include "components/parent.h"
+#include "components/prefabInstance.h"
 #include "foundation/core/componentRegistry.h"
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
@@ -32,18 +33,6 @@ constexpr std::pair<TextureSlot, const char *> kTextureSlots[] = {{TextureSlot::
                                                                   {TextureSlot::Specular, "specular"},
                                                                   {TextureSlot::Normal, "normal"},
                                                                   {TextureSlot::Emission, "emission"}};
-
-// Components hold floats; written as doubles they would read 1.2000000476837158. Keeps float precision instead.
-void roundFloats(nlohmann::json &value) {
-  if (value.is_number_float()) {
-    char text[32];
-    std::snprintf(text, sizeof(text), "%.7g", value.get<double>());
-    value = std::strtod(text, nullptr);
-  } else if (value.is_structured()) {
-    for (auto &child : value)
-      roundFloats(child);
-  }
-}
 
 // Vectors on one line: "position": [0.0, 1.5, -2.0] instead of five
 std::string compactNumberArrays(const std::string &text) {
@@ -80,13 +69,13 @@ SceneSerializer::SceneSerializer(EntityManager &em, ComponentManager &cm, System
   registerBuiltIns();
 }
 
-void SceneSerializer::registerComponent(const std::string &key, SaveFn save, LoadFn load) {
+void SceneSerializer::registerComponent(const std::string &key, SaveFn save, LoadFn load, RemoveFn remove) {
   auto existing = std::find_if(m_serializers.begin(), m_serializers.end(),
                                [&](const Serializer &serializer) { return serializer.key == key; });
   if (existing != m_serializers.end())
-    *existing = Serializer{key, std::move(save), std::move(load)};
+    *existing = Serializer{key, std::move(save), std::move(load), std::move(remove)};
   else
-    m_serializers.push_back(Serializer{key, std::move(save), std::move(load)});
+    m_serializers.push_back(Serializer{key, std::move(save), std::move(load), std::move(remove)});
 }
 
 namespace {
@@ -153,7 +142,11 @@ void SceneSerializer::registerBuiltIns() {
 
   registerComponent(
       "Model", [this](Entity entity) { return saveModel(entity); },
-      [this](Entity entity, const json &data) { loadModel(entity, data); });
+      [this](Entity entity, const json &data) { loadModel(entity, data); },
+      [this](Entity entity) {
+        m_componentManager.removeComponent<Model>(entity);
+        m_systemManager.getSystem<RenderSystem>().markBatchesDirty();
+      });
 
   registerComponent(
       "Light",
@@ -165,6 +158,10 @@ void SceneSerializer::registerBuiltIns() {
       [this](Entity entity, const json &data) {
         m_componentManager.addInPlace<Light>(entity) = data.get<Light>();
         m_systemManager.getSystem<LightSystem>().createLight(entity);
+      },
+      [this](Entity entity) {
+        m_systemManager.getSystem<LightSystem>().destroyLight(entity);
+        m_componentManager.removeComponent<Light>(entity);
       });
 
   registerComponent(
@@ -183,6 +180,12 @@ void SceneSerializer::registerBuiltIns() {
         cameraSystem.updateFrontVector(camera);
         if (data.value("active", false))
           cameraSystem.setActiveCamera(entity);
+      },
+      [this](Entity entity) {
+        auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
+        if (cameraSystem.getActiveCamera() == entity)
+          cameraSystem.removeActiveCamera();
+        m_componentManager.removeComponent<Camera>(entity);
       });
 
   registerComponent<CameraRig>("CameraRig");
@@ -204,7 +207,41 @@ void SceneSerializer::registerBuiltIns() {
           return json::object();
         return std::nullopt;
       },
-      [this](Entity entity, const json &) { m_componentManager.addInPlace<Hidden>(entity); });
+      [this](Entity entity, const json &) { m_componentManager.addInPlace<Hidden>(entity); },
+      [this](Entity entity) { m_componentManager.removeComponent<Hidden>(entity); });
+
+  // The link to a prefab file (see the SceneSerializer header). Scene files also get the overrides, found now.
+  registerComponent(
+      "PrefabInstance",
+      [this](Entity entity) -> std::optional<json> {
+        const PrefabInstance *instance = m_componentManager.tryGet<PrefabInstance>(entity);
+        if (!instance)
+          return std::nullopt;
+        json data = {{"path", instance->path}};
+        if (m_writeOverrides) {
+          json overrides = instanceOverridesPatch(entity);
+          if (overrides.is_array()) // null: the file was not there to compare with, so the entities stay as they are
+            data["overrides"] = std::move(overrides);
+        }
+        return data;
+      },
+      [this](Entity entity, const json &data) {
+        m_componentManager.addInPlace<PrefabInstance>(entity).path = data.at("path").get<std::string>();
+        if (data.contains("overrides") && data["overrides"].is_array())
+          m_loadedOverrides.emplace_back(entity, data["overrides"]);
+      },
+      [this](Entity entity) { m_componentManager.removeComponent<PrefabInstance>(entity); });
+  registerComponent(
+      "PrefabPart",
+      [this](Entity entity) -> std::optional<json> {
+        if (const PrefabPart *part = m_componentManager.tryGet<PrefabPart>(entity))
+          return json{{"index", part->index}};
+        return std::nullopt;
+      },
+      [this](Entity entity, const json &data) {
+        m_componentManager.addInPlace<PrefabPart>(entity).index = data.value("index", 0);
+      },
+      [this](Entity entity) { m_componentManager.removeComponent<PrefabPart>(entity); });
 }
 
 // A model is its file plus, per part, what the entity changed from the file's materials
@@ -286,7 +323,8 @@ void SceneSerializer::loadModel(Entity entity, const json &data) {
   }
 }
 
-SceneSerializer::json SceneSerializer::entitiesToJson(const std::vector<Entity> &entities, Entity root) const {
+SceneSerializer::json SceneSerializer::entitiesToJson(const std::vector<Entity> &entities, Entity root,
+                                                      std::vector<Entity> *written) const {
   // Parents are written as their place in this list, since entity numbers change from run to run
   std::vector<Entity> saved;
   std::vector<json> entries;
@@ -304,6 +342,10 @@ SceneSerializer::json SceneSerializer::entitiesToJson(const std::vector<Entity> 
       continue; // nothing that can be saved, e.g. only game components without a serializer
     if (entity == root && components.contains("Transform"))
       components["Transform"]["position"] = {0.0f, 0.0f, 0.0f}; // a prefab's root sits where it is instantiated
+    if (root != -1) { // a prefab file never links to another one
+      components.erase("PrefabInstance");
+      components.erase("PrefabPart");
+    }
 
     json entry;
     if (const Name *name = m_componentManager.tryGet<Name>(entity))
@@ -323,6 +365,8 @@ SceneSerializer::json SceneSerializer::entitiesToJson(const std::vector<Entity> 
   json list = json::array();
   for (json &entry : entries)
     list.push_back(std::move(entry));
+  if (written)
+    *written = std::move(saved);
   return list;
 }
 
@@ -346,7 +390,10 @@ bool SceneSerializer::writeFile(const std::string &path, json entities) const {
 bool SceneSerializer::save(const std::string &path) const {
   std::vector<Entity> entities(m_entityManager.entities().begin(), m_entityManager.entities().end());
   std::sort(entities.begin(), entities.end()); // creation order, so saving twice gives the same file
-  return writeFile(path, entitiesToJson(entities, -1));
+  m_writeOverrides = true; // linked prefab instances record what they changed from their file
+  json list = entitiesToJson(entities, -1);
+  m_writeOverrides = false;
+  return writeFile(path, std::move(list));
 }
 
 std::string SceneSerializer::fingerprint() const {
@@ -382,7 +429,15 @@ std::string SceneSerializer::copyToJson(const std::vector<Entity> &roots) const 
   if (entities.empty())
     return {};
   // No root given: the roots keep their positions; their parents are not in the list, so they are not written either
-  json scene = {{"format", kFormat}, {"version", kVersion}, {"entities", entitiesToJson(entities, -1)}};
+  std::vector<Entity> written;
+  json list = entitiesToJson(entities, -1, &written);
+  // A part of a prefab copied without its instance's root would link to nothing (or to the wrong instance, pasted
+  // under another): it becomes a plain entity
+  for (size_t i = 0; i < written.size(); ++i)
+    if (list[i]["components"].contains("PrefabPart") &&
+        std::find(entities.begin(), entities.end(), instanceRoot(written[i])) == entities.end())
+      list[i]["components"].erase("PrefabPart");
+  json scene = {{"format", kFormat}, {"version", kVersion}, {"entities", std::move(list)}};
   roundFloats(scene);
   return scene.dump();
 }
@@ -392,26 +447,31 @@ std::vector<Entity> SceneSerializer::pasteFromJson(const std::string &text) {
   if (scene.is_discarded() || !scene.is_object() || scene.value("format", "") != kFormat ||
       !scene.contains("entities") || !scene["entities"].is_array())
     return {};
-  return createEntities(scene["entities"]);
+  std::vector<Entity> created = createEntities(scene["entities"]);
+  m_loadedOverrides.clear(); // a pasted instance is as it was copied, not brought up to date with its file
+  return created;
 }
 
-std::optional<SceneSerializer::json> SceneSerializer::readFile(const std::string &path) const {
+std::optional<SceneSerializer::json> SceneSerializer::readFile(const std::string &path, bool log) const {
   std::string resolved = EngineConfig::resolveAsset(path);
   std::ifstream file(resolved);
   if (!file) {
-    LOG_E("[Scene] Could not open %s", resolved.c_str());
+    if (log)
+      LOG_E("[Scene] Could not open %s", resolved.c_str());
     return std::nullopt;
   }
   json scene;
   try {
     scene = json::parse(file);
   } catch (const json::parse_error &error) {
-    LOG_E("[Scene] %s is not valid JSON: %s", resolved.c_str(), error.what());
+    if (log)
+      LOG_E("[Scene] %s is not valid JSON: %s", resolved.c_str(), error.what());
     return std::nullopt;
   }
   if (!scene.is_object() || scene.value("format", "") != kFormat || !scene.contains("entities") ||
       !scene["entities"].is_array()) {
-    LOG_E("[Scene] %s is not a scene file", resolved.c_str());
+    if (log)
+      LOG_E("[Scene] %s is not a scene file", resolved.c_str());
     return std::nullopt;
   }
   if (scene.value("version", 0) > kVersion)
@@ -422,6 +482,7 @@ std::optional<SceneSerializer::json> SceneSerializer::readFile(const std::string
 
 std::vector<Entity> SceneSerializer::createEntities(const json &entries) {
   std::vector<Entity> created;
+  m_loadedOverrides.clear();
   struct Link {
     Entity child;
     size_t parentIndex;
@@ -488,15 +549,20 @@ bool SceneSerializer::load(const std::string &path) {
     return false;
   clear();
   createEntities((*scene)["entities"]);
+  syncLoadedInstances();
   LOG_I("[Scene] Loaded %zu entities from %s", (*scene)["entities"].size(), EngineConfig::resolveAsset(path).c_str());
   return true;
 }
 
 std::vector<Entity> SceneSerializer::instantiate(const std::string &path) {
-  const std::optional<json> prefab = readFile(path);
+  const PrefabFile *prefab = prefabFile(EngineConfig::resolveAsset(path), true);
   if (!prefab)
     return {};
-  return createEntities((*prefab)["entities"]);
+  const std::vector<Entity> created = createEntities(prefab->entities);
+  m_loadedOverrides.clear();
+  if (prefab->root >= 0 && static_cast<size_t>(prefab->root) < created.size())
+    linkEntities(created[prefab->root], EngineConfig::relativePath(EngineConfig::resolveAsset(path)), created);
+  return created;
 }
 
 std::vector<std::string> SceneSerializer::modelPaths(const std::string &path) const {

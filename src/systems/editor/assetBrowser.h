@@ -16,7 +16,7 @@ public:
 
   // What the user did that the editor has to carry out
   struct Event {
-    enum class Type { None, Open } type = Type::None;
+    enum class Type { None, Open, SelectInstances } type = Type::None;
     std::string path; // relative to the assets folder, e.g. "prefabs/coin.json"
     Kind kind = Kind::Other;
   };

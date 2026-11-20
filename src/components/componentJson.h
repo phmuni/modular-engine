@@ -19,6 +19,8 @@
 #include "components/script.h"
 #include "components/transform.h"
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
@@ -123,6 +125,18 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(CharacterController, radius, hei
                                                 gravityScale)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(GravityLens, schwarzschildRadius, maxMagnification)
+
+// Components hold floats; written as doubles they would read 1.2000000476837158. Keeps float precision instead.
+inline void roundFloats(nlohmann::json &value) {
+  if (value.is_number_float()) {
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.7g", value.get<double>());
+    value = std::strtod(text, nullptr);
+  } else if (value.is_structured()) {
+    for (auto &child : value)
+      roundFloats(child);
+  }
+}
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AudioSource, path, volume, pitch, loop, spatial, playing, minDistance,
                                                 maxDistance, rolloff)

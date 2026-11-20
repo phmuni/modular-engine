@@ -330,6 +330,8 @@ AssetBrowser::Event AssetBrowser::draw(bool appFocused) {
             event = {Event::Type::Open, entry.path, entry.kind};
           }
         }
+        if (entry.kind == Kind::Prefab && ImGui::MenuItem("Select instances"))
+          event = {Event::Type::SelectInstances, entry.path, entry.kind};
         ImGui::Separator();
         if (ImGui::MenuItem("Reveal in file manager"))
           revealInFileManager(rootPath() + "/" + entry.path);

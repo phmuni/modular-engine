@@ -556,6 +556,8 @@ private:
   std::optional<HistoryRequest> m_historyRequest;
   uint64_t m_editRevision = 0; // counts undo steps made, undone and redone
   uint64_t m_savedRevision = 0;
+  static constexpr float kPrefabPollSeconds = 0.5f;
+  float m_prefabPollTime = 0.0f;
   void applyHistoryRequest();
   void clearHistory();
   std::optional<std::string> m_pendingScene;

@@ -197,6 +197,9 @@ private:
   bool m_assetsOpenRequest = false;  // open it at the next frame (Select prefab file)
   float m_assetsHeight = 0.0f;       // this frame's strip, 0 when not shown
   std::string m_pendingScene;        // a scene asked for while the current one has unsaved changes
+  Entity m_overrideRoot = -1;        // the instance whose overrides are listed in Properties
+  double m_overrideTime = -1000.0;
+  std::vector<std::string> m_overrideList;
   void renderAssetPanel(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   void handleAssetEvent(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
                         const AssetBrowser::Event &event);
@@ -211,6 +214,8 @@ private:
                     const std::string &asset, const glm::vec3 &point, bool onSurface);
   void requestSceneLoad(Engine &engine, const std::string &asset);
   void renderSceneLoadDialog(Engine &engine);
+  // In Properties: the prefab an entity is an instance of, its overrides, Apply / Revert / Unpack
+  void renderPrefabLink(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
 
   static void fileDialogCallback(void *userdata, const char *const *filelist, int filter);
   void pickFileButton(const char *id, char *buf, int bufSize, SDL_Window *window,

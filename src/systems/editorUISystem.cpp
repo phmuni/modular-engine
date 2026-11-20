@@ -11,6 +11,7 @@
 #include "components/model.h"
 #include "components/name.h"
 #include "components/parent.h"
+#include "components/prefabInstance.h"
 #include "components/particleEmitter.h"
 #include "components/skybox.h"
 #include "components/characterController.h"
@@ -216,6 +217,7 @@ void EditorUISystem::update(SystemManager &systemManager) {
 
 namespace {
 constexpr float kExplorerWidth = 260.0f, kPropertiesWidth = 340.0f; // at scale 1
+const ImVec4 kPrefabLinkColor(0.45f, 0.7f, 1.0f, 1.0f); // linked prefab instances in the lists
 
 // Name of the key bound to a toggle in the default keybinds, or nullptr
 const char *toggleKeyName(Toggle toggle) {
@@ -1546,6 +1548,7 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
   // The rows as drawn, for Shift+click ranges; the range is made once they all are
   std::vector<Entity> visible;
   Entity rangeTarget = -1;
+  auto &serializer = systemManager.getSystem<SceneSerializer>();
   std::function<void(Entity, int)> node = [&](Entity entity, int depth) {
     const std::vector<Entity> children = transformSystem.getChildren(componentManager, entity);
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen |
@@ -1554,9 +1557,16 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
       flags |= ImGuiTreeNodeFlags_Leaf;
     if (isSelected(entity))
       flags |= ImGuiTreeNodeFlags_Selected;
-    const std::string label = displayName(componentManager, entity) + "##tree" + std::to_string(entity);
+    // Linked prefab instances: blue, the root marked
+    const bool linked = serializer.instanceRoot(entity) != -1;
+    const std::string label = (componentManager.has<PrefabInstance>(entity) ? "[P] " : "") +
+                              displayName(componentManager, entity) + "##tree" + std::to_string(entity);
     visible.push_back(entity);
+    if (linked)
+      ImGui::PushStyleColor(ImGuiCol_Text, kPrefabLinkColor);
     const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
+    if (linked)
+      ImGui::PopStyleColor();
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
       if (ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl)
         rangeTarget = entity;
@@ -1632,10 +1642,18 @@ void EditorUISystem::renderParentAndPrefab(SystemManager &systemManager, Compone
   ImGui::SetNextItemWidth(200.0f);
   ImGui::InputText("##prefabPath", prefabPath, sizeof(prefabPath));
   ImGui::SameLine();
-  if (ImGui::Button("Save as prefab"))
-    systemManager.getSystem<SceneSerializer>().savePrefab(selectedEntity, EngineConfig::resolvePath(prefabPath));
+  if (ImGui::Button("Save as prefab")) {
+    auto &serializer = systemManager.getSystem<SceneSerializer>();
+    const std::string file = EngineConfig::resolvePath(prefabPath);
+    const Entity owner = serializer.instanceRoot(selectedEntity);
+    if (owner != -1 && owner != selectedEntity)
+      serializer.savePrefab(selectedEntity, file); // a part of another instance: written, not linked
+    else
+      serializer.applyInstance(selectedEntity, file); // written, and this entity becomes an instance of it
+  }
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Saves this entity and its children; Add Entity > Prefab places copies of it");
+    ImGui::SetTooltip("Saves this entity and its children and links it to the file: editing the prefab updates\n"
+                      "every instance. Add Entity > Prefab and the Assets panel place linked copies of it");
 }
 
 void EditorUISystem::renderPlayToolbar(Engine &engine, SystemManager &systemManager) {
@@ -1727,6 +1745,7 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
   auto &lightSystem = systemManager.getSystem<LightSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();
+  auto &serializer = systemManager.getSystem<SceneSerializer>();
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
@@ -1758,8 +1777,13 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
     ImGui::BeginChild(header, ImVec2(0, kSectionHeight), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
     for (Entity entity : entities) {
       std::string label = entityLabel(entity, icon);
+      const bool linked = serializer.instanceRoot(entity) != -1;
+      if (linked)
+        ImGui::PushStyleColor(ImGuiCol_Text, kPrefabLinkColor);
       if (ImGui::Selectable(label.c_str(), isSelected(entity)))
         clickInList(entity, entities, true);
+      if (linked)
+        ImGui::PopStyleColor();
       dragToParent(engine, systemManager, componentManager, entity, label);
       entityContextMenu(engine, systemManager, componentManager, entity);
       if (m_scrollToSelection && selectedEntity == entity) {
@@ -1912,6 +1936,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
                           "the gizmo moves, turns and scales them together");
     }
     renderParentAndPrefab(systemManager, componentManager);
+    renderPrefabLink(engine, systemManager, componentManager);
     ImGui::Separator();
   }
 
@@ -2383,6 +2408,11 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
       }
       if (!componentManager.has<Model>(selectedEntity)) {
         static char addModelPath[256] = "";
+        static Entity addModelEntity = -1;
+        if (addModelEntity != selectedEntity) {
+          addModelEntity = selectedEntity;
+          addModelPath[0] = '\0';
+        }
         ImGui::SetNextItemWidth(140.0f);
         ImGui::InputText("##addModelPath", addModelPath, 256);
         pickFileButton("pick_add_model", addModelPath, 256, window);
@@ -2573,6 +2603,18 @@ bool EditorUISystem::renderMaterialInspector(Entity entity, ComponentManager &co
   const auto &submeshes = mesh.getSubmeshes();
 
   static char globalPaths[4][256] = {};
+  static std::array<std::string, 4> lastAppliedPaths{};
+  static std::vector<std::array<char[256], 4>> paths;
+  // The text fields hold what was typed for one entity: a new primary selection starts them empty
+  static Entity textureEntity = -1;
+  if (textureEntity != entity) {
+    textureEntity = entity;
+    for (auto &path : globalPaths)
+      path[0] = '\0';
+    for (auto &applied : lastAppliedPaths)
+      applied.clear();
+    paths.clear();
+  }
   const char *labels[4] = {"Diffuse", "Specular", "Normal", "Emission"};
   const TextureSlot slots[4] = {TextureSlot::Diffuse, TextureSlot::Specular, TextureSlot::Normal,
                                 TextureSlot::Emission};
@@ -2581,8 +2623,6 @@ bool EditorUISystem::renderMaterialInspector(Entity entity, ComponentManager &co
 
   // Global texture apply
   if (ImGui::TreeNode("Apply to All Submeshes")) {
-    static std::array<std::string, 4> lastAppliedPaths{};
-
     if (ImGui::DragFloat("Opacity", &model.opacity, 0.01f, 0.0f, 1.0f, "%.2f")) {
       renderSystem.markBatchesDirty();
     }
@@ -2630,7 +2670,6 @@ bool EditorUISystem::renderMaterialInspector(Entity entity, ComponentManager &co
   }
 
   // Per-submesh
-  static std::vector<std::array<char[256], 4>> paths;
   if (paths.size() != submeshes.size())
     paths.resize(submeshes.size());
 
