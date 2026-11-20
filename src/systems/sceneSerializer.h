@@ -43,6 +43,9 @@ public:
   // Reads the whole file first; if it cannot be read, the current scene stays
   bool load(const std::string &path);
 
+  // The scene as compact JSON text (what save() writes, entity numbers aside), to tell whether two moments differ
+  std::string fingerprint() const;
+
   // Prefabs: an entity and its descendants in a file of the same format, the root at the origin
   bool savePrefab(Entity root, const std::string &path) const;
   // Adds a file's entities to the scene, keeping what is there; returns them in file order (empty if unreadable)

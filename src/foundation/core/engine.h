@@ -17,6 +17,7 @@
 #include "systems/physicsSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/stateSystem.h"
+#include <deque>
 #include <functional>
 #include <limits>
 #include <glm/glm.hpp>
@@ -323,6 +324,24 @@ public:
   void play() { m_requestedPlayMode = PlayMode::Testing; }
   void stop() { m_requestedPlayMode = PlayMode::Editing; }
 
+  // Undo and redo for the editor: the scene (every entity and component, game components too) is copied before each
+  // edit, and undo() / redo() put those copies back at the start of the next frame. A checkpoint covers one edit:
+  // beginCheckpoint() copies the scene as it is, endCheckpoint() keeps the copy as an undo step only if the scene
+  // changed meanwhile (compared as saved-scene text, see SceneSerializer::fingerprint), so selecting or opening a
+  // menu leaves no empty step. A new step clears what could be redone. The last kMaxUndoSteps steps are kept; each
+  // is a full copy of the scene, so memory grows with scene size times that.
+  // Scripts are not restarted by undo (their Lua state stays; entity scripts follow their components as usual), the
+  // viewport camera stays where it is, and the history survives Play and Stop but is not recorded or used while
+  // testing. Loading a scene clears it.
+  static constexpr size_t kMaxUndoSteps = 50;
+  void beginCheckpoint();
+  void endCheckpoint();
+  bool hasOpenCheckpoint() const { return m_openCheckpoint != nullptr; }
+  void undo() { m_historyRequest = HistoryRequest::Undo; }
+  void redo() { m_historyRequest = HistoryRequest::Redo; }
+  bool canUndo() const { return m_playMode != PlayMode::Testing && !m_undoStack.empty(); }
+  bool canRedo() const { return m_playMode != PlayMode::Testing && !m_redoStack.empty(); }
+
   // Prefabs: an entity and its children saved to a file (the same format as scenes, with the entity at the origin)
   // and copied into the scene as often as needed. instantiate puts the copy's root at `position`, turned `rotation`
   // degrees, and returns it (-1 if the file cannot be read). Its models load on the spot: preloadModel them for a
@@ -410,13 +429,33 @@ private:
 
   PlayMode m_playMode = PlayMode::Running;
   std::optional<PlayMode> m_requestedPlayMode;
-  struct PlaySnapshot {
+  // Everything a scene is made of, for Play/Stop and the undo history
+  struct SceneSnapshot {
     ComponentManager::Snapshot components;
     EntityManager entities;
     Entity activeCamera = -1;
+    std::vector<uint32_t> materials; // the models' materials, kept alive while the snapshot exists
   };
-  std::unique_ptr<PlaySnapshot> m_playSnapshot;
+  SceneSnapshot captureScene();
+  // Replaces the scene with the snapshot's and refreshes what depends on it (camera, lights, render caches, physics)
+  void restoreScene(SceneSnapshot snapshot);
+  // Keeps every material a snapshot (Play's, the history's, the open checkpoint's) refers to alive, and counted as
+  // used, so changing one in the scene copies it first
+  void refreshPinnedMaterials();
+  std::unique_ptr<SceneSnapshot> m_playSnapshot;
   void applyPlayModeRequest();
+
+  struct Checkpoint {
+    SceneSnapshot snapshot;
+    std::string fingerprint;
+  };
+  enum class HistoryRequest { Undo, Redo };
+  std::unique_ptr<Checkpoint> m_openCheckpoint;
+  std::deque<SceneSnapshot> m_undoStack; // oldest first; each is the scene before an edit
+  std::vector<SceneSnapshot> m_redoStack;
+  std::optional<HistoryRequest> m_historyRequest;
+  void applyHistoryRequest();
+  void clearHistory();
   std::optional<std::string> m_pendingScene;
   std::vector<std::string> m_pendingSceneModels;
   std::string m_scenePath;

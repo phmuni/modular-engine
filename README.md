@@ -224,6 +224,7 @@ In the black hole example and the model viewer the camera orbits on its own: `â†
 | `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled (with the cursor locked) |
 | Left click in the scene | Editor: select the model under the cursor (empty space clears the selection; debug UI shown, cursor unlocked) |
 | `Ctrl` + `P` | Editor: freeze the game to edit the scene, Play from there, Stop to put the scene back (also the bar at the top) |
+| `Ctrl` + `Z` / `Ctrl` + `Shift` + `Z` or `Ctrl` + `Y` | Editor: undo / redo the last scene edit (also the Undo and Redo buttons in the bar at the top) |
 | `W` / `E` / `R` / `T` | Editor gizmo on the selected entity: move / rotate / scale / resize (cursor unlocked; `Ctrl` snaps; **Resize** puts a handle on each face, and dragging one moves that face alone; **Solid** in the Properties panel stops it where its triangles touch another model's, and it slides along; **Align to surface** makes the move gizmo place it on the surface under the cursor, tilted to its slope) |
 
 To save a frame without a window manager screenshot, pass `--screenshot <file.bmp> [seconds]`; the engine waits that long (3 seconds by default), saves the frame and exits:
@@ -543,6 +544,25 @@ copies, so the originals come back as well. **Resume** unfreezes without anythin
 The same from code: `engine.edit()`, `engine.play()`, `engine.stop()`, `engine.resume()` and `getPlayMode()`. Entity
 handles taken before Play are valid again after Stop; state an app keeps in its own members can be reset in
 `App::onPlayStopped`.
+
+### Undo and redo
+
+With the editor open, `Ctrl` + `Z` undoes the last edit and `Ctrl` + `Shift` + `Z` (or `Ctrl` + `Y`) does it again; the
+bar at the top has buttons for both. Every scene edit counts: gizmo and resize drags, anything in the Properties panel,
+adding and removing components, creating, deleting and parenting entities, placing prefabs. One drag or one typed value
+is one step, and a click that changes nothing (selecting, opening a menu) leaves none. The editor copies the whole scene
+before each edit, the same way Play does, so the last 50 steps cost 50 copies of it: a big scene uses that much more
+memory. Notes:
+
+- Undo does not restart scripts: Lua state on `self` and `game` stays, and entity scripts follow their restored
+  `Script` components. The free camera stays where it is, unless the camera being edited is selected.
+- Undo works while editing and while the game runs, but not between Play and Stop. The history survives Play and Stop
+  (Stop restores the scene as it was at Play, so the steps before it still apply), and loading a scene clears it.
+- While the game runs, a step also contains whatever the game changed during the edit, and undoing takes that back too.
+- Edits to the editor's own settings (the Settings panel) are not scene edits and are not undone.
+
+The same from code: `engine.undo()`, `engine.redo()`, `canUndo()` and `canRedo()` (each takes effect at the start of the
+next frame), and `beginCheckpoint()` / `endCheckpoint()` to make code that edits the scene one step.
 
 ### Hierarchy and prefabs
 
