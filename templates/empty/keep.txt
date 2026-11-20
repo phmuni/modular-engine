@@ -7,3 +7,4 @@ CMakeLists.txt
 assets/input.json
 assets/ui/pauseMenu.rml
 assets/ui/pauseMenu.rcss
+assets/ui/options.rml
