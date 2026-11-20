@@ -875,6 +875,7 @@ void Engine::beginCheckpoint() {
   if (m_playMode == PlayMode::Testing || m_openCheckpoint)
     return;
   m_openCheckpoint = std::make_unique<Checkpoint>(Checkpoint{captureScene(), getSceneSerializer().fingerprint()});
+  getSceneSerializer().beginFileJournal(); // prefab files the edit writes belong to the step
   refreshPinnedMaterials();
 }
 
@@ -882,7 +883,8 @@ void Engine::endCheckpoint() {
   if (!m_openCheckpoint)
     return;
   std::unique_ptr<Checkpoint> checkpoint = std::move(m_openCheckpoint);
-  if (checkpoint->fingerprint != getSceneSerializer().fingerprint()) {
+  checkpoint->snapshot.files = getSceneSerializer().endFileJournal();
+  if (checkpoint->fingerprint != getSceneSerializer().fingerprint() || !checkpoint->snapshot.files.empty()) {
     m_redoStack.clear();
     m_undoStack.push_back(std::move(checkpoint->snapshot));
     if (m_undoStack.size() > kMaxUndoSteps)
@@ -905,11 +907,15 @@ void Engine::applyHistoryRequest() {
   if (undoing) {
     target = std::move(m_undoStack.back());
     m_undoStack.pop_back();
-    m_redoStack.push_back(captureScene()); // what is about to be replaced is the step the other way
+    SceneSnapshot other = captureScene(); // what is about to be replaced is the step the other way
+    other.files = target.files;
+    m_redoStack.push_back(std::move(other));
   } else {
     target = std::move(m_redoStack.back());
     m_redoStack.pop_back();
-    m_undoStack.push_back(captureScene());
+    SceneSnapshot other = captureScene();
+    other.files = target.files;
+    m_undoStack.push_back(std::move(other));
     if (m_undoStack.size() > kMaxUndoSteps)
       m_undoStack.pop_front();
   }
@@ -922,6 +928,9 @@ void Engine::applyHistoryRequest() {
     if (const Camera *camera = m_componentManager.tryGet<Camera>(cameraEntity))
       view = *camera;
 
+  // The prefab files go back first, so the cache is right when the restored instances are next compared with it
+  for (const PrefabFileEdit &edit : target.files)
+    getSceneSerializer().restorePrefabFile(edit.path, undoing ? edit.before : edit.after);
   restoreScene(std::move(target));
   ++m_editRevision;
   // Scripts are left alone: their Lua state stays, and ScriptSystem follows the restored Script components
@@ -939,6 +948,7 @@ void Engine::applyHistoryRequest() {
 
 void Engine::clearHistory() {
   m_openCheckpoint.reset();
+  getSceneSerializer().endFileJournal();
   m_historyRequest.reset();
   m_undoStack.clear();
   m_redoStack.clear();

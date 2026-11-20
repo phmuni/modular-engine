@@ -17,6 +17,8 @@
 #include "systems/transformSystem.h"
 #include <algorithm>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <sstream>
 
 namespace {
@@ -439,6 +441,70 @@ void SceneSerializer::linkEntities(Entity root, const std::string &path, const s
   }
 }
 
+namespace {
+std::optional<std::string> readText(const std::string &path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in)
+    return std::nullopt;
+  return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+} // namespace
+
+void SceneSerializer::noteFileBefore(const std::string &resolvedPath) const {
+  if (!m_journaling)
+    return;
+  for (const PrefabFileEdit &edit : m_journal)
+    if (edit.path == resolvedPath)
+      return;
+  m_journal.push_back({resolvedPath, readText(resolvedPath), std::nullopt});
+}
+
+void SceneSerializer::beginFileJournal() {
+  m_journaling = true;
+  m_journal.clear();
+}
+
+std::vector<PrefabFileEdit> SceneSerializer::endFileJournal() {
+  m_journaling = false;
+  std::vector<PrefabFileEdit> edits = std::move(m_journal);
+  m_journal.clear();
+  for (PrefabFileEdit &edit : edits)
+    edit.after = readText(edit.path);
+  // A file written with the same content is no edit
+  edits.erase(std::remove_if(edits.begin(), edits.end(), [](const PrefabFileEdit &edit) { return edit.before == edit.after; }),
+              edits.end());
+  return edits;
+}
+
+bool SceneSerializer::restorePrefabFile(const std::string &resolvedPath, const std::optional<std::string> &content) {
+  const std::string key = fileKey(resolvedPath);
+  std::error_code error;
+  if (!content) {
+    std::filesystem::remove(resolvedPath, error);
+    m_prefabFiles.erase(key);
+    return !error;
+  }
+  {
+    std::ofstream out(resolvedPath, std::ios::binary);
+    if (!out)
+      return false;
+    out << *content;
+  }
+  // The cache takes the file as it is now, with its new time, so the poll does not read it again and the instances
+  // (already put back with the scene) are measured against the right baseline
+  std::optional<json> scene = readFile(resolvedPath, false);
+  if (!scene) {
+    m_prefabFiles.erase(key);
+    return true;
+  }
+  PrefabFile fresh;
+  fresh.entities = std::move((*scene)["entities"]);
+  fresh.time = std::filesystem::last_write_time(resolvedPath, error);
+  fillPrefabFile(fresh);
+  m_prefabFiles[key] = std::move(fresh);
+  return true;
+}
+
 bool SceneSerializer::applyInstance(Entity root, const std::string &path) {
   const PrefabInstance *current = m_componentManager.tryGet<PrefabInstance>(root);
   if ((!current && path.empty()) || !m_entityManager.isAlive(root))
@@ -451,6 +517,7 @@ bool SceneSerializer::applyInstance(Entity root, const std::string &path) {
   entities.insert(entities.end(), descendants.begin(), descendants.end());
   std::vector<Entity> saved;
   json list = entitiesToJson(entities, root, &saved);
+  noteFileBefore(resolved);
   if (!writeFile(resolved, std::move(list)))
     return false;
 

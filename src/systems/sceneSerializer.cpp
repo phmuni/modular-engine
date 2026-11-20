@@ -465,6 +465,7 @@ bool SceneSerializer::savePrefab(Entity root, const std::string &path) const {
   std::vector<Entity> entities{root};
   const auto descendants = m_systemManager.getSystem<TransformSystem>().getDescendants(m_componentManager, root);
   entities.insert(entities.end(), descendants.begin(), descendants.end());
+  noteFileBefore(EngineConfig::resolveAsset(path));
   return writeFile(path, entitiesToJson(entities, root));
 }
 

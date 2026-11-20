@@ -9,6 +9,7 @@
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
+#include "systems/prefabFileEdit.h"
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -107,6 +108,14 @@ public:
   // Rereads the prefab files in use that changed on disk and updates their instances; returns how many it updated.
   // Only a stat per file, but it is not free: the editor calls it a few times a second while it is open.
   size_t refreshPrefabs();
+  // Undo of prefab files. While a journal is on, applyInstance and savePrefab note what each file held before they
+  // wrote it; endFileJournal returns those files (first content before, content at the end after) and switches it
+  // off. Engine::beginCheckpoint/endCheckpoint use it, so an undo step also covers the prefab files it wrote.
+  void beginFileJournal();
+  std::vector<PrefabFileEdit> endFileJournal();
+  // Puts a prefab file back as the journal saw it (nothing: deletes it) and makes the cache match, without touching
+  // the instances: undo and redo restore those with the scene
+  bool restorePrefabFile(const std::string &resolvedPath, const std::optional<std::string> &content);
   // The entity and its descendants as scene-file text (what the editor copies to the clipboard), the root keeping its
   // place in the world but not its parent; empty if the entity does not exist
   std::string copyToJson(Entity root) const;
@@ -155,6 +164,10 @@ private:
   mutable std::unordered_map<std::string, PrefabFile> m_prefabFiles;
   // Set while save() writes a scene: PrefabInstance then holds the overrides too (not wanted in undo copies)
   mutable bool m_writeOverrides = false;
+  bool m_journaling = false;
+  mutable std::vector<PrefabFileEdit> m_journal; // mutable: savePrefab is const
+  // Notes the file's content before a write, while the journal is on (once per file)
+  void noteFileBefore(const std::string &resolvedPath) const;
   // The overrides read from a scene file, by entity, until load() has brought the instances up to date
   std::vector<std::pair<Entity, json>> m_loadedOverrides;
 

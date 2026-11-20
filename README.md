@@ -78,7 +78,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Navigation**             | A walkable grid built from the physics world and A* paths around obstacles, smoothed (`engine.navigation().findPath`, `nav.path` in Lua), drawn by the editor's "Show navigation" |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
 | **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
-| **Linked Prefabs**         | Instances remember their prefab file and follow it when it changes (in the editor or on disk), keeping what they changed themselves; Apply, Revert and Unpack in the Properties panel |
+| **Linked Prefabs**         | Instances remember their prefab file and follow it when it changes (in the editor or on disk), keeping what they changed themselves; Apply, Revert and Unpack in the Properties panel (undoing an Apply puts the prefab file back too) |
 | **Asset Browser**          | The editor's Assets panel lists `assets/` by kind with a search box: drag models and prefabs into the view, scripts and sounds onto entities, double-click to open |
 | **Multi-select**           | Ctrl/Cmd+click, Shift+click ranges and a box in the view select several entities; the gizmo, Properties, duplicate, copy, paste and delete work on all of them |
 | **Collisions**             | Axis-aligned boxes (`withCollision`, or fitted to the model with `withModelCollision`), queried by component pair (`forEachCollision<Bullet, Enemy>`) and by ray (`raycast<Enemy>`) |

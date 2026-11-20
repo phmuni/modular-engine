@@ -314,7 +314,7 @@ void EditorUISystem::renderPrefabLink(Engine &engine, SystemManager &systemManag
     }
   }
 
-  // Each is one edit (a click on the panel opened the undo step); undo does not touch the prefab file
+  // Each is one edit (a click on the panel opened the undo step); Apply's step also holds the prefab file (see Engine::beginCheckpoint)
   if (ImGui::SmallButton("Apply")) {
     serializer.applyInstance(root);
     m_overrideTime = -1000.0;

@@ -23,6 +23,7 @@
 #include "systems/gameUI.h"
 #include "systems/navigationSystem.h"
 #include "systems/physicsSystem.h"
+#include "systems/prefabFileEdit.h"
 #include "systems/resourceSystem.h"
 #include "systems/stateSystem.h"
 #include <SDL3/SDL_events.h>
@@ -420,6 +421,9 @@ public:
   // Scripts are not restarted by undo (their Lua state stays; entity scripts follow their components as usual), the
   // viewport camera stays where it is, and the history survives Play and Stop but is not recorded or used while
   // testing. Loading a scene clears it.
+  // An edit that writes a prefab file (Apply on a linked prefab, Save as prefab) is one step with the file: undo
+  // writes its previous content back (or deletes a file the edit created) and redo writes it again, with the
+  // instances following as the scene is restored. Edits made to the file outside the editor in between are lost.
   static constexpr size_t kMaxUndoSteps = 50;
   void beginCheckpoint();
   void endCheckpoint();
@@ -591,6 +595,9 @@ private:
     EntityManager entities;
     Entity activeCamera = -1;
     std::vector<uint32_t> materials; // the models' materials, kept alive while the snapshot exists
+    // Undo history only: the prefab files the edit this step covers wrote (Apply). Undo puts their `before` back,
+    // redo their `after`.
+    std::vector<PrefabFileEdit> files;
 
     // Move-only (see ComponentManager::Snapshot), so the undo history's vectors move it rather than try to copy
     SceneSnapshot() = default;
