@@ -3,7 +3,7 @@
 // A Lua project is a folder with project.json, assets/ and bin/, where this executable sits (renamed after the
 // game, see tools/new_game.py). project.json says where the game starts:
 //   { "name": "MyGame", "scene": "scenes/level.json", "script": "scripts/game.lua", "input": "input.json" }
-// (paths relative to assets/). The scene loads first, then the game script runs (onStart, then onUpdate every frame),
+// (paths relative to assets/). An optional "layers" sets the collision layers (see CollisionLayers::fromJson). The scene loads first, then the game script runs (onStart, then onUpdate every frame),
 // and the entities' own scripts come with the scene. The editor (F2), Play and Stop work as in any game.
 
 #include "foundation/core/config.h"
@@ -23,6 +23,7 @@ struct Project {
   std::string scene;
   std::string script;
   std::string input;
+  nlohmann::json layers; // null when the project does not set any
 };
 
 std::string inAssets(const std::string &path) { return path.empty() ? path : "../assets/" + path; }
@@ -41,6 +42,8 @@ bool readProject(Project &project, std::string &error) {
     project.scene = json.value("scene", "");
     project.script = json.value("script", "");
     project.input = json.value("input", "");
+    if (json.contains("layers"))
+      project.layers = json["layers"];
   } catch (const std::exception &exception) {
     error = path + " is not valid JSON: " + exception.what();
     return false;
@@ -55,6 +58,8 @@ public:
   void setup(Engine &engine) override {
     engine.setWindowTitle(m_project.name);
     engine.setGameName(m_project.name); // where the save data is kept
+    if (!m_project.layers.is_null())
+      engine.layers().fromJson(m_project.layers); // before the scene: its bodies are made on these layers
     engine.setState(Toggle::CameraMovement, false); // the game's scripts drive the camera
     if (!m_project.input.empty() && std::filesystem::exists(EngineConfig::resolvePath(inAssets(m_project.input))))
       engine.input().loadBindings(inAssets(m_project.input));

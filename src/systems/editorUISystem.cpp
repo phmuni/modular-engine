@@ -19,6 +19,7 @@
 #include "components/tags.h"
 #include "components/transform.h"
 #include "foundation/core/engine.h"
+#include "foundation/core/logger.h"
 #include "systems/modelQueries.h"
 #include "systems/navigationSystem.h"
 #include "systems/scriptSystem.h"
@@ -301,6 +302,26 @@ void EditorUISystem::renderStatsOverlay(float rightInset) {
   ImGui::End();
 }
 
+namespace {
+// A dropdown of the collision layers; true when another was picked. A name no layer has (a scene made for other
+// layers) is shown as it is, and counts as "default" until changed.
+bool layerCombo(const char *label, std::string &layer, const CollisionLayers &layers) {
+  bool changed = false;
+  const std::string shown = layers.indexOf(layer) < 0 ? layer + " (no such layer)" : layer;
+  if (ImGui::BeginCombo(label, shown.c_str())) {
+    for (const std::string &name : layers.names())
+      if (ImGui::Selectable(name.c_str(), name == layer)) {
+        layer = name;
+        changed = true;
+      }
+    ImGui::EndCombo();
+  }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Which layers it collides with is set in Settings, Collision layers");
+  return changed;
+}
+} // namespace
+
 void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
                                          ComponentManager &componentManager) {
   auto &state = systemManager.getSystem<StateSystem>();
@@ -401,6 +422,65 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     ImGui::TextDisabled("[Tab]");
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Hides every panel and keeps the editor going: click to select, the gizmo, flying the camera");
+  }
+
+  if (ImGui::CollapsingHeader("Collision layers")) {
+    CollisionLayers &layers = engine.layers();
+    ImGui::TextDisabled("Checked pairs collide. An entity picks its layer in its own panel.");
+    std::string removed;
+    if (ImGui::BeginTable("##layerMatrix", layers.count() + 1,
+                          ImGuiTableFlags_ScrollX | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit |
+                              ImGuiTableFlags_RowBg)) {
+      ImGui::TableSetupScrollFreeze(1, 0);
+      ImGui::TableSetupColumn("");
+      for (int j = 0; j < layers.count(); ++j)
+        ImGui::TableSetupColumn(layers.name(j).c_str());
+      ImGui::TableHeadersRow();
+      for (int i = 0; i < layers.count(); ++i) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::PushID(i);
+        ImGui::TextUnformatted(layers.name(i).c_str());
+        if (i >= CollisionLayers::kBuiltInLayers) {
+          ImGui::SameLine();
+          if (ImGui::SmallButton("x") )
+            removed = layers.name(i);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Remove this layer; what is on it goes back to \"default\"");
+        }
+        // The matrix is symmetric: one checkbox per pair, on and below the diagonal
+        for (int j = 0; j <= i; ++j) {
+          ImGui::TableSetColumnIndex(j + 1);
+          ImGui::PushID(j);
+          bool collide = layers.collide(i, j);
+          if (ImGui::Checkbox("##pair", &collide))
+            layers.setCollide(layers.name(i), layers.name(j), collide);
+          ImGui::PopID();
+        }
+        ImGui::PopID();
+      }
+      ImGui::EndTable();
+    }
+    if (!removed.empty())
+      layers.remove(removed);
+    static char newLayer[32] = "";
+    ImGui::SetNextItemWidth(140.0f);
+    const bool enter = ImGui::InputText("##newLayer", newLayer, sizeof(newLayer), ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    if ((ImGui::Button("Add layer") || enter) && newLayer[0] != '\0') {
+      layers.add(newLayer);
+      newLayer[0] = '\0';
+    }
+    // Lua projects keep their layers in project.json
+    const std::string projectPath = EngineConfig::resolvePath("../project.json");
+    if (std::filesystem::exists(projectPath)) {
+      if (ImGui::Button("Save to project.json") && !layers.saveToProjectFile(projectPath))
+        LOG_W("[Editor] Could not write the layers to %s", projectPath.c_str());
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Layers are not part of the scene: they load with the project");
+    } else {
+      ImGui::TextDisabled("Not saved: a C++ game sets its layers in code (engine.layers())");
+    }
   }
 
   if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1825,6 +1905,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         ImGui::Separator();
         auto &col = componentManager.get<Collision>(selectedEntity);
         ImGui::Checkbox("Static", &col.isStatic);
+        layerCombo("Layer##col", col.layer, engine.layers());
         ImGui::DragFloat3("Min##col", &col.min.x, 0.05f);
         ImGui::DragFloat3("Max##col", &col.max.x, 0.05f);
       }
@@ -1905,6 +1986,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         ImGui::Checkbox("Sensor##body", &body.sensor);
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("Reports contacts but lets things pass through");
+        layerCombo("Layer##body", body.layer, engine.layers());
         componentManager.get<RigidBody>(selectedEntity) = body;
       }
     }
@@ -2010,6 +2092,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         ImGui::DragFloat("Height##character", &character.height, 0.01f, 0.1f, 10.0f, "%.2f");
         ImGui::SliderFloat("Max slope##character", &character.maxSlope, 0.0f, 89.0f, "%.0f deg");
         ImGui::DragFloat("Step height##character", &character.stepHeight, 0.01f, 0.0f, 2.0f, "%.2f");
+        layerCombo("Layer##character", character.layer, engine.layers());
         ImGui::Text("On ground: %s   speed: %.2f", character.onGround ? "yes" : "no", glm::length(character.velocity));
       }
     }
@@ -2017,7 +2100,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
 
   // Skybox
   if (!earlyOut && componentManager.has<Skybox>(selectedEntity)) {
-    if (ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Skybox / Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
       if (ImGui::SmallButton("Remove##sky")) {
         componentManager.removeComponent<Skybox>(selectedEntity);
         earlyOut = true;
@@ -2042,6 +2125,32 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         ImGui::DragFloat("Intensity##sky", &sky.intensity, 0.02f, 0.0f, 20.0f, "%.2f");
         ImGui::SliderFloat("Rotation##sky", &sky.rotation, -180.0f, 180.0f, "%.0f deg");
         ImGui::ColorEdit3("Sky color##sky", &sky.color.x); // the background; the panorama draws over it
+
+        ImGui::Separator();
+        ImGui::Checkbox("Fog##sky", &sky.fog.enabled);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Lit things blend toward the fog color with distance from the camera");
+        if (sky.fog.enabled) {
+          int mode = static_cast<int>(sky.fog.mode);
+          ImGui::Combo("Mode##fog", &mode, "Linear\0Exponential\0");
+          sky.fog.mode = static_cast<FogMode>(mode);
+          ImGui::Checkbox("Match sky color##fog", &sky.fog.matchSky);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Distant things fade into the sky color; a panorama is not matched, pick its color");
+          if (!sky.fog.matchSky)
+            ImGui::ColorEdit3("Fog color##fog", &sky.fog.color.x);
+          if (sky.fog.mode == FogMode::Linear) {
+            ImGui::DragFloat("Start##fog", &sky.fog.start, 0.5f, 0.0f, 10000.0f, "%.1f");
+            ImGui::DragFloat("Finish##fog", &sky.fog.finish, 0.5f, 0.0f, 10000.0f, "%.1f");
+          } else {
+            ImGui::DragFloat("Density##fog", &sky.fog.density, 0.0005f, 0.0f, 1.0f, "%.4f");
+          }
+        }
+        ImGui::Text("Ambient light");
+        ImGui::ColorEdit3("Color##ambient", &sky.ambientColor.x);
+        ImGui::DragFloat("Intensity##ambient", &sky.ambientIntensity, 0.01f, 0.0f, 5.0f, "%.2f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Added to every Light's own ambient; 0 adds nothing");
       }
     }
   }
@@ -2120,7 +2229,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
           componentManager.addInPlace<Animator>(selectedEntity);
       }
       if (!componentManager.has<Skybox>(selectedEntity)) {
-        if (ImGui::Button("+ Skybox", ImVec2(-1, 0))) {
+        if (ImGui::Button("+ Skybox / Environment", ImVec2(-1, 0))) {
           componentManager.addInPlace<Skybox>(selectedEntity);
         }
       }

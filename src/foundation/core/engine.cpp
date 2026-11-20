@@ -442,9 +442,9 @@ std::vector<std::string> Engine::getAnimationClips(Entity entity) {
 }
 
 std::optional<RayHit> Engine::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
-                                      const std::function<bool(Entity)> &accept) {
+                                      const std::function<bool(Entity)> &accept, uint32_t layerMask) {
   return m_systemManager.getSystem<CollisionSystem>().raycast(origin, direction, maxDistance, m_componentManager,
-                                                             accept);
+                                                             accept, layerMask);
 }
 
 std::optional<Engine::Ray> Engine::screenRay(glm::vec2 windowPosition) {
@@ -1000,6 +1000,8 @@ GameEntity Engine::create(std::string_view name, const EntityDesc &desc) {
   if (!desc.script.empty())
     builder.withScript(desc.script);
   GameEntity created(*this, builder.build());
+  if (!desc.layer.empty())
+    created.setLayer(desc.layer);
   for (const std::string &tag : desc.tags)
     created.addTag(tag);
   for (const std::string &component : desc.components) {
@@ -1020,31 +1022,56 @@ GameEntity Engine::spawn(std::string_view prefabPath, glm::vec3 position, glm::v
   return spawned == -1 ? GameEntity() : GameEntity(*this, spawned);
 }
 
-void Engine::setSkyColor(const glm::vec3 &color) {
+Skybox &Engine::sceneSky() {
   Skybox *sky = nullptr;
   m_componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
     if (!sky && !has<Hidden>(entity))
       sky = &skybox;
   });
-  if (sky) {
-    sky->color = color;
-    return;
-  }
+  if (sky)
+    return *sky;
   const Entity entity = createEntity();
   addComponent<Name>(entity, "Sky");
-  addComponent<Skybox>(entity).color = color;
+  return addComponent<Skybox>(entity);
 }
 
-glm::vec3 Engine::getSkyColor() {
-  glm::vec3 color(0.0f);
-  bool found = false;
+const Skybox *Engine::findSceneSky() {
+  const Skybox *sky = nullptr;
   m_componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
-    if (!found && !has<Hidden>(entity)) {
-      color = skybox.color;
-      found = true;
-    }
+    if (!sky && !has<Hidden>(entity))
+      sky = &skybox;
   });
-  return color;
+  return sky;
+}
+
+void Engine::setSkyColor(const glm::vec3 &color) { sceneSky().color = color; }
+
+glm::vec3 Engine::getSkyColor() {
+  const Skybox *sky = findSceneSky();
+  return sky ? sky->color : glm::vec3(0.0f);
+}
+
+void Engine::setFog(const Fog &fog) { sceneSky().fog = fog; }
+
+Fog Engine::getFog() {
+  const Skybox *sky = findSceneSky();
+  return sky ? sky->fog : Fog();
+}
+
+void Engine::setAmbient(const glm::vec3 &color, float intensity) {
+  Skybox &sky = sceneSky();
+  sky.ambientColor = color;
+  sky.ambientIntensity = intensity;
+}
+
+glm::vec3 Engine::getAmbientColor() {
+  const Skybox *sky = findSceneSky();
+  return sky ? sky->ambientColor : glm::vec3(1.0f);
+}
+
+float Engine::getAmbientIntensity() {
+  const Skybox *sky = findSceneSky();
+  return sky ? sky->ambientIntensity : 0.0f;
 }
 
 void Engine::enablePauseMenu(bool enabled) { m_systemManager.getSystem<PauseMenu>().setEnabled(enabled); }
@@ -1120,9 +1147,9 @@ void Engine::registerSystems() {
   m_systemManager.insert<SceneSystem>(m_entityManager, m_componentManager, m_systemManager);
   m_systemManager.insert<SceneSerializer>(m_entityManager, m_componentManager, m_systemManager);
   m_systemManager.insert<ParticleSystem>(m_componentManager);
-  m_systemManager.insert<CollisionSystem>();
+  m_systemManager.insert<CollisionSystem>(m_layers);
   m_systemManager.insert<PhysicsSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>(),
-                                        m_systemManager.getSystem<TransformSystem>());
+                                        m_systemManager.getSystem<TransformSystem>(), m_layers);
   m_systemManager.insert<NavigationSystem>(m_componentManager, m_systemManager.getSystem<PhysicsSystem>());
   m_systemManager.insert<AnimationSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>());
   m_systemManager.insert<ScriptSystem>(*this);
