@@ -105,6 +105,17 @@ bool GameUI::onClick(const std::string &id, std::function<void()> handler) {
 bool GameUI::loadFont(const std::string &path, bool fallback) { return m_impl->engine.loadUIFont(path, fallback); }
 
 void GameUI::pauseMenu(bool enabled) { m_impl->engine.enablePauseMenu(enabled); }
-void GameUI::openPauseMenu() { m_impl->engine.openPauseMenu(); }
+void GameUI::openPauseMenu(const std::string &screen) { m_impl->engine.pauseMenu().open(screen); }
 void GameUI::closePauseMenu() { m_impl->engine.closePauseMenu(); }
 bool GameUI::isPaused() const { return m_impl->engine.isPauseMenuOpen(); }
+bool GameUI::isPauseMenuOpen() const { return m_impl->engine.isPauseMenuOpen(); }
+void GameUI::pauseMenu(const PauseMenuOptions &options) { m_impl->engine.pauseMenu().configure(options); }
+void GameUI::onPauseMenuOpened(std::function<void()> callback) {
+  m_impl->engine.pauseMenu().onOpened(std::move(callback));
+}
+void GameUI::onPauseMenuClosed(std::function<void()> callback) {
+  m_impl->engine.pauseMenu().onClosed(std::move(callback));
+}
+void GameUI::onPauseMenuAction(std::function<void(const std::string &)> callback) {
+  m_impl->engine.pauseMenu().onAction(std::move(callback));
+}

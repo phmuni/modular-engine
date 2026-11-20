@@ -31,6 +31,7 @@
 #include "systems/navigationSystem.h"
 #include "systems/particleSystem.h"
 #include "systems/pauseMenu.h"
+#include "systems/playerSettings.h"
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/saveData.h"
@@ -142,9 +143,12 @@ bool Engine::initialize() {
 void Engine::run(App &app) {
   m_app = &app;
   try {
-    // The game's defaults first, so what a player saved (applied in setup, or in startWindow) comes after them
+    // The game's defaults first (project.json's, configured before initialize), then what the player saved over them,
+    // then the game's setup. The window's saved size and place come with startWindow, once setup is done.
     if (m_windowConfig.fullscreen)
       m_systemManager.getSystem<WindowSystem>().setFullscreen(true);
+    m_systemManager.getSystem<PlayerSettings>().captureDefaults();
+    m_systemManager.getSystem<PlayerSettings>().applySaved();
     m_app->setup(*this);
     startWindow();
     bool running = true;
@@ -310,11 +314,11 @@ void Engine::update(bool &isRunning, bool pollInput) {
   // Before the pause state is read below; while it is open the game sees no input
   auto &pauseMenu = m_systemManager.getSystem<PauseMenu>();
   pauseMenu.update(inputSystem.wasEscapePressed());
-  inputSystem.setGameInputBlocked(pauseMenu.isOpen());
+  inputSystem.setGameInputBlocked(pauseMenu.blocksInput());
 
   auto &state = m_systemManager.getSystem<StateSystem>();
   // A cursor the game hid comes back where it has to be clicked
-  m_systemManager.getSystem<WindowSystem>().setCursorVisible(m_cursorVisible || pauseMenu.isOpen() ||
+  m_systemManager.getSystem<WindowSystem>().setCursorVisible(m_cursorVisible || pauseMenu.showsCursor() ||
                                                               state.isToggled(Toggle::ShowUI));
   // Upload models whose background reads finished
   m_systemManager.getSystem<ResourceSystem>().update();
@@ -651,7 +655,7 @@ bool Engine::isColliding(Entity a, Entity b) {
 
 void Engine::setMouseCaptured(bool captured) {
   auto &pauseMenu = m_systemManager.getSystem<PauseMenu>();
-  if (pauseMenu.isOpen())
+  if (pauseMenu.showsCursor())
     pauseMenu.setCursorLockOnClose(captured); // the menu has the mouse now; the game gets what it asked for after
   else
     setState(Toggle::CursorLock, captured);
@@ -1224,8 +1228,16 @@ void Engine::enablePauseMenu(bool enabled) { m_systemManager.getSystem<PauseMenu
 void Engine::openPauseMenu() { m_systemManager.getSystem<PauseMenu>().open(); }
 void Engine::closePauseMenu() { m_systemManager.getSystem<PauseMenu>().close(); }
 bool Engine::isPauseMenuOpen() { return m_systemManager.getSystem<PauseMenu>().isOpen(); }
+PauseMenu &Engine::pauseMenu() { return m_systemManager.getSystem<PauseMenu>(); }
+PlayerSettings &Engine::settings() { return m_systemManager.getSystem<PlayerSettings>(); }
 
-void Engine::setGameName(std::string_view name) { m_systemManager.getSystem<SaveData>().setGameName(name); }
+void Engine::setGameName(std::string_view name) {
+  m_systemManager.getSystem<SaveData>().setGameName(name);
+  // A game that names itself in setup has the player's choices from its own save applied now (the engine applied those
+  // of the default name before setup); before run() they are applied there
+  if (m_app)
+    m_systemManager.getSystem<PlayerSettings>().applySaved();
+}
 SaveData &Engine::saveData() { return m_systemManager.getSystem<SaveData>(); }
 
 void Engine::setWindowTitle(std::string_view title) {
@@ -1433,6 +1445,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<AudioSystem>(m_componentManager);
   m_systemManager.insert<GameUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow());
   m_systemManager.insert<SaveData>();
+  m_systemManager.insert<PlayerSettings>(*this);
   m_systemManager.insert<PauseMenu>(*this);
   m_systemManager.insert<EditorUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
                                          m_systemManager.getSystem<WindowSystem>().getContext());

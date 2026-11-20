@@ -159,7 +159,7 @@ public:
   void setup(Engine &engine) override {
     engine.setWindowTitle("MyGame");
     engine.setGameName("MyGame");  // the folder the saved data (engine.saveData()) is kept in
-    engine.ui().pauseMenu(true);   // Escape: Resume, Options (volumes, fullscreen, vsync) and Quit
+    engine.ui().pauseMenu(true);   // Escape: the menu in assets/ui/pauseMenu.rml (Resume, Options, Quit)
 
     // Default bindings, keyboard and gamepad; assets/input.json (if there) replaces them, no rebuild needed
     auto &input = engine.input();

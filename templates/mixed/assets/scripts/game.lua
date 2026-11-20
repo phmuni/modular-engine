@@ -5,7 +5,7 @@ local COINS = 8
 local RING_RADIUS = 7
 
 function onStart()
-  ui.pauseMenu(true) -- Escape: Resume, Options (volumes, fullscreen, vsync) and Quit
+  ui.pauseMenu(true) -- Escape: the menu in assets/ui/pauseMenu.rml (Resume, Options, Quit)
   game.score = 0
   game.best = save.get("bestScore", 0) -- saved data: still there the next time the game runs
   ui.load("ui/hud.rml")

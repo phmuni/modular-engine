@@ -49,6 +49,16 @@ onReload = nil
 ---@type fun(self: Entity, old: string, new: string)
 onStateChanged = nil
 
+---Game script only: the pause menu opened.
+---@type fun()
+onPauseMenuOpened = nil
+---Game script only: the pause menu closed.
+---@type fun()
+onPauseMenuClosed = nil
+---Game script only: a button of the pause menu's document asked for `action('name')`.
+---@type fun(name: string)
+onPauseMenuAction = nil
+
 -- vec3 ---------------------------------------------------------------------------------------------------------------
 
 ---A 3D vector (positions, rotations in degrees, colors 0-1, velocities).
@@ -1081,6 +1091,79 @@ function save.remove(key) end
 ---@return boolean
 function save.write() end
 
+-- settings -----------------------------------------------------------------------------------------------------------
+
+---The player's options, each by name: masterVolume, musicVolume, effectsVolume (0 to 1), resolution (a choice of window
+---sizes, "1920 x 1080"), renderScale (0.5 to 2), msaa (a choice: 0, 2, 4, 8), fxaa, fsr, fsrSharpness (0 to 2), ssao,
+---ssaoQuality (a choice: "low", "medium", "high"), fullscreen and vsync. Choices from the list are set by value or by
+---their text (`settings.set("msaa", "MSAA 4x")`). What `set` applies is kept in the save data (the "engine.*" keys), and
+---the next run starts with it: it wins over project.json's defaults. The pause menu's document is built on these.
+---@class settings
+settings = {}
+
+---Every setting's name.
+---@return string[]
+function settings.names() end
+
+---Whether there is a setting of that name.
+---@param name string
+---@return boolean
+function settings.has(name) end
+
+---The current value: a number, a boolean, or for a choice its value (nil for a name that is not a setting).
+---@param name string
+---@return number|boolean|string|nil
+function settings.get(name) end
+
+---Applies a value and keeps it in the save data. A number is clamped and rounded to its step. False if the name is not a
+---setting or the value does not fit.
+---@param name string
+---@param value number|boolean|string
+---@return boolean
+function settings.set(name, value) end
+
+---One step up (1) or down (-1): a number by its step (it stops at the ends), a choice to the next (around the ends),
+---a boolean flips. Kept in the save data like `set`.
+---@param name string
+---@param direction? integer Defaults to 1
+---@return boolean
+function settings.step(name, direction) end
+
+---The texts of the choices of a list ("Off", "MSAA 2x"...), empty for a number or a boolean.
+---@param name string
+---@return string[]
+function settings.choices(name) end
+
+---What to show for the current value: "MSAA 4x", "1920 x 1080", "75%", "On".
+---@param name string
+---@return string
+function settings.label(name) end
+
+---Whether it matters now (FSR's sharpness while FSR is off or the scene is at full size, the window's size in
+---fullscreen).
+---@param name string
+---@return boolean
+function settings.enabled(name) end
+
+---"number", "bool" or "choice".
+---@param name string
+---@return string
+function settings.kind(name) end
+
+---Min, max and step of a number (zeros for the others).
+---@param name string
+---@return number min
+---@return number max
+---@return number step
+function settings.range(name) end
+
+---Back to the game's default (project.json's, or the engine's) and out of the save data; with no name, all of them.
+---@param name? string
+function settings.reset(name) end
+
+---Resets every setting.
+function settings.resetAll() end
+
 -- ui -----------------------------------------------------------------------------------------------------------------
 
 ---RmlUi documents (.rml), changed by element id.
@@ -1098,17 +1181,34 @@ function ui.load(path) end
 ---@return boolean ok False if the file could not be read
 function ui.loadFont(path, fallback) end
 
----Enables the ready-made pause menu (Resume, Options, Quit): Escape opens it.
----@param enabled? boolean Defaults to true
-function ui.pauseMenu(enabled) end
+---@class PauseMenuOptions
+---@field enabled? boolean Escape opens it (default true)
+---@field document? string The menu's document, relative to assets/. Default: the project's ui/pauseMenu.rml, else the engine's
+---@field pause? boolean Opening pauses the game like F7 (default true); false: it keeps running under the menu
+---@field freeCursor? boolean Opening frees the mouse and shows the cursor (default true)
+---@field blockInput? boolean Keys and clicks do not reach the game while it is open (default true)
+---@field escape? boolean Escape opens, steps back and closes it (default true); false: only code does
+
+---Sets up the pause menu: Escape opens it. `true`/`false` turns it on or off with the defaults, a table sets its options.
+---The document (assets/ui/pauseMenu.rml in a new project) is written against the data model "pause_menu":
+---`settings.<name>`, `labels.<name>`, `enabled.<name>`, `screen`, and the events `set('name', value)`,
+---`step('name', 1)`, `toggle('name')`, `show('screen')`, `back()`, `resume()`, `quit()` and `action('name')`.
+---`action` calls the game script's `onPauseMenuAction(name)`.
+---@param options? boolean|PauseMenuOptions Defaults to true
+function ui.pauseMenu(options) end
 
 ---Opens the pause menu from code (works without ui.pauseMenu).
-function ui.openPauseMenu() end
+---@param screen? string The screen to start on, "main" by default (a document can have more: "options")
+function ui.openPauseMenu(screen) end
 
 ---Closes the pause menu.
 function ui.closePauseMenu() end
 
 ---Whether the pause menu is open.
+---@return boolean
+function ui.isPauseMenuOpen() end
+
+---The same as ui.isPauseMenuOpen (the menu pauses the game by default).
 ---@return boolean
 function ui.isPaused() end
 

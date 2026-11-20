@@ -7,8 +7,8 @@
 // optional "window" the window: { "width": 1280, "height": 720, "fullscreen": false, "renderScale": 1.0 }, every field
 // optional (see Engine::configureWindow), and an optional "graphics": { "msaa": 2, "fxaa": false, "fsr": false,
 // "fsrSharpness": 0.2, "ssao": true, "ssaoQuality": "medium" } the antialiasing, upscaling (see
-// Engine::configureGraphics) and ambient occlusion ("low", "medium" or "high"); what the player picks in the pause
-// menu wins. The scene loads first, then the game script runs (onStart, then onUpdate every frame),
+// Engine::configureGraphics) and ambient occlusion ("low", "medium" or "high"); what the player picked
+// (PlayerSettings, kept in the save data) wins. The scene loads first, then the game script runs (onStart, then onUpdate every frame),
 // and the entities' own scripts come with the scene. The editor (F2), Play and Stop work as in any game.
 
 #include "foundation/core/config.h"
@@ -89,14 +89,6 @@ public:
 
   void setup(Engine &engine) override {
     engine.setWindowTitle(m_project.name);
-    engine.setGameName(m_project.name); // where the save data is kept
-    if (m_project.ssao)
-      engine.setSsao(*m_project.ssao); // the pause menu's saved choice comes after, and wins
-    if (m_project.ssaoQuality) {
-      SsaoSettings settings = engine.ssaoSettings();
-      settings.quality = *m_project.ssaoQuality;
-      engine.setSsaoSettings(settings);
-    }
     if (!m_project.layers.is_null())
       engine.layers().fromJson(m_project.layers); // before the scene: its bodies are made on these layers
     engine.setState(Toggle::FreeCamera, false); // the game's scripts drive the camera
@@ -143,6 +135,15 @@ int main(int argc, char **argv) {
   if (!engine.initialize())
     return 1;
   engine.applyCommandLine(commandLine);
+  // The game's defaults, before Engine::run applies the player's saved choices over them (and before setup)
+  engine.setGameName(project.name); // where the save data is kept
+  if (project.ssao)
+    engine.setSsao(*project.ssao);
+  if (project.ssaoQuality) {
+    SsaoSettings settings = engine.ssaoSettings();
+    settings.quality = *project.ssaoQuality;
+    engine.setSsaoSettings(settings);
+  }
   LuaGame game(project);
   engine.run(game);
   return 0;

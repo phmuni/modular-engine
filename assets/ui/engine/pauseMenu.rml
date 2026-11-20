@@ -3,85 +3,99 @@
 	<title>Pause menu</title>
 	<link type="text/rcss" href="pauseMenu.rcss"/>
 </head>
-<!-- The engine's pause menu (PauseMenu in src/systems/pauseMenu.cpp binds "engine_pause" and shows this document).
-     A game can ship its own copy as assets/ui/engine/pauseMenu.rml: it only has to use the same bindings. -->
-<body data-model="engine_pause">
-	<div class="card" data-if="!options">
+<!-- The pause menu. The engine shows this document and binds the data model "pause_menu" (see src/systems/pauseMenu.h):
+       settings.<name>   the value of an option (a slider can be data-value="settings.masterVolume")
+       labels.<name>     its text: "MSAA 4x", "75%", "On"
+       enabled.<name>    whether it matters now (the FSR sharpness only while FSR is on)
+       screen            "main" or any name you give to a div with data-if="screen == 'name'"
+     and the events set('name', value), step('name', 1), toggle('name'), show('screen'), back(), resume(), quit() and
+     action('name'), which calls onPauseMenuAction(name) in the game script. The options are listed in the README
+     (settings.names() in Lua). This file is yours: change the screens, the texts and pauseMenu.rcss as you like. -->
+<body data-model="pause_menu">
+	<div class="card" data-if="screen == 'main'">
 		<div class="title">Paused</div>
-		<button data-event-click="resume">Resume</button>
-		<button data-event-click="show_options">Options</button>
-		<button class="quit" data-event-click="quit">Quit</button>
+		<button data-event-click="resume()">Resume</button>
+		<button data-event-click="show('options')">Options</button>
+		<button class="quit" data-event-click="quit()">Quit</button>
 	</div>
 
-	<div class="card wide" data-if="options">
+	<div class="card wide" data-if="screen == 'options'">
 		<div class="title">Options</div>
 
-		<div class="row">
-			<div class="name">Master</div>
-			<input type="range" min="0" max="100" step="1" data-value="master"/>
-			<div class="value">{{ master }}</div>
-		</div>
-		<div class="row">
-			<div class="name">Music</div>
-			<input type="range" min="0" max="100" step="1" data-value="music"/>
-			<div class="value">{{ music }}</div>
-		</div>
-		<div class="row">
-			<div class="name">Effects</div>
-			<input type="range" min="0" max="100" step="1" data-value="effects"/>
-			<div class="value">{{ effects }}</div>
+		<div class="columns">
+			<div class="column">
+				<div class="heading">Sound and window</div>
+				<div class="row">
+					<div class="name">Master</div>
+					<input type="range" min="0" max="1" step="0.01" data-value="settings.masterVolume"/>
+					<div class="value">{{ labels.masterVolume }}</div>
+				</div>
+				<div class="row">
+					<div class="name">Music</div>
+					<input type="range" min="0" max="1" step="0.01" data-value="settings.musicVolume"/>
+					<div class="value">{{ labels.musicVolume }}</div>
+				</div>
+				<div class="row">
+					<div class="name">Effects</div>
+					<input type="range" min="0" max="1" step="0.01" data-value="settings.effectsVolume"/>
+					<div class="value">{{ labels.effectsVolume }}</div>
+				</div>
+				<!-- The window's size: stepped through the sizes that fit the display; kept as it is in fullscreen -->
+				<div class="row" data-class-disabled="!enabled.resolution">
+					<div class="name">Window</div>
+					<button class="step" data-event-click="step('resolution', -1)">&lt;</button>
+					<div class="choice">{{ labels.resolution }}</div>
+					<button class="step" data-event-click="step('resolution', 1)">&gt;</button>
+				</div>
+				<button class="toggle" data-class-on="settings.fullscreen" data-event-click="toggle('fullscreen')">
+					Fullscreen <span class="state">{{ labels.fullscreen }}</span>
+				</button>
+				<button class="toggle" data-class-on="settings.vsync" data-event-click="toggle('vsync')">
+					VSync <span class="state">{{ labels.vsync }}</span>
+				</button>
+			</div>
+
+			<div class="column">
+				<div class="heading">Graphics</div>
+				<!-- What the 3D scene is drawn at, as a share of the screen's pixels; the menu itself always is at full size -->
+				<div class="row">
+					<div class="name">Render</div>
+					<input type="range" min="0.5" max="2" step="0.05" data-value="settings.renderScale"/>
+					<div class="value">{{ labels.renderScale }}</div>
+				</div>
+				<!-- Antialiasing: MSAA off, 2x, 4x, 8x (the GPU's maximum caps it), then the FXAA filter -->
+				<div class="row">
+					<div class="name">AA</div>
+					<button class="step" data-event-click="step('msaa', -1)">&lt;</button>
+					<div class="choice">{{ labels.msaa }}</div>
+					<button class="step" data-event-click="step('msaa', 1)">&gt;</button>
+				</div>
+				<button class="toggle" data-class-on="settings.fxaa" data-event-click="toggle('fxaa')">
+					FXAA <span class="state">{{ labels.fxaa }}</span>
+				</button>
+				<!-- FSR 1 upscaling and its sharpening, in effect when the scene renders below 100% -->
+				<button class="toggle" data-class-on="settings.fsr" data-event-click="toggle('fsr')">
+					FSR <span class="state">{{ labels.fsr }}</span>
+				</button>
+				<div class="row" data-class-disabled="!enabled.fsrSharpness">
+					<div class="name">Sharp</div>
+					<input type="range" min="0" max="2" step="0.05" data-value="settings.fsrSharpness"/>
+					<div class="value">{{ labels.fsrSharpness }}</div>
+				</div>
+				<!-- Ambient occlusion: contact shadows in the ambient light -->
+				<button class="toggle" data-class-on="settings.ssao" data-event-click="toggle('ssao')">
+					Occlusion <span class="state">{{ labels.ssao }}</span>
+				</button>
+				<div class="row" data-class-disabled="!enabled.ssaoQuality">
+					<div class="name">Quality</div>
+					<button class="step" data-event-click="step('ssaoQuality', -1)">&lt;</button>
+					<div class="choice">{{ labels.ssaoQuality }}</div>
+					<button class="step" data-event-click="step('ssaoQuality', 1)">&gt;</button>
+				</div>
+			</div>
 		</div>
 
-		<!-- The window's size: stepped through the sizes that fit the display; kept as it is in fullscreen -->
-		<div class="row" data-class-disabled="fullscreen">
-			<div class="name">Window</div>
-			<button class="step" data-event-click="resolution_prev">&lt;</button>
-			<div class="choice">{{ resolution }}</div>
-			<button class="step" data-event-click="resolution_next">&gt;</button>
-		</div>
-		<!-- What the 3D scene is drawn at, as a share of the screen's pixels; the menu itself always is at full size -->
-		<div class="row">
-			<div class="name">Render</div>
-			<input type="range" min="50" max="200" step="5" data-value="renderScale"/>
-			<div class="value">{{ renderScale }}%</div>
-		</div>
-		<div class="note">Render: {{ renderResolution }} px</div>
-
-		<!-- Antialiasing: MSAA off, 2x, 4x, 8x (the GPU's maximum caps it), then the FXAA filter -->
-		<div class="row">
-			<div class="name">AA</div>
-			<button class="step" data-event-click="aa_prev">&lt;</button>
-			<div class="choice">{{ msaaText }}</div>
-			<button class="step" data-event-click="aa_next">&gt;</button>
-		</div>
-		<button class="toggle" data-class-on="fxaa" data-event-click="toggle_fxaa">
-			FXAA <span class="state">{{ fxaa ? 'On' : 'Off' }}</span>
-		</button>
-		<!-- FSR 1 upscaling and its sharpening, in effect when the scene renders below 100% -->
-		<button class="toggle" data-class-on="fsr" data-event-click="toggle_fsr">
-			FSR <span class="state">{{ fsr ? 'On' : 'Off' }}</span>
-		</button>
-		<div class="row" data-class-disabled="renderScale >= 100 || !fsr">
-			<div class="name">Sharp</div>
-			<input type="range" min="0" max="200" step="5" data-value="fsrSharpness"/>
-			<div class="value">{{ fsrSharpnessText }}</div>
-		</div>
-		<div class="note">FSR: upscales when Render &lt; 100%</div>
-		<!-- Ambient occlusion: contact shadows in the ambient light, stepped through Off, Low, Medium and High -->
-		<div class="row">
-			<div class="name">Ambient occlusion</div>
-			<button class="step" data-event-click="ssao_prev">&lt;</button>
-			<div class="choice">{{ ssaoText }}</div>
-			<button class="step" data-event-click="ssao_next">&gt;</button>
-		</div>
-
-		<button class="toggle" data-class-on="fullscreen" data-event-click="toggle_fullscreen">
-			Fullscreen <span class="state">{{ fullscreen ? 'On' : 'Off' }}</span>
-		</button>
-		<button class="toggle" data-class-on="vsync" data-event-click="toggle_vsync">
-			VSync <span class="state">{{ vsync ? 'On' : 'Off' }}</span>
-		</button>
-		<button class="back" data-event-click="back">Back</button>
+		<button class="back" data-event-click="back()">Back</button>
 	</div>
 </body>
 </rml>

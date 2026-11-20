@@ -48,6 +48,8 @@ class Context;
 class ElementDocument;
 } // namespace Rml
 class SaveData;
+class PlayerSettings;
+class PauseMenu;
 class SceneSerializer;
 class InputSystem;
 struct Camera;
@@ -473,20 +475,27 @@ public:
   // Lato (font-family: LatoLatin) is loaded by default; fonts are used by the family name inside the file
   bool loadUIFont(std::string_view path, bool fallback = false);
 
-  // The ready-made pause menu: Resume, Options (volumes, fullscreen, vsync, kept in the saved data) and Quit.
-  // Enabled, Escape opens it (not while a text field or an editor panel has the keyboard); the game pauses like with
-  // F7, and keys and clicks stay away from the game until it closes.
+  // The pause menu (see systems/pauseMenu.h): a document of the project's (ui/pauseMenu.rml) that Escape opens once it
+  // is enabled; the game pauses like with F7, and keys and clicks stay away from the game until it closes.
+  // pauseMenu() has all of its options and callbacks; ui().pauseMenu(...) is the game API for the same.
   void enablePauseMenu(bool enabled = true);
   // To open or close it from code (a button of your own, a game-over screen); works without enablePauseMenu
   void openPauseMenu();
   void closePauseMenu();
   bool isPauseMenuOpen();
+  PauseMenu &pauseMenu();
+
+  // The player's options (volumes, window size, graphics...): see systems/playerSettings.h. Saved choices are applied
+  // when the game starts, before setup.
+  PlayerSettings &settings();
 
   // Closes the game at the end of this frame
   void quit() { m_quitRequested = true; }
 
   // Saved data: progress and settings that stay between runs (see SaveData). The name picks the folder they are kept
-  // in, so call setGameName once at start-up ("Game" until then; the Lua runner uses project.json's name).
+  // in, so call setGameName once at start-up ("Game" until then; the Lua runner uses project.json's name). Called in
+  // setup, it also applies the player's saved options (settings()) from that game's save, so call it first, before the
+  // game's own defaults.
   void setGameName(std::string_view name);
   SaveData &saveData();
 

@@ -1,0 +1,151 @@
+/* RmlUi has no default style sheet: every element starts as inline, unstyled text */
+body, div { display: block; }
+span { display: inline; }
+
+body {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	font-family: LatoLatin;
+	font-size: 16dp;
+	color: #e8f6ff;
+	/* Dims the game and takes every click while the menu is open */
+	background-color: #02040ca0;
+	pointer-events: auto;
+}
+
+.card {
+	width: 340dp;
+	padding: 28dp 32dp 26dp;
+	text-align: center;
+	background-color: #0b1630f0;
+	border: 1dp #3ee8ff55;
+	border-radius: 16dp;
+	box-shadow: #3ee8ff33 0 0 40dp 0;
+}
+.card.wide { width: 780dp; padding-top: 22dp; }
+
+/* The Options screen in two columns, so it fits a 1280 x 720 window */
+.columns { display: flex; flex-direction: row; justify-content: space-between; }
+.column { width: 338dp; }
+.heading {
+	margin-bottom: 14dp;
+	padding-bottom: 6dp;
+	text-align: left;
+	font-size: 12dp;
+	font-weight: bold;
+	letter-spacing: 3dp;
+	text-transform: uppercase;
+	color: #3ee8ff;
+	border-bottom: 1dp #3ee8ff44;
+}
+
+.title {
+	margin-bottom: 18dp;
+	font-size: 36dp;
+	font-weight: bold;
+	letter-spacing: 6dp;
+	text-transform: uppercase;
+	font-effect: glow(0dp 10dp 0dp 0dp #3ee8ff99);
+}
+
+button {
+	display: block;
+	margin: 0 auto 10dp;
+	width: 240dp;
+	padding: 10dp 0;
+	font-size: 16dp;
+	font-weight: bold;
+	letter-spacing: 3dp;
+	text-transform: uppercase;
+	text-align: center;
+	color: #0b1630;
+	border-radius: 24dp;
+	decorator: horizontal-gradient(#3ee8ff #8f7bff);
+	box-shadow: #3ee8ff55 0 4dp 18dp 0;
+	cursor: pointer;
+	transform: scale(1);
+	transition: transform 0.15s cubic-out;
+}
+button:hover { transform: scale(1.05); box-shadow: #3ee8ff99 0 4dp 26dp 0; }
+button:active { transform: scale(0.97); }
+button.quit { decorator: horizontal-gradient(#ff7aa8 #ffb03e); box-shadow: #ff4d8d55 0 4dp 18dp 0; }
+button.back { margin-top: 12dp; margin-bottom: 0; }
+
+/* An option that is off looks dimmer than one that is on */
+button.toggle { decorator: horizontal-gradient(#4a5a78 #5a6a88); color: #c9d6e6; box-shadow: none; }
+button.toggle.on { decorator: horizontal-gradient(#3ee8ff #8f7bff); color: #0b1630; box-shadow: #3ee8ff55 0 4dp 18dp 0; }
+.state { margin-left: 8dp; }
+
+/* --- Sliders ------------------------------------------------------------------------------------------- */
+
+.row {
+	display: flex;
+	align-items: center;
+	margin-bottom: 14dp;
+}
+.name {
+	width: 100dp;
+	text-align: left;
+	font-size: 13dp;
+	font-weight: bold;
+	letter-spacing: 3dp;
+	text-transform: uppercase;
+	color: #8fb4c8;
+}
+.value {
+	width: 56dp;
+	text-align: right;
+	font-weight: bold;
+	color: #ffffff;
+}
+
+input.range {
+	flex: 1 1 auto;
+	height: 24dp;
+	cursor: pointer;
+}
+input.range slidertrack {
+	height: 6dp;
+	margin-top: 9dp;
+	border-radius: 3dp;
+	background-color: #ffffff22;
+}
+input.range sliderbar {
+	width: 22dp;
+	height: 22dp;
+	margin-top: 1dp;
+	border-radius: 11dp;
+	decorator: horizontal-gradient(#7ff5ff #3ee8ff);
+	box-shadow: #3ee8ff88 0 0 10dp 0;
+}
+input.range sliderbar:hover { box-shadow: #3ee8ffcc 0 0 14dp 0; }
+input.range sliderarrowdec, input.range sliderarrowinc { display: none; }
+
+/* --- Window size selector and the render resolution note ------------------------------------------------------ */
+
+button.step {
+	flex: 0 0 auto;
+	width: 36dp;
+	margin: 0;
+	padding: 6dp 0;
+	letter-spacing: 0;
+}
+.choice {
+	flex: 1 1 auto;
+	text-align: center;
+	font-weight: bold;
+	color: #ffffff;
+}
+/* Not available (the window's size cannot be chosen in fullscreen) */
+.row.disabled { opacity: 0.4; }
+.row.disabled button.step, .row.disabled input { pointer-events: none; }
+
+.note {
+	margin: -4dp 0 16dp;
+	text-align: right;
+	font-size: 12dp;
+	color: #8fb4c8;
+}

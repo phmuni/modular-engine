@@ -25,10 +25,25 @@ body {
 	border-radius: 16dp;
 	box-shadow: #3ee8ff33 0 0 40dp 0;
 }
-.card.wide { width: 440dp; }
+.card.wide { width: 780dp; padding-top: 22dp; }
+
+/* The Options screen in two columns, so it fits a 1280 x 720 window */
+.columns { display: flex; flex-direction: row; justify-content: space-between; }
+.column { width: 338dp; }
+.heading {
+	margin-bottom: 14dp;
+	padding-bottom: 6dp;
+	text-align: left;
+	font-size: 12dp;
+	font-weight: bold;
+	letter-spacing: 3dp;
+	text-transform: uppercase;
+	color: #3ee8ff;
+	border-bottom: 1dp #3ee8ff44;
+}
 
 .title {
-	margin-bottom: 22dp;
+	margin-bottom: 18dp;
 	font-size: 36dp;
 	font-weight: bold;
 	letter-spacing: 6dp;
@@ -38,9 +53,9 @@ body {
 
 button {
 	display: block;
-	margin: 0 auto 12dp;
+	margin: 0 auto 10dp;
 	width: 240dp;
-	padding: 12dp 0;
+	padding: 10dp 0;
 	font-size: 16dp;
 	font-weight: bold;
 	letter-spacing: 3dp;
@@ -57,14 +72,14 @@ button {
 button:hover { transform: scale(1.05); box-shadow: #3ee8ff99 0 4dp 26dp 0; }
 button:active { transform: scale(0.97); }
 button.quit { decorator: horizontal-gradient(#ff7aa8 #ffb03e); box-shadow: #ff4d8d55 0 4dp 18dp 0; }
-button.back { margin-top: 20dp; margin-bottom: 0; }
+button.back { margin-top: 12dp; margin-bottom: 0; }
 
 /* An option that is off looks dimmer than one that is on */
 button.toggle { decorator: horizontal-gradient(#4a5a78 #5a6a88); color: #c9d6e6; box-shadow: none; }
 button.toggle.on { decorator: horizontal-gradient(#3ee8ff #8f7bff); color: #0b1630; box-shadow: #3ee8ff55 0 4dp 18dp 0; }
 .state { margin-left: 8dp; }
 
-/* --- Volume sliders ------------------------------------------------------------------------------------------- */
+/* --- Sliders ------------------------------------------------------------------------------------------- */
 
 .row {
 	display: flex;
@@ -72,7 +87,7 @@ button.toggle.on { decorator: horizontal-gradient(#3ee8ff #8f7bff); color: #0b16
 	margin-bottom: 14dp;
 }
 .name {
-	width: 90dp;
+	width: 100dp;
 	text-align: left;
 	font-size: 13dp;
 	font-weight: bold;

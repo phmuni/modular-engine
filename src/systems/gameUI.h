@@ -5,6 +5,7 @@
 //
 // Every call that names an element does nothing when there is none (a document not loaded yet, a typo).
 
+#include "systems/pauseMenu.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -41,12 +42,22 @@ public:
   // Calls the handler whenever the element is clicked; false if there is no such element
   bool onClick(const std::string &id, std::function<void()> handler);
 
-  // The ready-made pause menu: Escape opens it once enabled (see Engine::enablePauseMenu)
+  // The pause menu (see systems/pauseMenu.h): a document of the project's, which Escape opens once enabled.
+  // pauseMenu(true) takes the defaults; the options choose the document, whether it pauses the game, frees the cursor,
+  // blocks the game's input, and whether Escape opens it.
   void pauseMenu(bool enabled = true);
-  void openPauseMenu();
+  void pauseMenu(const PauseMenuOptions &options);
+  // The screen it starts on: "main" by default (a document's own screens, like "options")
+  void openPauseMenu(const std::string &screen = {});
   void closePauseMenu();
   // Whether the pause menu is open
   bool isPaused() const;
+  bool isPauseMenuOpen() const;
+  // The game's callbacks for what happens in the menu (Lua scripts define onPauseMenuOpened, onPauseMenuClosed and
+  // onPauseMenuAction(name) instead). The action is the name a button of the document gave to action('name').
+  void onPauseMenuOpened(std::function<void()> callback);
+  void onPauseMenuClosed(std::function<void()> callback);
+  void onPauseMenuAction(std::function<void(const std::string &)> callback);
 
 private:
   struct Impl;

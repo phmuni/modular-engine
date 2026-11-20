@@ -28,6 +28,7 @@
 #include "systems/inputSystem.h"
 #include "systems/navigationSystem.h"
 #include "systems/physicsSystem.h"
+#include "systems/playerSettings.h"
 #include "systems/renderSystem.h"
 #include "systems/saveData.h"
 #include <RmlUi/Core.h>
@@ -40,6 +41,7 @@
 #include <map>
 #include <memory>
 #include <stdexcept>
+#include <optional>
 #include <tuple>
 #include <nlohmann/json.hpp>
 #include <unordered_map>
@@ -758,6 +760,31 @@ struct ScriptSystem::Impl {
   }
 
   // A Lua function as a C++ callback: its errors are reported like any script's, and the game goes on
+  bool knownSetting(const char *where, const std::string &name) {
+    if (engine.settings().has(name))
+      return true;
+    report(where, std::string(where) + "(\"" + name + "\"): there is no such setting (settings.names() lists them)");
+    return false;
+  }
+
+  sol::object valueToLua(const PlayerSettings::Value &value) {
+    if (const bool *flag = std::get_if<bool>(&value))
+      return sol::make_object(lua, *flag);
+    if (const double *number = std::get_if<double>(&value))
+      return sol::make_object(lua, *number);
+    return sol::make_object(lua, std::get<std::string>(value));
+  }
+
+  static std::optional<PlayerSettings::Value> luaToValue(const sol::object &value) {
+    if (value.is<bool>())
+      return PlayerSettings::Value(value.as<bool>());
+    if (value.is<double>())
+      return PlayerSettings::Value(value.as<double>());
+    if (value.is<std::string>())
+      return PlayerSettings::Value(value.as<std::string>());
+    return std::nullopt;
+  }
+
   std::function<void()> callback(sol::protected_function handler, std::string where) {
     return [this, handler = std::move(handler), where = std::move(where)]() {
       const sol::protected_function_result result = handler();
@@ -1359,6 +1386,58 @@ struct ScriptSystem::Impl {
     save.set_function("remove", [this](const std::string &key) { engine.saveData().remove(key); });
     save.set_function("write", [this]() { return engine.saveData().write(); });
 
+    // settings: the player's options (see systems/playerSettings.h); a name that is not one is reported
+    sol::table settings = lua.create_named_table("settings");
+    settings.set_function("names", [this]() { return sol::as_table(engine.settings().names()); });
+    settings.set_function("has", [this](const std::string &name) { return engine.settings().has(name); });
+    settings.set_function("get", [this](const std::string &name) -> sol::object {
+      if (!knownSetting("settings.get", name))
+        return sol::lua_nil;
+      return valueToLua(engine.settings().get(name));
+    });
+    settings.set_function("set", [this](const std::string &name, sol::object value) {
+      if (!knownSetting("settings.set", name))
+        return false;
+      const std::optional<PlayerSettings::Value> converted = luaToValue(value);
+      if (!converted) {
+        report("settings.set", "settings.set(\"" + name + "\"): the value is a number, a boolean or a string");
+        return false;
+      }
+      return engine.settings().set(name, *converted);
+    });
+    settings.set_function("step", [this](const std::string &name, sol::optional<int> direction) {
+      return knownSetting("settings.step", name) && engine.settings().step(name, direction.value_or(1));
+    });
+    settings.set_function("choices", [this](const std::string &name) {
+      return sol::as_table(engine.settings().choices(name));
+    });
+    settings.set_function("label", [this](const std::string &name) {
+      return knownSetting("settings.label", name) ? engine.settings().label(name) : std::string();
+    });
+    settings.set_function("enabled", [this](const std::string &name) { return engine.settings().enabled(name); });
+    settings.set_function("kind", [this](const std::string &name) {
+      switch (engine.settings().kind(name)) {
+      case PlayerSettings::Kind::Number:
+        return "number";
+      case PlayerSettings::Kind::Choice:
+        return "choice";
+      default:
+        return "bool";
+      }
+    });
+    settings.set_function("range", [this](const std::string &name) {
+      const PlayerSettings::Range range = engine.settings().range(name);
+      return std::make_tuple(range.min, range.max, range.step);
+    });
+    // settings.reset("msaa") for one, settings.reset() for all of them
+    settings.set_function("reset", [this](sol::optional<std::string> name) {
+      if (!name)
+        engine.settings().resetAll();
+      else if (knownSetting("settings.reset", *name))
+        engine.settings().reset(*name);
+    });
+    settings.set_function("resetAll", [this]() { engine.settings().resetAll(); });
+
     // ui: RmlUi documents, changed by element id
     sol::table ui = lua.create_named_table("ui");
     ui.set_function("load", &GameUI::load, &engine.ui());
@@ -1367,11 +1446,29 @@ struct ScriptSystem::Impl {
     ui.set_function("loadFont", [this](const std::string &path, sol::optional<bool> fallback) {
       return engine.ui().loadFont(path, fallback.value_or(false));
     });
-    // The ready-made pause menu: Escape opens it once enabled (see Engine::enablePauseMenu)
-    ui.set_function("pauseMenu", [this](sol::optional<bool> enabled) { engine.ui().pauseMenu(enabled.value_or(true)); });
-    ui.set_function("openPauseMenu", &GameUI::openPauseMenu, &engine.ui());
+    // The pause menu: Escape opens it once enabled (see systems/pauseMenu.h). ui.pauseMenu(true) or a table of options;
+    // the game script's onPauseMenuOpened, onPauseMenuClosed and onPauseMenuAction(name) are called from C++
+    ui.set_function("pauseMenu", [this](sol::object arg) {
+      if (arg.is<sol::table>()) {
+        const sol::table table = arg.as<sol::table>();
+        PauseMenuOptions options;
+        options.enabled = table.get_or("enabled", options.enabled);
+        options.document = table.get_or("document", options.document);
+        options.pause = table.get_or("pause", options.pause);
+        options.freeCursor = table.get_or("freeCursor", options.freeCursor);
+        options.blockInput = table.get_or("blockInput", options.blockInput);
+        options.escape = table.get_or("escape", options.escape);
+        engine.ui().pauseMenu(options);
+      } else {
+        engine.ui().pauseMenu(arg.is<bool>() ? arg.as<bool>() : true);
+      }
+    });
+    ui.set_function("openPauseMenu", [this](sol::optional<std::string> screen) {
+      engine.ui().openPauseMenu(screen.value_or(""));
+    });
     ui.set_function("closePauseMenu", &GameUI::closePauseMenu, &engine.ui());
     ui.set_function("isPaused", &GameUI::isPaused, &engine.ui());
+    ui.set_function("isPauseMenuOpen", &GameUI::isPauseMenuOpen, &engine.ui());
     // Any value, written as Lua's tostring does (12, 1.5, true)
     ui.set_function("text", [this](const std::string &id, sol::object value) {
       engine.ui().text(id, lua["tostring"](value).get<std::string>());
@@ -1421,6 +1518,21 @@ std::vector<ScriptProperty> ScriptSystem::getProperties(Entity entity) { return 
 
 sol::state &ScriptSystem::lua() { return m_impl->lua; }
 const std::string &ScriptSystem::getLastError() const { return m_impl->lastError; }
+void ScriptSystem::pauseMenuOpened() {
+  Impl &impl = *m_impl;
+  if (impl.hasGameScript)
+    impl.call(impl.gameScript, "onPauseMenuOpened");
+}
+void ScriptSystem::pauseMenuClosed() {
+  Impl &impl = *m_impl;
+  if (impl.hasGameScript)
+    impl.call(impl.gameScript, "onPauseMenuClosed");
+}
+void ScriptSystem::pauseMenuAction(const std::string &name) {
+  Impl &impl = *m_impl;
+  if (impl.hasGameScript)
+    impl.call(impl.gameScript, "onPauseMenuAction", name);
+}
 void ScriptSystem::animationStateChanged(Entity entity, const std::string &from, const std::string &to) {
   m_impl->animationStateChanged(entity, from, to);
 }

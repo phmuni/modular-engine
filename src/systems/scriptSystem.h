@@ -43,6 +43,12 @@ public:
   // top level once; a changed file is read again.
   std::vector<ScriptProperty> getProperties(Entity entity);
 
+  // Tells the game script that the pause menu opened or closed (onPauseMenuOpened, onPauseMenuClosed), or that a button
+  // of its document asked for an action (onPauseMenuAction(name))
+  void pauseMenuOpened();
+  void pauseMenuClosed();
+  void pauseMenuAction(const std::string &name);
+
   // Tells the entity's script (onStateChanged) that its animation state machine moved from one state to another
   void animationStateChanged(Entity entity, const std::string &from, const std::string &to);
 

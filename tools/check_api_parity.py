@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fails when the C++ game API gets ahead of Lua: every public method of the facade classes (GameEntity, GameUI,
-GameCamera, GameTime, GameTween) and of Engine (src/foundation/core/engine.h) must be bound in src/systems/scriptSystem.cpp, or listed below with the reason it is C++ only.
+GameCamera, GameTime, GameTween, PlayerSettings) and of Engine (src/foundation/core/engine.h) must be bound in src/systems/scriptSystem.cpp, or listed below with the reason it is C++ only.
 Needs no build.
 
     python3 tools/check_api_parity.py
@@ -28,6 +28,7 @@ FACADES = {
     "GameCamera": ("src/systems/gameCamera.h", "camera"),
     "GameTime": ("src/systems/gameTime.h", "time"),
     "GameTween": ("src/systems/gameTween.h", "tween"),
+    "PlayerSettings": ("src/systems/playerSettings.h", "settings"),
     "Engine": ("src/foundation/core/engine.h", "engine"),
 }
 
@@ -103,6 +104,11 @@ C_PLUS_PLUS_ONLY = {
     ("GameTime", "clear"): "the engine calls it when a play session ends",
     ("GameTween", "tick"): "the engine calls it once per frame",
     ("GameTween", "clear"): "the engine calls it when a play session ends",
+    ("GameUI", "onPauseMenuOpened"): "C++ callback; Lua scripts define onPauseMenuOpened() in the game script",
+    ("GameUI", "onPauseMenuClosed"): "C++ callback; Lua scripts define onPauseMenuClosed() in the game script",
+    ("GameUI", "onPauseMenuAction"): "C++ callback; Lua scripts define onPauseMenuAction(name) in the game script",
+    ("PlayerSettings", "captureDefaults"): "the engine calls it once at start-up (Engine::run)",
+    ("PlayerSettings", "applySaved"): "the engine calls it at start-up and when the game names itself",
 }
 
 # Engine methods that stay C++ only: method -> why. Anything else public on Engine must be bound (or aliased above).
@@ -136,6 +142,8 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "scripts": "accessor of the script system",
     "layers": "accessor; physics.addLayer, setLayersCollide and layersCollide",
     "saveData": "accessor; the Lua save table",
+    "settings": "accessor; the Lua settings table",
+    "pauseMenu": "accessor of the pause menu system; the Lua ui.pauseMenu, ui.openPauseMenu... and the script callbacks",
     "getUIContext": "raw RmlUi, for C++ data models",
     "getActiveCamera": "raw Camera; the Lua camera table",
     "getSceneSerializer": "C++ game components in scene files",
