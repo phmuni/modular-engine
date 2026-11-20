@@ -31,6 +31,7 @@ ImVec4 colorOf(AssetBrowser::Kind kind) {
   case AssetBrowser::Kind::Scene: return ImVec4(0.7f, 0.9f, 0.5f, 1.0f);
   case AssetBrowser::Kind::Sound: return ImVec4(0.95f, 0.6f, 0.9f, 1.0f);
   case AssetBrowser::Kind::Script: return ImVec4(0.6f, 0.95f, 0.8f, 1.0f);
+  case AssetBrowser::Kind::Shader: return ImVec4(0.8f, 0.7f, 1.0f, 1.0f);
   case AssetBrowser::Kind::Texture: return ImVec4(1.0f, 0.7f, 0.5f, 1.0f);
   case AssetBrowser::Kind::UI: return ImVec4(0.85f, 0.85f, 0.6f, 1.0f);
   case AssetBrowser::Kind::Other: break;
@@ -55,6 +56,8 @@ AssetBrowser::Kind AssetBrowser::classify(const std::string &relativePath) {
     return Kind::Sound;
   if (extension == ".lua")
     return Kind::Script;
+  if (extension == ".glsl")
+    return Kind::Shader;
   if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".tga" || extension == ".bmp" ||
       extension == ".hdr")
     return Kind::Texture;
@@ -71,6 +74,7 @@ const char *AssetBrowser::kindName(Kind kind) {
   case Kind::Scene: return "Scene";
   case Kind::Sound: return "Sound";
   case Kind::Script: return "Script";
+  case Kind::Shader: return "Shader";
   case Kind::Texture: return "Texture";
   case Kind::UI: return "UI";
   case Kind::Other: break;
@@ -205,6 +209,7 @@ AssetBrowser::Event AssetBrowser::draw(bool appFocused) {
                                          {"Scenes", static_cast<int>(Kind::Scene)},
                                          {"Sounds", static_cast<int>(Kind::Sound)},
                                          {"Scripts", static_cast<int>(Kind::Script)},
+                                         {"Shaders", static_cast<int>(Kind::Shader)},
                                          {"Textures", static_cast<int>(Kind::Texture)},
                                          {"UI", static_cast<int>(Kind::UI)}};
   for (const FilterChoice &filter : filters) {
@@ -308,6 +313,7 @@ AssetBrowser::Event AssetBrowser::draw(bool appFocused) {
         case Kind::Prefab: ImGui::TextDisabled("Drop in the view to place it"); break;
         case Kind::Script: ImGui::TextDisabled("Drop on an entity to give it this script"); break;
         case Kind::Sound: ImGui::TextDisabled("Drop on an entity to give it this sound"); break;
+        case Kind::Shader: ImGui::TextDisabled("Drop on a part's Shader field (Material section)"); break;
         case Kind::Scene: ImGui::TextDisabled("Drop in the view to load it"); break;
         default: ImGui::TextDisabled("Nothing to do with it in the scene"); break;
         }

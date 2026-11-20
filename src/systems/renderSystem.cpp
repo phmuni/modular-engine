@@ -138,6 +138,30 @@ constexpr const char *kPointShadowSamplers[] = {"pointShadowMaps0", "pointShadow
                                                 "pointShadowMaps3"};
 static_assert(std::size(kPointShadowSamplers) == EngineConfig::MAX_POINT_SHADOWS,
               "one sampler name (and one sampler in fragmentShader.frag) per point shadow slot");
+// Custom shaders' texture parameters take the units after those (16 units are guaranteed)
+constexpr int kFirstCustomTextureUnit = kFirstPointShadowUnit + EngineConfig::MAX_POINT_SHADOWS;
+constexpr int kMaxCustomTextures = 16 - kFirstCustomTextureUnit;
+
+// The values a material gives its custom shader's uniforms; the ones it did not set get the file's defaults, since
+// the program keeps whatever the last material put there
+void applyShaderParams(const Shader &shader, const Material &material, const CustomShader &custom, GLuint whiteTexture) {
+  int unit = kFirstCustomTextureUnit;
+  for (const ShaderParamDecl &decl : custom.code.params) {
+    const auto found = material.getShaderParams().find(decl.name);
+    const ShaderParam *param = found == material.getShaderParams().end() ? nullptr : &found->second;
+    const glm::vec4 value = param ? shaderValueAsVec4(param->value) : decl.defaultValue;
+    switch (decl.type) {
+    case ShaderParamType::Float: shader.setFloat(decl.name, value.x); break;
+    case ShaderParamType::Vec2: shader.setVec2(decl.name, glm::vec2(value)); break;
+    case ShaderParamType::Vec3: shader.setVec3(decl.name, glm::vec3(value)); break;
+    case ShaderParamType::Vec4: shader.setVec4(decl.name, value); break;
+    case ShaderParamType::Texture:
+      if (unit < kFirstCustomTextureUnit + kMaxCustomTextures)
+        shader.setTex(decl.name, param && param->texture ? param->texture : whiteTexture, unit++, GL_TEXTURE_2D, false);
+      break;
+    }
+  }
+}
 
 // Cube faces in GL order (+X, -X, +Y, -Y, +Z, -Z): where each looks and which way is up, as cube maps expect
 const glm::vec3 kCubeFaceDirections[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
@@ -183,6 +207,14 @@ void RenderSystem::gatherShadowCasters(ComponentManager &componentManager, Resou
   m_shadowCasters.clear();
   componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
     if (isHidden(componentManager, entity))
+      return;
+    // Custom shaders that move vertices or fade the surface cannot show in the depth pass, which draws the original
+    // geometry; a model made only of parts that say `#pragma noshadow` casts none instead of a wrong one
+    if (resourceSystem.hasCustomShaders() && !model.materialHandles.empty() &&
+        std::all_of(model.materialHandles.begin(), model.materialHandles.end(), [&](uint32_t material) {
+          const CustomShader *custom = resourceSystem.customShaderForHandle(resourceSystem.getMaterial(material).getShaderHandle());
+          return custom && !custom->code.castsShadow;
+        }))
       return;
     const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
     const glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(componentManager.get<Transform>(entity));
@@ -477,6 +509,11 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   renderer.beginScene(skyColor);
 
   // Main pass - grouped by shader
+  // A part given another shader (or a shader that was fixed) belongs to another batch
+  if (resourceSystem.shaderRevision() != m_seenShaderRevision) {
+    m_seenShaderRevision = resourceSystem.shaderRevision();
+    m_batchesDirty = true;
+  }
   if (m_batchesDirty) {
     rebuildRenderBatches(componentManager, resourceSystem);
   }
@@ -509,6 +546,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       shader.setFloat("fogDensity", m_environment.fogDensity);
     }
     shader.setVec3("sceneAmbient", m_environment.ambient);
+    shader.setFloat("time", m_shaderTime); // only custom surface shaders have it
 
     lightSystem.uploadLightsToShader(shader, componentManager);
   };
@@ -530,6 +568,9 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setFloat("alphaCutoff", material.getAlphaCutoff());
     shader.setInt("doubleSided", material.isDoubleSided() ? 1 : 0);
     shader.setInt("unlit", material.isUnlit() ? 1 : 0);
+    if (resourceSystem.hasCustomShaders())
+      if (const CustomShader *custom = resourceSystem.customShaderForHandle(material.getShaderHandle()))
+        applyShaderParams(shader, material, *custom, resourceSystem.getMaterial(0).getEmission());
     renderer.setFaceCulling(!material.isDoubleSided());
   };
 

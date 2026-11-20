@@ -7,11 +7,14 @@
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "foundation/ecs/componentManager.h"
+#include "rendering/resources/customShader.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "rendering/resources/shader.h"
 #include "rendering/resources/textureUploader.h"
 #include <SDL3/SDL_timer.h>
+#include <fstream>
+#include <sstream>
 #include <string_view>
 
 ResourceSystem::ResourceSystem(ComponentManager &cm) : m_componentManager(cm) {
@@ -458,4 +461,254 @@ void ResourceSystem::setSolidColor(Entity entity, int submesh, const glm::vec3 &
   } else if (submesh < static_cast<int>(model.materialHandles.size())) {
     setSolidColorToMaterial(model.materialHandles[submesh], color);
   }
+}
+// --- Custom surface shaders ---------------------------------------------------------------------------------------
+
+namespace {
+std::filesystem::file_time_type modifiedTime(const std::string &path) {
+  std::error_code error;
+  const auto time = std::filesystem::last_write_time(path, error);
+  return error ? std::filesystem::file_time_type{} : time;
+}
+
+std::string defineLines(const CustomShaderCode &code, bool mask) {
+  std::string defines = "#define CUSTOM_SURFACE\n";
+  if (code.hasSurface)
+    defines += "#define CUSTOM_HAS_SURFACE\n";
+  if (code.hasVertex)
+    defines += "#define CUSTOM_HAS_VERTEX\n";
+  if (mask)
+    defines += "#define ALPHA_MASK\n";
+  return defines;
+}
+
+// The standard lit shader with the file's code injected, or null (logged by Shader) when it does not compile
+std::unique_ptr<Shader> buildCustomShader(const CustomShader &custom, const CustomShaderCode &code, bool mask) {
+  ShaderInjection injection{custom.path, code.vertexStage, code.fragmentStage};
+  auto shader = std::make_unique<Shader>(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX),
+                                         EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT),
+                                         defineLines(code, mask), injection);
+  return shader->getShaderID() == 0 ? nullptr : std::move(shader);
+}
+} // namespace
+
+std::string ResourceSystem::canonicalShaderPath(std::string_view path) {
+  std::string normalized = PathUtils::normalizeSeparators(std::string(path));
+  if (normalized.compare(0, EngineConfig::ASSETS_PREFIX.size(), EngineConfig::ASSETS_PREFIX) == 0)
+    normalized.erase(0, EngineConfig::ASSETS_PREFIX.size());
+  return normalized;
+}
+
+const CustomShader *ResourceSystem::findCustomShader(std::string_view path) const {
+  auto it = m_customShaders.find(canonicalShaderPath(path));
+  return it == m_customShaders.end() ? nullptr : &it->second;
+}
+
+bool ResourceSystem::refreshCustomShader(CustomShader &custom) {
+  custom.modified = modifiedTime(custom.diskPath);
+  std::ifstream file(custom.diskPath);
+  if (!file.is_open()) {
+    LOG_E("[Shader] %s: cannot open %s", custom.path.c_str(), custom.diskPath.c_str());
+    return false;
+  }
+  std::ostringstream text;
+  text << file.rdbuf();
+
+  CustomShaderCode code = parseCustomShader(text.str());
+  if (!code.error.empty()) {
+    LOG_E("[Shader] %s: %s", custom.path.c_str(), code.error.c_str());
+    return false;
+  }
+  std::unique_ptr<Shader> normal = buildCustomShader(custom, code, false);
+  std::unique_ptr<Shader> mask;
+  if (normal && custom.maskHandle)
+    mask = buildCustomShader(custom, code, true);
+  if (!normal || (custom.maskHandle && !mask)) {
+    LOG_E("[Shader] %s did not compile%s", custom.path.c_str(),
+          custom.ok ? "; the last working version keeps running" : "; its materials use the standard shader");
+    return false;
+  }
+
+  custom.code = std::move(code);
+  custom.ok = true;
+  if (!custom.handle)
+    custom.handle = m_nextShader++;
+  m_shaders[custom.handle] = std::move(normal);
+  m_customByHandle[custom.handle] = &custom;
+  if (mask) {
+    m_shaders[custom.maskHandle] = std::move(mask);
+    m_customByHandle[custom.maskHandle] = &custom;
+  }
+  return true;
+}
+
+CustomShader &ResourceSystem::loadCustomShader(const std::string &path) {
+  auto [it, added] = m_customShaders.try_emplace(path);
+  CustomShader &custom = it->second;
+  if (added) {
+    custom.path = path;
+    custom.diskPath = EngineConfig::resolveAsset(path);
+    refreshCustomShader(custom);
+  } else if (!custom.ok && modifiedTime(custom.diskPath) != custom.modified) {
+    refreshCustomShader(custom); // a file that did not compile, edited since
+  }
+  return custom;
+}
+
+uint32_t ResourceSystem::customMaskHandle(CustomShader &custom) {
+  if (!custom.ok)
+    return 0;
+  if (!custom.maskHandle) {
+    std::unique_ptr<Shader> mask = buildCustomShader(custom, custom.code, true);
+    if (!mask)
+      return custom.handle; // the cut-out is lost, the shader is not
+    custom.maskHandle = m_nextShader++;
+    m_shaders[custom.maskHandle] = std::move(mask);
+    m_customByHandle[custom.maskHandle] = &custom;
+  }
+  return custom.maskHandle;
+}
+
+uint32_t ResourceSystem::standardHandleFor(const Material &material) {
+  const uint32_t base = getMaterial(0).getShaderHandle();
+  if (material.getBaseAlphaMode() == AlphaMode::Mask)
+    if (auto variant = m_maskVariants.find(base); variant != m_maskVariants.end())
+      return variant->second;
+  return base;
+}
+
+void ResourceSystem::useShaderOf(Material &material) {
+  const std::string &path = material.getShaderPath();
+  CustomShader *custom = nullptr;
+  if (!path.empty()) {
+    if (auto it = m_customShaders.find(path); it != m_customShaders.end())
+      custom = &it->second;
+  }
+  uint32_t handle = standardHandleFor(material);
+  if (custom && custom->ok)
+    handle = material.getBaseAlphaMode() == AlphaMode::Mask ? customMaskHandle(*custom) : custom->handle;
+  const bool blend = custom && custom->ok && custom->code.blend;
+  material.setShaderHandle(handle);
+  material.setShaderBlend(blend);
+  m_hasBlendMaterials = m_hasBlendMaterials || blend;
+  ++m_shaderRevision;
+}
+
+void ResourceSystem::setMaterialShader(uint32_t &handle, std::string_view path) {
+  const std::string canonical = path.empty() ? std::string() : canonicalShaderPath(path);
+  if (canonical.empty() && (handle == 0 || getMaterial(handle).getShaderPath().empty()))
+    return; // already the standard shader
+  ensureOwnMaterial(handle);
+  Material &material = getMaterial(handle);
+  if (canonical.empty()) {
+    material.shaderParams().clear();
+  } else {
+    loadCustomShader(canonical);
+  }
+  material.setShaderPath(canonical);
+  useShaderOf(material);
+}
+
+void ResourceSystem::setMaterialShaderParam(uint32_t &handle, std::string_view name, const ShaderValue &value) {
+  if (handle == 0 || getMaterial(handle).getShaderPath().empty()) {
+    LOG_W("[Shader] Parameter \"%.*s\": the part has no custom shader (setShader first)", static_cast<int>(name.size()),
+          name.data());
+    return;
+  }
+  const CustomShader *custom = findCustomShader(getMaterial(handle).getShaderPath());
+  const ShaderParamDecl *decl = nullptr;
+  if (custom && custom->ok) {
+    for (const ShaderParamDecl &candidate : custom->code.params)
+      if (candidate.name == name)
+        decl = &candidate;
+    if (!decl) {
+      LOG_W("[Shader] %s has no parameter \"%.*s\"", custom->path.c_str(), static_cast<int>(name.size()), name.data());
+      return;
+    }
+    if (!shaderValueFits(value, decl->type)) {
+      LOG_W("[Shader] %s: parameter \"%.*s\" cannot take that kind of value", custom->path.c_str(),
+            static_cast<int>(name.size()), name.data());
+      return;
+    }
+  }
+
+  ensureOwnMaterial(handle);
+  ShaderParam param;
+  param.value = decl ? shaderValueAs(value, decl->type) : value;
+  if (const std::string *texturePath = std::get_if<std::string>(&param.value))
+    param.texture = texturePath->empty() ? 0 : loadTexture(EngineConfig::resolveAsset(*texturePath));
+  getMaterial(handle).shaderParams()[std::string(name)] = std::move(param);
+}
+
+void ResourceSystem::setShader(Entity entity, int submesh, std::string_view path) {
+  auto *model = m_componentManager.tryGet<Model>(entity);
+  if (!model)
+    return;
+  if (submesh < 0) {
+    for (auto &h : model->materialHandles)
+      setMaterialShader(h, path);
+  } else if (submesh < static_cast<int>(model->materialHandles.size())) {
+    setMaterialShader(model->materialHandles[submesh], path);
+  } else {
+    LOG_W("[Shader] Entity %d has no part %d", entity, submesh);
+  }
+}
+
+void ResourceSystem::setShaderParam(Entity entity, int submesh, std::string_view name, const ShaderValue &value) {
+  auto *model = m_componentManager.tryGet<Model>(entity);
+  if (!model)
+    return;
+  if (submesh < 0) {
+    for (auto &h : model->materialHandles)
+      if (h != 0 && !getMaterial(h).getShaderPath().empty())
+        setMaterialShaderParam(h, name, value);
+  } else if (submesh < static_cast<int>(model->materialHandles.size())) {
+    setMaterialShaderParam(model->materialHandles[submesh], name, value);
+  } else {
+    LOG_W("[Shader] Entity %d has no part %d", entity, submesh);
+  }
+}
+
+std::string ResourceSystem::getShader(Entity entity, int submesh) {
+  const auto *model = m_componentManager.tryGet<Model>(entity);
+  if (!model || submesh < 0 || submesh >= static_cast<int>(model->materialHandles.size()))
+    return {};
+  return getMaterial(model->materialHandles[submesh]).getShaderPath();
+}
+
+std::optional<ShaderValue> ResourceSystem::getShaderParam(Entity entity, int submesh, std::string_view name) {
+  const auto *model = m_componentManager.tryGet<Model>(entity);
+  if (!model || submesh < 0 || submesh >= static_cast<int>(model->materialHandles.size()))
+    return std::nullopt;
+  const Material &material = getMaterial(model->materialHandles[submesh]);
+  if (material.getShaderPath().empty())
+    return std::nullopt;
+  const CustomShader *custom = findCustomShader(material.getShaderPath());
+  const ShaderParamDecl *decl = nullptr;
+  if (custom && custom->ok)
+    for (const ShaderParamDecl &candidate : custom->code.params)
+      if (candidate.name == name)
+        decl = &candidate;
+  if (auto it = material.getShaderParams().find(std::string(name)); it != material.getShaderParams().end())
+    return decl ? shaderValueAs(it->second.value, decl->type) : it->second.value;
+  if (decl)
+    return shaderParamDefault(*decl);
+  return std::nullopt;
+}
+
+bool ResourceSystem::reloadChangedShaders() {
+  bool changed = false;
+  for (auto &[path, custom] : m_customShaders) {
+    const auto time = modifiedTime(custom.diskPath);
+    if (time == custom.modified || time == std::filesystem::file_time_type{})
+      continue;
+    if (!refreshCustomShader(custom))
+      continue;
+    LOG_I("[Shader] Reloaded %s", path.c_str());
+    for (auto &[handle, material] : m_materials)
+      if (material->getShaderPath() == path)
+        useShaderOf(*material);
+    changed = true;
+  }
+  return changed;
 }

@@ -12,6 +12,11 @@ Shader::Shader(std::string_view vertexFile, std::string_view fragmentFile, std::
   m_shaderID = createShaderProgram(vertexFile.data(), fragmentFile.data(), defines);
 }
 
+Shader::Shader(std::string_view vertexFile, std::string_view fragmentFile, std::string_view defines,
+               const ShaderInjection &injection) {
+  m_shaderID = createShaderProgram(vertexFile.data(), fragmentFile.data(), defines, &injection);
+}
+
 bool Shader::load(std::string_view vertexFile, std::string_view fragmentFile) {
   if (m_shaderID) {
     glDeleteProgram(m_shaderID);
@@ -47,7 +52,8 @@ std::string Shader::readShaderFile(const char *filename) const {
   return buffer.str();
 }
 
-GLuint Shader::compileShader(GLenum type, const char *filename, std::string_view defines) {
+GLuint Shader::compileShader(GLenum type, const char *filename, std::string_view defines, const std::string *injected,
+                             const std::string &label) {
   std::string source = readShaderFile(filename);
   if (source.empty())
     return 0;
@@ -55,6 +61,14 @@ GLuint Shader::compileShader(GLenum type, const char *filename, std::string_view
   if (!defines.empty()) {
     size_t afterVersion = source.find('\n', source.find("#version"));
     source.insert(afterVersion == std::string::npos ? 0 : afterVersion + 1, defines);
+  }
+
+  if (injected) {
+    // The user's code as its own source string, so line numbers in errors ("1:12") are lines of their file
+    static const std::string marker = "//@CUSTOM_SURFACE_CODE";
+    const size_t at = source.find(marker);
+    if (at != std::string::npos)
+      source.replace(at, marker.size(), "#line 1 1\n" + *injected + "\n#line 1 0\n");
   }
 
   const char *src = source.c_str();
@@ -69,16 +83,24 @@ GLuint Shader::compileShader(GLenum type, const char *filename, std::string_view
     glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
     std::vector<char> log(logLength);
     glGetShaderInfoLog(shader, logLength, nullptr, log.data());
-    LOG_E("[Shader] Compilation error in %s:\n%s", filename, log.data());
+    if (injected)
+      LOG_E("[Shader] Compilation error in %s (\"1:N\" in the messages is line N of %s):\n%s", filename,
+            label.c_str(), log.data());
+    else
+      LOG_E("[Shader] Compilation error in %s:\n%s", filename, log.data());
     glDeleteShader(shader);
     return 0;
   }
   return shader;
 }
 
-GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentFile, std::string_view defines) {
-  GLuint vert = compileShader(GL_VERTEX_SHADER, vertexFile, defines);
-  GLuint frag = compileShader(GL_FRAGMENT_SHADER, fragmentFile, defines);
+GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentFile, std::string_view defines,
+                                   const ShaderInjection *injection) {
+  const std::string noLabel;
+  GLuint vert = compileShader(GL_VERTEX_SHADER, vertexFile, defines, injection ? &injection->vertexCode : nullptr,
+                              injection ? injection->label : noLabel);
+  GLuint frag = compileShader(GL_FRAGMENT_SHADER, fragmentFile, defines, injection ? &injection->fragmentCode : nullptr,
+                              injection ? injection->label : noLabel);
 
   if (!vert || !frag) {
     if (vert)
@@ -100,7 +122,8 @@ GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentF
     glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
     std::vector<char> log(logLength);
     glGetProgramInfoLog(program, logLength, nullptr, log.data());
-    LOG_E("[Shader] Linking error:\n%s", log.data());
+    LOG_E("[Shader] Linking error%s%s:\n%s", injection ? " in " : "", injection ? injection->label.c_str() : "",
+          log.data());
     glDeleteShader(vert);
     glDeleteShader(frag);
     glDeleteProgram(program);
@@ -122,13 +145,14 @@ bool Shader::supportsInstancing() const {
   return m_instancingSupport == 1;
 }
 
-void Shader::setTex(std::string_view name, GLuint textureID, int textureUnit, GLenum target) const {
+void Shader::setTex(std::string_view name, GLuint textureID, int textureUnit, GLenum target,
+                    bool warnIfMissing) const {
   glActiveTexture(GL_TEXTURE0 + textureUnit);
   glBindTexture(target, textureID);
   GLint loc = getUniformLocation(name);
   if (loc != -1)
     glUniform1i(loc, textureUnit);
-  else
+  else if (warnIfMissing)
     LOG_W("[Shader] Uniform not found: %.*s", static_cast<int>(name.size()), name.data());
 }
 

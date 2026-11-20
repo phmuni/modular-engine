@@ -12,7 +12,7 @@
 
 class AssetBrowser {
 public:
-  enum class Kind { Folder, Model, Prefab, Scene, Sound, Script, Texture, UI, Other };
+  enum class Kind { Folder, Model, Prefab, Scene, Sound, Script, Shader, Texture, UI, Other };
 
   // What the user did that the editor has to carry out
   struct Event {

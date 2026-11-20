@@ -51,6 +51,7 @@ CASES = {
     "scene-physics": ["scene", "../assets/scenes/physics.json"],  # Jolt is deterministic, threads and all
     "scene-animation": ["scene", "../assets/scenes/animation.json"],
     "scene-navigation": ["scene", "../assets/scenes/navigation.json"],  # a character walking a computed path
+    "scene-custom-shaders": ["scene", "../assets/scenes/custom_shaders.json"],  # water, hologram and dissolve shaders
 }
 
 SCREENSHOT_SECONDS = 2.0     # 120 fixed frames

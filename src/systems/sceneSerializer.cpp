@@ -49,6 +49,41 @@ std::string compactNumberArrays(const std::string &text) {
   return result;
 }
 
+// A custom shader value as JSON: a number, an array of 2 to 4 numbers, or a texture's path
+nlohmann::json shaderValueToJson(const ShaderValue &value) {
+  using json = nlohmann::json;
+  if (const float *number = std::get_if<float>(&value))
+    return *number;
+  if (const glm::vec2 *v = std::get_if<glm::vec2>(&value))
+    return json::array({v->x, v->y});
+  if (const glm::vec3 *v = std::get_if<glm::vec3>(&value))
+    return json::array({v->x, v->y, v->z});
+  if (const glm::vec4 *v = std::get_if<glm::vec4>(&value))
+    return json::array({v->x, v->y, v->z, v->w});
+  return std::get<std::string>(value);
+}
+
+std::optional<ShaderValue> shaderValueFromJson(const nlohmann::json &data) {
+  if (data.is_number())
+    return data.get<float>();
+  if (data.is_string())
+    return data.get<std::string>();
+  if (data.is_array() && data.size() >= 2 && data.size() <= 4) {
+    float v[4] = {0, 0, 0, 0};
+    for (size_t i = 0; i < data.size(); ++i) {
+      if (!data[i].is_number())
+        return std::nullopt;
+      v[i] = data[i].get<float>();
+    }
+    if (data.size() == 2)
+      return glm::vec2(v[0], v[1]);
+    if (data.size() == 3)
+      return glm::vec3(v[0], v[1], v[2]);
+    return glm::vec4(v[0], v[1], v[2], v[3]);
+  }
+  return std::nullopt;
+}
+
 GLuint textureIn(const Material &material, TextureSlot slot) {
   switch (slot) {
   case TextureSlot::Diffuse:
@@ -288,6 +323,14 @@ std::optional<SceneSerializer::json> SceneSerializer::saveModel(Entity entity) c
       part["emission"] = {{"color", now.getEmissionColor()}, {"strength", now.getEmissionStrength()}};
     if (now.getShininess() != before.getShininess())
       part["shininess"] = now.getShininess();
+    if (!now.getShaderPath().empty()) {
+      part["shader"] = now.getShaderPath();
+      json params = json::object();
+      for (const auto &[paramName, param] : now.getShaderParams())
+        params[paramName] = shaderValueToJson(param.value);
+      if (!params.empty())
+        part["shaderParams"] = std::move(params);
+    }
 
     if (!part.empty()) {
       part["part"] = i;
@@ -320,6 +363,15 @@ void SceneSerializer::loadModel(Entity entity, const json &data) {
                             part["emission"].value("strength", 0.0f));
     if (part.contains("shininess"))
       resources.setShininess(entity, index, part["shininess"].get<float>());
+    // The shader before its values; a shader that does not compile still keeps its path and values (see
+    // ResourceSystem::setMaterialShader), so the scene saves again as it was
+    if (part.contains("shader") && part["shader"].is_string()) {
+      resources.setShader(entity, index, part["shader"].get<std::string>());
+      if (part.contains("shaderParams") && part["shaderParams"].is_object())
+        for (const auto &[paramName, data] : part["shaderParams"].items())
+          if (std::optional<ShaderValue> value = shaderValueFromJson(data))
+            resources.setShaderParam(entity, index, paramName, *value);
+    }
   }
 }
 

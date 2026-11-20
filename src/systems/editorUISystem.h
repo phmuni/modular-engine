@@ -236,8 +236,8 @@ private:
   bool renderCameraInspector(Entity entity, SystemManager &systemManager, ComponentManager &componentManager,
                              ResourceSystem &resourceSystem, SDL_Window *window);
   bool renderParticleInspector(Entity entity, ComponentManager &componentManager);
-  bool renderMaterialInspector(Entity entity, ComponentManager &componentManager, ResourceSystem &resourceSystem,
-                               RenderSystem &renderSystem, SDL_Window *window);
+  bool renderMaterialInspector(Engine &engine, Entity entity, ComponentManager &componentManager,
+                               ResourceSystem &resourceSystem, RenderSystem &renderSystem, SDL_Window *window);
   void renderAddEntityPopup(Engine &engine, SceneSystem &sceneSystem, SystemManager &systemManager,
                             ComponentManager &componentManager, ResourceSystem &resourceSystem,
                             RenderSystem &renderSystem, SDL_Window *window);

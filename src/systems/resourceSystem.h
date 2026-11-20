@@ -5,10 +5,13 @@
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
+#include "rendering/resources/customShader.h"
 #include "rendering/resources/mesh.h"
+#include <filesystem>
 #include <future>
 #include <glm/glm.hpp>
 #include <string>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -22,6 +25,18 @@ enum class TextureSlot { Diffuse = 0, Specular = 1, Normal = 2, Emission = 3 };
 struct ModelLoadResult {
   uint32_t meshHandle;
   std::vector<uint32_t> materialHandles;
+};
+
+// A custom surface shader file in use (see customShader.h): compiled once per file and variant, and shared by every
+// material that names it
+struct CustomShader {
+  std::string path;     // the asset path materials name it by ("shaders/water.glsl")
+  std::string diskPath; // where the file is
+  std::filesystem::file_time_type modified;
+  CustomShaderCode code;   // the version that last compiled
+  bool ok = false;         // whether any version compiled; if not, materials draw with the standard shader
+  uint32_t handle = 0;     // the shader running it (0 while it does not compile)
+  uint32_t maskHandle = 0; // the alpha-masked variant, made when a cut-out material first needs it
 };
 
 class ResourceSystem : public BaseSystem {
@@ -45,12 +60,25 @@ private:
   bool m_hasBlendMaterials = false;
   std::unordered_map<uint32_t, uint32_t> m_maskVariants;
 
+  // Custom surface shaders by asset path, and by the shader handle that runs them (elements never move)
+  std::unordered_map<std::string, CustomShader> m_customShaders;
+  std::unordered_map<uint32_t, const CustomShader *> m_customByHandle;
+  uint32_t m_shaderRevision = 0;
+
   size_t m_textureUploadBudget = EngineConfig::TEXTURE_UPLOAD_BUDGET;
   uint32_t m_nextMesh = 0;
   uint32_t m_nextMaterial = 0;
   uint32_t m_nextShader = 1;
 
   ComponentManager &m_componentManager;
+
+  CustomShader &loadCustomShader(const std::string &path);
+  // Reads, parses and compiles the file again; false (logged) leaves what ran before as it was
+  bool refreshCustomShader(CustomShader &custom);
+  uint32_t customMaskHandle(CustomShader &custom);
+  // Points the material at the shader its path and alpha mode call for
+  void useShaderOf(Material &material);
+  uint32_t standardHandleFor(const Material &material);
 
   // Uploads parsed data to the GPU and caches it; texture files decoded with it go into the texture cache
   uint32_t storeMesh(const std::string &path, MeshData &data, uint64_t startNs, bool readInBackground);
@@ -79,9 +107,40 @@ public:
 
   // Shader
   uint32_t loadShader(std::string_view vertexPath, std::string_view fragmentPath, std::string_view defines = {});
+  // The asset path a custom shader is known by: relative to assets/ without a "../assets/" in front
+  static std::string canonicalShaderPath(std::string_view path);
   // Variant of `shaderHandle` used by alpha-masked (cut-out) materials; without one, masks render opaque
   void setMaskVariant(uint32_t shaderHandle, uint32_t maskShaderHandle) { m_maskVariants[shaderHandle] = maskShaderHandle; }
   Shader &getShader(uint32_t handle);
+
+  // Custom surface shaders
+  // Gives the material (copied first if shared) the shader in the file `path` (relative to assets/; "" for the
+  // standard shader, which also drops its parameters). A file that does not compile is logged with its name, and the
+  // material keeps drawing with the standard shader (it still remembers the path, so fixing the file brings it back).
+  void setMaterialShader(uint32_t &handle, std::string_view path);
+  // A value for one of the material's shader uniforms: a number, vec2/3/4, or a texture's asset path. A name the shader
+  // does not declare, or a value of the wrong kind, is logged and ignored.
+  void setMaterialShaderParam(uint32_t &handle, std::string_view name, const ShaderValue &value);
+  // The same on an entity's parts; `submesh` -1 is all of them, an index out of range a warning
+  void setShader(Entity entity, int submesh, std::string_view path);
+  void setShaderParam(Entity entity, int submesh, std::string_view name, const ShaderValue &value);
+  // A part's shader file ("" for the standard shader or no such part), and one of its values (the file's default when
+  // the part did not set it; nothing for a name the shader does not have)
+  std::string getShader(Entity entity, int submesh);
+  std::optional<ShaderValue> getShaderParam(Entity entity, int submesh, std::string_view name);
+  // The custom shader a shader handle runs, or null for the engine's own shaders
+  const CustomShader *customShaderForHandle(uint32_t shaderHandle) const {
+    auto it = m_customByHandle.find(shaderHandle);
+    return it == m_customByHandle.end() ? nullptr : it->second;
+  }
+  bool hasCustomShaders() const { return !m_customByHandle.empty(); }
+  // The shader file in use under this path (null when no material asked for it yet)
+  const CustomShader *findCustomShader(std::string_view path) const;
+  // Compiles again the files that changed on disk since they were read (a fixed typo shows at once; an edit that does
+  // not compile is logged and the last good version keeps running). Returns whether any shader changed.
+  bool reloadChangedShaders();
+  // Counts every change of which shader a material draws with, so the renderer groups its draws again
+  uint32_t shaderRevision() const { return m_shaderRevision; }
 
   // Material
   uint32_t createMaterial(uint32_t shaderHandle);

@@ -2309,7 +2309,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
 
   // Model / Material
   if (!earlyOut && componentManager.has<Model>(selectedEntity)) {
-    earlyOut = renderMaterialInspector(selectedEntity, componentManager, resourceSystem, renderSystem, window);
+    earlyOut = renderMaterialInspector(engine, selectedEntity, componentManager, resourceSystem, renderSystem, window);
   }
 
   // Particle
@@ -2836,7 +2836,47 @@ bool EditorUISystem::renderParticleInspector(Entity entity, ComponentManager &co
 }
 
 // Returns true if the component was removed (caller should set earlyOut).
-bool EditorUISystem::renderMaterialInspector(Entity entity, ComponentManager &componentManager,
+namespace {
+// A text field that shows `current` until you type in it; true (with the text) when Enter was pressed. The ID stack
+// tells fields apart, so call it inside the PushID of whatever it belongs to.
+bool pathField(const char *label, const std::string &current, std::string &typed) {
+  struct State {
+    std::array<char, 256> text{};
+    std::string seen;
+  };
+  static std::unordered_map<ImGuiID, State> states;
+  State &state = states[ImGui::GetID(label)];
+  if (state.seen != current) {
+    state.seen = current;
+    std::snprintf(state.text.data(), state.text.size(), "%s", current.c_str());
+  }
+  const bool entered = ImGui::InputText(label, state.text.data(), state.text.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+  typed = state.text.data();
+  return entered;
+}
+
+// The last item takes a file from the asset browser of this kind: its path (relative to assets/) when dropped
+std::optional<std::string> acceptAssetDrop(AssetBrowser::Kind kind) {
+  std::optional<std::string> dropped;
+  if (ImGui::BeginDragDropTarget()) {
+    const ImGuiPayload *asset = ImGui::GetDragDropPayload();
+    if (asset && asset->IsDataType(AssetBrowser::kPayload) && asset->Data &&
+        AssetBrowser::classify(static_cast<const char *>(asset->Data)) == kind &&
+        ImGui::AcceptDragDropPayload(AssetBrowser::kPayload))
+      dropped = static_cast<const char *>(asset->Data);
+    ImGui::EndDragDropTarget();
+  }
+  return dropped;
+}
+
+bool nameHasColor(const std::string &name) {
+  std::string lower = name;
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
+  return lower.find("color") != std::string::npos || lower.find("colour") != std::string::npos;
+}
+} // namespace
+
+bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, ComponentManager &componentManager,
                                              ResourceSystem &resourceSystem, RenderSystem &renderSystem,
                                              SDL_Window *window) {
   if (!ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
@@ -2900,6 +2940,29 @@ bool EditorUISystem::renderMaterialInspector(Entity entity, ComponentManager &co
     }
 
     ImGui::Separator();
+    ImGui::Text("Shader (All Submeshes)");
+    {
+      ImGui::PushID("shader_all");
+      const std::string current = model.materialHandles.empty() ? std::string()
+                                                                  : resourceSystem.getShader(entity, 0);
+      std::string typed;
+      std::optional<std::string> dropped;
+      ImGui::SetNextItemWidth(ui(180.0f));
+      const bool entered = pathField("##path", current, typed);
+      dropped = acceptAssetDrop(AssetBrowser::Kind::Shader);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("A .glsl custom surface shader, e.g. shaders/examples/water.glsl; drop one from the asset browser");
+      ImGui::SameLine();
+      const bool reset = ImGui::Button("Reset");
+      if (dropped || entered || reset) {
+        engine.beginCheckpoint();
+        resourceSystem.setShader(entity, -1, reset ? std::string() : (dropped ? *dropped : typed));
+        renderSystem.markBatchesDirty();
+      }
+      ImGui::PopID();
+    }
+
+    ImGui::Separator();
     ImGui::Text("Emission (All Submeshes)");
     static glm::vec3 globalEmCol{0.0f};
     static float globalEmStr = 0.0f;
@@ -2927,7 +2990,10 @@ bool EditorUISystem::renderMaterialInspector(Entity entity, ComponentManager &co
   for (size_t i = 0; i < model.materialHandles.size(); ++i) {
     ImGui::PushID(static_cast<int>(i));
     const std::string &partName = i < submeshes.size() ? submeshes[i].name : std::string();
-    if (ImGui::TreeNode((std::to_string(i) + ": " + (partName.empty() ? "part" : partName)).c_str())) {
+    // A part with a custom shader starts open, so its parameters are in sight
+    const bool hasShader = model.materialHandles[i] != 0 && !resourceSystem.getMaterial(model.materialHandles[i]).getShaderPath().empty();
+    if (ImGui::TreeNodeEx((std::to_string(i) + ": " + (partName.empty() ? "part" : partName)).c_str(),
+                          hasShader ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None)) {
       uint32_t &handle = model.materialHandles[i];
       Material *matPtr = (handle != 0) ? &resourceSystem.getMaterial(handle) : nullptr;
       ImGui::Text("Material Handle: %u", handle);
@@ -2947,6 +3013,93 @@ bool EditorUISystem::renderMaterialInspector(Entity entity, ComponentManager &co
         }
       }
 
+      ImGui::Separator();
+      ImGui::Text("Shader");
+      {
+        const std::string current = matPtr ? matPtr->getShaderPath() : std::string();
+        std::string typed;
+        ImGui::SetNextItemWidth(ui(180.0f));
+        const bool entered = pathField("##shaderPath", current, typed);
+        const std::optional<std::string> dropped = acceptAssetDrop(AssetBrowser::Kind::Shader);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("A .glsl custom surface shader, e.g. shaders/examples/water.glsl; drop one from the asset browser");
+        ImGui::SameLine();
+        const bool reset = ImGui::Button("Reset##shader");
+        if (dropped || entered || reset) {
+          engine.beginCheckpoint();
+          resourceSystem.setShader(entity, static_cast<int>(i), reset ? std::string() : (dropped ? *dropped : typed));
+          renderSystem.markBatchesDirty();
+          matPtr = handle != 0 ? &resourceSystem.getMaterial(handle) : nullptr;
+        }
+
+        // The shader's own uniforms, found by reading its file
+        if (matPtr && !matPtr->getShaderPath().empty()) {
+          const CustomShader *custom = resourceSystem.findCustomShader(matPtr->getShaderPath());
+          if (!custom || !custom->ok) {
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Does not compile (see the log): drawn with the standard shader");
+          } else {
+            for (const ShaderParamDecl &decl : custom->code.params) {
+              ImGui::PushID(decl.name.c_str());
+              const ShaderValue now = resourceSystem.getShaderParam(entity, static_cast<int>(i), decl.name)
+                                          .value_or(shaderParamDefault(decl));
+              const char *label = decl.name.c_str();
+              bool changed = false;
+              ShaderValue edited = now;
+              switch (decl.type) {
+              case ShaderParamType::Float: {
+                float v = shaderValueAsVec4(now).x;
+                changed = ImGui::DragFloat(label, &v, 0.01f);
+                edited = v;
+                break;
+              }
+              case ShaderParamType::Vec2: {
+                glm::vec2 v(shaderValueAsVec4(now));
+                changed = ImGui::DragFloat2(label, &v.x, 0.01f);
+                edited = v;
+                break;
+              }
+              case ShaderParamType::Vec3: {
+                glm::vec3 v(shaderValueAsVec4(now));
+                changed = nameHasColor(decl.name) ? ImGui::ColorEdit3(label, &v.x, ImGuiColorEditFlags_Float)
+                                                  : ImGui::DragFloat3(label, &v.x, 0.01f);
+                edited = v;
+                break;
+              }
+              case ShaderParamType::Vec4: {
+                glm::vec4 v = shaderValueAsVec4(now);
+                changed = nameHasColor(decl.name) ? ImGui::ColorEdit4(label, &v.x, ImGuiColorEditFlags_Float)
+                                                  : ImGui::DragFloat4(label, &v.x, 0.01f);
+                edited = v;
+                break;
+              }
+              case ShaderParamType::Texture: {
+                std::string typedTexture;
+                const std::string *shown = std::get_if<std::string>(&now);
+                ImGui::SetNextItemWidth(ui(180.0f));
+                changed = pathField("##texture", shown ? *shown : std::string(), typedTexture);
+                const std::optional<std::string> droppedTexture = acceptAssetDrop(AssetBrowser::Kind::Texture);
+                ImGui::SameLine();
+                const bool clear = ImGui::Button("X");
+                ImGui::SameLine();
+                ImGui::TextUnformatted(label);
+                if (droppedTexture || clear)
+                  typedTexture = clear ? std::string() : *droppedTexture;
+                changed = changed || droppedTexture || clear;
+                edited = typedTexture;
+                break;
+              }
+              }
+              if (changed) {
+                engine.beginCheckpoint();
+                resourceSystem.setShaderParam(entity, static_cast<int>(i), decl.name, edited);
+              }
+              ImGui::PopID();
+            }
+          }
+        }
+      }
+
+      ImGui::Separator();
       float shininess = matPtr ? matPtr->getShininess() : 16.0f;
       if (ImGui::DragFloat("Shininess", &shininess, 1.0f, 1.0f, 256.0f)) {
         resourceSystem.setShininess(entity, static_cast<int>(i), shininess);

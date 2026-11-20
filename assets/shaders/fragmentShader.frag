@@ -81,6 +81,25 @@ uniform float fogDensity;
 
 vec3 toLinear(vec3 c) { return gammaCorrect == 1 ? pow(c, vec3(2.2)) : c; }
 
+#ifdef CUSTOM_SURFACE
+// A custom surface shader (see README, "Custom surface shaders"): its code goes in at the marker, and surface() is
+// called once the base color and textures are known, before lighting. Colors are authored values, like the
+// material's own: the engine converts them for lighting afterwards.
+uniform float time; // seconds of game time
+struct Surface {
+    vec3 albedo;
+    float alpha;
+    vec3 emission;   // added to the material's own emission
+    vec3 specular;   // the specular map
+    float shininess;
+    vec3 normal;     // world space, after the normal map
+    vec2 uv;
+    vec3 worldPos;
+    vec3 viewDir;    // from the surface to the camera
+};
+//@CUSTOM_SURFACE_CODE
+#endif
+
 float calculateShadow(vec3 normal)
 {
     if (useShadows == 0) return 0.0;
@@ -187,6 +206,23 @@ void main()
     vec4 diffuseSample = useSolidDiffuseColor == 1 ? vec4(solidDiffuseColor, 1.0)
                                                    : diffuseTexel * vec4(baseColorFactor.rgb, 1.0);
     diffuseSample.a *= baseColorFactor.a;
+#ifdef CUSTOM_SURFACE
+    Surface surf;
+    surf.albedo = diffuseSample.rgb;
+    surf.alpha = diffuseSample.a;
+    surf.emission = vec3(0.0);
+    surf.specular = texture(material.specular, TexCoords).rgb;
+    surf.shininess = material.shininess;
+    surf.normal = normal;
+    surf.uv = TexCoords;
+    surf.worldPos = FragPos;
+    surf.viewDir = viewDir;
+#ifdef CUSTOM_HAS_SURFACE
+    surface(surf);
+#endif
+    diffuseSample = vec4(surf.albedo, surf.alpha);
+    normal = normalize(surf.normal);
+#endif
 #ifdef ALPHA_MASK
     // Only in the mask variant: any discard in a shader turns off hidden surface removal on tile-based GPUs,
     // which slows down every opaque draw that uses it
@@ -197,6 +233,10 @@ void main()
     vec3 specularTex = texture(material.specular, TexCoords).rgb;
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
     vec3 emissionResult = toLinear(material.emissionColor) * material.emissionStrength * toLinear(emissionTex);
+#ifdef CUSTOM_SURFACE
+    specularTex = surf.specular;
+    emissionResult += toLinear(surf.emission);
+#endif
 
     float shadow = calculateShadow(surfaceNormal);
 
@@ -224,7 +264,11 @@ void main()
             float diff = max(dot(normal, lightDir), 0.0);
             vec3 diffuse = light.color * light.intensity * diff * diffuseTex;
 
+#ifdef CUSTOM_SURFACE
+            float shininess = max(surf.shininess, 1.0);
+#else
             float shininess = max(material.shininess, 1.0);
+#endif
             vec3 reflectDir = reflect(-lightDir, normal);
             float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
             vec3 specular = light.color * light.intensity * spec * specularTex;

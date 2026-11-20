@@ -176,6 +176,28 @@ void GameEntity::setShininess(float shininess) {
     m_engine->setShininess(m_id, shininess);
 }
 
+void GameEntity::setShader(const std::string &path, int submesh) {
+  if (!m_engine || !m_engine->has<Model>(m_id))
+    return;
+  m_engine->getSystemManager().getSystem<ResourceSystem>().setShader(m_id, submesh, path);
+  m_engine->getSystemManager().getSystem<RenderSystem>().markBatchesDirty();
+}
+
+std::string GameEntity::shader(int submesh) const {
+  return m_engine ? m_engine->getSystemManager().getSystem<ResourceSystem>().getShader(m_id, submesh) : std::string();
+}
+
+void GameEntity::setShaderParam(const std::string &name, const ShaderValue &value, int submesh) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->getSystemManager().getSystem<ResourceSystem>().setShaderParam(m_id, submesh, name, value);
+}
+
+std::optional<ShaderValue> GameEntity::shaderParam(const std::string &name, int submesh) const {
+  if (!m_engine)
+    return std::nullopt;
+  return m_engine->getSystemManager().getSystem<ResourceSystem>().getShaderParam(m_id, submesh, name);
+}
+
 glm::vec3 GameEntity::velocity() const {
   return m_engine ? m_engine->physics().getLinearVelocity(m_id) : glm::vec3(0.0f);
 }

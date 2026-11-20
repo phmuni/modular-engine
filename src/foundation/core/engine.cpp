@@ -343,8 +343,15 @@ void Engine::update(bool &isRunning, bool pollInput) {
     if (m_prefabPollTime >= kPrefabPollSeconds) {
       m_prefabPollTime = 0.0f;
       getSceneSerializer().refreshPrefabs();
+      // Custom shader files edited while the editor is open: they compile again and the parts using them follow
+      if (m_systemManager.getSystem<ResourceSystem>().reloadChangedShaders())
+        m_systemManager.getSystem<RenderSystem>().markBatchesDirty();
     }
   }
+  // Custom shaders' `time` while the game is frozen in the editor, so a water surface still moves there; a running
+  // game uses its own clock (and so is repeatable under --deterministic)
+  if (m_playMode == PlayMode::Editing)
+    m_previewTime += timeSystem.getUnscaledDeltaTime();
 
   if (m_playMode != PlayMode::Editing) {
     m_time.tick(timeSystem.getDeltaTime()); // the game clock and timers, before the app
@@ -406,6 +413,8 @@ void Engine::render() {
   renderer.beginFrame();
 
   editorUI.beginFrame();
+
+  renderSystem.setShaderTime(m_playMode == PlayMode::Editing ? m_previewTime : m_time.elapsed());
 
   renderSystem.renderPipeline(m_systemManager, m_componentManager);
 

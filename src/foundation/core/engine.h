@@ -621,6 +621,7 @@ private:
   uint64_t m_savedRevision = 0;
   static constexpr float kPrefabPollSeconds = 0.5f;
   float m_prefabPollTime = 0.0f;
+  float m_previewTime = 0.0f; // seconds in the editor with the game frozen, what custom shaders' `time` shows there
   void applyHistoryRequest();
   void clearHistory();
   std::optional<std::string> m_pendingScene;
