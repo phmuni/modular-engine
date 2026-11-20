@@ -1,0 +1,28 @@
+<rml>
+<head>
+	<title>Pause menu test document</title>
+	<style>
+		body, div { display: block; font-family: LatoLatin; font-size: 12dp; }
+		button { display: block; font-family: LatoLatin; width: 100dp; height: 20dp; }
+	</style>
+</head>
+<!-- A pause menu document that uses every name of the generic data model (see src/systems/pauseMenu.h) -->
+<body data-model="pause_menu">
+	<div id="first" data-if="screen == 'main'">
+		<button id="action" data-event-click="action('hello')">Action</button>
+		<button id="set_msaa" data-event-click="set('msaa', 4)">Set</button>
+		<button id="step_msaa" data-event-click="step('msaa', 1)">Step</button>
+		<button id="toggle_fxaa" data-event-click="toggle('fxaa')">Toggle</button>
+		<button id="set_quality" data-event-click="set('ssaoQuality', 'high')">Quality</button>
+		<button id="show_second" data-event-click="show('second')">Show</button>
+		<button id="resume" data-event-click="resume()">Resume</button>
+		<div id="msaa_label">{{ labels.msaa }}</div>
+		<div id="master_label">{{ labels.masterVolume }}</div>
+		<input id="master" type="range" min="0" max="1" step="0.01" data-value="settings.masterVolume"/>
+		<div id="sharpness_off" data-class-off="!enabled.fsrSharpness">Sharp</div>
+	</div>
+	<div id="second" data-if="screen == 'second'">
+		<button id="back" data-event-click="back()">Back</button>
+	</div>
+</body>
+</rml>

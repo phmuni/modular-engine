@@ -9,6 +9,7 @@
 
 #include "foundation/core/engine.h"
 #include "host.h"
+#include "systems/saveData.h"
 #include "testing.h"
 #include <cstdio>
 #include <cstdlib>
@@ -52,6 +53,9 @@ int main(int argc, char **argv) {
     return 2;
   }
   engine.applyCommandLine(commandLine);
+  for (const auto &[name, startup] : testing::startups())
+    if (name == test)
+      startup(engine, engine.saveData()); // before run(): what the game would have configured, and what was saved
   engine.run(*host);
 
   const std::vector<std::string> &failures = testing::context().failures;

@@ -19,6 +19,11 @@ std::vector<TestCase> &registry() {
   return cases;
 }
 
+std::vector<std::pair<std::string, StartupFunction>> &startups() {
+  static std::vector<std::pair<std::string, StartupFunction>> functions;
+  return functions;
+}
+
 void fail(const char *file, int line, const std::string &message) {
   context().fail(std::string(file) + ":" + std::to_string(line) + ": " + message);
 }

@@ -10,9 +10,11 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 class Engine;
+class SaveData;
 
 namespace testing {
 
@@ -62,6 +64,14 @@ struct Registrar {
   Registrar(const char *name, TestFunction function) { registry().push_back({name, function}); }
 };
 
+// What a test needs in place before the engine starts the game (Engine::run): the player's saved choices, and the
+// game's own defaults. STARTUP(name) { ... } runs for the test of that name, with `engine` and `save` as parameters.
+using StartupFunction = void (*)(Engine &, SaveData &);
+std::vector<std::pair<std::string, StartupFunction>> &startups();
+struct StartupRegistrar {
+  StartupRegistrar(const char *name, StartupFunction function) { startups().push_back({name, function}); }
+};
+
 inline std::string show(const std::string &value) { return "\"" + value + "\""; }
 inline std::string show(const char *value) { return show(std::string(value)); }
 inline std::string show(bool value) { return value ? "true" : "false"; }
@@ -106,6 +116,11 @@ std::string tempDir(const std::string &name);
   static void name(Engine &engine, testing::Steps &steps);                                                           \
   static testing::Registrar registrar_##name(#name, name);                                                           \
   static void name([[maybe_unused]] Engine &engine, [[maybe_unused]] testing::Steps &steps)
+
+#define STARTUP(name)                                                                                                \
+  static void startup_##name(Engine &, SaveData &);                                                                  \
+  static testing::StartupRegistrar startupRegistrar_##name(#name, startup_##name);                                   \
+  static void startup_##name([[maybe_unused]] Engine &engine, [[maybe_unused]] SaveData &save)
 
 #define CHECK(condition)                                                                                             \
   do {                                                                                                               \
