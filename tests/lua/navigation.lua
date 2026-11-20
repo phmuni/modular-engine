@@ -46,4 +46,19 @@ test.run(function()
   test.ok(nav.walkable(vec3(-5, 0, 0)), "open floor")
   test.ok(nav.walkable(vec3(10, 0, 10)), "inside the closed room: ground, only cut off from the rest")
   test.ok(not nav.walkable(vec3(100, 0, 100)), "off the map")
+
+  -- The top of a tall box has no step leading up to it: not walkable, and no path ends on it. A low step still is.
+  engine.create("Tall", { model = "box", position = vec3(-8, 1, -8), scale = vec3(3, 2, 3), body = "static" })
+  engine.create("Step", { model = "box", position = vec3(-8, 0.1, 8), scale = vec3(3, 0.2, 3), body = "static" })
+  wait()
+  test.ok(nav.build({ min = vec3(-14, -1, -14), max = vec3(14, 3, 14), cellSize = 0.5, agentRadius = 0.3 }), "rebuilt")
+  test.ok(not nav.walkable(vec3(-8, 2, -8)), "the top of a tall box is not walkable")
+  test.ok(nav.walkable(vec3(-8, 0.2, 8)), "a low step is")
+  test.ok(nav.walkable(vec3(-5, 0, 0)), "open floor still is")
+  local toTop = nav.path(vec3(-12, 0, -12), vec3(-8, 2, -8))
+  if toTop then
+    test.ok(math.abs(toTop[#toTop].y) < 0.5, "a path to the top ends on the ground, not on it: " .. tostring(toTop[#toTop]))
+  end
+  local overStep = nav.path(vec3(-12, 0, 12), vec3(-4, 0, 12))
+  test.ok(overStep ~= nil, "a path over the low step")
 end)

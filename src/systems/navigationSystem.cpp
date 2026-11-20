@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <queue>
 
 namespace {
@@ -94,6 +95,42 @@ bool NavigationSystem::build(const glm::vec3 &min, const glm::vec3 &max, const N
                                (drops(x, z - 1, height) && drops(x, z + 1, height))))
         m_walkable[cell] = 0;
     }
+
+  // A cell only counts when an agent could get there: the top of a tall wall or box is ground too, but no step leads up
+  // to it. Cells at ground level (within a step of the lowest walkable ground) are the start; from them the map grows
+  // over neighbors a step apart, as canStep walks them, so a ramp or stairs up to a platform keep it and a sheer side
+  // does not. Cells at the same level but walled off from the rest (a closed room) are starts too: they are ground,
+  // only cut off. Raise the bounds' bottom to leave a pit out of what "lowest" means.
+  float groundLevel = std::numeric_limits<float>::max();
+  for (size_t cell = 0; cell < count; ++cell)
+    if (m_walkable[cell])
+      groundLevel = std::min(groundLevel, m_height[cell]);
+  std::vector<uint8_t> reached(count, 0);
+  std::vector<int> open;
+  for (size_t cell = 0; cell < count; ++cell)
+    if (m_walkable[cell] && m_height[cell] <= groundLevel + m_settings.stepHeight) {
+      reached[cell] = 1;
+      open.push_back(static_cast<int>(cell));
+    }
+  while (!open.empty()) {
+    const int cell = open.back();
+    open.pop_back();
+    const int x = cell % m_grid.width, z = cell / m_grid.width;
+    constexpr int kNeighbors[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (const auto &step : kNeighbors) {
+      const int nx = x + step[0], nz = z + step[1];
+      if (!inGrid(nx, nz))
+        continue;
+      const size_t next = static_cast<size_t>(index(nx, nz));
+      if (reached[next] || !m_walkable[next] || std::abs(m_height[next] - m_height[cell]) > m_settings.stepHeight)
+        continue;
+      reached[next] = 1;
+      open.push_back(static_cast<int>(next));
+    }
+  }
+  for (size_t cell = 0; cell < count; ++cell)
+    if (!reached[cell])
+      m_walkable[cell] = 0;
 
   m_built = true;
   m_buildMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count();

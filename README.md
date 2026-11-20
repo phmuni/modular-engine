@@ -758,7 +758,9 @@ a ray down each cell (0.5 units by default) finds the ground, and a cell is walk
 `maxSlope` and an agent (a capsule of `agentRadius` and `agentHeight`, stepping over ledges up to `stepHeight`) fits
 there without touching a static or kinematic body. Dynamic bodies (crates) are not obstacles, since they move.
 `findPath` runs A* over the cells (8 neighbors, no corner cutting) and removes the points a straight walk makes
-needless. The map has one ground height per cell (the topmost surface inside the bounds, so no bridges or ceilings),
+needless. A cell must also be reachable: starting from ground level (within a step of the lowest walkable ground) the
+walkable area grows over neighbors a `stepHeight` apart, so the top of a tall wall or box is not walkable, while a ramp
+or low steps up to a platform keep it. The map has one ground height per cell (the topmost surface inside the bounds, so no bridges or ceilings),
 and it is built when asked: call `build` once the level exists, and `markDirty()` after moving obstacles.
 
 ```cpp
