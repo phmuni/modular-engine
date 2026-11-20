@@ -26,7 +26,7 @@ from pathlib import Path
 
 ENGINE_DIR = Path(__file__).resolve().parent.parent
 # What a run leaves next to the programs
-RUN_LEFTOVERS = shutil.ignore_patterns("cache", "*.ini", "*.bmp", "*.log", "*.pdb", "*.ilk")
+RUN_LEFTOVERS = shutil.ignore_patterns("cache", ".DS_Store", "*.ini", "*.bmp", "*.log", "*.pdb", "*.ilk")
 
 
 def platform_name():
@@ -58,7 +58,7 @@ def main():
     for program in ("launcher", "runner"):
         shutil.copytree(build / "bin" / program, package / "bin" / program, symlinks=True, ignore=RUN_LEFTOVERS)
     # All of templates/, which includes templates/common (what every Lua or mixed project gets)
-    shutil.copytree(ENGINE_DIR / "templates", package / "templates", ignore=shutil.ignore_patterns("build", "bin"))
+    shutil.copytree(ENGINE_DIR / "templates", package / "templates", ignore=shutil.ignore_patterns("build", "bin", ".DS_Store"))
     for name in ("README.md", "LICENSE"):
         shutil.copy2(ENGINE_DIR / name, package / name)
     print(f"\nPackaged the engine in {package}")

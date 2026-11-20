@@ -354,7 +354,7 @@ struct ProjectFiles {
     for (const auto &entry : fs::recursive_directory_iterator(source)) {
       const fs::path relative = fs::relative(entry.path(), source);
       const std::string first = relative.begin()->string();
-      if (first == "build" || first == "bin")
+      if (first == "build" || first == "bin" || entry.path().filename() == ".DS_Store")
         continue;
       const fs::path target = into / relative;
       if (entry.is_directory()) {
@@ -395,7 +395,7 @@ struct ProjectFiles {
     fs::create_directories(bin);
     for (const auto &entry : fs::recursive_directory_iterator(runner().parent_path())) {
       const fs::path relative = fs::relative(entry.path(), runner().parent_path());
-      if (relative.begin()->string() == "cache")
+      if (relative.begin()->string() == "cache" || entry.path().filename() == ".DS_Store")
         continue;
       const fs::path target = bin / relative;
       if (entry.is_directory())
@@ -479,7 +479,7 @@ struct Exporter {
     fs::create_directories(to);
     for (auto it = fs::recursive_directory_iterator(from); it != fs::recursive_directory_iterator(); ++it) {
       const fs::path relative = fs::relative(it->path(), from);
-      if (skip(relative)) {
+      if (it->path().filename() == ".DS_Store" || skip(relative)) {
         if (it->is_directory() && !it->is_symlink())
           it.disable_recursion_pending();
         continue;

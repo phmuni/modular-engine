@@ -37,7 +37,7 @@ def copy_template(name, folder, only=None):
     """templates/<name> into the folder; with `only`, just those paths (a folder's name takes what is in it)."""
     source = TEMPLATES / name
     if only is None:
-        shutil.copytree(source, folder, dirs_exist_ok=True, ignore=shutil.ignore_patterns("build", "bin"))
+        shutil.copytree(source, folder, dirs_exist_ok=True, ignore=shutil.ignore_patterns("build", "bin", ".DS_Store"))
         return
     for path in source.rglob("*"):
         relative = path.relative_to(source).as_posix()
@@ -103,7 +103,7 @@ def ensure_runner():
 def install_runner(folder, name):
     """bin/ gets the runner (renamed after the game), SDL's library and the engine's own assets."""
     bin_dir = folder / "bin"
-    shutil.copytree(RUNNER_DIR, bin_dir, dirs_exist_ok=True, ignore=shutil.ignore_patterns("cache"))
+    shutil.copytree(RUNNER_DIR, bin_dir, dirs_exist_ok=True, ignore=shutil.ignore_patterns("cache", ".DS_Store"))
     runner = bin_dir / runner_executable().name
     game = bin_dir / (name + (".exe" if sys.platform == "win32" else ""))
     runner.rename(game)
