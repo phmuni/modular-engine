@@ -1237,7 +1237,14 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
     m_alignGrabbed = false;
     m_dragStartRotation = rotationOf(*transform);
     m_dragStartAngles = transform->rotation;
+    m_dragRotation = m_dragStartRotation;
   }
+  // The rotate gizmo turns the matrix it is given a little every frame. Given the snapped entity, it would be turned
+  // back to the step it was on every frame and never get to the next one: it is given the unsnapped rotation of the
+  // drag instead, and only what is applied to the entity is snapped.
+  if (operation == ImGuizmo::ROTATE)
+    model = glm::translate(glm::mat4(1.0f), transform->position) * glm::mat4_cast(m_dragRotation) *
+            glm::scale(glm::mat4(1.0f), transform->scale);
   const bool snapping = m_gizmoSnap || io.KeyCtrl;
   // Rotations are snapped here, not by the gizmo (which only steps from where the drag started): see below
   const bool gizmoMoved =
@@ -1270,9 +1277,11 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   Transform wanted = *transform;
   if (operation == ImGuizmo::TRANSLATE)
     wanted.position = glm::vec3(model[3]);
-  else if (operation == ImGuizmo::ROTATE)
-    wanted.rotation = snapping ? snappedRotation(glm::quat_cast(rotation))
-                               : eulerOf(glm::quat_cast(rotation)); // steady at 90 degrees of pitch, no round-off
+  else if (operation == ImGuizmo::ROTATE) {
+    m_dragRotation = glm::normalize(glm::quat_cast(rotation));
+    wanted.rotation = snapping ? snappedRotation(m_dragRotation)
+                               : eulerOf(m_dragRotation); // steady at 90 degrees of pitch, no round-off
+  }
   else
     wanted.scale = scale;
   // The gizmo snaps how far it moved, from where the drag started: an entity at 1.3 went to 1.8 and 2.3, never onto

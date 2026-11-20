@@ -124,6 +124,7 @@ private:
   // The entity's rotation and angles when the gizmo drag started: snapped rotations are measured from it
   glm::quat m_dragStartRotation{1.0f, 0.0f, 0.0f, 0.0f};
   glm::vec3 m_dragStartAngles{0.0f};
+  glm::quat m_dragRotation{1.0f, 0.0f, 0.0f, 0.0f}; // the rotate gizmo's unsnapped rotation during the drag
   bool m_gizmoAlign = false;
   float m_alignHeading = 0.0f; // degrees around +Y, from when the drag started
   // Where the entity's origin (the gizmo's center) was on screen from the cursor when the drag started, in pixels: it
