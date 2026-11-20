@@ -9,6 +9,7 @@
 #include "components/model.h"
 #include "components/name.h"
 #include "components/parent.h"
+#include "components/tags.h"
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "foundation/core/random.h"
@@ -908,10 +909,25 @@ bool Engine::hasComponent(Entity entity, std::string_view component) {
   if (component == "ParticleEmitter") return has<ParticleEmitter>(entity);
   if (component == "Hidden") return has<Hidden>(entity);
   if (component == "CameraRig") return has<CameraRig>(entity);
+  if (component == "Tags") return has<Tags>(entity);
   for (const ReflectedComponent &reflected : m_reflectedComponents)
     if (reflected.name == component)
       return reflected.get && reflected.get(m_componentManager, entity) != nullptr;
   return false;
+}
+
+std::vector<GameEntity> Engine::findTagged(std::string_view tag) {
+  std::vector<Entity> found;
+  m_componentManager.forEachComponent<Tags>([&](Entity entity, Tags &tags) {
+    if (std::find(tags.tags.begin(), tags.tags.end(), tag) != tags.tags.end())
+      found.push_back(entity);
+  });
+  std::sort(found.begin(), found.end());
+  std::vector<GameEntity> handles;
+  handles.reserve(found.size());
+  for (Entity entity : found)
+    handles.emplace_back(*this, entity);
+  return handles;
 }
 
 std::vector<GameEntity> Engine::findWithComponent(std::string_view component) {
@@ -948,7 +964,10 @@ GameEntity Engine::create(std::string_view name, const EntityDesc &desc) {
     builder.withModelCollision();
   if (!desc.script.empty())
     builder.withScript(desc.script);
-  return GameEntity(*this, builder.build());
+  GameEntity created(*this, builder.build());
+  for (const std::string &tag : desc.tags)
+    created.addTag(tag);
+  return created;
 }
 
 GameEntity Engine::spawn(std::string_view prefabPath, glm::vec3 position, glm::vec3 rotation) {

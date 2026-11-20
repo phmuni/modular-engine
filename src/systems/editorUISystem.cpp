@@ -16,6 +16,7 @@
 #include "components/characterController.h"
 #include "components/rigidBody.h"
 #include "components/script.h"
+#include "components/tags.h"
 #include "components/transform.h"
 #include "foundation/core/engine.h"
 #include "systems/modelQueries.h"
@@ -1496,6 +1497,40 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
     earlyOut = renderCameraInspector(selectedEntity, systemManager, componentManager, resourceSystem, window);
   }
 
+  // Tags
+  if (!earlyOut && componentManager.has<Tags>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Tags", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##tags")) {
+        componentManager.removeComponent<Tags>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        auto &tags = componentManager.get<Tags>(selectedEntity).tags;
+        int removeIndex = -1;
+        for (int i = 0; i < static_cast<int>(tags.size()); ++i) {
+          ImGui::PushID(i);
+          if (ImGui::SmallButton("x"))
+            removeIndex = i;
+          ImGui::SameLine();
+          ImGui::TextUnformatted(tags[i].c_str());
+          ImGui::PopID();
+        }
+        if (removeIndex >= 0)
+          tags.erase(tags.begin() + removeIndex);
+        static char newTag[64] = "";
+        ImGui::SetNextItemWidth(140.0f);
+        const bool enter = ImGui::InputText("##newTag", newTag, sizeof(newTag), ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::SameLine();
+        if ((ImGui::Button("Add tag##tags") || enter) && newTag[0] != '\0') {
+          if (std::find(tags.begin(), tags.end(), std::string(newTag)) == tags.end())
+            tags.push_back(newTag);
+          newTag[0] = '\0';
+        }
+      }
+    }
+  }
+
   // Camera rig: follows another entity (only while the free camera is off, which the panel says)
   if (!earlyOut && componentManager.has<CameraRig>(selectedEntity)) {
     if (ImGui::CollapsingHeader("Camera Rig", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1912,6 +1947,10 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         if (ImGui::Button("+ Camera", ImVec2(-1, 0))) {
           componentManager.addInPlace<Camera>(selectedEntity);
         }
+      }
+      if (!componentManager.has<Tags>(selectedEntity)) {
+        if (ImGui::Button("+ Tags", ImVec2(-1, 0)))
+          componentManager.addInPlace<Tags>(selectedEntity);
       }
       if (componentManager.has<Camera>(selectedEntity) && !componentManager.has<CameraRig>(selectedEntity)) {
         if (ImGui::Button("+ Camera Rig", ImVec2(-1, 0)))

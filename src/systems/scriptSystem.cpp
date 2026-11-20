@@ -503,6 +503,12 @@ struct ScriptSystem::Impl {
         },
         "children", [](GameEntity &e) { return sol::as_table(e.children()); },
 
+        // Tags
+        "addTag", &GameEntity::addTag,
+        "removeTag", &GameEntity::removeTag,
+        "hasTag", &GameEntity::hasTag,
+        "tags", [](GameEntity &e) { return sol::as_table(e.tags()); },
+
         // Looks
         "setColor", &GameEntity::setColor,
         "setEmission", [](GameEntity &e, const glm::vec3 &color, sol::optional<float> strength) {
@@ -580,6 +586,10 @@ struct ScriptSystem::Impl {
     desc.mass = o.get_or("mass", desc.mass);
     desc.collision = o.get_or("collision", false);
     desc.script = o.get_or<std::string>("script", "");
+    if (const sol::optional<sol::table> tags = o["tags"])
+      for (const auto &entry : *tags)
+        if (entry.second.get_type() == sol::type::string)
+          desc.tags.push_back(entry.second.as<std::string>());
     return desc;
   }
 
@@ -619,6 +629,8 @@ struct ScriptSystem::Impl {
     api.set_function("find", [this](const std::string &name) { return entityObject(engine.find(name)); });
     // The entities named so, or with a component ("Model", "Script", a game component's name), by entity number
     api.set_function("findAll", [this](const std::string &name) { return sol::as_table(engine.findAll(name)); });
+    // The entities with a tag (self:addTag("enemy"), or tags = {"enemy"} in engine.create), by entity number
+    api.set_function("findTagged", [this](const std::string &tag) { return sol::as_table(engine.findTagged(tag)); });
     api.set_function("findWithComponent",
                      [this](const std::string &component) { return sol::as_table(engine.findWithComponent(component)); });
     api.set_function("spawn", [this](const std::string &prefab, sol::optional<glm::vec3> position,
@@ -628,7 +640,8 @@ struct ScriptSystem::Impl {
     // engine.create("Coin", { model = "models/coin.glb", position = vec3(0, 1, 0), scale = vec3(0.5),
     //                         color = vec3(1, 0.8, 0.2), body = "dynamic", shape = "sphere", script = "scripts/coin.lua" })
     // engine.create(name, { model = "box" | "sphere" | "cylinder" | path, position, rotation, scale, color, emission, glow,
-    //                       body = "static" | "dynamic" | "kinematic", shape, mass, collision = true, script })
+    //                       body = "static" | "dynamic" | "kinematic", shape, mass, collision = true, script,
+    //                       tags = {"enemy"} })
     api.set_function("create", [this](const std::string &name, sol::optional<sol::table> options) {
       return entityObject(engine.create(name, entityDesc(options)));
     });

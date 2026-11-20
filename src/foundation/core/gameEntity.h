@@ -44,9 +44,16 @@ public:
   // Whether it has a Script component
   bool hasScript() const;
   // Whether it has the component: an engine one ("Model", "RigidBody", "CharacterController", "Light", "Camera",
-  // "Animator", "Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter", "Hidden", "CameraRig") or a game
+  // "Animator", "Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter", "Hidden", "CameraRig", "Tags") or a game
   // component registered with Engine::registerComponent, by its name
   bool has(const std::string &component) const;
+
+  // Tags (see components/tags.h): labels to find groups of entities by (Engine::findTagged). Each tag is kept once, an
+  // empty one is ignored, and the entity's last tag removed takes the Tags component with it.
+  void addTag(const std::string &tag);
+  void removeTag(const std::string &tag);
+  bool hasTag(const std::string &tag) const;
+  std::vector<std::string> tags() const;
 
   // Where it is; rotation is Euler angles in degrees, scale a size factor. A destroyed entity is at the origin.
   glm::vec3 position() const;
@@ -113,4 +120,5 @@ struct EntityDesc {
   float mass = 0.0f;
   bool collision = false; // a Collision box that hugs the model (see Engine::fitCollisionToModel)
   std::string script;     // a Lua script, relative to assets/ ("scripts/coin.lua")
+  std::vector<std::string> tags; // see GameEntity::addTag
 };

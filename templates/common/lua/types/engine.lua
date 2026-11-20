@@ -134,6 +134,24 @@ local Entity = {}
 ---Destroys the entity.
 function Entity:destroy() end
 
+---Gives it a tag (a label like "enemy" to find groups of entities by: engine.findTagged). An entity has each tag once.
+---Tags are saved in the scene and prefab files, and edited in the Properties panel.
+---@param tag string
+function Entity:addTag(tag) end
+
+---Takes a tag away.
+---@param tag string
+function Entity:removeTag(tag) end
+
+---Whether it has the tag.
+---@param tag string
+---@return boolean
+function Entity:hasTag(tag) end
+
+---Its tags.
+---@return string[]
+function Entity:tags() end
+
 ---Whether it has an engine component: "Model", "RigidBody", "CharacterController", "Light", "Camera", "Animator",
 ---"Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter" or "Hidden", or a game component
 ---registered in C++ (by the name it was registered with).
@@ -224,6 +242,7 @@ function Entity:sound(path, volume) end
 ---@field mass? number
 ---@field collision? boolean Adds collision from its model
 ---@field script? string Script path relative to assets/ ("scripts/coin.lua")
+---@field tags? string[] Tags to give it, e.g. {"enemy"}
 
 ---Entities, scenes and the window.
 ---@class engine
@@ -238,6 +257,11 @@ function engine.find(name) end
 ---@param name string
 ---@return Entity[]
 function engine.findAll(name) end
+
+---Every entity with this tag (self:addTag("enemy"), or tags = {"enemy"} in engine.create), by entity number.
+---@param tag string
+---@return Entity[]
+function engine.findTagged(tag) end
 
 ---Every entity with a component, by entity number ("Model", "Script", or a game component registered in C++).
 ---@param component string

@@ -7,9 +7,11 @@
 #include "components/light.h"
 #include "components/model.h"
 #include "components/name.h"
+#include "components/tags.h"
 #include "components/transform.h"
 #include "foundation/core/engine.h"
 #include "systems/renderSystem.h"
+#include <algorithm>
 #include <cmath>
 
 bool GameEntity::valid() const { return m_engine && m_id >= 0 && m_engine->isAlive(m_id); }
@@ -33,6 +35,32 @@ Transform *GameEntity::transform() const { return m_engine ? m_engine->tryGet<Tr
 Light *GameEntity::light() const { return m_engine ? m_engine->tryGet<Light>(m_id) : nullptr; }
 bool GameEntity::hasScript() const { return has("Script"); }
 bool GameEntity::has(const std::string &component) const { return m_engine && m_engine->hasComponent(m_id, component); }
+
+void GameEntity::addTag(const std::string &tag) {
+  if (tag.empty() || !valid() || hasTag(tag))
+    return;
+  Tags *existing = m_engine->tryGet<Tags>(m_id);
+  (existing ? *existing : m_engine->getComponentManager().addInPlace<Tags>(m_id)).tags.push_back(tag);
+}
+
+void GameEntity::removeTag(const std::string &tag) {
+  Tags *existing = m_engine ? m_engine->tryGet<Tags>(m_id) : nullptr;
+  if (!existing)
+    return;
+  existing->tags.erase(std::remove(existing->tags.begin(), existing->tags.end(), tag), existing->tags.end());
+  if (existing->tags.empty())
+    m_engine->removeComponent<Tags>(m_id);
+}
+
+bool GameEntity::hasTag(const std::string &tag) const {
+  const Tags *existing = m_engine ? m_engine->tryGet<Tags>(m_id) : nullptr;
+  return existing && std::find(existing->tags.begin(), existing->tags.end(), tag) != existing->tags.end();
+}
+
+std::vector<std::string> GameEntity::tags() const {
+  const Tags *existing = m_engine ? m_engine->tryGet<Tags>(m_id) : nullptr;
+  return existing ? existing->tags : std::vector<std::string>();
+}
 
 glm::vec3 GameEntity::position() const {
   const Transform *t = transform();

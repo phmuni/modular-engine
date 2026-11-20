@@ -13,10 +13,12 @@
 #include "components/light.h"
 #include "components/particleEmitter.h"
 #include "components/skybox.h"
+#include "components/tags.h"
 #include "components/characterController.h"
 #include "components/rigidBody.h"
 #include "components/script.h"
 #include "components/transform.h"
+#include <algorithm>
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
@@ -100,6 +102,18 @@ inline void from_json(const nlohmann::json &j, Script &script) {
     else if (value.is_array() && value.size() == 3)
       script.properties[name] = value.get<glm::vec3>();
   }
+}
+
+// Just the list: "Tags": ["enemy", "flying"]
+inline void to_json(nlohmann::json &j, const Tags &tags) { j = tags.tags; }
+inline void from_json(const nlohmann::json &j, Tags &tags) {
+  tags.tags.clear();
+  if (!j.is_array())
+    return;
+  for (const auto &tag : j)
+    if (tag.is_string() && !tag.get<std::string>().empty() &&
+        std::find(tags.tags.begin(), tags.tags.end(), tag.get<std::string>()) == tags.tags.end())
+      tags.tags.push_back(tag.get<std::string>());
 }
 
 // The clip and how it plays; a crossfade in progress is not saved

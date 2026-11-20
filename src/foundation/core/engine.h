@@ -183,6 +183,9 @@ public:
   // The first entity named so, or an empty handle (valid() is false); all of them, by entity number
   GameEntity find(std::string_view name);
   std::vector<GameEntity> findAll(std::string_view name);
+  // Every entity with the tag (see GameEntity::addTag), by entity number. Looks only at tagged entities, so it
+  // stays cheap in a big scene; still, find them once and keep the handles rather than asking every frame.
+  std::vector<GameEntity> findTagged(std::string_view tag);
   // Every entity with the component, named as GameEntity::has takes it ("Model", or a registered game component)
   std::vector<GameEntity> findWithComponent(std::string_view component);
   bool hasComponent(Entity entity, std::string_view component);

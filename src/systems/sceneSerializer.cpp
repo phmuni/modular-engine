@@ -195,6 +195,7 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent<CharacterController>("CharacterController");
   registerComponent<Animator>("Animator");
   registerComponent<Script>("Script");
+  registerComponent<Tags>("Tags");
 
   registerComponent(
       "Hidden",
