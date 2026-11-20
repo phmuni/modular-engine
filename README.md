@@ -66,6 +66,8 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
+| **Pause Menu**             | A ready-made menu (Resume, Options with volumes, fullscreen and vsync, Quit) on `Escape`: `engine.enablePauseMenu(true)`, or `ui.pauseMenu(true)` in Lua |
+| **Saved Data**             | A per-game key-value store for progress and settings in the user's preferences folder, written atomically: `engine.saveData()`, or `save.get` / `save.set` in Lua |
 | **Lua Scripting**          | Entity and game scripts with hot reload, the engine's API, and C++ functions handed to them (Lua 5.4, sol2) |
 | **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds, plays and exports them, opens them in VS Code |
 | **Skeletal Animation**     | glTF skins and clips (linear, step, cubic spline), crossfades, rigid parts following their nodes, animated shadows |
@@ -221,6 +223,7 @@ In the black hole example and the model viewer the camera orbits on its own: `â†
 | `F9` | Game UI (RmlUi) debugger |
 | `F10` | Bloom |
 | `F12` | Screenshot (`bin/screenshot.bmp`) |
+| `Escape` | The pause menu, in games that enable it |
 | `Right Alt` / `Right Option` | Cursor lock |
 | `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled (with the cursor locked) |
 | Left click in the scene | Editor: select the model under the cursor (empty space clears the selection; debug UI shown, cursor unlocked) |
@@ -380,7 +383,8 @@ What scripts can use:
 | `physics` | `raycast(origin, direction, distance)` (a table with `entity`, `point`, `normal`, `distance`), `gravity(v)` |
 | `nav` | `build({ min, max, cellSize, agentRadius, agentHeight, maxSlope, stepHeight })` (all optional; without `min` and `max` it covers the static bodies), `path(from, to)` (a table of `vec3` on the ground, or `nil` if there is no way), `walkable(point)` |
 | `sound` | `play(path, volume, pitch)`, `playAt(path, position, volume)`, `music(path, volume)`, `stopMusic()` |
-| `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `onClick(id, function)` |
+| `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled)`, `openPauseMenu()`, `closePauseMenu()`, `isPaused()` (whether it is open) |
+| `save` | `set(key, value)` (a number, string, boolean, or a table of those, nested), `get(key, default)`, `has(key)`, `remove(key)`, `write()` |
 
 `require("name")` loads `assets/scripts/name.lua`, and `print` writes to the engine's log. C++ hands its own functions
 to scripts with sol2:
@@ -876,6 +880,78 @@ void update(Engine& engine, float dt) override {
 ```
 
 RCSS has no default style sheet, so give `div` a `display: block`. Lato is loaded as `font-family: LatoLatin`; `engine.loadUIFont` adds others. Clicks and key presses the UI uses don't reach the game, and `pointer-events: none` lets clicks pass through HUD areas. `F9` opens RmlUi's debugger to inspect elements and see style errors. The Space Aliens HUD ([`assets/ui/aliens/`](assets/ui/aliens/)) is a complete example.
+
+### Saved data
+
+A small key-value store keeps a game's progress (level reached, best score, unlocked items) and settings between runs.
+It is a JSON file, `save.json`, in the user's preferences folder for the game (on macOS
+`~/Library/Application Support/modular-engine/<game>/`; SDL picks the folder on each system). Name the game once at
+start-up (`setGameName`; the Lua runner uses `project.json`'s `name`), because the folder follows the name. Changes are
+kept in memory and written when the game quits and on `write()`; the file is replaced atomically (a temp file, then a
+rename), so a crash cannot leave half of it. Runs with `--deterministic` keep the data in memory and never touch the
+file, so regression tests stay repeatable.
+
+```cpp
+void setup(Engine& engine) override {
+    engine.setGameName("MyGame");
+    auto& save = engine.saveData();
+    best = static_cast<int>(save.getNumber("bestScore", 0));
+}
+
+void onGameOver(Engine& engine) {
+    auto& save = engine.saveData();
+    if (score > best)
+        save.set("bestScore", score);   // numbers, bools and strings
+    save.set("player", nlohmann::json{{"level", 3}, {"items", {"key", "map"}}});   // structured, with systems/saveData.h
+    save.write();                        // now, not just when the game closes
+}
+```
+
+`getNumber`, `getBool` and `getString` take a fallback for a missing key; `has`, `remove` and `clear` do what they say.
+Structured values go through `setJson` / `getJson` (include `<nlohmann/json.hpp>` for those; `engine.h` does not pull
+the JSON library in). In Lua:
+
+```lua
+game.best = save.get("bestScore", 0)               -- the default when nothing was saved yet
+save.set("bestScore", 12)
+save.set("player", { level = 3, items = { "key", "map" } })   -- tables, nested; 1..n tables are arrays
+if save.has("player") then print(save.get("player").level) end
+save.remove("player")
+save.write()                                       -- now, not just when the game closes
+```
+
+Lua tables hold numbers, strings, booleans and other tables; anything else (functions, userdata) is refused with an
+error in the log. Whole numbers come back as integers (`12`, not `12.0`). The engine keeps its own settings (the pause
+menu's options) under keys that start with `engine.`: avoid that prefix.
+
+### Menus
+
+The engine ships a pause menu, an RmlUi document in [`assets/ui/engine/`](assets/ui/engine/) that is copied into every
+game's `bin/engine-assets`. Turn it on and `Escape` opens it: Resume, Options (Master, Music and Effects volume,
+Fullscreen, VSync, Back) and Quit. Opening it pauses the game like `F7` does, frees the cursor and keeps keys, clicks
+and gamepad input away from the game until it closes (`Escape` again, or Resume; in Options it goes back first). The
+options are saved in the saved data and applied the next time the game starts.
+
+```cpp
+engine.enablePauseMenu(true);                  // Escape opens it
+engine.openPauseMenu();                        // from code, e.g. a button of your own
+engine.closePauseMenu();
+if (engine.isPauseMenuOpen()) { /* ... */ }
+engine.quit();                                 // closes the game at the end of the frame
+```
+
+```lua
+ui.pauseMenu(true)       -- Escape opens it
+ui.openPauseMenu()       -- from code
+ui.closePauseMenu()
+if ui.isPaused() then ... end
+```
+
+`Escape` is left alone while an editor text field is active, or while the editor panels (`F2`) are showing and one of
+them has focus, and when the game's own UI used the key. To restyle the menu, put your own copy of `pauseMenu.rml` and
+`pauseMenu.rcss` in your game's `assets/ui/engine/` (it is used instead of the engine's); keep the `engine_pause` data
+model's bindings (`master`, `music`, `effects`, `fullscreen`, `vsync`, `options` and the `resume`, `show_options`,
+`back`, `quit`, `toggle_fullscreen`, `toggle_vsync` events).
 
 ---
 

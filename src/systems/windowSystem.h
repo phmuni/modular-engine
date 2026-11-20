@@ -19,4 +19,7 @@ public:
   void setCursor(bool boolean);
   // No-op when the value is already applied
   void setVSync(bool enabled);
+  // Borderless fullscreen at the desktop's size; the window comes back at its old size
+  void setFullscreen(bool enabled);
+  bool isFullscreen() const;
 };

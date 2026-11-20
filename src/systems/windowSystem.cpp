@@ -66,3 +66,10 @@ void WindowSystem::setVSync(bool enabled) {
 }
 
 void WindowSystem::setCursor(bool boolean) { SDL_SetWindowRelativeMouseMode(m_window, boolean); }
+
+void WindowSystem::setFullscreen(bool enabled) {
+  if (enabled != isFullscreen() && !SDL_SetWindowFullscreen(m_window, enabled))
+    LOG_W("[Window System] Failed to change fullscreen: %s", SDL_GetError());
+}
+
+bool WindowSystem::isFullscreen() const { return (SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN) != 0; }

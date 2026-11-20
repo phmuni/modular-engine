@@ -12,6 +12,8 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
 - `assets/scenes/level.json` is the level. In the game, `F2` opens the editor: click to select, `W` `E` `R` `T` to move,
   rotate, scale and resize, the Properties panel to edit (and to give an entity a script), Settings to save.
   `Ctrl+P` freezes the game, plays it from there and puts the level back on Stop.
+- `Escape` opens the pause menu (`ui.pauseMenu(true)` in `game.lua`): Resume, Options (volumes, fullscreen, vsync)
+  and Quit. The best score is kept between runs with `save.set` / `save.get` (see `game.lua`).
 - `assets/input.json` maps keys and gamepad buttons to the actions and axes the scripts read.
 - `project.json` says where the game starts: its scene, its game script and its input file.
 - `bin/` is the engine's Lua runner, named after the game. To ship the game, copy the whole folder.

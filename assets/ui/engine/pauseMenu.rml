@@ -1,0 +1,44 @@
+<rml>
+<head>
+	<title>Pause menu</title>
+	<link type="text/rcss" href="pauseMenu.rcss"/>
+</head>
+<!-- The engine's pause menu (PauseMenu in src/systems/pauseMenu.cpp binds "engine_pause" and shows this document).
+     A game can ship its own copy as assets/ui/engine/pauseMenu.rml: it only has to use the same bindings. -->
+<body data-model="engine_pause">
+	<div class="card" data-if="!options">
+		<div class="title">Paused</div>
+		<button data-event-click="resume">Resume</button>
+		<button data-event-click="show_options">Options</button>
+		<button class="quit" data-event-click="quit">Quit</button>
+	</div>
+
+	<div class="card wide" data-if="options">
+		<div class="title">Options</div>
+
+		<div class="row">
+			<div class="name">Master</div>
+			<input type="range" min="0" max="100" step="1" data-value="master"/>
+			<div class="value">{{ master }}</div>
+		</div>
+		<div class="row">
+			<div class="name">Music</div>
+			<input type="range" min="0" max="100" step="1" data-value="music"/>
+			<div class="value">{{ music }}</div>
+		</div>
+		<div class="row">
+			<div class="name">Effects</div>
+			<input type="range" min="0" max="100" step="1" data-value="effects"/>
+			<div class="value">{{ effects }}</div>
+		</div>
+
+		<button class="toggle" data-class-on="fullscreen" data-event-click="toggle_fullscreen">
+			Fullscreen <span class="state">{{ fullscreen ? 'On' : 'Off' }}</span>
+		</button>
+		<button class="toggle" data-class-on="vsync" data-event-click="toggle_vsync">
+			VSync <span class="state">{{ vsync ? 'On' : 'Off' }}</span>
+		</button>
+		<button class="back" data-event-click="back">Back</button>
+	</div>
+</body>
+</rml>

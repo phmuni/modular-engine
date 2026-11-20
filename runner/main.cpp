@@ -54,6 +54,7 @@ public:
 
   void setup(Engine &engine) override {
     engine.setWindowTitle(m_project.name);
+    engine.setGameName(m_project.name); // where the save data is kept
     engine.setState(Toggle::CameraMovement, false); // the game's scripts drive the camera
     if (!m_project.input.empty() && std::filesystem::exists(EngineConfig::resolvePath(inAssets(m_project.input))))
       engine.input().loadBindings(inAssets(m_project.input));

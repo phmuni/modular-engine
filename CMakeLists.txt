@@ -219,9 +219,10 @@ endif()
 # modular_engine_add_game(<target> OUTPUT_DIR <dir> SOURCES <files...> [ENGINE_ASSETS_IN_PLACE])
 #
 # An executable linked with the engine, built into OUTPUT_DIR (the game's bin/ folder, next to its assets/ folder).
-# Next to it go SDL's shared library and bin/engine-assets: the shaders, fonts and basic models the engine itself
-# loads, which it looks for there when the game's own assets/ folder does not have them. A game folder is then
-# complete: copy bin/ and assets/ to ship it. ENGINE_ASSETS_IN_PLACE skips that copy, for the engine's own examples.
+# Next to it go SDL's shared library and bin/engine-assets: the shaders, fonts, pause menu and basic models the
+# engine itself loads, which it looks for there when the game's own assets/ folder does not have them. A game folder
+# is then complete: copy bin/ and assets/ to ship it. ENGINE_ASSETS_IN_PLACE skips that copy, for the engine's own
+# examples.
 # MODULAR_ENGINE_GAME_OUTPUT_DIR (a cache variable, for a game built on its own) replaces OUTPUT_DIR: the launcher's
 # Export builds a Release into its own folder this way, so the game's bin/ keeps the build it was playing.
 function(modular_engine_add_game target)
@@ -249,7 +250,7 @@ function(modular_engine_add_game target)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:SDL3::SDL3>" "$<TARGET_FILE_DIR:${target}>")
   if(NOT GAME_ENGINE_ASSETS_IN_PLACE)
     set(engine_assets "$<TARGET_FILE_DIR:${target}>/engine-assets")
-    foreach(folder shaders ui/fonts models/box models/sphere)
+    foreach(folder shaders ui/fonts ui/engine models/box models/sphere)
       add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${MODULAR_ENGINE_ROOT}/assets/${folder}" "${engine_assets}/${folder}")
     endforeach()

@@ -35,6 +35,7 @@ namespace Rml {
 class Context;
 class ElementDocument;
 } // namespace Rml
+class SaveData;
 class SceneSerializer;
 class InputSystem;
 struct Camera;
@@ -359,6 +360,23 @@ public:
   Rml::ElementDocument *loadUIDocument(std::string_view path, bool show = true);
   // Lato (font-family: LatoLatin) is loaded by default; fonts are used by the family name inside the file
   bool loadUIFont(std::string_view path, bool fallback = false);
+
+  // The ready-made pause menu: Resume, Options (volumes, fullscreen, vsync, kept in the saved data) and Quit.
+  // Enabled, Escape opens it (not while a text field or an editor panel has the keyboard); the game pauses like with
+  // F7, and keys and clicks stay away from the game until it closes.
+  void enablePauseMenu(bool enabled = true);
+  // To open or close it from code (a button of your own, a game-over screen); works without enablePauseMenu
+  void openPauseMenu();
+  void closePauseMenu();
+  bool isPauseMenuOpen();
+
+  // Closes the game at the end of this frame
+  void quit() { m_quitRequested = true; }
+
+  // Saved data: progress and settings that stay between runs (see SaveData). The name picks the folder they are kept
+  // in, so call setGameName once at start-up ("Game" until then; the Lua runner uses project.json's name).
+  void setGameName(std::string_view name);
+  SaveData &saveData();
 
   // Repeatable runs for regression tests: fixed 1/60 s frames, seeded randomness, scene switches and texture
   // uploads that do not depend on background threads. Call before the app is set up.

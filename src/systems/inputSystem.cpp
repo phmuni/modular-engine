@@ -6,6 +6,7 @@
 #include <iterator>
 #include "foundation/core/config.h"
 #include "imgui/imgui.h"
+#include "imgui/imgui_internal.h"
 #include "imgui/imgui_impl_sdl3.h"
 #include "systems/gameUISystem.h"
 #include "systems/renderSystem.h"
@@ -49,6 +50,7 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
   std::fill(std::begin(m_mousePressed), std::end(m_mousePressed), false);
   std::fill(std::begin(m_mouseReleased), std::end(m_mouseReleased), false);
   std::fill(std::begin(m_gamepadPressed), std::end(m_gamepadPressed), false);
+  m_escapePressed = false;
 
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
@@ -58,6 +60,14 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
     const ImGuiIO &io = ImGui::GetIO();
     bool mouseAllowed = !state.isToggled(Toggle::CursorLock) && !io.WantCaptureMouse;
     bool usedByUI = gameUI.processEvent(event, mouseAllowed, !io.WantCaptureKeyboard);
+    // Escape belongs to the panels while one of them is focused (closing a popup, leaving a field), and to the game UI
+    // when it used the key; otherwise it is the pause menu's. Seen before the block below, so it can close the menu.
+    if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE && !event.key.repeat &&
+        !usedByUI && !io.WantCaptureKeyboard &&
+        !(state.isToggled(Toggle::ShowUI) && GImGui->NavWindow))
+      m_escapePressed = true;
+    // A menu takes everything: the game gets no key presses or clicks (releases still count, so nothing sticks down)
+    usedByUI = usedByUI || m_gameInputBlocked;
     // The game gets clicks whether the cursor is locked or not (a locked cursor is how a shooter aims and fires),
     // except those the game UI or the editor's panels took
     const bool mouseForGame = !usedByUI && !io.WantCaptureMouse;
@@ -128,6 +138,8 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
       const int button = event.gbutton.button;
       if (it != m_gamepads.end() && button >= 0 && button < SDL_GAMEPAD_BUTTON_COUNT) {
         const bool down = event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+        if (down && m_gameInputBlocked)
+          break;
         if (down && !isGamepadButtonDown(static_cast<SDL_GamepadButton>(button)))
           m_gamepadPressed[button] = true;
         it->second.buttons[button] = down;
@@ -224,6 +236,8 @@ void InputSystem::bindAxis(const std::string &name, std::vector<InputBinding> bi
 }
 
 float InputSystem::readBinding(const InputBinding &binding) const {
+  if (m_gameInputBlocked)
+    return 0.0f;
   auto valid = [](SDL_Scancode key) { return key > SDL_SCANCODE_UNKNOWN && key < SDL_SCANCODE_COUNT; };
   switch (binding.kind) {
   case InputBinding::Kind::Key:
@@ -279,7 +293,7 @@ float InputSystem::getAxis(std::string_view name) const {
 }
 
 bool InputSystem::isGamepadButtonDown(SDL_GamepadButton button) const {
-  if (button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT)
+  if (m_gameInputBlocked || button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT)
     return false;
   for (const auto &[id, state] : m_gamepads)
     if (state.buttons[button])
@@ -292,7 +306,7 @@ bool InputSystem::wasGamepadButtonPressed(SDL_GamepadButton button) const {
 }
 
 float InputSystem::getGamepadAxis(SDL_GamepadAxis axis) const {
-  if (axis < 0 || axis >= SDL_GAMEPAD_AXIS_COUNT)
+  if (m_gameInputBlocked || axis < 0 || axis >= SDL_GAMEPAD_AXIS_COUNT)
     return 0.0f;
   float strongest = 0.0f;
   for (const auto &[id, state] : m_gamepads)
@@ -419,11 +433,13 @@ void InputSystem::bindToggleKey(SDL_Scancode key, Toggle toggle) {
   m_prevKeyState[key] = false;
 }
 
-bool InputSystem::isKeyDown(SDL_Scancode key) const { return m_keys[key]; }
+bool InputSystem::isKeyDown(SDL_Scancode key) const { return !m_gameInputBlocked && m_keys[key]; }
 bool InputSystem::wasKeyPressed(SDL_Scancode key) const { return m_pressed[key]; }
 bool InputSystem::wasKeyReleased(SDL_Scancode key) const { return m_released[key]; }
 
-bool InputSystem::isMouseButtonDown(MouseButton button) const { return m_mouseDown[static_cast<int>(button)]; }
+bool InputSystem::isMouseButtonDown(MouseButton button) const {
+  return !m_gameInputBlocked && m_mouseDown[static_cast<int>(button)];
+}
 bool InputSystem::wasMouseButtonPressed(MouseButton button) const { return m_mousePressed[static_cast<int>(button)]; }
 bool InputSystem::wasMouseButtonReleased(MouseButton button) const {
   return m_mouseReleased[static_cast<int>(button)];
@@ -431,7 +447,7 @@ bool InputSystem::wasMouseButtonReleased(MouseButton button) const {
 
 bool InputSystem::isActionPressed(Action action) const {
   auto it = m_keyBinds.find(action);
-  return it != m_keyBinds.end() && m_keys[it->second];
+  return !m_gameInputBlocked && it != m_keyBinds.end() && m_keys[it->second];
 }
 
 void InputSystem::setKeyBind(Action action, SDL_Scancode keyCode) { m_keyBinds[action] = keyCode; }

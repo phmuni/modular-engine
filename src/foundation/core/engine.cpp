@@ -26,8 +26,10 @@
 #include "systems/modelQueries.h"
 #include "systems/navigationSystem.h"
 #include "systems/particleSystem.h"
+#include "systems/pauseMenu.h"
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
+#include "systems/saveData.h"
 #include "systems/sceneSerializer.h"
 #include "systems/sceneSystem.h"
 #include "systems/timeSystem.h"
@@ -162,6 +164,7 @@ void Engine::shutdown() {
     return;
   m_shutdown = true;
 
+  m_systemManager.getSystem<SaveData>().writeIfChanged();
   // Attempt to clean up renderer and SDL; the game UI frees its GPU resources first, while the context is alive
   m_systemManager.getSystem<GameUISystem>().shutdown();
   auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
@@ -182,6 +185,8 @@ void Engine::loop(bool &isRunning) {
 
 void Engine::setDeterministic() {
   m_deterministic = true;
+  // The player's save file stays out of it, both ways
+  m_systemManager.getSystem<SaveData>().setInMemory(true);
   Random::seed(1);
   m_systemManager.getSystem<TimeSystem>().setFixedStep(1.0f / 60.0f);
   // Whole textures each frame: streaming would depend on when background reads finish
@@ -236,6 +241,11 @@ void Engine::update(bool &isRunning) {
   // Play, Stop and freezing, from the editor's last frame
   applyPlayModeRequest();
   applyHistoryRequest();
+
+  // Before the pause state is read below; while it is open the game sees no input
+  auto &pauseMenu = m_systemManager.getSystem<PauseMenu>();
+  pauseMenu.update(inputSystem.wasEscapePressed());
+  inputSystem.setGameInputBlocked(pauseMenu.isOpen());
 
   auto &state = m_systemManager.getSystem<StateSystem>();
   // Upload models whose background reads finished
@@ -839,6 +849,14 @@ Entity Engine::findEntity(std::string_view name) {
   return found;
 }
 
+void Engine::enablePauseMenu(bool enabled) { m_systemManager.getSystem<PauseMenu>().setEnabled(enabled); }
+void Engine::openPauseMenu() { m_systemManager.getSystem<PauseMenu>().open(); }
+void Engine::closePauseMenu() { m_systemManager.getSystem<PauseMenu>().close(); }
+bool Engine::isPauseMenuOpen() { return m_systemManager.getSystem<PauseMenu>().isOpen(); }
+
+void Engine::setGameName(std::string_view name) { m_systemManager.getSystem<SaveData>().setGameName(name); }
+SaveData &Engine::saveData() { return m_systemManager.getSystem<SaveData>(); }
+
 void Engine::setWindowTitle(std::string_view title) {
   SDL_SetWindowTitle(m_systemManager.getSystem<WindowSystem>().getWindow(), std::string(title).c_str());
 }
@@ -912,6 +930,8 @@ void Engine::registerSystems() {
   m_systemManager.insert<ScriptSystem>(*this);
   m_systemManager.insert<AudioSystem>(m_componentManager);
   m_systemManager.insert<GameUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow());
+  m_systemManager.insert<SaveData>();
+  m_systemManager.insert<PauseMenu>(*this);
   m_systemManager.insert<EditorUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
                                          m_systemManager.getSystem<WindowSystem>().getContext());
 }

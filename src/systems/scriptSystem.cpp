@@ -21,12 +21,14 @@
 #include "systems/navigationSystem.h"
 #include "systems/physicsSystem.h"
 #include "systems/renderSystem.h"
+#include "systems/saveData.h"
 #include <RmlUi/Core.h>
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <nlohmann/json.hpp>
 #include <unordered_map>
 #include <vector>
 
@@ -48,6 +50,91 @@ std::filesystem::file_time_type modifiedTime(const std::string &path) {
   std::error_code error;
   const auto time = std::filesystem::last_write_time(path, error);
   return error ? std::filesystem::file_time_type{} : time;
+}
+
+// Saved data holds JSON: numbers, strings, booleans and tables of those (a table of 1..n is an array, any other an
+// object with string keys). Returns false for anything else (functions, userdata, mixed keys, tables nested too deep).
+bool luaToJson(const sol::object &value, nlohmann::json &out, int depth = 0) {
+  switch (value.get_type()) {
+  case sol::type::boolean:
+    out = value.as<bool>();
+    return true;
+  case sol::type::string:
+    out = value.as<std::string>();
+    return true;
+  case sol::type::number: {
+    // Whole numbers stay integers, so a score of 12 comes back as 12 and not 12.0
+    const double number = value.as<double>();
+    if (std::isfinite(number) && number == std::floor(number) && std::abs(number) < 9007199254740992.0)
+      out = static_cast<int64_t>(number);
+    else if (std::isfinite(number))
+      out = number;
+    else
+      return false;
+    return true;
+  }
+  case sol::type::table: {
+    if (depth > 16)
+      return false;
+    const sol::table table = value.as<sol::table>();
+    const size_t length = table.size();
+    size_t count = 0;
+    for (const auto &entry : table) {
+      (void)entry;
+      ++count;
+    }
+    if (count == length) { // keys 1..n: an array
+      out = nlohmann::json::array();
+      for (size_t i = 1; i <= length; ++i) {
+        nlohmann::json item;
+        if (!luaToJson(table[i], item, depth + 1))
+          return false;
+        out.push_back(std::move(item));
+      }
+      return true;
+    }
+    out = nlohmann::json::object();
+    for (const auto &[key, item] : table) {
+      if (key.get_type() != sol::type::string)
+        return false;
+      nlohmann::json converted;
+      if (!luaToJson(item, converted, depth + 1))
+        return false;
+      out[key.as<std::string>()] = std::move(converted);
+    }
+    return true;
+  }
+  default:
+    return false;
+  }
+}
+
+sol::object jsonToLua(sol::state_view lua, const nlohmann::json &value) {
+  switch (value.type()) {
+  case nlohmann::json::value_t::boolean:
+    return sol::make_object(lua, value.get<bool>());
+  case nlohmann::json::value_t::number_integer:
+  case nlohmann::json::value_t::number_unsigned:
+    return sol::make_object(lua, value.get<int64_t>());
+  case nlohmann::json::value_t::number_float:
+    return sol::make_object(lua, value.get<double>());
+  case nlohmann::json::value_t::string:
+    return sol::make_object(lua, value.get<std::string>());
+  case nlohmann::json::value_t::array: {
+    sol::table table = lua.create_table();
+    for (const nlohmann::json &item : value)
+      table.add(jsonToLua(lua, item));
+    return table;
+  }
+  case nlohmann::json::value_t::object: {
+    sol::table table = lua.create_table();
+    for (const auto &[key, item] : value.items())
+      table[key] = jsonToLua(lua, item);
+    return table;
+  }
+  default:
+    return sol::lua_nil;
+  }
 }
 
 // What scripts hold for an entity: its handle; fields set on it live in the ScriptSystem (see Impl::fields)
@@ -633,6 +720,25 @@ struct ScriptSystem::Impl {
     });
     sound.set_function("stopMusic", [this]() { engine.stopMusic(); });
 
+    // save: progress and settings that stay between runs (see SaveData); values are numbers, strings, booleans or
+    // tables of those, nested
+    sol::table save = lua.create_named_table("save");
+    save.set_function("set", [this](const std::string &key, sol::object value) {
+      nlohmann::json json;
+      if (!luaToJson(value, json)) {
+        report("save.set", "save.set(\"" + key + "\"): only numbers, strings, booleans and tables of those can be saved");
+        return;
+      }
+      engine.saveData().setJson(key, json);
+    });
+    save.set_function("get", [this](const std::string &key, sol::object fallback) {
+      const nlohmann::json json = engine.saveData().getJson(key);
+      return json.is_null() ? fallback : jsonToLua(lua, json);
+    });
+    save.set_function("has", [this](const std::string &key) { return engine.saveData().has(key); });
+    save.set_function("remove", [this](const std::string &key) { engine.saveData().remove(key); });
+    save.set_function("write", [this]() { return engine.saveData().write(); });
+
     // ui: RmlUi documents, changed by element id
     sol::table ui = lua.create_named_table("ui");
     // A document loaded once: loading it again (the game script running again after Stop) shows the same one
@@ -647,6 +753,11 @@ struct ScriptSystem::Impl {
         documents[path] = document;
       return document != nullptr;
     });
+    // The ready-made pause menu: Escape opens it once enabled (see Engine::enablePauseMenu)
+    ui.set_function("pauseMenu", [this](sol::optional<bool> enabled) { engine.enablePauseMenu(enabled.value_or(true)); });
+    ui.set_function("openPauseMenu", [this]() { engine.openPauseMenu(); });
+    ui.set_function("closePauseMenu", [this]() { engine.closePauseMenu(); });
+    ui.set_function("isPaused", [this]() { return engine.isPauseMenuOpen(); });
     ui.set_function("text", [this](const std::string &id, sol::object value) {
       if (Rml::Element *element = findElement(id))
         element->SetInnerRML(lua["tostring"](value).get<std::string>());

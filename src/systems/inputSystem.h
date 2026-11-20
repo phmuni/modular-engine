@@ -43,6 +43,14 @@ public:
 
   void update(bool *running, SystemManager &systemManager);
 
+  // While blocked (a menu is open), the game sees no keys, clicks, actions or gamepad input: everything reads as
+  // idle, and presses that arrive meanwhile are dropped. The engine's toggle keys (F-keys) are blocked too.
+  void setGameInputBlocked(bool blocked) { m_gameInputBlocked = blocked; }
+  bool isGameInputBlocked() const { return m_gameInputBlocked; }
+  // Escape went down this frame and nothing else wanted it: not the game UI (a focused field), nor the editor's
+  // panels (a text field, or a focused window). The pause menu's key.
+  bool wasEscapePressed() const { return m_escapePressed; }
+
   // Held down now
   bool isKeyDown(SDL_Scancode key) const;
   // Went down / came up during this frame (once per press: keyboard auto-repeat does not count)
@@ -93,6 +101,8 @@ public:
   void bindToggleKey(SDL_Scancode key, Toggle toggle);
 
 private:
+  bool m_gameInputBlocked = false;
+  bool m_escapePressed = false; // this frame
   bool m_keys[SDL_SCANCODE_COUNT]{false};
   bool m_pressed[SDL_SCANCODE_COUNT]{false};  // this frame
   bool m_released[SDL_SCANCODE_COUNT]{false}; // this frame
