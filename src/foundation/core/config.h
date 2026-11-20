@@ -100,13 +100,6 @@ inline std::string relativePath(std::string_view absolutePath) {
 // Window
 constexpr float DEFAULT_SCREEN_WIDTH = 1280.0f;
 constexpr float DEFAULT_SCREEN_HEIGHT = 720.0f;
-constexpr const char *WINDOW_TITLE = "Modular Engine";
-
-// Rendering
-constexpr float DEFAULT_CLEAR_COLOR_R = 0.4f;
-constexpr float DEFAULT_CLEAR_COLOR_G = 0.4f;
-constexpr float DEFAULT_CLEAR_COLOR_B = 0.4f;
-constexpr float DEFAULT_CLEAR_COLOR_A = 1.0f;
 
 // Camera clip planes; the sun's shadow cascades split the same depth range
 constexpr float CAMERA_NEAR = 0.1f;
