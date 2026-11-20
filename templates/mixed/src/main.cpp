@@ -3,21 +3,20 @@
 //
 // C++ does the player (below); Lua does the coins, copies of the prefab assets/prefabs/coin.json, and the score
 // (assets/scripts/coin.lua and game.lua), and calls back into C++ through celebrate(), which setup() hands to the
-// scripts. Scripts reload when saved, no rebuild needed.
+// scripts. Scripts reload when saved, no rebuild needed. Both languages use the same API: the entity handle below
+// (player.move, player.setEmission...) is the `Entity` a script sees, engine.camera() is Lua's `camera`, and the
+// paths are relative to assets/ in both.
 //
-// The level is a scene file, assets/scenes/level.json: press F2 for the editor, move things around (click to select,
-// W/E/R/T for the gizmos) and save it from the Settings panel.
+// The level is a scene file, assets/scenes/level.json (its sky color too): press F2 for the editor, move things around
+// (click to select, W/E/R/T for the gizmos) and save it from the Settings panel.
 
-#include "components/camera.h"
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
 #include "foundation/core/logger.h"
 #include "systems/inputSystem.h"
 #include "systems/scriptSystem.h"
-#include <cmath>
 #include <glm/gtc/constants.hpp>
 #include <sol/sol.hpp> // to hand C++ functions to Lua scripts
-#include <vector>
 
 // Game components: plain structs
 struct Player {
@@ -27,74 +26,59 @@ struct Player {
 };
 
 class MyGame : public App {
-  static constexpr const char *LEVEL = "../assets/scenes/level.json";
+  static constexpr const char *LEVEL = "scenes/level.json";
   static constexpr glm::vec3 START{0.0f, 0.6f, 3.0f};
 
-  Entity player = -1;
+  GameEntity player;
   float celebration = 0.0f; // seconds of glowing left
 
   void spawnPlayer(Engine &engine) {
-    player = engine.entities()
-                 .create("Player")
-                 .withModel(EngineConfig::MODEL_BOX, START, glm::vec3(0.0f), glm::vec3(0.8f))
-                 .withSolidColor(glm::vec3(0.2f, 0.55f, 1.0f))
-                 .withCharacter(0.4f, 0.8f) // physics: walks on the level, pushes the crates
-                 .withModelCollision()       // and a box the coins notice it with (coin.lua's onOverlap)
-                 .withComponent<Player>()
-                 .build();
+    // The Lua template's level file holds its player; here the code makes it, with the builder (the C++ way to add
+    // components, including the game's own)
+    player = engine.entity(engine.entities()
+                               .create("Player")
+                               .withModel(EngineConfig::MODEL_BOX, START, glm::vec3(0.0f), glm::vec3(0.8f))
+                               .withSolidColor(glm::vec3(0.2f, 0.55f, 1.0f))
+                               .withCharacter(0.4f, 0.8f) // physics: walks on the level, pushes the crates
+                               .withModelCollision()       // and a box the coins notice it with (coin.lua's onOverlap)
+                               .withComponent<Player>()
+                               .build());
   }
 
   void updatePlayer(Engine &engine, float deltaTime) {
     auto &input = engine.input();
-    auto &transform = engine.get<Transform>(player);
-    const Player &settings = engine.get<Player>(player);
+    const Player &settings = engine.get<Player>(player.id());
 
-    // Actions and axes, not keys: the bindings (setup, assets/input.json) decide what drives them
-    const float turn = -input.getAxis("moveX");
-    const float drive = input.getAxis("moveY");
+    // Turning is ours; walking goes through the character controller, which keeps it on the ground and out of walls.
+    // Actions and axes, not keys: the bindings (setup, assets/input.json) decide what drives them.
+    glm::vec3 rotation = player.rotation();
+    rotation.y -= input.getAxis("moveX") * settings.turnSpeed * deltaTime;
+    player.setRotation(rotation);
+    player.move(player.forward() * input.getAxis("moveY") * settings.speed);
+    if (input.wasActionPressed("jump") && player.onGround())
+      player.jump(settings.jumpSpeed);
 
-    // Turning is ours; walking goes through the character controller, which keeps it on the ground and out of walls
-    transform.rotation.y += turn * settings.turnSpeed * deltaTime;
-    auto &character = engine.get<CharacterController>(player);
-    character.move = forward(transform) * drive * settings.speed;
-    if (input.wasActionPressed("jump") && character.onGround)
-      character.jump = settings.jumpSpeed;
+    // Fell off the level: back to the start
+    if (player.position().y < -10.0f)
+      player.setPosition(START);
 
-    // Fell off the level: back to the start (moving the Transform moves the character there)
-    if (transform.position.y < -10.0f)
-      transform.position = START;
+    // Behind and above it, looking ahead
+    engine.camera().lookAt(player.position() - player.forward() * 7.0f + glm::vec3(0.0f, 4.0f, 0.0f),
+                           player.position() + player.forward() * 2.0f);
   }
 
   // The player glows for a moment after celebrate() (called from game.lua)
-  void updateCelebration(Engine &engine, float deltaTime) {
+  void updateCelebration(float deltaTime) {
     if (celebration <= 0.0f)
       return;
     celebration -= deltaTime;
-    engine.setEmission(player, glm::vec3(1.0f, 0.8f, 0.3f), celebration > 0.0f ? 3.0f * celebration : 0.0f);
-  }
-
-  // Behind and above the player, looking ahead of it
-  void updateCamera(Engine &engine) {
-    Camera *camera = engine.getActiveCamera();
-    if (!camera || engine.getState(Toggle::CameraMovement)) // the free camera (Settings) takes over
-      return;
-    const auto &transform = engine.get<Transform>(player);
-    const glm::vec3 ahead = forward(transform);
-    camera->lookAt(transform.position - ahead * 7.0f + glm::vec3(0.0f, 4.0f, 0.0f),
-                   transform.position + ahead * 2.0f);
-  }
-
-  // Where a transform faces: -Z turned by its yaw
-  static glm::vec3 forward(const Transform &transform) {
-    const float yaw = glm::radians(transform.rotation.y);
-    return {-std::sin(yaw), 0.0f, -std::cos(yaw)};
+    player.setEmission(glm::vec3(1.0f, 0.8f, 0.3f), celebration > 0.0f ? 3.0f * celebration : 0.0f);
   }
 
 public:
   void setup(Engine &engine) override {
     engine.setWindowTitle("MyGame");
-    engine.setGameName("MyGame");  // the folder the saved data (save.get and save.set in Lua) is kept in
-    engine.enablePauseMenu(true); // Escape: Resume, Options (volumes, fullscreen, vsync) and Quit
+    engine.setGameName("MyGame"); // the folder the saved data (save.get and save.set in Lua) is kept in
 
     // Default bindings, keyboard and gamepad; assets/input.json (if there) replaces them, no rebuild needed
     auto &input = engine.input();
@@ -105,7 +89,7 @@ public:
                              InputBinding::keys(SDL_SCANCODE_DOWN, SDL_SCANCODE_UP),
                              InputBinding::gamepad(SDL_GAMEPAD_AXIS_LEFTY, -1.0f)}); // stick up is negative
     input.bindAction("jump", {InputBinding::keyboard(SDL_SCANCODE_SPACE), InputBinding::gamepad(SDL_GAMEPAD_BUTTON_SOUTH)});
-    input.loadBindings("../assets/input.json");
+    input.loadBindings("input.json");
 
     // A C++ function for the scripts: game.lua calls celebrate() when every coin is picked up
     engine.scripts().lua()["celebrate"] = [this] { celebration = 1.5f; };
@@ -116,16 +100,16 @@ public:
 
   void onSceneLoaded(Engine &engine, const std::string &) override {
     spawnPlayer(engine);
-    // The game script, once the level is in: the score, and the coins it spawns from the prefab
+    // The game script, once the level is in: the HUD and the score (ui.pauseMenu and the best score in save.get
+    // too), and the coins it spawns from the prefab
     engine.scripts().runGameScript("scripts/game.lua");
   }
 
   void update(Engine &engine, float deltaTime) override {
-    if (!engine.isAlive(player))
+    if (!player.valid())
       return; // the level is still loading
     updatePlayer(engine, deltaTime);
-    updateCelebration(engine, deltaTime);
-    updateCamera(engine);
+    updateCelebration(deltaTime);
   }
 };
 

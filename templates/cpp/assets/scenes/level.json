@@ -42,6 +42,18 @@
       }
     },
     {
+      "name": "Sky",
+      "components": {
+        "Skybox": {
+          "color": [
+            0.53,
+            0.72,
+            0.95
+          ]
+        }
+      }
+    },
+    {
       "name": "Floor",
       "components": {
         "Transform": {

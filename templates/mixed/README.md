@@ -8,7 +8,9 @@ cmake -B build && cmake --build build -j     # Release; add -DCMAKE_BUILD_TYPE=D
 ```
 
 - `src/` is the C++ side (the player, here), built automatically from every `.cpp` in it. It hands functions to the
-  scripts through `engine.scripts().lua()` (with sol2): `celebrate()` in `src/main.cpp`.
+  scripts through `engine.scripts().lua()` (with sol2): `celebrate()` in `src/main.cpp`. Both sides use the same API:
+  the entity handle in C++ (`player.move(...)`, `player.setEmission(...)`) is the `Entity` scripts get, and paths are
+  relative to `assets/` in both.
 - `assets/scripts/` is the Lua side (the coins and the score). Scripts reload when saved, without a rebuild:
   `game.lua` for the whole game, and an entity's Script component for that entity (`onStart`, `onUpdate`,
   `onContact`, `onOverlap`).
@@ -16,9 +18,10 @@ cmake -B build && cmake --build build -j     # Release; add -DCMAKE_BUILD_TYPE=D
   with `engine.spawn("prefabs/coin.json", position)`. To change every coin, run the game, press `F2`, click a coin,
   edit it in the Properties panel (color, size, its script's `spin` and `bob`...) and press **Save as prefab**
   (set the path to `../assets/prefabs/coin.json` first: it suggests the entity's name). The next coins use it.
-- `Escape` opens the pause menu (`engine.enablePauseMenu(true)` in `src/main.cpp`), and `game.lua` keeps the best
-  score between runs with `save.set` / `save.get`.
-- `assets/scenes/level.json` is the level: `F2` in the game opens the editor, `Ctrl+P` plays and stops.
+- `Escape` opens the pause menu (`ui.pauseMenu(true)` in `game.lua`), and `game.lua` keeps the best score between runs
+  with `save.set` / `save.get` and shows it on the HUD (`assets/ui/hud.rml`) with `ui.text`.
+- `assets/scenes/level.json` is the level, its sky color (the `Sky` entity) included: `F2` in the game opens the
+  editor, `Ctrl+P` plays and stops.
 - `assets/input.json` maps keys and gamepad buttons to the actions and axes.
 - `bin/` is where it builds. To ship the game, copy `bin/` and `assets/` together.
 

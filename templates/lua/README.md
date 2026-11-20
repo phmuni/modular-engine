@@ -10,7 +10,8 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
   component) runs for that entity: `onStart(self)`, `onUpdate(self, dt)`, `onContact(self, other, point, normal)`,
   `onOverlap(self, other)`. Save a script while the game runs and it reloads, keeping each entity's state. Its
   `properties` table (speed, jumpSpeed...) is what the Properties panel lets you tune, per entity.
-- `assets/scenes/level.json` is the level. In the game, `F2` opens the editor: click to select, `W` `E` `R` `T` to move,
+- `assets/scenes/level.json` is the level, its sky color too (the `Sky` entity; `engine.setSkyColor(vec3(...))` changes it
+  from a script). In the game, `F2` opens the editor: click to select, `W` `E` `R` `T` to move,
   rotate, scale and resize, the Properties panel to edit (and to give an entity a script), Settings to save.
   `Ctrl+P` freezes the game, plays it from there and puts the level back on Stop.
 - `Escape` opens the pause menu (`ui.pauseMenu(true)` in `game.lua`): Resume, Options (volumes, fullscreen, vsync)

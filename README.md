@@ -317,8 +317,9 @@ whose level is a scene file you edit in the game with `F2`.
 A Lua project is `project.json` (its name, start scene, game script and input file), `assets/`, and `bin/` with the
 runner named after the game. A C++ project's `CMakeLists.txt` points at this checkout (`MODULAR_ENGINE_DIR`; left
 empty, the engine is downloaded from GitHub) and builds `src/*.cpp` with `modular_engine_add_game(...)`. Either way
-`bin/` holds `bin/engine-assets` (the engine's shaders, fonts and basic models) and SDL's library, asset paths stay
-`"../assets/..."` relative to the executable, and the folder is the whole game, runnable from anywhere. Every game
+`bin/` holds `bin/engine-assets` (the engine's shaders, fonts and basic models) and SDL's library, asset paths are
+written relative to `assets/` (`"prefabs/coin.json"`, in C++ and Lua alike; the older `"../assets/..."`, relative to the
+executable, works too), and the folder is the whole game, runnable from anywhere. Every game
 gets `--screenshot`, `--benchmark`, `--deterministic` and `--save-scene` on its command line.
 
 Setting the `CPM_SOURCE_CACHE` environment variable to a folder shares the dependency downloads (SDL, RmlUi...)
@@ -388,14 +389,15 @@ What scripts can use:
 | | |
 | --- | --- |
 | `vec3(x, y, z)` | `+ - * /`, `:length()`, `:normalized()`, `:dot(v)`, `:cross(v)`, `:distance(v)`, `:lerp(v, t)` |
-| Entities (`self`, `other`) | `name`, `position`, `rotation`, `forward`, `transform`, `light`, `valid`, `:destroy()`, `:has("RigidBody")`, `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; any other field is the entity's own (`other.health`) |
-| `engine` | `find(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)` |
-| `input` | `axis(name)`, `down(name)`, `pressed(name)`, `released(name)` (the actions and axes of `input.json`), `key("Space")`, `keyPressed("Space")`, `mouse()`, `click(button)`, `bindings(path)` |
-| `camera` | `lookAt(from, target)`, `position()`, `forward()` |
+| Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setShininess(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; any other field is the entity's own (`other.health`) |
+| `engine` | `find(name)`, `findAll(name)`, `findWithComponent(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)`, `quit()`, `setSkyColor(c)`, `getSkyColor()` |
+| `input` | `axis(name)`, `down(name)`, `pressed(name)`, `released(name)` (the actions and axes of `input.json`), `key("Space")`, `keyPressed("Space")`, `mouse()`, `mouseDown(button)`, `wheel()`, `click(button)`, `bindings(path)` |
+| `camera` | `lookAt(from, target)`, `position()`, `forward()`, `fov(degrees)` (reads the field of view, or sets it) |
+| `time` | `scale(n)` (slow motion: reads the time scale, or sets it), `paused(b)`, `elapsed()`, `delta()`, `after(seconds, fn)` and `every(seconds, fn)` (timers on game time, return a handle), `cancel(handle)` |
 | `physics` | `raycast(origin, direction, distance)` (a table with `entity`, `point`, `normal`, `distance`), `gravity(v)` |
 | `nav` | `build({ min, max, cellSize, agentRadius, agentHeight, maxSlope, stepHeight })` (all optional; without `min` and `max` it covers the static bodies), `path(from, to)` (a table of `vec3` on the ground, or `nil` if there is no way), `walkable(point)` |
-| `sound` | `play(path, volume, pitch)`, `playAt(path, position, volume)`, `music(path, volume)`, `stopMusic()` |
-| `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled)`, `openPauseMenu()`, `closePauseMenu()`, `isPaused()` (whether it is open) |
+| `sound` | `play(path, volume, pitch)` and `playAt(path, position, volume)` (return a handle for `stop(handle)`, `setVolume(handle, v)`, `isPlaying(handle)`), `preload(path)`, `music(path, volume)`, `musicVolume(v)`, `stopMusic()` |
+| `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `style(id, property, value)`, `attribute(id, name, value)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled)`, `openPauseMenu()`, `closePauseMenu()`, `isPaused()` (whether it is open) |
 | `save` | `set(key, value)` (a number, string, boolean, or a table of those, nested), `get(key, default)`, `has(key)`, `remove(key)`, `write()` |
 
 `require("name")` loads `assets/scripts/name.lua`, and `print` writes to the engine's log. C++ hands its own functions
@@ -405,6 +407,37 @@ to scripts with sol2:
 #include <sol/sol.hpp>
 engine.scripts().lua()["celebrate"] = [&] { /* ... */ };   // in Lua: celebrate()
 ```
+
+### One API for C++ and Lua
+
+Everything above is implemented once, in C++, and Lua only adapts types and calls it (the rule at the top of
+[`scriptSystem.cpp`](src/systems/scriptSystem.cpp)). A C++ game uses the same API directly, so the two read alike:
+
+| Lua | C++ |
+| --- | --- |
+| `local p = engine.find("Player")` | `GameEntity p = engine.find("Player");` |
+| `p.position = p.position + p.forward` | `p.setPosition(p.position() + p.forward());` |
+| `p:move(p.forward * 6)`, `p:jump(6)`, `p.onGround` | `p.move(p.forward() * 6.0f);`, `p.jump(6.0f);`, `p.onGround()` |
+| `p:setColor(vec3(1, 0, 0))`, `p:setVisible(false)` | `p.setColor({1, 0, 0});`, `p.setVisible(false);` |
+| `engine.create("Crate", { model = "box", body = "dynamic", color = c })` | `EntityDesc d; d.model = "box"; d.body = BodyType::Dynamic; d.color = c; engine.create("Crate", d);` ([`EntityDesc`](src/foundation/core/gameEntity.h)) |
+| `engine.spawn("prefabs/coin.json", pos)` | `engine.spawn("prefabs/coin.json", pos);` |
+| `ui.load("ui/hud.rml")`, `ui.text("score", 5)` | `engine.ui().load("ui/hud.rml");`, `engine.ui().text("score", 5);` |
+| `ui.onClick("play", function() ... end)` | `engine.ui().onClick("play", [] { ... });` |
+| `camera.lookAt(from, target)`, `camera.fov(70)` | `engine.camera().lookAt(from, target);`, `engine.camera().setFov(70);` |
+| `time.scale(0.5)`, `time.after(2, fn)` | `engine.time().setScale(0.5f);`, `engine.time().after(2.0f, [] { ... });` |
+| `engine.setSkyColor(vec3(0.5, 0.7, 1))` | `engine.setSkyColor({0.5f, 0.7f, 1.0f});` |
+| `sound.play("sounds/laser.wav")` | `engine.playSound("sounds/laser.wav");` |
+
+An entity handle ([`GameEntity`](src/foundation/core/gameEntity.h)) is a pointer and a number: cheap to copy and keep,
+and safe after the entity is gone (`valid()` says; getters then give defaults and setters do nothing). `engine.ui()`
+([`GameUI`](src/systems/gameUI.h)), `engine.camera()` and `engine.time()` are small facades over the systems; RmlUi
+itself (`engine.getUIContext()`, data models) and the components (`engine.get<Transform>(e)`, loops with
+`forEachComponent`) stay available for what the API does not cover. Paths are relative to `assets/` in both languages.
+
+[`tools/check_api_parity.py`](tools/check_api_parity.py) runs in CI next to `tools/check_lua_api.py`: a public method
+added to one of those facade classes fails the build until Lua binds it, and a Lua binding fails it until
+[`types/engine.lua`](templates/common/lua/types/engine.lua) describes it. What a C++ method does not need in Lua goes in
+the script's explicit list, with the reason.
 
 ### Quick Start
 
@@ -757,6 +790,8 @@ engine.entities().create("Sky").withSkybox("../assets/textures/skybox/space.png"
 ```json
 { "name": "Sky", "components": { "Skybox": { "path": "../assets/textures/skybox/space.png", "intensity": 1.0 } } }
 ```
+
+Its `color` (black by default) is what the image is cleared to, the sky color: with no `path` a plain sky, and with one the panorama draws over it. `engine.setSkyColor({0.5f, 0.7f, 1.0f})` (`engine.setSkyColor(vec3(0.5, 0.7, 1))` in Lua) sets it on the first Skybox, adding an entity named "Sky" with one when the scene has none; the Properties panel edits it, and scene files keep it: `{ "name": "Sky", "components": { "Skybox": { "color": [0.53, 0.72, 0.95] } } }`.
 
 The image goes through the same texture cache and streaming as model textures. Its center column is straight ahead (-Z); `intensity` above 1 lets bright stars reach the bloom. [`tools/generateSpaceSkybox.c`](tools/generateSpaceSkybox.c) generated the space panorama used by Space Aliens.
 
