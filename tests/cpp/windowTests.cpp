@@ -12,6 +12,12 @@ TEST_CASE(window_resolutions_fit_the_display) {
   SDL_Window *window = engine.getSystemManager().getSystem<WindowSystem>().getWindow();
   SDL_Rect usable;
   CHECK(SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(window), &usable));
+  // The window's title bar and frame take part of the usable area: the content gets the rest
+  int top = 0, left = 0, bottom = 0, right = 0;
+  if (!engine.isFullscreen() && SDL_GetWindowBordersSize(window, &top, &left, &bottom, &right)) {
+    usable.w -= left + right;
+    usable.h -= top + bottom;
+  }
   bool hasDesktop = false;
   for (size_t i = 0; i < sizes.size(); ++i) {
     CHECK(sizes[i].x > 0 && sizes[i].y > 0);

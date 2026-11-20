@@ -154,6 +154,13 @@ std::vector<glm::ivec2> WindowSystem::getResolutions() const {
     sizes.push_back(getWindowSize());
     return sizes;
   }
+  // The usable area holds the whole window, its title bar and frame too: what is left for the content is the most a
+  // size can be (offered at the desktop's own size, the system shrank the window to fit, to another size)
+  int top = 0, left = 0, bottom = 0, right = 0;
+  if (!isFullscreen() && SDL_GetWindowBordersSize(m_window, &top, &left, &bottom, &right)) {
+    usable.w -= left + right;
+    usable.h -= top + bottom;
+  }
   for (const glm::ivec2 &size : kCommon)
     if (size.x <= usable.w && size.y <= usable.h)
       sizes.push_back(size);
