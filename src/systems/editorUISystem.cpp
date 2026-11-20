@@ -1097,8 +1097,9 @@ void EditorUISystem::renderGizmoControls() {
                       "along a model it already cuts into, but not sink deeper.");
   ImGui::Checkbox("Align to surface##gizmo", &m_gizmoAlign);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Dragging the move gizmo places the entity on the surface under the cursor: its bottom on\n"
-                      "it and its up axis along the surface's slope, keeping its heading. With Snap on, its place on the surface\n"
+    ImGui::SetTooltip("Dragging the move gizmo's center (the white circle) slides the entity over the surfaces under the\n"
+                      "cursor: its bottom on them and its up axis along their slope, keeping its heading. The arrows and\n"
+                      "squares still move it along their axis or plane. With Snap on, its place on the surface\n"
                       "goes to the 0.5 grid and its heading to 15 degrees; the rotate gizmo then turns it around the surface's normal.");
 }
 
@@ -1241,10 +1242,13 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   const bool snapping = m_gizmoSnap || io.KeyCtrl;
   const bool gizmoMoved = ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode,
                                                glm::value_ptr(model), nullptr, snapping ? snap : nullptr);
-  // Align to surface: moving follows the cursor over surfaces instead of the gizmo's axes (off any surface, the
-  // gizmo moves it as usual). Every frame of the drag, not only those the gizmo reports a change: a snapped gizmo
+  // Align to surface: dragging the gizmo's center (its free move) follows the cursor over surfaces (off any surface,
+  // the gizmo moves it as usual). Only the center: an arrow or a plane square is a request to keep to that axis or
+  // plane, and following the surface there would carry the entity somewhere the handle does not point (the cursor's
+  // ray passes through the entity, onto whatever is behind it). Every frame of the drag, not only those the gizmo reports a change: a snapped gizmo
   // moves in steps, and the entity would stand still between them while the cursor slid along the surface.
   if (operation == ImGuizmo::TRANSLATE && m_gizmoAlign && ImGuizmo::IsUsing() &&
+      ImGuizmo::GetActiveHandleType() == ImGuizmo::MT_MOVE_SCREEN &&
       alignToSurface(systemManager, componentManager, *transform, snapping))
     return;
   if (!gizmoMoved)
