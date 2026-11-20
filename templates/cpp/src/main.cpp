@@ -1,5 +1,6 @@
-// MyGame: a starting point for a game on modular-engine. Walk with W A S D (or a gamepad's left stick), jump with
-// Space (or its bottom button), push the crates around and pick up the gold coins.
+// MyGame: a starting point for a game on modular-engine. A main menu, then thirty seconds to walk with W A S D (or a
+// gamepad's left stick), jump with Space (or its bottom button), push the crates around and pick up the gold coins; a
+// game over screen ends the round. The screens are documents in assets/ui, shown with engine.ui().menu().
 //
 // This is the same game as the Lua project template (assets/scripts/game.lua, player.lua and coin.lua), written
 // against the same API: entity handles (position, move, jump...), engine.ui(), engine.camera(), engine.spawn(),
@@ -14,9 +15,9 @@
 // as prefab).
 
 #include "foundation/core/engine.h"
-#include "foundation/core/logger.h"
 #include "systems/inputSystem.h"
 #include "systems/saveData.h"
+#include <algorithm>
 #include <cmath>
 #include <glm/gtc/constants.hpp>
 #include <vector>
@@ -40,6 +41,7 @@ class MyGame : public App {
   static constexpr const char *COIN = "prefabs/coin.json";
   static constexpr int COINS = 8;
   static constexpr float RING_RADIUS = 7.0f;
+  static constexpr float TIME_LIMIT = 30.0f; // seconds
   static constexpr glm::vec3 START{0.0f, 0.6f, 3.0f};
 
   GameEntity player;
@@ -47,6 +49,11 @@ class MyGame : public App {
   int score = 0;
   int best = 0;
   int coinsLeft = 0;
+  float timeLeft = TIME_LIMIT;
+  bool playing = false;
+  std::vector<GameEntity> coins; // the coins in the level
+  Menu *mainMenu = nullptr;      // the menus, once shown
+  Menu *gameOver = nullptr;
 
   void spawnPlayer(Engine &engine) {
     // The Lua template's level file holds its player; here the code makes it with engine.create, from a description of
@@ -83,6 +90,7 @@ class MyGame : public App {
       const GameEntity coin = engine.spawn(COIN, position); // the prefab's Coin component comes with it
       if (!coin)
         return; // spawn logged why
+      coins.push_back(coin);
       Coin &state = engine.get<Coin>(coin.id()); // Lua sets these on `self` in the coin's onStart
       state.baseY = position.y;
       state.age = position.x + position.z; // so the coins of the ring do not bob in step
@@ -100,9 +108,55 @@ class MyGame : public App {
       engine.saveData().set("bestScore", best); // written when the game closes; saveData().write() saves it right now
       ui.text("best", best);
     }
-    if (coinsLeft == 0) {
-      LOG_I("[MyGame] All coins collected. Here come more.");
-      spawnCoins(engine);
+    if (coinsLeft == 0)
+      finish(engine, true);
+  }
+
+  // The level as a round starts: a fresh ring of coins, the player at the start, the score and the clock at their start
+  void resetLevel(Engine &engine) {
+    for (GameEntity coin : coins)
+      if (coin.valid())
+        coin.destroy();
+    coins.clear();
+    spawnCoins(engine);
+    player.setPosition(START);
+    score = 0;
+    timeLeft = TIME_LIMIT;
+    engine.ui().text("score", score);
+    engine.ui().text("best", best);
+  }
+
+  // A menu pauses the game under it and takes the keys and the mouse; Escape does nothing in the main menu
+  void showMainMenu(Engine &engine) {
+    MenuOptions options;
+    options.escape = MenuEscape::None;
+    mainMenu = &engine.ui().menu("ui/mainMenu.rml", options);
+    engine.ui().text("menu-best", best);
+  }
+
+  void finish(Engine &engine, bool won) {
+    playing = false;
+    MenuOptions options;
+    options.escape = MenuEscape::None;
+    gameOver = &engine.ui().menu("ui/gameOver.rml", options);
+    engine.ui().text("result", won ? "You win!" : "Time's up");
+    engine.ui().text("final-score", score);
+    engine.ui().text("final-best", best);
+  }
+
+  // What the buttons of the menus ask for: action('play') in mainMenu.rml, and so on
+  void onMenuAction(Engine &engine, const std::string &name) {
+    if (name == "play") {
+      mainMenu->close();
+      playing = true;
+    } else if (name == "retry") {
+      gameOver->close();
+      resetLevel(engine);
+      playing = true;
+    } else if (name == "menu") {
+      gameOver->close();
+      resetLevel(engine);
+      showMainMenu(engine);
     }
   }
 
@@ -159,7 +213,9 @@ public:
   void setup(Engine &engine) override {
     engine.setWindowTitle("MyGame");
     engine.setGameName("MyGame");  // the folder the saved data (engine.saveData()) is kept in
-    engine.ui().pauseMenu(true);   // Escape: the menu in assets/ui/pauseMenu.rml (Resume, Options, Quit)
+    engine.ui().pauseMenu(true);   // Escape while playing: the menu in assets/ui/pauseMenu.rml (Resume, Options, Quit)
+    engine.ui().loadingScreen();   // assets/ui/loading.rml shows while a scene takes a moment to load (engine.loadScene)
+    engine.ui().onMenuAction([this, &engine](const std::string &, const std::string &name) { onMenuAction(engine, name); });
 
     // Default bindings, keyboard and gamepad; assets/input.json (if there) replaces them, no rebuild needed
     auto &input = engine.input();
@@ -184,7 +240,8 @@ public:
 
   void onSceneLoaded(Engine &engine, const std::string &) override {
     spawnPlayer(engine);
-    spawnCoins(engine);
+    resetLevel(engine);
+    showMainMenu(engine);
   }
 
   void update(Engine &engine, float deltaTime) override {
@@ -192,6 +249,13 @@ public:
       return; // the level is still loading
     updatePlayer(engine, deltaTime);
     updateCoins(engine, deltaTime);
+    // The clock runs on game time, so it stands still under a menu
+    if (playing) {
+      timeLeft -= deltaTime;
+      engine.ui().text("time", std::max(0, static_cast<int>(std::ceil(timeLeft))));
+      if (timeLeft <= 0.0f)
+        finish(engine, false);
+    }
   }
 };
 

@@ -1,0 +1,19 @@
+<rml>
+<head>
+	<title>Game over</title>
+	<link type="text/rcss" href="pauseMenu.rcss"/>
+	<link type="text/rcss" href="screens.rcss"/>
+</head>
+<!-- The screen the game shows when a round ends, with ui.menu("ui/gameOver.rml"). The game fills in the elements by id
+     (ui.text("result", "You win!"), "final-score" and "final-best"), and the buttons reach its onMenuAction(menu, name):
+     action('retry') starts again, action('menu') goes back to the main menu. -->
+<body data-model="gameOver">
+	<div class="card hero">
+		<div class="title" id="result">Game over</div>
+		<div class="score"><span id="final-score">0</span><span class="unit">coins</span></div>
+		<div class="best">Best <span id="final-best">0</span></div>
+		<button data-event-click="action('retry')">Try again</button>
+		<button data-event-click="action('menu')">Main menu</button>
+	</div>
+</body>
+</rml>

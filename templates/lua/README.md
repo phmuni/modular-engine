@@ -19,11 +19,20 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
   from a script). In the game, `F2` opens the editor: click to select, `W` `E` `R` `T` to move,
   rotate, scale and resize, the Properties panel to edit (and to give an entity a script), Settings to save.
   `Ctrl+P` freezes the game, plays it from there and puts the level back on Stop.
-- `Escape` opens the pause menu (`ui.pauseMenu(true)` in `game.lua`): Resume, Options (volumes, window, graphics) and
-  Quit. It is the file `assets/ui/pauseMenu.rml` (with `pauseMenu.rcss`): edit it to change the screens and the style. A
-  button with `data-event-click="action('restart')"` calls `function onPauseMenuAction(name)` in `game.lua`, and
-  `ui.pauseMenu{ pause = false }` keeps the game running under the menu (the options are in the engine's README, under
-  Menus). The player's options are in `settings` (`settings.set("masterVolume", 0.5)`). The best score is kept
+- The game starts on a main menu (Play, Options, Quit), a round lasts thirty seconds, and a game over screen (Try
+  again, Main menu) ends it: all eight coins is a win, the clock running out is not. `game.lua` has the whole flow.
+  The screens are documents in `assets/ui` with a `.rcss` for their style: `mainMenu.rml`, `gameOver.rml`,
+  `options.rml` and `loading.rml`, yours to edit (the title is in `mainMenu.rml`). `ui.menu("ui/mainMenu.rml", { escape = "none" })`
+  shows one, and a button with `data-event-click="action('play')"` calls `function onMenuAction(menu, name)` in
+  `game.lua`. Opening a menu pauses the game under it; `open('ui/options.rml')` in a document shows another one over it
+  (the Options screen is shared by the main menu and the pause menu). `ui.loadingScreen()` turns on `loading.rml`,
+  which shows when an `engine.loadScene` takes more than a moment. The options of menus and of the loading screen are
+  in the engine's README, under Menu documents and screens.
+- `Escape` opens the pause menu while playing (`ui.pauseMenu(true)` in `game.lua`): Resume, Options (volumes, window,
+  graphics) and Quit. It is the file `assets/ui/pauseMenu.rml` (with `pauseMenu.rcss`): edit it to change the screens
+  and the style. A button with `data-event-click="action('restart')"` calls `onMenuAction("pause", "restart")` (and
+  `function onPauseMenuAction(name)`) in `game.lua`, and `ui.pauseMenu{ pause = false }` keeps the game running under
+  the menu. The player's options are in `settings` (`settings.set("masterVolume", 0.5)`). The best score is kept
   between runs with `save.set` / `save.get` (see `game.lua`).
 - `assets/prefabs/coin.json` is the coin: a prefab, an entity saved to a file, that `game.lua` copies into the level
   with `engine.spawn("prefabs/coin.json", position)`. To change every coin, run the game, press `F2`, click a coin,

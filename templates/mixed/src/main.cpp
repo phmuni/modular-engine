@@ -1,9 +1,10 @@
 // MyGame: a starting point for a game on modular-engine in C++ and Lua. Walk with W A S D (or a gamepad's left
 // stick), jump with Space (or its bottom button), push the crates around and pick up the gold coins.
 //
-// C++ does the player (below); Lua does the coins, copies of the prefab assets/prefabs/coin.json, and the score
-// (assets/scripts/coin.lua and game.lua), and calls back into C++ through celebrate(), which setup() hands to the
-// scripts. Scripts reload when saved, no rebuild needed. Both languages use the same API: the entity handle below
+// C++ does the player (below); Lua does the rules: the main menu and the game over screen (assets/ui), the coins,
+// copies of the prefab assets/prefabs/coin.json, and the score (assets/scripts/coin.lua and game.lua), and calls back
+// into C++ through celebrate(), which setup() hands to the scripts. Scripts reload when saved, no rebuild needed.
+// Both languages use the same API: the entity handle below
 // (player.move, player.setEmission...) is the `Entity` a script sees, engine.camera() is Lua's `camera`, and the
 // paths are relative to assets/ in both.
 //
@@ -100,7 +101,7 @@ public:
     input.bindAction("jump", {InputBinding::keyboard(SDL_SCANCODE_SPACE), InputBinding::gamepad(SDL_GAMEPAD_BUTTON_SOUTH)});
     input.loadBindings("input.json");
 
-    // A C++ function for the scripts: game.lua calls celebrate() when every coin is picked up
+    // A C++ function for the scripts: game.lua calls celebrate() when every coin is picked up (the round is won)
     engine.scripts().lua()["celebrate"] = [this] { celebration = 1.5f; };
 
     engine.setState(Toggle::FreeCamera, false); // the game drives the camera
@@ -109,8 +110,8 @@ public:
 
   void onSceneLoaded(Engine &engine, const std::string &) override {
     spawnPlayer(engine);
-    // The game script, once the level is in: the HUD and the score (ui.pauseMenu and the best score in save.get
-    // too), and the coins it spawns from the prefab
+    // The game script, once the level is in: the main menu, the HUD and the score (ui.pauseMenu and the best score in
+    // save.get too), and the coins it spawns from the prefab
     engine.scripts().runGameScript("scripts/game.lua");
   }
 

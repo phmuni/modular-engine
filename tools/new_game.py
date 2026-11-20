@@ -37,7 +37,7 @@ def copy_template(name, folder):
 
 def fill_placeholders(folder, name):
     for path in folder.rglob("*"):
-        if path.is_file() and path.suffix in {".txt", ".cpp", ".h", ".md", ".json", ".lua"}:
+        if path.is_file() and path.suffix in {".txt", ".cpp", ".h", ".md", ".json", ".lua", ".rml"}:
             text = path.read_text()
             # With no engine sources here (the prebuilt package), an empty directory makes the project download the engine
             engine_dir = ENGINE_DIR.as_posix() if (ENGINE_DIR / "CMakeLists.txt").exists() else ""
