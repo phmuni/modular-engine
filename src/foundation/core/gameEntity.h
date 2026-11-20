@@ -99,6 +99,21 @@ public:
   // Animation clip of its model, blended in over `fadeSeconds`; the clips there are
   void play(const std::string &clip, float fadeSeconds = kDefaultFade, bool loop = true);
   std::vector<std::string> clips() const;
+  // Its AudioSource (see components/audioSource.h): the sound attached to it, heard from where the entity is as it
+  // moves. All of these do nothing without one (add it in the editor, or with the builder's withSound). playAudio
+  // starts it over (or continues it after pauseAudio), stopAudio stops and rewinds it. Volume is 1 for normal,
+  // pitch 1 for the sound as recorded.
+  void playAudio();
+  void stopAudio();
+  void pauseAudio();
+  // Playing and not paused: false once a sound that does not loop has ended
+  bool isAudioPlaying() const;
+  float audioVolume() const;
+  void setAudioVolume(float volume);
+  float audioPitch() const;
+  void setAudioPitch(float pitch);
+  bool audioLoop() const;
+  void setAudioLoop(bool loop);
   // A sound from where it is; returns a handle for Engine::stopSound and friends (0: nothing played)
   uint32_t sound(const std::string &path, float volume = 1.0f);
 

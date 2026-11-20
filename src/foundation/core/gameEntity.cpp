@@ -3,6 +3,7 @@
 #include "foundation/core/gameEntity.h"
 
 #include "components/characterController.h"
+#include "components/audioSource.h"
 #include "components/hidden.h"
 #include "components/light.h"
 #include "components/model.h"
@@ -214,6 +215,67 @@ void GameEntity::play(const std::string &clip, float fadeSeconds, bool loop) {
 
 std::vector<std::string> GameEntity::clips() const {
   return m_engine ? m_engine->getAnimationClips(m_id) : std::vector<std::string>();
+}
+
+void GameEntity::playAudio() {
+  AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr;
+  if (!source)
+    return;
+  if (source->paused && source->playing) {
+    source->paused = false; // continue from where it was held
+    return;
+  }
+  source->paused = false;
+  source->playing = true;
+  source->rewind = true;
+}
+
+void GameEntity::stopAudio() {
+  if (AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr) {
+    source->playing = false;
+    source->paused = false;
+    source->rewind = true;
+  }
+}
+
+void GameEntity::pauseAudio() {
+  if (AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr)
+    source->paused = source->playing;
+}
+
+bool GameEntity::isAudioPlaying() const {
+  const AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr;
+  return source && source->playing && !source->paused;
+}
+
+float GameEntity::audioVolume() const {
+  const AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr;
+  return source ? source->volume : 0.0f;
+}
+
+void GameEntity::setAudioVolume(float volume) {
+  if (AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr)
+    source->volume = std::max(volume, 0.0f);
+}
+
+float GameEntity::audioPitch() const {
+  const AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr;
+  return source ? source->pitch : 1.0f;
+}
+
+void GameEntity::setAudioPitch(float pitch) {
+  if (AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr)
+    source->pitch = std::max(pitch, 0.01f);
+}
+
+bool GameEntity::audioLoop() const {
+  const AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr;
+  return source && source->loop;
+}
+
+void GameEntity::setAudioLoop(bool loop) {
+  if (AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr)
+    source->loop = loop;
 }
 
 uint32_t GameEntity::sound(const std::string &path, float volume) {

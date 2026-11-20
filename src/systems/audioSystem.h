@@ -32,11 +32,14 @@ public:
   void stopVoice(uint32_t voice);
   void setVoiceVolume(uint32_t voice, float volume);
   bool isVoicePlaying(uint32_t voice) const;
-  // Streams from disk, replacing the current music
-  void playMusic(const std::string &path, float volume, bool loop);
-  void stopMusic();
-  // Volume of the music playing now (playMusic's own volume sets it at the start)
-  void setMusicVolume(float volume);
+  // Streams from disk, replacing the current music. Returns a handle (0 when nothing plays) for the calls below, so
+  // one that was replaced by newer music cannot stop that; a call with handle 0 means the music playing now.
+  uint32_t playMusic(const std::string &path, float volume, bool loop);
+  void stopMusic(uint32_t music = 0);
+  // Volume of the music (playMusic's own volume sets it at the start)
+  void setMusicVolume(float volume, uint32_t music = 0);
+  // False once music that does not loop has ended, and for a handle that is no longer the current music
+  bool isMusicPlaying(uint32_t music = 0) const;
 
   void setMasterVolume(float volume);
   float getMasterVolume() const;
@@ -48,4 +51,5 @@ private:
   struct Impl;
   std::unique_ptr<Impl> m_impl;
   ComponentManager &m_componentManager;
+  bool isCurrentMusic(uint32_t music) const;
 };

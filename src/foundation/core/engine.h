@@ -340,10 +340,13 @@ public:
   void stopSound(uint32_t sound);
   void setSoundVolume(uint32_t sound, float volume);
   bool isSoundPlaying(uint32_t sound);
-  // Streams from disk, replacing the music already playing
-  void playMusic(std::string_view path, float volume = 1.0f, bool loop = true);
-  void stopMusic();
-  void setMusicVolume(float volume);
+  // Streams from disk, replacing the music already playing; returns a handle (0: nothing plays) like the effects do.
+  // The calls below take it to leave newer music alone; without one (0) they mean the music playing now.
+  uint32_t playMusic(std::string_view path, float volume = 1.0f, bool loop = true);
+  void stopMusic(uint32_t music = 0);
+  void setMusicVolume(float volume, uint32_t music = 0);
+  // False once music that does not loop has ended
+  bool isMusicPlaying(uint32_t music = 0);
 
   // Scenes (JSON). Saving writes every entity with components that have a serializer; see SceneSerializer.
   bool saveScene(std::string_view path);

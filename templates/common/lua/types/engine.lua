@@ -129,6 +129,10 @@ function vec3.lerp(a, b, t) end
 ---@field visible boolean (read-only) false after setVisible(false)
 ---@field velocity vec3 Linear velocity of its physics body
 ---@field onGround boolean (read-only) whether its character controller stands on the ground
+---@field audioPlaying boolean (read-only) its AudioSource is playing (not paused; false once a sound that does not loop ended)
+---@field audioVolume number Its AudioSource's volume, 1 is normal (0 without an AudioSource)
+---@field audioPitch number Its AudioSource's pitch, 1 is as recorded
+---@field audioLoop boolean Whether its AudioSource starts over when it ends
 local Entity = {}
 
 ---Destroys the entity.
@@ -231,6 +235,16 @@ function Entity:play(clip, fade, loop) end
 ---The names of its animation clips.
 ---@return string[]
 function Entity:clips() end
+
+---Starts its AudioSource (the sound attached to the entity, added in the editor; it follows the entity as it moves)
+---over from the start, or continues it after pauseAudio. Does nothing without an AudioSource.
+function Entity:playAudio() end
+
+---Stops its AudioSource and rewinds it.
+function Entity:stopAudio() end
+
+---Holds its AudioSource where it is; playAudio continues from there.
+function Entity:pauseAudio() end
 
 ---Plays a sound from the entity's position.
 ---@param path string Relative to assets/ ("sounds/laser.wav")
@@ -633,17 +647,26 @@ function sound.isPlaying(handle) end
 ---@param path string
 function sound.preload(path) end
 
----Plays music.
+---Plays music, replacing what plays.
 ---@param path string
 ---@param volume? number Defaults to 1
-function sound.music(path, volume) end
+---@param loop? boolean Defaults to true
+---@return integer handle For the music calls below, so a handle of replaced music leaves the newer alone (0: nothing played)
+function sound.music(path, volume, loop) end
 
----Stops the music.
-function sound.stopMusic() end
+---Stops the music (the music of the handle, if given and still the one playing).
+---@param handle? integer
+function sound.stopMusic(handle) end
 
----Changes the volume of the music playing now.
+---Changes the volume of the music playing now (or of the music of the handle, if it still plays).
 ---@param volume number
-function sound.musicVolume(volume) end
+---@param handle? integer
+function sound.musicVolume(volume, handle) end
+
+---Whether music plays: false once music that does not loop has ended, or for a handle that was replaced.
+---@param handle? integer
+---@return boolean
+function sound.isMusicPlaying(handle) end
 
 -- save ---------------------------------------------------------------------------------------------------------------
 

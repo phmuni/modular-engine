@@ -41,6 +41,7 @@ struct AudioSystem::Impl {
   std::unordered_map<std::string, std::unique_ptr<ma_sound>> decoded;
   std::unordered_set<std::string> missing;
   std::unique_ptr<ma_sound> currentMusic;
+  uint32_t musicHandle = 0; // of currentMusic, from the same counter as the voices
 
   float masterVolume = 1.0f;
   float effectsVolume = 1.0f;
@@ -161,6 +162,7 @@ void AudioSystem::update(SystemManager &systemManager, bool paused, float timeSc
 
     if (it == impl.voices.end()) {
       source.voice = 0;
+      source.rewind = false; // a new voice starts at the beginning anyway
       if (!source.playing || source.path.empty())
         return;
       auto sound = impl.createEffect(EngineConfig::resolveAsset(source.path));
@@ -191,10 +193,15 @@ void AudioSystem::update(SystemManager &systemManager, bool paused, float timeSc
       ma_sound_set_rolloff(sound, source.rolloff);
     }
 
-    if (source.playing && !voice.wantPlaying) {
+    if (source.rewind) {
+      ma_sound_seek_to_pcm_frame(sound, 0);
+      source.rewind = false;
+    }
+    const bool wantPlaying = source.playing && !source.paused;
+    if (wantPlaying && !voice.wantPlaying) {
       ma_sound_start(sound); // from the start again if it had ended
       voice.wantPlaying = true;
-    } else if (!source.playing && voice.wantPlaying) {
+    } else if (!wantPlaying && voice.wantPlaying) {
       ma_sound_stop(sound);
       voice.wantPlaying = false;
     } else if (voice.wantPlaying && ma_sound_at_end(sound)) {
@@ -264,24 +271,41 @@ bool AudioSystem::isVoicePlaying(uint32_t voice) const {
   return it != m_impl->voices.end() && it->second.owner == -1 && !ma_sound_at_end(it->second.sound.get());
 }
 
-void AudioSystem::playMusic(const std::string &path, float volume, bool loop) {
+uint32_t AudioSystem::playMusic(const std::string &path, float volume, bool loop) {
   auto &impl = *m_impl;
   if (!impl.ready)
-    return;
+    return 0;
   Impl::destroySound(impl.currentMusic);
+  impl.musicHandle = 0;
   impl.currentMusic = impl.createSound(EngineConfig::resolveAsset(path), kMusicFlags, &impl.music);
   if (!impl.currentMusic)
-    return;
+    return 0;
   ma_sound_set_volume(impl.currentMusic.get(), volume);
   ma_sound_set_looping(impl.currentMusic.get(), loop);
   ma_sound_start(impl.currentMusic.get());
+  impl.musicHandle = impl.nextVoice++;
+  return impl.musicHandle;
 }
 
-void AudioSystem::stopMusic() { Impl::destroySound(m_impl->currentMusic); }
+// 0 is whatever plays; a handle of music that was replaced matches nothing
+bool AudioSystem::isCurrentMusic(uint32_t music) const {
+  return m_impl->currentMusic && (music == 0 || music == m_impl->musicHandle);
+}
 
-void AudioSystem::setMusicVolume(float volume) {
-  if (m_impl->currentMusic)
+void AudioSystem::stopMusic(uint32_t music) {
+  if (isCurrentMusic(music)) {
+    Impl::destroySound(m_impl->currentMusic);
+    m_impl->musicHandle = 0;
+  }
+}
+
+void AudioSystem::setMusicVolume(float volume, uint32_t music) {
+  if (isCurrentMusic(music))
     ma_sound_set_volume(m_impl->currentMusic.get(), std::max(volume, 0.0f));
+}
+
+bool AudioSystem::isMusicPlaying(uint32_t music) const {
+  return isCurrentMusic(music) && !ma_sound_at_end(m_impl->currentMusic.get());
 }
 
 void AudioSystem::setMasterVolume(float volume) {

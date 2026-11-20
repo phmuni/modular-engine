@@ -12,6 +12,10 @@ struct AudioSource {
   bool spatial = true; // follows the entity's Transform and fades with distance from the camera
   bool playing = true; // set to start or stop it; a sound that does not loop sets it back to false when it ends
 
+  // Set by game code (GameEntity::playAudio and friends) for AudioSystem to act on; not saved in scenes
+  bool paused = false; // held where it is while true (and `playing`); false again continues from there
+  bool rewind = false; // go back to the start at the next update, which clears it
+
   // Distance fade (spatial only): full volume up to minDistance, quieter beyond it, no further change past maxDistance.
   // Positioned one-shots (Engine::playSoundAt) use these defaults too.
   float minDistance = 10.0f;

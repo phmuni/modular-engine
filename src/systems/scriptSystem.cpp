@@ -623,6 +623,14 @@ struct ScriptSystem::Impl {
           e.play(clip, fade.value_or(GameEntity::kDefaultFade), loop.value_or(true));
         },
         "clips", [](GameEntity &e) { return sol::as_table(e.clips()); },
+        // The entity's AudioSource: audioPlaying is read-only, the others read and write
+        "playAudio", &GameEntity::playAudio,
+        "stopAudio", &GameEntity::stopAudio,
+        "pauseAudio", &GameEntity::pauseAudio,
+        "audioPlaying", sol::readonly_property(&GameEntity::isAudioPlaying),
+        "audioVolume", sol::property(&GameEntity::audioVolume, &GameEntity::setAudioVolume),
+        "audioPitch", sol::property(&GameEntity::audioPitch, &GameEntity::setAudioPitch),
+        "audioLoop", sol::property(&GameEntity::audioLoop, &GameEntity::setAudioLoop),
         "sound", [](GameEntity &e, const std::string &path, sol::optional<float> volume) {
           return e.sound(path, volume.value_or(1.0f));
         });
@@ -942,11 +950,18 @@ struct ScriptSystem::Impl {
     sound.set_function("setVolume", [this](uint32_t handle, float volume) { engine.setSoundVolume(handle, volume); });
     sound.set_function("isPlaying", [this](uint32_t handle) { return engine.isSoundPlaying(handle); });
     sound.set_function("preload", [this](const std::string &path) { engine.preloadSound(path); });
-    sound.set_function("music", [this](const std::string &path, sol::optional<float> volume) {
-      engine.playMusic(path, volume.value_or(1.0f));
+    // music returns a handle like play does (0: nothing plays); the others take it to leave newer music alone, or
+    // none for the music playing now
+    sound.set_function("music", [this](const std::string &path, sol::optional<float> volume, sol::optional<bool> loop) {
+      return engine.playMusic(path, volume.value_or(1.0f), loop.value_or(true));
     });
-    sound.set_function("stopMusic", [this]() { engine.stopMusic(); });
-    sound.set_function("musicVolume", [this](float volume) { engine.setMusicVolume(volume); });
+    sound.set_function("stopMusic", [this](sol::optional<uint32_t> handle) { engine.stopMusic(handle.value_or(0)); });
+    sound.set_function("musicVolume", [this](float volume, sol::optional<uint32_t> handle) {
+      engine.setMusicVolume(volume, handle.value_or(0));
+    });
+    sound.set_function("isMusicPlaying", [this](sol::optional<uint32_t> handle) {
+      return engine.isMusicPlaying(handle.value_or(0));
+    });
 
     // save: progress and settings that stay between runs (see SaveData); values are numbers, strings, booleans or
     // tables of those, nested

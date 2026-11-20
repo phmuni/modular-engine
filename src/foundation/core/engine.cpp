@@ -606,11 +606,15 @@ void Engine::setSoundVolume(uint32_t sound, float volume) {
 
 bool Engine::isSoundPlaying(uint32_t sound) { return m_systemManager.getSystem<AudioSystem>().isVoicePlaying(sound); }
 
-void Engine::setMusicVolume(float volume) { m_systemManager.getSystem<AudioSystem>().setMusicVolume(volume); }
-
-void Engine::playMusic(std::string_view path, float volume, bool loop) {
-  m_systemManager.getSystem<AudioSystem>().playMusic(std::string(path), volume, loop);
+void Engine::setMusicVolume(float volume, uint32_t music) {
+  m_systemManager.getSystem<AudioSystem>().setMusicVolume(volume, music);
 }
+
+uint32_t Engine::playMusic(std::string_view path, float volume, bool loop) {
+  return m_systemManager.getSystem<AudioSystem>().playMusic(std::string(path), volume, loop);
+}
+
+bool Engine::isMusicPlaying(uint32_t music) { return m_systemManager.getSystem<AudioSystem>().isMusicPlaying(music); }
 
 Rml::Context *Engine::getUIContext() { return m_systemManager.getSystem<GameUISystem>().getContext(); }
 
@@ -622,7 +626,7 @@ bool Engine::loadUIFont(std::string_view path, bool fallback) {
   return m_systemManager.getSystem<GameUISystem>().loadFont(std::string(path), fallback);
 }
 
-void Engine::stopMusic() { m_systemManager.getSystem<AudioSystem>().stopMusic(); }
+void Engine::stopMusic(uint32_t music) { m_systemManager.getSystem<AudioSystem>().stopMusic(music); }
 
 Engine::CommandLine Engine::parseCommandLine(int argc, char **argv) {
   CommandLine result;
