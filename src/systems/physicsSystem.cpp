@@ -192,6 +192,24 @@ struct PhysicsSystem::Impl {
   };
   std::unordered_map<Entity, BodyRecord> bodies;
 
+  // Velocity, impulse and force set on an entity whose body Jolt does not have yet (created this frame): applied when
+  // sync builds it. Empty almost always, so it costs nothing per frame.
+  struct PendingMotion {
+    std::optional<glm::vec3> linear, angular;
+    glm::vec3 impulse{0.0f}, force{0.0f};
+  };
+  std::unordered_map<Entity, PendingMotion> pending;
+
+  // The entity's pending motion, if it is a dynamic body that sync has yet to build
+  PendingMotion *pendingFor(Entity entity) {
+    if (bodies.count(entity))
+      return nullptr;
+    const RigidBody *body = componentManager.tryGet<RigidBody>(entity);
+    if (!body || body->type != BodyType::Dynamic || componentManager.has<CharacterController>(entity))
+      return nullptr;
+    return &pending[entity];
+  }
+
   struct CharacterRecord {
     JPH::Ref<JPH::CharacterVirtual> character;
     CharacterController settings; // the shape part, to rebuild it
@@ -230,6 +248,7 @@ struct PhysicsSystem::Impl {
     }
     bodies.clear();
     characters.clear();
+    pending.clear();
   }
 
   // The body's shape in world units: the component's size (or the model's bounds) times the entity's scale
@@ -328,6 +347,21 @@ struct PhysicsSystem::Impl {
     }
     const Model *model = componentManager.tryGet<Model>(entity);
     bodies[entity] = BodyRecord{id, body, transform.scale, model ? model->meshHandle : UINT32_MAX, transform};
+    if (pending.empty())
+      return;
+    if (auto it = pending.find(entity); it != pending.end()) {
+      JPH::BodyInterface &bodyInterface = system->GetBodyInterface();
+      const PendingMotion &motion = it->second;
+      if (body.type == BodyType::Dynamic) {
+        if (motion.linear)
+          bodyInterface.SetLinearVelocity(id, toJolt(*motion.linear));
+        if (motion.angular)
+          bodyInterface.SetAngularVelocity(id, toJolt(*motion.angular));
+        bodyInterface.AddImpulse(id, toJolt(motion.impulse));
+        bodyInterface.AddForce(id, toJolt(motion.force));
+      }
+      pending.erase(it);
+    }
   }
 
   void createCharacter(Entity entity, const CharacterController &controller, const Transform &transform) {
@@ -411,6 +445,7 @@ struct PhysicsSystem::Impl {
         record.written = *transform;
       }
     });
+    pending.clear(); // for entities that never got a body (destroyed, or no longer dynamic)
     // Sleeping bodies do not notice that what they rest on stopped colliding with them
     if (layerMoved)
       for (const auto &[entity, record] : bodies)
@@ -543,33 +578,47 @@ glm::vec3 PhysicsSystem::getGravity() const { return toGlm(m_impl->system->GetGr
 void PhysicsSystem::setGravity(const glm::vec3 &gravity) { m_impl->system->SetGravity(toJolt(gravity)); }
 
 glm::vec3 PhysicsSystem::getLinearVelocity(Entity entity) const {
-  const auto *record = m_impl->dynamicBody(entity);
-  return record ? toGlm(m_impl->system->GetBodyInterface().GetLinearVelocity(record->id)) : glm::vec3(0.0f);
+  if (const auto *record = m_impl->dynamicBody(entity))
+    return toGlm(m_impl->system->GetBodyInterface().GetLinearVelocity(record->id));
+  const auto it = m_impl->pending.find(entity);
+  return it != m_impl->pending.end() && it->second.linear ? *it->second.linear : glm::vec3(0.0f);
 }
 
 void PhysicsSystem::setLinearVelocity(Entity entity, const glm::vec3 &velocity) {
-  if (const auto *record = m_impl->dynamicBody(entity))
+  if (const auto *record = m_impl->dynamicBody(entity)) {
     m_impl->system->GetBodyInterface().SetLinearVelocity(record->id, toJolt(velocity));
+  } else if (auto *pending = m_impl->pendingFor(entity)) {
+    pending->linear = velocity;
+    pending->impulse = glm::vec3(0.0f); // the velocity replaces what an earlier impulse would have added
+  }
 }
 
 glm::vec3 PhysicsSystem::getAngularVelocity(Entity entity) const {
-  const auto *record = m_impl->dynamicBody(entity);
-  return record ? toGlm(m_impl->system->GetBodyInterface().GetAngularVelocity(record->id)) : glm::vec3(0.0f);
+  if (const auto *record = m_impl->dynamicBody(entity))
+    return toGlm(m_impl->system->GetBodyInterface().GetAngularVelocity(record->id));
+  const auto it = m_impl->pending.find(entity);
+  return it != m_impl->pending.end() && it->second.angular ? *it->second.angular : glm::vec3(0.0f);
 }
 
 void PhysicsSystem::setAngularVelocity(Entity entity, const glm::vec3 &velocity) {
   if (const auto *record = m_impl->dynamicBody(entity))
     m_impl->system->GetBodyInterface().SetAngularVelocity(record->id, toJolt(velocity));
+  else if (auto *pending = m_impl->pendingFor(entity))
+    pending->angular = velocity;
 }
 
 void PhysicsSystem::addImpulse(Entity entity, const glm::vec3 &impulse) {
   if (const auto *record = m_impl->dynamicBody(entity))
     m_impl->system->GetBodyInterface().AddImpulse(record->id, toJolt(impulse));
+  else if (auto *pending = m_impl->pendingFor(entity))
+    pending->impulse += impulse;
 }
 
 void PhysicsSystem::addForce(Entity entity, const glm::vec3 &force) {
   if (const auto *record = m_impl->dynamicBody(entity))
     m_impl->system->GetBodyInterface().AddForce(record->id, toJolt(force));
+  else if (auto *pending = m_impl->pendingFor(entity))
+    pending->force += force;
 }
 
 std::optional<RayHit> PhysicsSystem::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,

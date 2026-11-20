@@ -62,14 +62,33 @@ TEST_CASE(physics_gravity_and_velocity) {
   GameEntity ball = engine.create("Ball", Desc("sphere").at(0, 50, 0).body(BodyType::Dynamic, BodyShape::Sphere));
   CHECK_NEAR(engine.physics().getGravity(), glm::vec3(0, -9.81f, 0), 0.01f);
   engine.physics().setGravity(glm::vec3(0));
-  // The body joins the physics world at the next update: a velocity set before that is ignored
-  steps.step(1, [ball]() mutable { ball.setVelocity(glm::vec3(3, 0, 0)); });
+  // Set on the frame the entity was created, before its body is in the physics world
+  ball.setVelocity(glm::vec3(3, 0, 0));
   steps.seconds(1.0f, [&engine, ball]() {
     CHECK_NEAR(ball.position().y, 50.0f, 0.1f); // no gravity: no fall
     CHECK(ball.position().x > 2.5f && ball.position().x < 3.5f);
     engine.physics().setGravity(glm::vec3(0, -9.81f, 0));
   });
   steps.seconds(0.5f, [ball]() { CHECK(ball.position().y < 49.0f); });
+}
+
+TEST_CASE(physics_motion_on_creation_frame) {
+  engine.physics().setGravity(glm::vec3(0));
+  GameEntity fast = engine.create("Fast", Desc("sphere").at(0, 10, 0).body(BodyType::Dynamic, BodyShape::Sphere));
+  GameEntity pushed = engine.create("Pushed", Desc("sphere").at(5, 10, 0).body(BodyType::Dynamic, BodyShape::Sphere));
+  GameEntity spun = engine.create("Spun", Desc("sphere").at(10, 10, 0).body(BodyType::Dynamic, BodyShape::Sphere));
+  GameEntity forced = engine.create("Forced", Desc("sphere").at(15, 10, 0).body(BodyType::Dynamic, BodyShape::Sphere));
+  fast.setVelocity(glm::vec3(0, 0, 20));
+  pushed.impulse(glm::vec3(0, 0, 2000));
+  engine.physics().setAngularVelocity(spun.id(), glm::vec3(0, 5, 0));
+  forced.force(glm::vec3(0, 0, 5000));
+  CHECK_NEAR(fast.velocity(), glm::vec3(0, 0, 20), 0.001f); // reads back before the body exists
+  steps.step(5, [&engine, fast, pushed, spun, forced]() {
+    CHECK(fast.position().z > 0.5f);
+    CHECK(pushed.velocity().z > 0.1f); // a heavy sphere: slow, but going
+    CHECK(engine.physics().getAngularVelocity(spun.id()).y > 1.0f);
+    CHECK(forced.position().z > 0.0f);
+  });
 }
 
 TEST_CASE(collision_boxes) {
