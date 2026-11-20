@@ -84,16 +84,22 @@ def main():
 
     started = time.time()
     failed = []
+    # Input tests push mouse and key events at their window: with other test windows open at the same time the
+    # window system can send them elsewhere, so they run alone, after the others
+    alone = [t for t in tests if "input" in t[0]]
+    together = [t for t in tests if "input" not in t[0]]
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        for name, passed, seconds, output in pool.map(lambda t: run_test(args.binary, t), tests):
-            print("%s %-36s %5.1f s" % ("PASS" if passed else "FAIL", name, seconds), flush=True)
-            if not passed or args.verbose:
-                # The engine's log lines are long; the failures are the lines that are not log lines
-                lines = output.splitlines()
-                shown = lines if (args.verbose or len(lines) <= 60) else lines[-60:]
-                print("\n".join("    " + line for line in shown), flush=True)
-            if not passed:
-                failed.append(name)
+        results = list(pool.map(lambda t: run_test(args.binary, t), together))
+    results += [run_test(args.binary, t) for t in alone]
+    for name, passed, seconds, output in results:
+        print("%s %-36s %5.1f s" % ("PASS" if passed else "FAIL", name, seconds), flush=True)
+        if not passed or args.verbose:
+            # The engine's log lines are long; the failures are the lines that are not log lines
+            lines = output.splitlines()
+            shown = lines if (args.verbose or len(lines) <= 60) else lines[-60:]
+            print("\n".join("    " + line for line in shown), flush=True)
+        if not passed:
+            failed.append(name)
     print("\n%d tests, %d failed, %.0f s" % (len(tests), len(failed), time.time() - started))
     if failed:
         print("failed: " + ", ".join(failed))
