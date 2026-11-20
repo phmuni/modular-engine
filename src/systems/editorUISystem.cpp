@@ -1112,11 +1112,8 @@ glm::quat rotationOf(const Transform &transform) {
   const glm::vec3 radians = glm::radians(transform.rotation);
   return glm::quat_cast(glm::eulerAngleYXZ(radians.y, radians.x, radians.z));
 }
-glm::vec3 eulerOf(const glm::quat &rotation) {
-  float yaw = 0.0f, pitch = 0.0f, roll = 0.0f;
-  glm::extractEulerAngleYXZ(glm::mat4_cast(rotation), yaw, pitch, roll);
-  return glm::degrees(glm::vec3(pitch, yaw, roll));
-}
+// The Transform's angles for a rotation: TransformSystem's, steady at +-90 degrees of pitch and without round-off
+glm::vec3 eulerOf(const glm::quat &rotation) { return TransformSystem::eulerDegrees(rotation); }
 // The turn around +Y left in a rotation once its tilt (the shortest turn taking +Y to where its up went) is taken
 // out: the heading it keeps on a slope, in degrees. The twist of a swing-twist split.
 float headingAround(const glm::quat &rotation) { return glm::degrees(2.0f * std::atan2(rotation.y, rotation.w)); }
@@ -1264,17 +1261,32 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   rotation[0] = glm::vec4(glm::vec3(model[0]) / scale.x, 0.0f);
   rotation[1] = glm::vec4(glm::vec3(model[1]) / scale.y, 0.0f);
   rotation[2] = glm::vec4(glm::vec3(model[2]) / scale.z, 0.0f);
-  float yaw = 0.0f, pitch = 0.0f, roll = 0.0f;
-  glm::extractEulerAngleYXZ(rotation, yaw, pitch, roll);
 
   // Only what this operation changes, so moving never nudges the rotation through float round-off
   Transform wanted = *transform;
   if (operation == ImGuizmo::TRANSLATE)
     wanted.position = glm::vec3(model[3]);
   else if (operation == ImGuizmo::ROTATE)
-    wanted.rotation = glm::degrees(glm::vec3(pitch, yaw, roll));
+    wanted.rotation = eulerOf(glm::quat_cast(rotation)); // steady at +-90 degrees of pitch, and without round-off
   else
     wanted.scale = scale;
+  // The gizmo snaps how far it moved, from where the drag started: an entity at 1.3 went to 1.8 and 2.3, never onto
+  // the grid. The axes that changed go onto it instead (world axes: along local ones the grid has no meaning), and a
+  // scale that changed to the 0.1 steps. Angles keep the gizmo's steps from where they were: rounding three Euler
+  // angles is not rounding the turn the ring made.
+  if (snapping) {
+    const auto onto = [](float value, float step) {
+      const float snapped = std::round(value / step) * step;
+      return snapped == 0.0f ? 0.0f : snapped; // not -0
+    };
+    for (int axis = 0; axis < 3; ++axis) {
+      if (operation == ImGuizmo::TRANSLATE && mode == ImGuizmo::WORLD &&
+          std::abs(wanted.position[axis] - transform->position[axis]) > 1e-5f)
+        wanted.position[axis] = onto(wanted.position[axis], kSnapStep);
+      if (operation == ImGuizmo::SCALE && std::abs(wanted.scale[axis] - transform->scale[axis]) > 1e-5f)
+        wanted.scale[axis] = std::max(onto(wanted.scale[axis], snapStep), snapStep);
+    }
+  }
   applyGizmoChange(systemManager, componentManager, *transform, wanted, operation == ImGuizmo::TRANSLATE);
 }
 

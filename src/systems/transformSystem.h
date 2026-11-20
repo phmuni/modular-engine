@@ -4,6 +4,7 @@
 #include "components/transform.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
+#include <glm/gtc/quaternion.hpp>
 #include <vector>
 
 class TransformSystem : public BaseSystem {
@@ -13,6 +14,10 @@ public:
   // The other way: position, rotation (in the same Y, X, Z order) and scale of a matrix. A parent scaled unevenly
   // and rotated can make a child's matrix skewed, which a Transform cannot hold; the closest one comes back.
   static Transform decompose(const glm::mat4 &matrix);
+  // A rotation as a Transform's angles (degrees, the same Y, X, Z order). At a pitch of +-90 degrees the yaw and the
+  // roll turn around the same axis (gimbal lock) and only their sum counts: the roll is 0 there, instead of a split
+  // made of float noise (0.194 where 0 was meant). Rounded to 0.001 degrees, so 15 reads 15, not 14.99997.
+  static glm::vec3 eulerDegrees(const glm::quat &rotation);
 
   // Places every child at its parent's transform combined with its local one, parents before their children. A
   // child whose Transform was moved since the last call keeps that place, and its local transform follows instead.

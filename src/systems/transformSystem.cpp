@@ -6,6 +6,7 @@
 #include "foundation/core/logger.h"
 #include "glm/ext/matrix_transform.hpp"
 #include <algorithm>
+#include <cmath>
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
@@ -35,11 +36,30 @@ Transform TransformSystem::decompose(const glm::mat4 &matrix) {
   glm::mat4 rotation(1.0f);
   for (int axis = 0; axis < 3; ++axis)
     rotation[axis] = glm::vec4(glm::vec3(matrix[axis]) / result.scale[axis], 0.0f);
-  // calculateModelMatrix rotates by Y, then X, then Z (qy * qx * qz), which extractEulerAngleYXZ undoes
-  float yaw = 0.0f, pitch = 0.0f, roll = 0.0f;
-  glm::extractEulerAngleYXZ(rotation, yaw, pitch, roll);
-  result.rotation = glm::degrees(glm::vec3(pitch, yaw, roll));
+  result.rotation = eulerDegrees(glm::quat_cast(glm::mat3(rotation)));
   return result;
+}
+
+glm::vec3 TransformSystem::eulerDegrees(const glm::quat &rotation) {
+  // calculateModelMatrix rotates by Y, then X, then Z (qy * qx * qz), which extractEulerAngleYXZ undoes. In double:
+  // the split below must see the rotation, not float noise of its own making.
+  const glm::dmat4 matrix = glm::mat4_cast(glm::normalize(glm::dquat(rotation)));
+  double yaw = 0.0, pitch = 0.0, roll = 0.0;
+  // Under 1e-4 (a pitch within 0.006 degrees of 90) a float rotation's own noise is all there is between yaw and
+  // roll: the roll is 0 and the yaw takes the whole turn, read from the X axis, which Ry * Rx(+-90) leaves at
+  // (cos yaw, 0, -sin yaw)
+  const double pitchCos = std::sqrt(matrix[0][1] * matrix[0][1] + matrix[1][1] * matrix[1][1]);
+  if (pitchCos < 1e-4) {
+    pitch = std::atan2(-matrix[2][1], pitchCos);
+    yaw = std::atan2(-matrix[0][2], matrix[0][0]);
+  } else {
+    glm::extractEulerAngleYXZ(matrix, yaw, pitch, roll);
+  }
+  const auto clean = [](double radians) {
+    const float degrees = static_cast<float>(std::round(glm::degrees(radians) * 1000.0) / 1000.0);
+    return degrees == 0.0f ? 0.0f : degrees; // not -0
+  };
+  return glm::vec3(clean(pitch), clean(yaw), clean(roll));
 }
 
 namespace {
