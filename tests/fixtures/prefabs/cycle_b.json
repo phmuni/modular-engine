@@ -1,0 +1,20 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "B",
+      "components": {
+        "Transform": { "position": [0, 0, 0] },
+        "Model": { "path": "../assets/models/box/box.obj" }
+      }
+    },
+    {
+      "components": {
+        "Transform": { "position": [1, 0, 0] },
+        "Parent": { "parent": 0, "local": { "position": [1, 0, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1] } },
+        "PrefabInstance": { "path": "../tests/fixtures/prefabs/cycle_a.json" }
+      }
+    }
+  ]
+}

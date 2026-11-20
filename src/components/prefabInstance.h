@@ -15,5 +15,6 @@ struct PrefabInstance {
 };
 
 struct PrefabPart {
-  int index = 0; // position in the prefab file's "entities" list
+  int index = 0;  // position in the prefab file's "entities" list
+  int outer = -1; // a nested instance's root only: its position in the enclosing prefab's list (-1: it stands alone)
 };

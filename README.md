@@ -77,7 +77,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events, collision layers with a matrix |
 | **Navigation**             | A walkable grid built from the physics world and A* paths around obstacles, smoothed (`engine.navigation().findPath`, `nav.path` in Lua), drawn by the editor's "Show navigation" |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
-| **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
+| **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`, nested prefabs), saved in scenes and edited in the editor |
 | **Linked Prefabs**         | Instances remember their prefab file and follow it when it changes (in the editor or on disk), keeping what they changed themselves; Apply, Revert and Unpack in the Properties panel (undoing an Apply puts the prefab file back too) |
 | **Asset Browser**          | The editor's Assets panel lists `assets/` by kind with a search box: drag models and prefabs into the view, scripts and sounds onto entities, double-click to open |
 | **Multi-select**           | Ctrl/Cmd+click, Shift+click ranges and a box in the view select several entities; the gizmo, Properties, duplicate, copy, paste and delete work on all of them |
@@ -955,10 +955,57 @@ references stay valid):
   and `"PrefabPart": {"index"}` on the others. Loading brings an instance up to date with its file when the file exists
   (applying the saved overrides to it); when the file is missing the entities stay as saved, so a scene never loses
   content. Scenes saved before links load as they are: plain entities.
-- Not covered: a prefab inside a prefab (a prefab file never holds links, so applying an instance that has another
-  inside flattens it) and files with several roots (they are placed unlinked). A prefab file written by hand with fields
-  left out shows those fields as overrides until it is saved by the editor once. Undo restores the scene, not the
-  prefab file Apply wrote.
+- Not covered: files with several roots (they are placed unlinked). A prefab file written by hand with fields left out
+  shows those fields as overrides until it is saved by the editor once. Undo of **Apply** and **Save as prefab**
+  restores the prefab file they wrote together with the scene.
+
+#### Nested prefabs
+
+A prefab can contain instances of other prefabs and stay linked to them: `house.json` holds a `door.json` instance
+with a different color. Build it in the editor (put a prefab instance under the entity, then **Save as prefab** or
+**Apply** on the outer one) or with `savePrefab`: an instance below the saved root is written as a reference, not as a
+copy of its entities:
+
+```json
+{ "components": {
+    "Transform": { "position": [2, 0, 0], ... },
+    "Parent": { "parent": 0, "local": { ... } },
+    "PrefabInstance": { "path": "../assets/prefabs/door.json",
+                        "overrides": [{ "op": "replace", "path": "/0/components/Model/color", "value": [0.8, 0.2, 0.1] }] } } }
+```
+
+`instantiate`/`spawn` (and the editor) load such entries recursively, so editing `door.json` changes the door in every
+house instance and every scene, in place, as long as nothing changes that same property. The nested root is a
+`PrefabInstance` of its own (and a `PrefabPart` of the outer instance, `"outer"` in scene files), so it shows in the
+Scene Explorer as `[P door]` and can be selected, reverted or applied on its own.
+
+- **Override layers.** The overrides are JSON patches over keys that name each entity of the instance: `"3"` is the
+  fourth entity of the file itself, `"3.1"` the second entity of the prefab nested at entry 3 (`"3.1.0"` one level
+  deeper). A value is taken from the innermost layer that sets it: the door file, then what `house.json` overrides in
+  its door (the `overrides` above), then what a scene's house instance overrides in it (stored in that instance's
+  overrides, with the nested key). `door.json` < `house.json`'s override < the scene's.
+- **Apply** writes the file of the instance it is used on, nothing else. On the outer root (house) it writes
+  `house.json`: its own entities in full, nested instances as references, and whatever differs in a nested instance
+  from its own file (whether the scene or the house prefab made the change) becomes `house.json`'s override of it.
+  On a nested root (door) it writes `door.json` (button **Apply to door.json**; the outer root's button reads
+  **Apply to house.json**); `house.json` is untouched, so a house override of the same property still wins until it
+  is reverted. Selecting a part inside the door and pressing Apply acts on the nearest instance, the door. Each Apply
+  is one undo step that restores the file it wrote (and only that one).
+- **Revert** drops the overrides below the instance it is used on: on the outer root, everything down to the files
+  (door file plus the house's overrides of it); on a nested root, back to what the outer prefab makes of it.
+  **Unpack** breaks one level: on the outer root its own entities become plain and the nested instances stay linked to
+  their files, on their own; on a nested root its entities become plain, stay in place, and the outer instance counts
+  them as removed.
+- **Hot reload.** An edit of an inner file (found by the editor's poll, or at a spawn) updates the instances of every
+  prefab that contains it, keeping their overrides at every level.
+- **Cycles** (a prefab that contains itself, directly or through another) are refused: `savePrefab`/Apply return false
+  and log which file would nest itself, `instantiate` returns nothing for a file on disk that does, and no recursion
+  happens. A nested file that is missing or unreadable leaves its entities as they are (they are not deleted, and
+  appear in the file's instances once it returns). Scenes keep every entity of a nested instance in full as before, so
+  a missing inner or outer file never loses content.
+- **Limits.** Entities added inside a nested instance (under the door in a house instance) are not kept when the
+  house is written (a warning is logged); add them to the inner prefab, or to a part of the house. A nested
+  instance's name, components and children come from its file: the house file holds only its place and its overrides.
 
 ### Assets and selection in the editor
 

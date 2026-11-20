@@ -293,6 +293,18 @@ void EditorUISystem::renderPrefabLink(Engine &engine, SystemManager &systemManag
     if (ImGui::SmallButton("Select root"))
       selectOnly(root);
   }
+  // A nested instance (a door inside a house): its own file, and the prefab that holds it
+  const Entity outer = serializer.enclosingInstance(root);
+  const PrefabInstance *outerInstance = outer != -1 ? componentManager.tryGet<PrefabInstance>(outer) : nullptr;
+  const auto stemOf = [](const std::string &path) { return std::filesystem::path(path).filename().string(); };
+  if (outerInstance) {
+    const Name *outerName = componentManager.tryGet<Name>(outer);
+    ImGui::TextDisabled("Nested in %s (%s)", outerName && !outerName->name.empty() ? outerName->name.c_str() : "an instance",
+                        stemOf(outerInstance->path).c_str());
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Select outer"))
+      selectOnly(outer);
+  }
   if (!serializer.prefabFileExists(root))
     ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "The prefab file is missing; the entities keep what was saved");
 
@@ -318,12 +330,27 @@ void EditorUISystem::renderPrefabLink(Engine &engine, SystemManager &systemManag
   }
 
   // Each is one edit (a click on the panel opened the undo step); Apply's step also holds the prefab file (see Engine::beginCheckpoint)
-  if (ImGui::SmallButton("Apply")) {
+  const std::string applyLabel = outerInstance ? "Apply to " + stemOf(instance->path) : std::string("Apply");
+  if (ImGui::SmallButton(applyLabel.c_str())) {
     serializer.applyInstance(root);
     m_overrideTime = -1000.0;
   }
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Writes this instance into the prefab file; every instance of it follows");
+    ImGui::SetTooltip(outerInstance ? "Writes this nested instance into its own prefab file (the outer prefab is not\n"
+                                      "touched); every instance of that prefab follows"
+                                    : "Writes this instance into the prefab file; every instance of it follows");
+  if (outerInstance) {
+    ImGui::SameLine();
+    const std::string outerLabel = "Apply to " + stemOf(outerInstance->path);
+    if (ImGui::SmallButton(outerLabel.c_str())) {
+      serializer.applyInstance(outer);
+      m_overrideTime = -1000.0;
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Writes the outer instance into its prefab file; what differs here from %s becomes the outer\n"
+                        "prefab's own override of it, and %s itself is not touched",
+                        stemOf(instance->path).c_str(), stemOf(instance->path).c_str());
+  }
   ImGui::SameLine();
   ImGui::BeginDisabled(m_overrideList.empty());
   if (ImGui::SmallButton("Revert")) {
@@ -332,14 +359,17 @@ void EditorUISystem::renderPrefabLink(Engine &engine, SystemManager &systemManag
   }
   ImGui::EndDisabled();
   if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-    ImGui::SetTooltip("Drops what this instance changed from the prefab (its place stays)");
+    ImGui::SetTooltip(outerInstance ? "Drops what this nested instance changed from what the outer prefab makes of it\n"
+                                        "(its place stays)"
+                                    : "Drops what this instance changed from the prefab (its place stays)");
   ImGui::SameLine();
   if (ImGui::SmallButton("Unpack")) {
     serializer.unpackInstance(root);
     m_overrideTime = -1000.0;
   }
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Breaks the link: plain entities from now on");
+    ImGui::SetTooltip(outerInstance ? "Breaks this link: plain entities from now on; the outer instance counts them as removed"
+                                    : "Breaks the link: plain entities from now on (instances nested inside stay linked)");
   ImGui::SameLine();
   ImGui::BeginDisabled(assetPath.empty());
   if (ImGui::SmallButton("Select prefab file")) {

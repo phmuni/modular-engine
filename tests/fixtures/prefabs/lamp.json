@@ -1,0 +1,21 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Lamp",
+      "components": {
+        "Transform": { "position": [0, 0, 0] },
+        "Model": { "path": "../assets/models/box/box.obj", "opacity": 0.8 }
+      }
+    },
+    {
+      "name": "Bulb",
+      "components": {
+        "Transform": { "position": [0, 1, 0] },
+        "Model": { "path": "../assets/models/sphere/sphere.obj" },
+        "Parent": { "parent": 0, "local": { "position": [0, 1, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1] } }
+      }
+    }
+  ]
+}
