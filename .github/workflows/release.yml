@@ -1,0 +1,108 @@
+# Packages the prebuilt engine (launcher, Lua runner, templates) for macOS, Linux and Windows.
+#
+# Pushing a tag like v0.1.0 publishes a GitHub Release with the three archives. Running it by hand (Actions > Release >
+# Run workflow) only builds them, as downloadable artifacts of the run, to try a package before tagging.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest # Apple Silicon
+          # The oldest supported Ubuntu: a program built against an older glibc runs on newer systems, not the reverse
+          - os: ubuntu-22.04
+          - os: windows-latest
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Linux packages (what SDL needs for windows, input and sound)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl-dev libegl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxinerama-dev libxfixes-dev libxtst-dev libwayland-dev libxkbcommon-dev \
+            libdecor-0-dev libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+
+      # A C++ project made from the package downloads the engine from GitHub: the tag's sources, so they match the
+      # prebuilt runner, instead of whatever main is by then
+      - name: Point the C++ template at this tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: sed -i.bak "s/GIT_TAG main/GIT_TAG ${GITHUB_REF_NAME}/" templates/cpp/CMakeLists.txt && rm templates/cpp/CMakeLists.txt.bak
+
+      - name: Build and package
+        run: python3 tools/package_engine.py
+
+      - name: Archive
+        id: archive
+        shell: bash
+        run: |
+          cd dist
+          name=$(ls -d modular-engine-* | head -1)
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a -tzip "$name.zip" "$name" > /dev/null
+            echo "file=dist/$name.zip" >> "$GITHUB_OUTPUT"
+          else
+            # tar keeps the executable bits and the library symlinks
+            tar -czf "$name.tar.gz" "$name"
+            echo "file=dist/$name.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test (the packaged launcher creates a Lua project)
+        shell: bash
+        run: |
+          launcher="dist/${{ steps.archive.outputs.name }}/bin/launcher/launcher"
+          [ -f "$launcher.exe" ] && launcher="$launcher.exe"
+          "$launcher" --create "$RUNNER_TEMP/SmokeGame" lua
+          ls "$RUNNER_TEMP/SmokeGame/bin"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.archive.outputs.name }}
+          path: ${{ steps.archive.outputs.file }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          Prebuilt engine: the launcher, the Lua runner and the project templates. Unpack it anywhere and run
+          `bin/launcher/launcher` to create a project. Lua projects need nothing else; C++ and mixed projects need
+          CMake and a C++ compiler, and download the engine sources of this version.
+
+          macOS: the programs are not signed. If macOS refuses to open them, run
+          `xattr -dr com.apple.quarantine <unpacked folder>` once.
+          EOF
+          gh release create "$GITHUB_REF_NAME" packages/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md
