@@ -3,11 +3,13 @@
 
 local START = vec3(0, 0.6, 3)
 
-function onStart(self)
-  self.speed = 6        -- units per second
-  self.turnSpeed = 160  -- degrees per second
-  self.jumpSpeed = 6
-end
+-- Tunable values: they show in the Properties panel (select the player in the editor, F2) and are set on `self`
+-- before onStart (self.speed, ...). Changing them there while the game runs takes effect at once.
+properties = {
+  speed = 6,       -- units per second
+  turnSpeed = 160, -- degrees per second
+  jumpSpeed = 6,   -- units per second, upward
+}
 
 function onUpdate(self, dt)
   -- Turning is ours; walking goes through the character controller, which keeps it on the ground and out of walls

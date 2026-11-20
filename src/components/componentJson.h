@@ -66,7 +66,36 @@ NLOHMANN_JSON_SERIALIZE_ENUM(BodyShape, {{BodyShape::Box, "box"},
                                          {BodyShape::Mesh, "mesh"}})
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(RigidBody, type, shape, size, mass, friction, restitution, linearDamping,
                                                 angularDamping, gravityScale, lockRotation, sensor)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Script, path)
+// Property overrides by name, as plain JSON values: {"path": "scripts/player.lua", "properties": {"speed": 8}}.
+// A vec3 is an array, so a color reads [1, 0.8, 0.2].
+inline void to_json(nlohmann::json &j, const Script &script) {
+  j = nlohmann::json{{"path", script.path}};
+  if (script.properties.empty())
+    return;
+  nlohmann::json properties = nlohmann::json::object();
+  for (const auto &entry : script.properties) { // not a structured binding: lambdas capture those only from C++20
+    const std::string &name = entry.first;
+    std::visit([&](const auto &v) { properties[name] = v; }, entry.second);
+  }
+  j["properties"] = properties;
+}
+inline void from_json(const nlohmann::json &j, Script &script) {
+  script.path = j.value("path", std::string());
+  script.properties.clear();
+  auto properties = j.find("properties");
+  if (properties == j.end() || !properties->is_object())
+    return;
+  for (const auto &[name, value] : properties->items()) {
+    if (value.is_boolean())
+      script.properties[name] = value.get<bool>();
+    else if (value.is_number())
+      script.properties[name] = value.get<float>();
+    else if (value.is_string())
+      script.properties[name] = value.get<std::string>();
+    else if (value.is_array() && value.size() == 3)
+      script.properties[name] = value.get<glm::vec3>();
+  }
+}
 
 // The clip and how it plays; a crossfade in progress is not saved
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Animator, clip, time, speed, loop, playing)

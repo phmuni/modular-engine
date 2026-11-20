@@ -10,6 +10,7 @@
 #include "components/skybox.h"
 #include "components/transform.h"
 #include "foundation/core/app.h"
+#include "foundation/core/componentRegistry.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
@@ -314,6 +315,12 @@ public:
   // Lets scene files hold game components: include "systems/sceneSerializer.h" and call registerComponent<T>(key)
   // on it. Kept out of this header, so files that include the engine do not compile the JSON library.
   SceneSerializer &getSceneSerializer();
+  // Registers a game component by its fields (see componentRegistry.h): saved in scenes under `name`, editable in the
+  // Properties panel and listed in Add Component. Chain .field("speed", &Player::speed) on the result.
+  template <typename T> ComponentBuilder<T> registerComponent(std::string name) {
+    return ComponentBuilder<T>(addReflectedComponent(makeReflectedComponent<T>(std::move(name))));
+  }
+  const std::deque<ReflectedComponent> &getReflectedComponents() const { return m_reflectedComponents; }
   // Saves the scene after `delaySeconds` of running; `quitAfter` closes the engine
   void saveSceneAfter(std::string path, float delaySeconds, bool quitAfter = false);
 
@@ -488,6 +495,8 @@ private:
   std::optional<std::string> m_pendingScene;
   std::vector<std::string> m_pendingSceneModels;
   std::string m_scenePath;
+  std::deque<ReflectedComponent> m_reflectedComponents; // a deque: the builder and the serializer keep references
+  ReflectedComponent &addReflectedComponent(ReflectedComponent component);
   void applyPendingScene();
   bool m_screenshotKeyDown = false;
   bool m_quitRequested = false;

@@ -369,7 +369,7 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   renderPlayToolbar(engine);
   m_gizmoShown = false;
   if (selectedEntity != -1) {
-    renderPropertiesPanel(systemManager, componentManager);
+    renderPropertiesPanel(engine, systemManager, componentManager);
     drawSelectionBox(systemManager, componentManager);
     renderGizmo(systemManager, componentManager);
   }
@@ -1205,7 +1205,87 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
   ImGui::End();
 }
 
-void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, ComponentManager &componentManager) {
+namespace {
+// A vec3 or vec4 named "color" or "colour" (any case, as part of a name too: "glowColor") gets a color picker
+bool isColorName(const std::string &name) {
+  std::string lower = name;
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
+  return lower.find("color") != std::string::npos || lower.find("colour") != std::string::npos;
+}
+
+bool editString(const char *label, std::string &text) {
+  char buffer[256];
+  std::strncpy(buffer, text.c_str(), sizeof(buffer) - 1);
+  buffer[sizeof(buffer) - 1] = '\0';
+  if (!ImGui::InputText(label, buffer, sizeof(buffer)))
+    return false;
+  text = buffer;
+  return true;
+}
+
+// `values` points at 2, 3 or 4 floats; true when edited
+bool editFloats(const std::string &name, float *values, int count) {
+  if (count >= 3 && isColorName(name))
+    return count == 3 ? ImGui::ColorEdit3(name.c_str(), values) : ImGui::ColorEdit4(name.c_str(), values);
+  return ImGui::DragScalarN(name.c_str(), ImGuiDataType_Float, values, count, 0.05f);
+}
+
+bool editScriptValue(const std::string &name, ScriptValue &value) {
+  if (auto *flag = std::get_if<bool>(&value))
+    return ImGui::Checkbox(name.c_str(), flag);
+  if (auto *number = std::get_if<float>(&value))
+    return ImGui::DragFloat(name.c_str(), number, 0.05f);
+  if (auto *text = std::get_if<std::string>(&value))
+    return editString(name.c_str(), *text);
+  return editFloats(name, &std::get<glm::vec3>(value).x, 3);
+}
+
+// The script's `properties`: each with the script's value until this entity overrides it
+void drawScriptProperties(Script &script, const std::vector<ScriptProperty> &declared) {
+  if (declared.empty())
+    return;
+  ImGui::Separator();
+  ImGui::TextDisabled("Properties");
+  for (const ScriptProperty &property : declared) {
+    ImGui::PushID(property.name.c_str());
+    auto own = script.properties.find(property.name);
+    // An override of another kind than the script now declares is ignored (and replaced by the next edit)
+    const bool overridden = own != script.properties.end() && own->second.index() == property.value.index();
+    ScriptValue value = overridden ? own->second : property.value;
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+    if (editScriptValue(property.name, value)) {
+      if (value == property.value)
+        script.properties.erase(property.name); // back at the script's value: nothing to keep
+      else
+        script.properties[property.name] = value;
+    }
+    if (overridden) {
+      ImGui::SameLine();
+      if (ImGui::SmallButton("reset"))
+        script.properties.erase(property.name);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Back to the script's value");
+    }
+    ImGui::PopID();
+  }
+}
+
+void drawReflectedField(const ReflectedField &field, void *component) {
+  void *data = field.access(component);
+  switch (field.kind) {
+  case FieldKind::Float: ImGui::DragFloat(field.name.c_str(), static_cast<float *>(data), 0.05f); break;
+  case FieldKind::Int: ImGui::DragInt(field.name.c_str(), static_cast<int *>(data)); break;
+  case FieldKind::Bool: ImGui::Checkbox(field.name.c_str(), static_cast<bool *>(data)); break;
+  case FieldKind::String: editString(field.name.c_str(), *static_cast<std::string *>(data)); break;
+  case FieldKind::Vec2: editFloats(field.name, &static_cast<glm::vec2 *>(data)->x, 2); break;
+  case FieldKind::Vec3: editFloats(field.name, &static_cast<glm::vec3 *>(data)->x, 3); break;
+  case FieldKind::Vec4: editFloats(field.name, &static_cast<glm::vec4 *>(data)->x, 4); break;
+  }
+}
+} // namespace
+
+void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &systemManager,
+                                           ComponentManager &componentManager) {
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();
@@ -1461,6 +1541,7 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
           SDL_OpenURL(("file://" + file).c_str());
         }
         ImGui::TextDisabled("Saved changes to the file reload while the game runs");
+        drawScriptProperties(script, engine.scripts().getProperties(selectedEntity));
       }
     }
   }
@@ -1554,6 +1635,25 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
     }
   }
 
+  // The game's own components, registered with Engine::registerComponent
+  for (const ReflectedComponent &reflected : engine.getReflectedComponents()) {
+    void *component = earlyOut ? nullptr : reflected.get(componentManager, selectedEntity);
+    if (!component)
+      continue;
+    ImGui::PushID(reflected.name.c_str());
+    if (ImGui::CollapsingHeader(reflected.name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove")) {
+        reflected.remove(componentManager, selectedEntity);
+        earlyOut = true;
+      } else {
+        ImGui::Separator();
+        for (const ReflectedField &field : reflected.fields)
+          drawReflectedField(field, component);
+      }
+    }
+    ImGui::PopID();
+  }
+
   // Add Component section
   if (!earlyOut) {
     ImGui::Separator();
@@ -1636,6 +1736,11 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
         if (ImGui::Button("+ Camera", ImVec2(-1, 0))) {
           componentManager.addInPlace<Camera>(selectedEntity);
         }
+      }
+      for (const ReflectedComponent &reflected : engine.getReflectedComponents()) {
+        if (reflected.add && !reflected.get(componentManager, selectedEntity) &&
+            ImGui::Button(("+ " + reflected.name).c_str(), ImVec2(-1, 0)))
+          reflected.add(componentManager, selectedEntity);
       }
     }
 

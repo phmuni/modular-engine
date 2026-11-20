@@ -112,7 +112,7 @@ private:
                     const std::string &label);
   // In the Properties panel: the entity's parent, and saving it with its children as a prefab
   void renderParentAndPrefab(SystemManager &systemManager, ComponentManager &componentManager);
-  void renderPropertiesPanel(SystemManager &systemManager, ComponentManager &componentManager);
+  void renderPropertiesPanel(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
 
   static void fileDialogCallback(void *userdata, const char *const *filelist, int filter);
   void pickFileButton(const char *id, char *buf, int bufSize, SDL_Window *window,

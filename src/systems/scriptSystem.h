@@ -6,14 +6,23 @@
 // can add its own functions and types for scripts through lua() (include <sol/sol.hpp> for that), e.g.
 //   engine.scripts().lua()["pathfind"] = [](glm::vec3 from, glm::vec3 to) { return findPath(from, to); };
 
+#include "components/script.h"
+#include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include <memory>
 #include <string>
+#include <vector>
 
 class Engine;
 namespace sol {
 class state;
 }
+
+// A value a script declares in its `properties` table, with the script's own value as the default
+struct ScriptProperty {
+  std::string name;
+  ScriptValue value;
+};
 
 class ScriptSystem : public BaseSystem {
 public:
@@ -28,6 +37,11 @@ public:
   // A script for the whole game, not tied to an entity: onStart() once, onUpdate(dt) every frame. Its globals and
   // the shared `game` table are seen by every script.
   bool runGameScript(const std::string &path);
+
+  // The properties the entity's script declares, by name, with their defaults (empty if it has no script, or the file
+  // is missing or broken). Reads the file if the game has not started it (the editor asks while editing), running its
+  // top level once; a changed file is read again.
+  std::vector<ScriptProperty> getProperties(Entity entity);
 
   // The Lua state, to give scripts more functions or types from C++ (with sol2)
   sol::state &lua();

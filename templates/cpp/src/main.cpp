@@ -159,6 +159,12 @@ int main(int argc, char **argv) {
     return 1;
   engine.applyCommandLine(commandLine);
 
+  // Registered components are saved in scene files and editable in the Properties panel (F2 shows the editor)
+  engine.registerComponent<Player>("Player")
+      .field("speed", &Player::speed)
+      .field("turnSpeed", &Player::turnSpeed)
+      .field("jumpSpeed", &Player::jumpSpeed);
+
   MyGame game;
   engine.run(game);
   return 0;

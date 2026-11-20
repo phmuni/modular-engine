@@ -28,8 +28,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -167,10 +169,15 @@ struct ScriptSystem::Impl {
     std::string written; // Script::path as given, to notice when it changes
     sol::environment environment;
     std::filesystem::file_time_type loadedTime{};
+    std::vector<ScriptProperty> properties; // from the file's `properties` table, by name
     bool started = false;
     bool broken = false; // failed to load or run: waits for the file to change
   };
   std::unordered_map<Entity, Instance> instances;
+  // Scripts read only to list their properties for the editor, by resolved path (no entity runs them)
+  std::unordered_map<std::string, Instance> declared;
+  // What was last put on each entity's `self` for its properties, so only changes are written again
+  std::unordered_map<Entity, std::map<std::string, ScriptValue>> appliedProperties;
   Instance gameScript;
   bool hasGameScript = false;
   std::string gameScriptPath;
@@ -241,6 +248,8 @@ struct ScriptSystem::Impl {
     }
     sol::protected_function body = chunk;
     sol::set_environment(instance.environment, body);
+    // The environment outlives a reload: a `properties` table the file no longer has must not linger
+    instance.environment.raw_set("properties", sol::lua_nil);
     sol::protected_function_result result = body();
     if (!result.valid()) {
       const sol::error error = result;
@@ -249,9 +258,76 @@ struct ScriptSystem::Impl {
       return false;
     }
     instance.broken = false;
+    readProperties(instance);
     if (lastErrorPath == instance.path)
       lastError.clear(); // this file is fine again
     return true;
+  }
+
+  // The file's `properties = { speed = 6, ... }`: numbers, booleans, strings and vec3s; other values are ignored
+  void readProperties(Instance &instance) {
+    instance.properties.clear();
+    const sol::object table = instance.environment.raw_get<sol::object>("properties");
+    if (!table.is<sol::table>())
+      return;
+    for (const auto &[key, value] : table.as<sol::table>()) {
+      if (key.get_type() != sol::type::string)
+        continue;
+      ScriptProperty property{key.as<std::string>(), {}};
+      if (value.get_type() == sol::type::boolean)
+        property.value = value.as<bool>();
+      else if (value.get_type() == sol::type::number)
+        property.value = value.as<float>();
+      else if (value.get_type() == sol::type::string)
+        property.value = value.as<std::string>();
+      else if (value.is<glm::vec3>())
+        property.value = value.as<glm::vec3>();
+      else
+        continue;
+      instance.properties.push_back(std::move(property));
+    }
+    // Lua tables have no order; by name is at least stable
+    std::sort(instance.properties.begin(), instance.properties.end(),
+              [](const ScriptProperty &a, const ScriptProperty &b) { return a.name < b.name; });
+  }
+
+  // Puts the properties on the entity's `self`: its own value where it has one of the right kind, else the script's.
+  // Only what differs from last time is written, so a script that changes self.speed keeps its value, while editing
+  // it in the inspector (or the default in the file) takes effect at once.
+  void applyProperties(Entity entity, const Instance &instance) {
+    const Script *script = engine.tryGet<Script>(entity);
+    std::map<std::string, ScriptValue> &applied = appliedProperties[entity];
+    for (const ScriptProperty &property : instance.properties) {
+      const ScriptValue *value = &property.value;
+      if (script) {
+        auto own = script->properties.find(property.name);
+        if (own != script->properties.end() && own->second.index() == property.value.index())
+          value = &own->second;
+      }
+      auto last = applied.find(property.name);
+      if (last != applied.end() && last->second == *value)
+        continue;
+      applied[property.name] = *value;
+      fieldsOf(entity)[property.name] = std::visit([&](const auto &v) { return sol::make_object(lua, v); }, *value);
+    }
+  }
+
+  std::vector<ScriptProperty> propertiesOf(Entity entity) {
+    const Script *script = engine.tryGet<Script>(entity);
+    if (!script || script->path.empty())
+      return {};
+    auto running = instances.find(entity);
+    if (running != instances.end() && running->second.written == script->path && !running->second.broken)
+      return running->second.properties;
+    const std::string path = EngineConfig::resolvePath(assetPath(script->path));
+    if (!std::filesystem::exists(path))
+      return {};
+    Instance &instance = declared[path];
+    if (instance.path.empty() || modifiedTime(path) != instance.loadedTime) {
+      instance.path = path;
+      load(instance);
+    }
+    return instance.broken ? std::vector<ScriptProperty>{} : instance.properties;
   }
 
   // Scripts whose file changed are loaded again: their functions are replaced, entities keep their fields
@@ -293,6 +369,8 @@ struct ScriptSystem::Impl {
     }
     for (auto it = fields.begin(); it != fields.end();)
       it = engine.isAlive(it->first) ? std::next(it) : fields.erase(it);
+    for (auto it = appliedProperties.begin(); it != appliedProperties.end();)
+      it = instances.count(it->first) ? std::next(it) : appliedProperties.erase(it);
 
     engine.getComponentManager().forEachComponent<Script>([&](Entity entity, Script &script) {
       if (script.path.empty() || instances.count(entity))
@@ -327,6 +405,7 @@ struct ScriptSystem::Impl {
       auto it = instances.find(entity);
       if (it == instances.end() || !engine.isAlive(entity))
         continue;
+      applyProperties(entity, it->second);
       if (!it->second.started) {
         it->second.started = true;
         call(it->second, "onStart", ScriptEntity{entity});
@@ -810,6 +889,7 @@ void ScriptSystem::reset() {
   Impl &impl = *m_impl;
   impl.instances.clear();
   impl.fields.clear();
+  impl.appliedProperties.clear();
   impl.gameTable = impl.lua.create_named_table("game"); // shared state starts over too
   impl.lua.collect_garbage();
   if (impl.hasGameScript) {
@@ -827,6 +907,8 @@ bool ScriptSystem::runGameScript(const std::string &path) {
   impl.hasGameScript = true;
   return impl.load(impl.gameScript);
 }
+
+std::vector<ScriptProperty> ScriptSystem::getProperties(Entity entity) { return m_impl->propertiesOf(entity); }
 
 sol::state &ScriptSystem::lua() { return m_impl->lua; }
 const std::string &ScriptSystem::getLastError() const { return m_impl->lastError; }
