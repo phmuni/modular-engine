@@ -364,6 +364,26 @@ bool SceneSerializer::savePrefab(Entity root, const std::string &path) const {
   return writeFile(path, entitiesToJson(entities, root));
 }
 
+std::string SceneSerializer::copyToJson(Entity root) const {
+  if (!m_entityManager.isAlive(root))
+    return {};
+  std::vector<Entity> entities{root};
+  const auto descendants = m_systemManager.getSystem<TransformSystem>().getDescendants(m_componentManager, root);
+  entities.insert(entities.end(), descendants.begin(), descendants.end());
+  // No root given: the root keeps its position; its parent is not in the list, so it is not written either
+  json scene = {{"format", kFormat}, {"version", kVersion}, {"entities", entitiesToJson(entities, -1)}};
+  roundFloats(scene);
+  return scene.dump();
+}
+
+std::vector<Entity> SceneSerializer::pasteFromJson(const std::string &text) {
+  const json scene = json::parse(text, nullptr, false);
+  if (scene.is_discarded() || !scene.is_object() || scene.value("format", "") != kFormat ||
+      !scene.contains("entities") || !scene["entities"].is_array())
+    return {};
+  return createEntities(scene["entities"]);
+}
+
 std::optional<SceneSerializer::json> SceneSerializer::readFile(const std::string &path) const {
   std::string resolved = EngineConfig::resolvePath(path);
   std::ifstream file(resolved);

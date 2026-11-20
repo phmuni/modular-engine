@@ -35,6 +35,7 @@
 #include "systems/transformSystem.h"
 #include "systems/windowSystem.h"
 
+#include <SDL3/SDL_clipboard.h>
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -399,6 +400,7 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   }
 
   handleHistoryShortcuts(engine);
+  handleEditShortcuts(engine, systemManager, componentManager);
   beginEditTracking(engine);
   renderSettingsPanel(engine, entityManager, systemManager, componentManager);
   if (m_showNavigation)
@@ -424,6 +426,107 @@ void EditorUISystem::handleHistoryShortcuts(Engine &engine) {
     io.KeyShift ? engine.redo() : engine.undo();
   else if (ImGui::IsKeyPressed(ImGuiKey_Y))
     engine.redo();
+}
+
+void EditorUISystem::handleEditShortcuts(Engine &engine, SystemManager &systemManager,
+                                         ComponentManager &componentManager) {
+  const ImGuiIO &io = ImGui::GetIO();
+  if (m_deleteRequested) {
+    m_deleteRequested = false;
+    deleteSelected(engine, systemManager);
+  }
+  if (io.WantTextInput || io.KeyAlt)
+    return;
+  if (io.KeyCtrl && !io.KeyShift) {
+    if (ImGui::IsKeyPressed(ImGuiKey_D, false))
+      duplicateSelected(engine, systemManager, componentManager);
+    else if (ImGui::IsKeyPressed(ImGuiKey_C, false))
+      copySelected(systemManager);
+    else if (ImGui::IsKeyPressed(ImGuiKey_V, false))
+      pasteClipboard(engine, systemManager);
+  } else if (!io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))) {
+    deleteSelected(engine, systemManager);
+  }
+}
+
+// The scene is not edited while testing: the snapshot taken at Play brings it back on Stop, and no undo step is kept
+void EditorUISystem::duplicateSelected(Engine &engine, SystemManager &systemManager,
+                                       ComponentManager &componentManager) {
+  if (selectedEntity == -1 || engine.getPlayMode() == Engine::PlayMode::Testing)
+    return;
+  auto &serializer = systemManager.getSystem<SceneSerializer>();
+  auto &transformSystem = systemManager.getSystem<TransformSystem>();
+  const std::string text = serializer.copyToJson(selectedEntity);
+  if (text.empty())
+    return;
+  const Entity parent = transformSystem.getParent(componentManager, selectedEntity);
+  engine.beginCheckpoint();
+  const std::vector<Entity> created = serializer.pasteFromJson(text);
+  if (!created.empty()) {
+    if (parent != -1)
+      transformSystem.setParent(componentManager, created.front(), parent);
+    if (Name *name = componentManager.tryGet<Name>(created.front()))
+      name->name += " (1)";
+    selectedEntity = created.front();
+    m_scrollToSelection = true;
+  }
+  engine.endCheckpoint();
+}
+
+void EditorUISystem::copySelected(SystemManager &systemManager) {
+  if (selectedEntity == -1)
+    return;
+  const std::string text = systemManager.getSystem<SceneSerializer>().copyToJson(selectedEntity);
+  if (!text.empty() && !SDL_SetClipboardText(text.c_str()))
+    LOG_W("[Editor] Could not copy to the clipboard: %s", SDL_GetError());
+}
+
+void EditorUISystem::pasteClipboard(Engine &engine, SystemManager &systemManager) {
+  if (engine.getPlayMode() == Engine::PlayMode::Testing || !SDL_HasClipboardText())
+    return;
+  char *clipboard = SDL_GetClipboardText();
+  if (!clipboard)
+    return;
+  const std::string text = clipboard;
+  SDL_free(clipboard);
+  // Anything else on the clipboard is not for the editor
+  if (text.find("modular-engine-scene") == std::string::npos)
+    return;
+  engine.beginCheckpoint();
+  const std::vector<Entity> created = systemManager.getSystem<SceneSerializer>().pasteFromJson(text);
+  if (created.empty())
+    LOG_W("[Editor] The clipboard does not hold entities to paste");
+  else {
+    selectedEntity = created.front();
+    m_scrollToSelection = true;
+  }
+  engine.endCheckpoint();
+}
+
+void EditorUISystem::deleteSelected(Engine &engine, SystemManager &systemManager) {
+  if (selectedEntity == -1 || engine.getPlayMode() == Engine::PlayMode::Testing)
+    return;
+  engine.beginCheckpoint();
+  systemManager.getSystem<SceneSystem>().destroyEntity(selectedEntity);
+  selectedEntity = -1;
+  engine.endCheckpoint();
+}
+
+void EditorUISystem::entityContextMenu(Engine &engine, SystemManager &systemManager,
+                                       ComponentManager &componentManager, Entity entity) {
+  if (!ImGui::BeginPopupContextItem())
+    return;
+  selectedEntity = entity;
+  if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
+    duplicateSelected(engine, systemManager, componentManager);
+  if (ImGui::MenuItem("Copy", "Ctrl+C"))
+    copySelected(systemManager);
+  if (ImGui::MenuItem("Paste", "Ctrl+V"))
+    pasteClipboard(engine, systemManager);
+  ImGui::Separator();
+  if (ImGui::MenuItem("Delete", "Del"))
+    m_deleteRequested = true;
+  ImGui::EndPopup();
 }
 
 // An edit is whatever happens between a click on the editor (a panel, the gizmo or a resize handle) and the moment
@@ -1000,7 +1103,7 @@ void EditorUISystem::dragToParent(SystemManager &systemManager, ComponentManager
   (void)label;
 }
 
-void EditorUISystem::renderHierarchy(SystemManager &systemManager, ComponentManager &componentManager) {
+void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
   if (!ImGui::CollapsingHeader("Hierarchy", ImGuiTreeNodeFlags_DefaultOpen))
     return;
   auto &transformSystem = systemManager.getSystem<TransformSystem>();
@@ -1030,6 +1133,7 @@ void EditorUISystem::renderHierarchy(SystemManager &systemManager, ComponentMana
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
       selectedEntity = entity;
     dragToParent(systemManager, componentManager, entity, label);
+    entityContextMenu(engine, systemManager, componentManager, entity);
     if (open) {
       if (depth < 64)
         for (Entity child : children)
@@ -1217,6 +1321,7 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
       if (ImGui::Selectable(label.c_str(), selectedEntity == entity))
         selectedEntity = (selectedEntity == entity) ? -1 : entity;
       dragToParent(systemManager, componentManager, entity, label);
+      entityContextMenu(engine, systemManager, componentManager, entity);
       if (m_scrollToSelection && selectedEntity == entity) {
         ImGui::SetScrollHereY();
         m_scrollToSelection = false;
@@ -1227,7 +1332,7 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
     ImGui::EndChild();
   };
 
-  renderHierarchy(systemManager, componentManager);
+  renderHierarchy(engine, systemManager, componentManager);
   section("Models", "[M]", entitiesWith<Model>(componentManager));
   section("Lights", "[L]", lightSystem.getLights());
   section("Camera", "[C]", entitiesWith<Camera>(componentManager));
