@@ -20,6 +20,8 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/CollideShape.h>
+#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
@@ -480,6 +482,8 @@ void PhysicsSystem::update(float deltaTime) {
   impl.contactCollector.contacts.clear();
 }
 
+void PhysicsSystem::syncBodies() { m_impl->sync(kStep); }
+
 void PhysicsSystem::reset() {
   m_impl->removeAll();
   m_impl->accumulator = 0.0f;
@@ -548,6 +552,41 @@ std::optional<RayHit> PhysicsSystem::raycast(const glm::vec3 &origin, const glm:
   const JPH::RVec3 point = ray.GetPointOnRay(hit.mFraction);
   return RayHit{static_cast<Entity>(body.GetUserData()), hit.mFraction * maxDistance, toGlm(JPH::Vec3(point)),
                 toGlm(body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, point))};
+}
+
+bool PhysicsSystem::isCapsuleBlocked(const glm::vec3 &base, float height, float radius) const {
+  radius = std::max(radius, 0.01f);
+  const float halfCylinder = std::max(height * 0.5f - radius, 0.01f);
+
+  // Only what stays put and blocks
+  class Filter final : public JPH::BodyFilter {
+  public:
+    bool ShouldCollideLocked(const JPH::Body &body) const override {
+      return body.GetMotionType() != JPH::EMotionType::Dynamic && !body.IsSensor();
+    }
+  } filter;
+
+  const JPH::CapsuleShape shape(halfCylinder, radius);
+  const glm::vec3 middle = base + glm::vec3(0.0f, halfCylinder + radius, 0.0f);
+  JPH::AnyHitCollisionCollector<JPH::CollideShapeCollector> collector;
+  m_impl->system->GetNarrowPhaseQuery().CollideShape(&shape, JPH::Vec3::sReplicate(1.0f),
+                                                     JPH::RMat44::sTranslation(JPH::RVec3(toJolt(middle))),
+                                                     JPH::CollideShapeSettings(), JPH::RVec3::sZero(), collector, {}, {},
+                                                     filter);
+  return collector.HadHit();
+}
+
+bool PhysicsSystem::getStaticBounds(glm::vec3 &min, glm::vec3 &max) const {
+  JPH::AABox bounds;
+  const JPH::BodyInterface &bodyInterface = m_impl->system->GetBodyInterface();
+  for (const auto &[entity, record] : m_impl->bodies)
+    if (record.settings.type == BodyType::Static && !record.settings.sensor)
+      bounds.Encapsulate(bodyInterface.GetTransformedShape(record.id).GetWorldSpaceBounds());
+  if (!bounds.IsValid())
+    return false;
+  min = toGlm(bounds.mMin);
+  max = toGlm(bounds.mMax);
+  return true;
 }
 
 const std::vector<PhysicsContact> &PhysicsSystem::getContacts() const { return m_impl->contacts; }

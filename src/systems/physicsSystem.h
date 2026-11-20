@@ -33,6 +33,9 @@ public:
 
   // Syncs bodies with the components and advances the simulation by deltaTime (0, while paused: no step)
   void update(float deltaTime);
+  // Creates the bodies of components added since the last update right now, so queries see them (for game code that
+  // builds something from the physics world in its first frame, like the navigation map)
+  void syncBodies();
   // Removes every body and character; they are created again from the components on the next update. For when the
   // entities were replaced wholesale (the editor's Stop).
   void reset();
@@ -51,6 +54,12 @@ public:
   // The nearest body along a ray (characters are not bodies); `accept` skips entities it returns false for
   std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
                                 const std::function<bool(Entity)> &accept = nullptr) const;
+
+  // Whether an upright capsule standing on `base` (its lowest point), `height` tall in all and `radius` wide,
+  // overlaps a static or kinematic body (dynamic bodies and sensors are not obstacles: they move or do not block)
+  bool isCapsuleBlocked(const glm::vec3 &base, float height, float radius) const;
+  // The box around every static body that is not a sensor; false when there are none
+  bool getStaticBounds(glm::vec3 &min, glm::vec3 &max) const;
 
   // Bodies that started touching during the last update (sensors included), each pair once
   const std::vector<PhysicsContact> &getContacts() const;

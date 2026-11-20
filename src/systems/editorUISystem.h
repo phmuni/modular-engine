@@ -77,6 +77,9 @@ private:
   // unlocked, not over a panel or the gizmo). The selected model's box is outlined.
   void handleClickSelection(Engine &engine, SystemManager &systemManager);
   void drawSelectionBox(SystemManager &systemManager, ComponentManager &componentManager);
+  // The navigation map's walkable cells and the last path found, over the scene (Settings: Show navigation)
+  void drawNavigation(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  bool m_showNavigation = false;
   bool m_scrollToSelection = false; // the scene explorer brings the entity a click selected into view
   void renderGizmoControls();
 

@@ -18,6 +18,7 @@
 #include "foundation/core/engine.h"
 #include "foundation/core/logger.h"
 #include "systems/inputSystem.h"
+#include "systems/navigationSystem.h"
 #include "systems/physicsSystem.h"
 #include "systems/renderSystem.h"
 #include <RmlUi/Core.h>
@@ -588,6 +589,36 @@ struct ScriptSystem::Impl {
         engine.physics().setGravity(*gravity);
       return engine.physics().getGravity();
     });
+
+    // navigation
+    // nav.build({ min = vec3, max = vec3, cellSize = 0.5, agentRadius = 0.35, agentHeight = 1.8, maxSlope = 45,
+    //             stepHeight = 0.35 }): every field is optional; without min and max the map covers the static bodies
+    sol::table nav = lua.create_named_table("nav");
+    nav.set_function("build", [this](sol::optional<sol::table> options) {
+      NavigationSettings settings;
+      sol::optional<glm::vec3> min, max;
+      if (options) {
+        const sol::table &o = *options;
+        settings.cellSize = o.get_or("cellSize", settings.cellSize);
+        settings.agentRadius = o.get_or("agentRadius", settings.agentRadius);
+        settings.agentHeight = o.get_or("agentHeight", settings.agentHeight);
+        settings.maxSlope = o.get_or("maxSlope", settings.maxSlope);
+        settings.stepHeight = o.get_or("stepHeight", settings.stepHeight);
+        min = o.get<sol::optional<glm::vec3>>("min");
+        max = o.get<sol::optional<glm::vec3>>("max");
+      }
+      if (min && max)
+        return engine.navigation().build(*min, *max, settings);
+      return engine.navigation().buildFromScene(settings);
+    });
+    // The points to walk, on the ground, or nil when there is no way (or no map)
+    nav.set_function("path", [this](const glm::vec3 &from, const glm::vec3 &to) -> sol::object {
+      const std::vector<glm::vec3> points = engine.navigation().findPath(from, to);
+      if (points.empty())
+        return sol::lua_nil;
+      return sol::make_object(lua, sol::as_table(points));
+    });
+    nav.set_function("walkable", [this](const glm::vec3 &point) { return engine.navigation().isWalkable(point); });
 
     // sound
     sol::table sound = lua.create_named_table("sound");

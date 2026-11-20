@@ -24,6 +24,7 @@
 #include "systems/inputSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/modelQueries.h"
+#include "systems/navigationSystem.h"
 #include "systems/particleSystem.h"
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
@@ -272,6 +273,7 @@ void Engine::update(bool &isRunning) {
 
   // Bodies fall, collide and push; then children follow where their parents went this frame
   m_systemManager.getSystem<PhysicsSystem>().update(timeSystem.getDeltaTime());
+  m_systemManager.getSystem<NavigationSystem>().update();
   m_systemManager.getSystem<TransformSystem>().updateHierarchy(m_componentManager);
   // Skeletons posed from their clips (time stands still while paused or editing)
   m_systemManager.getSystem<AnimationSystem>().update(timeSystem.getDeltaTime());
@@ -363,6 +365,8 @@ Camera *Engine::getActiveCamera() {
 InputSystem &Engine::input() { return m_systemManager.getSystem<InputSystem>(); }
 
 PhysicsSystem &Engine::physics() { return m_systemManager.getSystem<PhysicsSystem>(); }
+
+NavigationSystem &Engine::navigation() { return m_systemManager.getSystem<NavigationSystem>(); }
 
 ScriptSystem &Engine::scripts() { return m_systemManager.getSystem<ScriptSystem>(); }
 
@@ -550,6 +554,7 @@ void Engine::applyPendingScene() {
   if (!m_systemManager.getSystem<SceneSerializer>().load(path))
     return;
   m_scenePath = path;
+  m_systemManager.getSystem<NavigationSystem>().clear(); // the map was of the old level
   if (m_app)
     m_app->onSceneLoaded(*this, path);
 }
@@ -683,6 +688,7 @@ void Engine::applyPlayModeRequest() {
     m_systemManager.getSystem<LightSystem>().rebuild(m_componentManager);
     m_systemManager.getSystem<RenderSystem>().resetCaches();
     m_systemManager.getSystem<PhysicsSystem>().reset();
+    m_systemManager.getSystem<NavigationSystem>().clear();
     m_systemManager.getSystem<ScriptSystem>().reset();
     resourceSystem.setPinnedMaterials({});
     auto &editor = m_systemManager.getSystem<EditorUISystem>();
@@ -799,6 +805,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<CollisionSystem>();
   m_systemManager.insert<PhysicsSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>(),
                                         m_systemManager.getSystem<TransformSystem>());
+  m_systemManager.insert<NavigationSystem>(m_componentManager, m_systemManager.getSystem<PhysicsSystem>());
   m_systemManager.insert<AnimationSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>());
   m_systemManager.insert<ScriptSystem>(*this);
   m_systemManager.insert<AudioSystem>(m_componentManager);

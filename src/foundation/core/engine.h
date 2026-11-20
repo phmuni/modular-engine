@@ -14,6 +14,7 @@
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "systems/collisionSystem.h"
+#include "systems/navigationSystem.h"
 #include "systems/physicsSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/stateSystem.h"
@@ -210,6 +211,9 @@ public:
   // Physics (Jolt): bodies come from RigidBody components and characters from CharacterController ones. physics()
   // gives velocities, impulses, gravity, raycasts against bodies and the contacts of the last update.
   PhysicsSystem &physics();
+  // Pathfinding over the walkable ground of the physics world: build() the map once the level exists, then
+  // findPath(from, to) for a path around obstacles (see NavigationSystem)
+  NavigationSystem &navigation();
   // Lua scripts: entity scripts are Script components; scripts().runGameScript(path) adds one for the whole game
   ScriptSystem &scripts();
 

@@ -1,0 +1,548 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Camera",
+      "components": {
+        "Transform": {},
+        "Camera": {
+          "active": true,
+          "position": [
+            0.0,
+            21.0,
+            11.0
+          ],
+          "pitch": -62.0,
+          "fov": 50.0,
+          "moveSpeed": 6.0
+        }
+      }
+    },
+    {
+      "name": "Sun",
+      "components": {
+        "Transform": {},
+        "Light": {
+          "type": "directional",
+          "direction": [
+            -0.45,
+            -1.0,
+            -0.35
+          ],
+          "color": [
+            1.0,
+            0.96,
+            0.88
+          ],
+          "intensity": 1.0,
+          "castShadows": true
+        }
+      }
+    },
+    {
+      "name": "Floor",
+      "components": {
+        "Transform": {
+          "position": [
+            0,
+            -0.25,
+            0
+          ],
+          "scale": [
+            16,
+            0.5,
+            16
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.36,
+                0.38,
+                0.42
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Wall North",
+      "components": {
+        "Transform": {
+          "position": [
+            0.0,
+            1.0,
+            -8.0
+          ],
+          "scale": [
+            16.3,
+            2.0,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Wall South",
+      "components": {
+        "Transform": {
+          "position": [
+            0.0,
+            1.0,
+            8.0
+          ],
+          "scale": [
+            16.3,
+            2.0,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Wall West",
+      "components": {
+        "Transform": {
+          "position": [
+            -8.0,
+            1.0,
+            0.0
+          ],
+          "scale": [
+            0.3,
+            2.0,
+            16.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Wall East",
+      "components": {
+        "Transform": {
+          "position": [
+            8.0,
+            1.0,
+            0.0
+          ],
+          "scale": [
+            0.3,
+            2.0,
+            16.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Maze 1",
+      "components": {
+        "Transform": {
+          "position": [
+            -2.0,
+            1.0,
+            2.5
+          ],
+          "scale": [
+            12.3,
+            2.0,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Maze 2",
+      "components": {
+        "Transform": {
+          "position": [
+            2.0,
+            1.0,
+            -1.5
+          ],
+          "scale": [
+            12.3,
+            2.0,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Maze 3",
+      "components": {
+        "Transform": {
+          "position": [
+            0.0,
+            1.0,
+            -6.25
+          ],
+          "scale": [
+            0.3,
+            2.0,
+            3.8
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Maze 4",
+      "components": {
+        "Transform": {
+          "position": [
+            4.25,
+            1.0,
+            -5.0
+          ],
+          "scale": [
+            1.8,
+            2.0,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Pen 1",
+      "components": {
+        "Transform": {
+          "position": [
+            -6.0,
+            1.0,
+            -7.5
+          ],
+          "scale": [
+            3.3,
+            2.0,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Pen 2",
+      "components": {
+        "Transform": {
+          "position": [
+            -6.0,
+            1.0,
+            -4.5
+          ],
+          "scale": [
+            3.3,
+            2.0,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Pen 3",
+      "components": {
+        "Transform": {
+          "position": [
+            -7.5,
+            1.0,
+            -6.0
+          ],
+          "scale": [
+            0.3,
+            2.0,
+            3.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Pen 4",
+      "components": {
+        "Transform": {
+          "position": [
+            -4.5,
+            1.0,
+            -6.0
+          ],
+          "scale": [
+            0.3,
+            2.0,
+            3.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.62,
+                0.55,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Target",
+      "components": {
+        "Transform": {
+          "position": [
+            6.0,
+            0.3,
+            -6.5
+          ],
+          "scale": [
+            0.6,
+            0.6,
+            0.6
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/sphere/sphere.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                1.0,
+                0.55,
+                0.15
+              ],
+              "emission": {
+                "color": [
+                  1.0,
+                  0.5,
+                  0.1
+                ],
+                "strength": 2.0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Walker",
+      "components": {
+        "Transform": {
+          "position": [
+            -6.5,
+            0.92,
+            6.0
+          ],
+          "scale": [
+            0.6,
+            1.8,
+            0.6
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.2,
+                0.5,
+                0.95
+              ]
+            }
+          ]
+        },
+        "CharacterController": {
+          "radius": 0.35,
+          "height": 1.8
+        },
+        "Script": {
+          "path": "scripts/nav_walker.lua"
+        }
+      }
+    }
+  ]
+}

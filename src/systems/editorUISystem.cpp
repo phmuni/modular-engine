@@ -18,6 +18,7 @@
 #include "components/transform.h"
 #include "foundation/core/engine.h"
 #include "systems/modelQueries.h"
+#include "systems/navigationSystem.h"
 #include "systems/scriptSystem.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
@@ -216,6 +217,9 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     toggleCheckbox("Gamma-correct lighting", Toggle::GammaCorrect, "Lights in linear space; off is the old look");
     toggleCheckbox("Bloom", Toggle::Bloom, "Glow around light brighter than white (emission, highlights)");
     toggleCheckbox("Game UI debugger", Toggle::UIDebugger, "RmlUi's element inspector and log for the game UI");
+    ImGui::Checkbox("Show navigation", &m_showNavigation);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("The walkable cells of the navigation map (nav.build) and the last path found");
   }
 
   if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -355,6 +359,8 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
     return;
 
   renderSettingsPanel(engine, entityManager, systemManager, componentManager);
+  if (m_showNavigation)
+    drawNavigation(engine, systemManager, componentManager);
   renderSceneExplorer(engine, systemManager, componentManager);
   renderPlayToolbar(engine);
   m_gizmoShown = false;
@@ -410,6 +416,56 @@ void EditorUISystem::drawSelectionBox(SystemManager &systemManager, ComponentMan
         continue;
       drawList->AddLine(toScreen(corners[a]), toScreen(corners[b]), IM_COL32(255, 200, 60, 200), 1.5f);
     }
+}
+
+void EditorUISystem::drawNavigation(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
+  const NavigationSystem &navigation = engine.navigation();
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
+  if (!navigation.isBuilt() || !camera)
+    return;
+
+  const glm::mat4 toClip = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
+  const ImVec2 size = ImGui::GetIO().DisplaySize;
+  // False for a point behind the camera
+  auto project = [&](const glm::vec3 &point, ImVec2 &screen) {
+    const glm::vec4 clip = toClip * glm::vec4(point, 1.0f);
+    if (clip.w <= 0.01f)
+      return false;
+    screen = ImVec2((clip.x / clip.w * 0.5f + 0.5f) * size.x, (0.5f - clip.y / clip.w * 0.5f) * size.y);
+    return true;
+  };
+
+  ImDrawList *drawList = ImGui::GetBackgroundDrawList();
+  const NavigationSystem::Grid &grid = navigation.getGrid();
+  const float half = navigation.getSettings().cellSize * 0.45f;
+  constexpr float kDrawDistance = 40.0f; // far cells are small and many: leave them out to keep this cheap
+  for (int z = 0; z < grid.depth; ++z)
+    for (int x = 0; x < grid.width; ++x) {
+      if (!navigation.isCellWalkable(x, z))
+        continue;
+      const glm::vec3 center = navigation.getCellCenter(x, z) + glm::vec3(0.0f, 0.02f, 0.0f);
+      if (glm::distance(center, camera->position) > kDrawDistance)
+        continue;
+      ImVec2 corners[4];
+      if (project(center + glm::vec3(-half, 0.0f, -half), corners[0]) &&
+          project(center + glm::vec3(half, 0.0f, -half), corners[1]) &&
+          project(center + glm::vec3(half, 0.0f, half), corners[2]) &&
+          project(center + glm::vec3(-half, 0.0f, half), corners[3]))
+        drawList->AddConvexPolyFilled(corners, 4, IM_COL32(60, 200, 120, 70));
+    }
+
+  const std::vector<glm::vec3> &path = navigation.getLastPath();
+  for (size_t i = 0; i < path.size(); ++i) {
+    ImVec2 point;
+    if (!project(path[i] + glm::vec3(0.0f, 0.08f, 0.0f), point))
+      continue;
+    ImVec2 previous;
+    if (i > 0 && project(path[i - 1] + glm::vec3(0.0f, 0.08f, 0.0f), previous))
+      drawList->AddLine(previous, point, IM_COL32(255, 220, 60, 255), 2.5f);
+    drawList->AddCircleFilled(point, 4.0f, IM_COL32(255, 120, 40, 255));
+  }
 }
 
 void EditorUISystem::renderGizmoControls() {

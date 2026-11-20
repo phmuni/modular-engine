@@ -70,6 +70,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds and plays them, opens them in VS Code |
 | **Skeletal Animation**     | glTF skins and clips (linear, step, cubic spline), crossfades, rigid parts following their nodes, animated shadows |
 | **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events |
+| **Navigation**             | A walkable grid built from the physics world and A* paths around obstacles, smoothed (`engine.navigation().findPath`, `nav.path` in Lua), drawn by the editor's "Show navigation" |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
 | **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
 | **Collisions**             | Axis-aligned boxes (`withCollision`, or fitted to the model with `withModelCollision`), queried by component pair (`forEachCollision<Bullet, Enemy>`) and by ray (`raycast<Enemy>`) |
@@ -355,6 +356,7 @@ What scripts can use:
 | `input` | `axis(name)`, `down(name)`, `pressed(name)`, `released(name)` (the actions and axes of `input.json`), `key("Space")`, `keyPressed("Space")`, `mouse()`, `click(button)`, `bindings(path)` |
 | `camera` | `lookAt(from, target)`, `position()`, `forward()` |
 | `physics` | `raycast(origin, direction, distance)` (a table with `entity`, `point`, `normal`, `distance`), `gravity(v)` |
+| `nav` | `build({ min, max, cellSize, agentRadius, agentHeight, maxSlope, stepHeight })` (all optional; without `min` and `max` it covers the static bodies), `path(from, to)` (a table of `vec3` on the ground, or `nil` if there is no way), `walkable(point)` |
 | `sound` | `play(path, volume, pitch)`, `playAt(path, position, volume)`, `music(path, volume)`, `stopMusic()` |
 | `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `onClick(id, function)` |
 
@@ -511,6 +513,33 @@ The simulation steps at a fixed 60 Hz, writes dynamic bodies' and characters' Tr
 by game code or the editor's gizmo as teleports; changing a `RigidBody` (or the entity's scale) rebuilds its body. Both
 components are saved in scenes and edited in the Properties panel, the simulation stands still while editing, and
 Stop rebuilds the bodies. [`assets/scenes/physics.json`](assets/scenes/physics.json) is a small example.
+
+### Navigation
+
+`NavigationSystem` finds paths that go around obstacles. `build` makes a grid over the XZ plane from the physics world:
+a ray down each cell (0.5 units by default) finds the ground, and a cell is walkable when its slope is at most
+`maxSlope` and an agent (a capsule of `agentRadius` and `agentHeight`, stepping over ledges up to `stepHeight`) fits
+there without touching a static or kinematic body. Dynamic bodies (crates) are not obstacles, since they move.
+`findPath` runs A* over the cells (8 neighbors, no corner cutting) and removes the points a straight walk makes
+needless. The map has one ground height per cell (the topmost surface inside the bounds, so no bridges or ceilings),
+and it is built when asked: call `build` once the level exists, and `markDirty()` after moving obstacles.
+
+```cpp
+NavigationSettings settings;                       // cellSize, agentRadius, agentHeight, maxSlope, stepHeight
+engine.navigation().build({-10, -1, -10}, {10, 4, 10}, settings);   // or buildFromScene(settings)
+std::vector<glm::vec3> path = engine.navigation().findPath(from, to);   // on the ground; empty if unreachable
+bool ok = engine.navigation().isWalkable(point);
+```
+
+```lua
+nav.build({ cellSize = 0.5, agentRadius = 0.35, agentHeight = 1.8 })   -- over the scene's static bodies
+local path = nav.path(self.position - vec3(0, 0.9, 0), engine.find("Target").position)
+if path then self:move((path[2] - self.position):normalized() * 4) end
+```
+
+Settings has "Show navigation", which draws the walkable cells and the last path over the scene.
+[`assets/scenes/navigation.json`](assets/scenes/navigation.json) is a small maze where a character with the script
+[`nav_walker.lua`](assets/scripts/nav_walker.lua) walks to a target.
 
 ### Skeletal animation
 
