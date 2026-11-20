@@ -170,6 +170,8 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "canUndo": "editor",
     "canRedo": "editor",
     "saveScene": "tooling: writes scene files, which games author in the editor (save is for player data)",
+    "setSsaoDebugView": "editor tuning aid (Settings > Interface); games do not show the raw AO",
+    "ssaoDebugView": "editor tuning aid (Settings > Interface); games do not show the raw AO",
     "savePrefab": "tooling: writes prefab files, which games author in the editor",
 }
 

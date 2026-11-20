@@ -84,6 +84,8 @@ public:
   void resolveScene(Shader &tonemap, const PostProcess::Settings &settings);
   void finishScene(Shader &bloomDownsample, Shader &bloomUpsample, Shader &composite,
                    const PostProcess::Settings &settings);
+  // Binds the display target the scene was tone mapped into (after resolveScene), at the render size
+  void bindDisplayTarget() { m_postProcess.bindDisplay(); }
   const RenderStats &getStats() const { return m_stats; }
   void endFrame() const;
 

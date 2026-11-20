@@ -181,6 +181,7 @@ void Engine::shutdown() {
   // Attempt to clean up renderer and SDL; the game UI frees its GPU resources first, while the context is alive
   m_systemManager.getSystem<GameUISystem>().shutdown();
   auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
+  renderSystem.shutdownSsao();
   renderSystem.getRenderer().shutdown();
   SDL_Quit();
 }
@@ -1281,6 +1282,28 @@ glm::ivec2 Engine::renderResolution() {
   const Renderer &renderer = m_systemManager.getSystem<RenderSystem>().getRenderer();
   return {renderer.getRenderWidth(), renderer.getRenderHeight()};
 }
+void Engine::setSsao(bool enabled) { m_systemManager.getSystem<RenderSystem>().setSsaoEnabled(enabled); }
+bool Engine::ssao() { return m_systemManager.getSystem<RenderSystem>().ssaoEnabled(); }
+void Engine::setSsaoSettings(const SsaoSettings &settings) {
+  const SsaoSettings clamped = settings.clamped();
+  m_systemManager.getSystem<RenderSystem>().setSsaoSettings(clamped);
+  m_componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
+    if (has<Hidden>(entity))
+      return;
+    skybox.ssaoRadius = clamped.radius;
+    skybox.ssaoIntensity = clamped.intensity;
+  });
+}
+SsaoSettings Engine::ssaoSettings() {
+  SsaoSettings settings = m_systemManager.getSystem<RenderSystem>().ssaoSettings();
+  if (const Skybox *sky = findSceneSky()) {
+    settings.radius = sky->ssaoRadius;
+    settings.intensity = sky->ssaoIntensity;
+  }
+  return settings.clamped();
+}
+void Engine::setSsaoDebugView(bool enabled) { m_systemManager.getSystem<RenderSystem>().setSsaoDebugView(enabled); }
+bool Engine::ssaoDebugView() { return m_systemManager.getSystem<RenderSystem>().ssaoDebugView(); }
 void Engine::setFullscreen(bool enabled) { m_systemManager.getSystem<WindowSystem>().setFullscreen(enabled); }
 bool Engine::isFullscreen() { return m_systemManager.getSystem<WindowSystem>().isFullscreen(); }
 

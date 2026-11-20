@@ -45,6 +45,10 @@ struct Skybox {
   // the surface's color. 0 (the default) adds nothing.
   glm::vec3 ambientColor{1.0f};
   float ambientIntensity = 0.0f;
+  // Ambient occlusion of this scene (see Ssao): how far geometry shades a point (world units) and how dark it makes
+  // it. Whether it is on at all is the player's and quality setting (Engine::setSsao), not the scene's.
+  float ssaoRadius = 0.5f;
+  float ssaoIntensity = 1.0f;
 
   Skybox() = default;
   Skybox(std::string imagePath, float brightness = 1.0f, float rotationDegrees = 0.0f)

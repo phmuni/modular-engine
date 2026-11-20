@@ -1004,6 +1004,34 @@ struct ScriptSystem::Impl {
     });
     api.set_function("setFullscreen", [this](bool enabled) { engine.setFullscreen(enabled); });
     api.set_function("isFullscreen", [this]() { return engine.isFullscreen(); });
+    // Ambient occlusion (see Engine::setSsao): engine.setSsao(false), engine.ssao(); engine.setSsaoSettings{ radius = 0.5,
+    // intensity = 1, quality = "medium", halfResolution = true } changes only the fields given (quality: "low", "medium"
+    // or "high"); engine.ssaoSettings() returns them all
+    api.set_function("setSsao", [this](bool enabled) { engine.setSsao(enabled); });
+    api.set_function("ssao", [this]() { return engine.ssao(); });
+    api.set_function("setSsaoSettings", [this](const sol::table &options) {
+      SsaoSettings settings = engine.ssaoSettings();
+      settings.radius = options.get_or("radius", settings.radius);
+      settings.intensity = options.get_or("intensity", settings.intensity);
+      settings.halfResolution = options.get_or("halfResolution", settings.halfResolution);
+      if (const sol::optional<std::string> quality = options["quality"]) {
+        if (const auto parsed = ssaoQualityFromName(*quality))
+          settings.quality = *parsed;
+        else
+          LOG_W("[Script] engine.setSsaoSettings: quality is \"low\", \"medium\" or \"high\", not \"%s\"",
+                quality->c_str());
+      }
+      engine.setSsaoSettings(settings);
+    });
+    api.set_function("ssaoSettings", [this]() {
+      const SsaoSettings settings = engine.ssaoSettings();
+      sol::table result = lua.create_table();
+      result["radius"] = settings.radius;
+      result["intensity"] = settings.intensity;
+      result["quality"] = ssaoQualityName(settings.quality);
+      result["halfResolution"] = settings.halfResolution;
+      return result;
+    });
     // The engine's switches by name (see TOGGLE_NAMES): engine.setToggle("freeCamera", true)
     const auto toggleNamed = [](const std::string &name) {
       if (const auto toggle = toggleFromName(name))

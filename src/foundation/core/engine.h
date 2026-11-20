@@ -8,6 +8,7 @@
 #include "components/script.h"
 #include "components/light.h"
 #include "components/skybox.h"
+#include "rendering/ssao.h"
 #include "components/transform.h"
 #include "foundation/core/app.h"
 #include "foundation/core/collisionLayers.h"
@@ -545,6 +546,17 @@ public:
   float renderScale();
   // The scene's size in pixels now: the framebuffer's times the render scale
   glm::ivec2 renderResolution();
+  // Ambient occlusion (SSAO): contact shadows in the ambient light where objects meet and in creases (never in direct
+  // lights or emission). On by default. setSsaoSettings clamps radius (0.05 to 10 world units) and intensity (0 to 4;
+  // 0 is off); the scene's Skybox keeps radius and intensity (they come back from ssaoSettings), so a level carries
+  // its own, and setSsaoSettings writes them into the scene's Skybox when there is one.
+  void setSsao(bool enabled);
+  bool ssao();
+  void setSsaoSettings(const SsaoSettings &settings);
+  SsaoSettings ssaoSettings();
+  // Shows the AO alone instead of the image, for tuning in the editor (off by default)
+  void setSsaoDebugView(bool enabled);
+  bool ssaoDebugView();
   // Borderless fullscreen at the desktop's size; the window comes back at its old size
   void setFullscreen(bool enabled);
   bool isFullscreen();

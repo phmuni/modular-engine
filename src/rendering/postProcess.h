@@ -28,6 +28,11 @@ public:
   void resolveToDisplay(Shader &tonemap, const Settings &settings);
   // The framebuffer the scene draws into (0 before resize): passes that bind their own targets come back to it
   GLuint sceneFramebuffer() const { return m_sceneFBO; }
+  // Binds the display target (render size), where the tone mapped image is: for passes that draw over it
+  void bindDisplay() {
+    glBindFramebuffer(GL_FRAMEBUFFER, m_displayFBO);
+    glViewport(0, 0, m_width, m_height);
+  }
   // Bloom of the HDR scene, added to the display image onto the screen (framebuffer 0)
   void finish(Shader &downsample, Shader &upsample, Shader &composite, const Settings &settings);
   void shutdown();

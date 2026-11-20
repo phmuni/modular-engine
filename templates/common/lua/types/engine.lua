@@ -492,6 +492,32 @@ function engine.renderScale() end
 ---@return integer height
 function engine.renderResolution() end
 
+---Turns ambient occlusion (SSAO) on or off. It darkens the ambient light in creases and where objects meet the floor
+---(never direct lights or emission); on by default. The player's choice in the pause menu overrides a project's
+---`"graphics"` setting.
+---@param enabled boolean
+function engine.setSsao(enabled) end
+
+---Whether ambient occlusion is on.
+---@return boolean
+function engine.ssao() end
+
+---Ambient occlusion settings. Every field is optional: only those given change.
+---@class SsaoOptions
+---@field radius? number How far from a point geometry can shade it, in world units (0.05 to 10, default 0.5)
+---@field intensity? number The AO's power (0 to 4, default 1; 0 turns it off)
+---@field quality? "low"|"medium"|"high" Samples per pixel: 8, 16 or 32 (default "medium")
+---@field halfResolution? boolean Computed at half the render size, about 4x cheaper (default true)
+
+---Changes the ambient occlusion settings, clamped to their limits. The scene's Skybox keeps radius and intensity, so a
+---level can carry its own (they are saved with the scene).
+---@param options SsaoOptions
+function engine.setSsaoSettings(options) end
+
+---The ambient occlusion settings, all fields.
+---@return SsaoOptions
+function engine.ssaoSettings() end
+
 ---Borderless fullscreen at the desktop's size; the window comes back at its old size when it is turned off.
 ---@param enabled boolean
 function engine.setFullscreen(enabled) end
