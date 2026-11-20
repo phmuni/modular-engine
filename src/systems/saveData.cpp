@@ -23,7 +23,7 @@ struct SaveData::Impl {
       // SDL creates the folder; the pointer is SDL's to free
       char *folder = SDL_GetPrefPath("modular-engine", gameName.c_str());
       if (folder) {
-        path = std::string(folder) + "save.json";
+        path = (std::filesystem::path(folder) / "save.json").generic_string(); // "/" on every platform
         SDL_free(folder);
       } else {
         LOG_W("[Save] No preferences folder for %s: %s", gameName.c_str(), SDL_GetError());
@@ -95,7 +95,7 @@ void SaveData::setFolder(const std::string &folder) {
   Impl &impl = *m_impl;
   std::error_code ignored;
   std::filesystem::create_directories(folder, ignored);
-  impl.path = (std::filesystem::path(folder) / "save.json").string();
+  impl.path = (std::filesystem::path(folder) / "save.json").generic_string();
   impl.inMemory = false;
   impl.loaded = false;
   impl.dirty = false;
