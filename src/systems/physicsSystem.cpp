@@ -6,6 +6,7 @@
 #include "components/model.h"
 #include "components/rigidBody.h"
 #include "components/transform.h"
+#include "foundation/core/collisionLayers.h"
 #include "foundation/core/logger.h"
 #include "rendering/resources/mesh.h"
 #include "systems/resourceSystem.h"
@@ -47,11 +48,15 @@ namespace {
 constexpr float kStep = 1.0f / 60.0f;
 constexpr int kMaxStepsPerUpdate = 4; // after a long hitch, slow down rather than spiral
 
-// Two layers: what never moves does not need to be tested against itself
+// Jolt's object layers are a collision layer (CollisionLayers) times two: the low bit says whether the body moves. The
+// broadphase keeps only that split, so what never moves is not tested against itself however many layers there are,
+// and the matrix is checked per pair of object layers.
 namespace Layers {
-constexpr JPH::ObjectLayer NonMoving = 0;
-constexpr JPH::ObjectLayer Moving = 1;
-constexpr JPH::ObjectLayer Count = 2;
+constexpr JPH::ObjectLayer objectLayer(int layer, bool moving) {
+  return static_cast<JPH::ObjectLayer>(layer * 2 + (moving ? 1 : 0));
+}
+constexpr bool isMoving(JPH::ObjectLayer layer) { return (layer & 1) != 0; }
+constexpr int collisionLayer(JPH::ObjectLayer layer) { return layer >> 1; }
 } // namespace Layers
 namespace BroadPhaseLayers {
 constexpr JPH::BroadPhaseLayer NonMoving(0);
@@ -61,16 +66,21 @@ constexpr unsigned Count = 2;
 
 class ObjectLayerPairs final : public JPH::ObjectLayerPairFilter {
 public:
+  explicit ObjectLayerPairs(const CollisionLayers &layers) : m_layers(layers) {}
   bool ShouldCollide(JPH::ObjectLayer a, JPH::ObjectLayer b) const override {
-    return a == Layers::Moving || b == Layers::Moving;
+    return (Layers::isMoving(a) || Layers::isMoving(b)) &&
+           m_layers.collide(Layers::collisionLayer(a), Layers::collisionLayer(b));
   }
+
+private:
+  const CollisionLayers &m_layers;
 };
 
 class BroadPhaseLayerMap final : public JPH::BroadPhaseLayerInterface {
 public:
   unsigned GetNumBroadPhaseLayers() const override { return BroadPhaseLayers::Count; }
   JPH::BroadPhaseLayer GetBroadPhaseLayer(JPH::ObjectLayer layer) const override {
-    return layer == Layers::NonMoving ? BroadPhaseLayers::NonMoving : BroadPhaseLayers::Moving;
+    return Layers::isMoving(layer) ? BroadPhaseLayers::Moving : BroadPhaseLayers::NonMoving;
   }
 #if defined(JPH_EXTERNAL_PROFILE) || defined(JPH_PROFILE_ENABLED)
   const char *GetBroadPhaseLayerName(JPH::BroadPhaseLayer layer) const override {
@@ -82,8 +92,20 @@ public:
 class ObjectVsBroadPhase final : public JPH::ObjectVsBroadPhaseLayerFilter {
 public:
   bool ShouldCollide(JPH::ObjectLayer layer, JPH::BroadPhaseLayer broadPhaseLayer) const override {
-    return layer == Layers::Moving || broadPhaseLayer == BroadPhaseLayers::Moving;
+    return Layers::isMoving(layer) || broadPhaseLayer == BroadPhaseLayers::Moving;
   }
+};
+
+// Lets a query see only the collision layers in a mask
+class LayerMaskFilter final : public JPH::ObjectLayerFilter {
+public:
+  explicit LayerMaskFilter(uint32_t mask) : m_mask(mask) {}
+  bool ShouldCollide(JPH::ObjectLayer layer) const override {
+    return ((m_mask >> Layers::collisionLayer(layer)) & 1u) != 0;
+  }
+
+private:
+  uint32_t m_mask;
 };
 
 // Collects new contacts; Jolt calls it from its worker threads
@@ -149,6 +171,8 @@ struct PhysicsSystem::Impl {
   ResourceSystem &resourceSystem;
   TransformSystem &transformSystem;
 
+  const CollisionLayers &layers;
+  uint32_t layersVersion;
   ObjectLayerPairs objectLayerPairs;
   BroadPhaseLayerMap broadPhaseLayers;
   ObjectVsBroadPhase objectVsBroadPhase;
@@ -172,14 +196,18 @@ struct PhysicsSystem::Impl {
     JPH::Ref<JPH::CharacterVirtual> character;
     CharacterController settings; // the shape part, to rebuild it
     Transform written;
+    std::string layerName; // what layerIndex was resolved from, and when
+    uint32_t layerVersion = 0;
+    int layerIndex = 0;
   };
   std::unordered_map<Entity, CharacterRecord> characters;
 
   std::vector<PhysicsContact> contacts; // from the last update
   float accumulator = 0.0f;
 
-  Impl(ComponentManager &cm, ResourceSystem &rs, TransformSystem &ts)
-      : componentManager(cm), resourceSystem(rs), transformSystem(ts) {
+  Impl(ComponentManager &cm, ResourceSystem &rs, TransformSystem &ts, const CollisionLayers &collisionLayers)
+      : componentManager(cm), resourceSystem(rs), transformSystem(ts), layers(collisionLayers),
+        layersVersion(collisionLayers.version()), objectLayerPairs(collisionLayers) {
     initializeJolt();
     tempAllocator = std::make_unique<JPH::TempAllocatorImpl>(16 * 1024 * 1024);
     const int threads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()) - 1);
@@ -277,7 +305,7 @@ struct PhysicsSystem::Impl {
                                     : body.type == BodyType::Dynamic ? JPH::EMotionType::Dynamic
                                                                      : JPH::EMotionType::Kinematic;
     JPH::BodyCreationSettings settings(shape, JPH::RVec3(toJolt(transform.position)), toJolt(rotationOf(transform)),
-                                       motion, body.type == BodyType::Static ? Layers::NonMoving : Layers::Moving);
+                                       motion, Layers::objectLayer(layers.resolve(body.layer), body.type != BodyType::Static));
     settings.mUserData = static_cast<JPH::uint64>(entity);
     settings.mFriction = body.friction;
     settings.mRestitution = body.restitution;
@@ -315,12 +343,17 @@ struct PhysicsSystem::Impl {
     JPH::Ref<JPH::CharacterVirtual> character = new JPH::CharacterVirtual(
         &settings, JPH::RVec3(toJolt(transform.position)), JPH::Quat::sIdentity(), static_cast<JPH::uint64>(entity),
         system.get());
-    characters[entity] = CharacterRecord{character, controller, transform};
+    characters[entity] = CharacterRecord{character, controller, transform, controller.layer, layers.version(),
+                                         layers.resolve(controller.layer)};
   }
 
   // Bodies and characters for the components there are now, with Transforms moved from outside handed over
   void sync(float stepTime) {
     JPH::BodyInterface &bodyInterface = system->GetBodyInterface();
+    // Layers renamed, removed or reconfigured since the last sync: numbers are looked up again below
+    const bool layersChanged = layersVersion != layers.version();
+    layersVersion = layers.version();
+    bool layerMoved = false; // a body changed layer: what rested on it or beside it has to look again
 
     // Gone: the entity, its component, or (for a body) it became a character
     for (auto it = bodies.begin(); it != bodies.end();) {
@@ -359,6 +392,11 @@ struct PhysicsSystem::Impl {
         return;
       }
       BodyRecord &record = it->second;
+      if (layersChanged || record.settings.layer != body.layer) {
+        bodyInterface.SetObjectLayer(record.id, Layers::objectLayer(layers.resolve(body.layer), body.type != BodyType::Static));
+        record.settings.layer = body.layer;
+        layerMoved = true;
+      }
       const JPH::RVec3 position(toJolt(transform->position));
       const JPH::Quat rotation = toJolt(rotationOf(*transform));
       if (body.type == BodyType::Kinematic) {
@@ -373,6 +411,11 @@ struct PhysicsSystem::Impl {
         record.written = *transform;
       }
     });
+    // Sleeping bodies do not notice that what they rest on stopped colliding with them
+    if (layerMoved)
+      for (const auto &[entity, record] : bodies)
+        if (record.settings.type != BodyType::Static)
+          bodyInterface.ActivateBody(record.id);
 
     componentManager.forEachComponent<CharacterController>([&](Entity entity, CharacterController &controller) {
       const Transform *transform = componentManager.tryGet<Transform>(entity);
@@ -401,6 +444,12 @@ struct PhysicsSystem::Impl {
     for (auto &[entity, record] : characters) {
       CharacterController &controller = componentManager.get<CharacterController>(entity);
       JPH::CharacterVirtual &character = *record.character;
+      if (record.layerName != controller.layer || record.layerVersion != layers.version()) {
+        record.layerName = controller.layer;
+        record.layerVersion = layers.version();
+        record.layerIndex = layers.resolve(controller.layer);
+      }
+      const JPH::ObjectLayer objectLayer = Layers::objectLayer(record.layerIndex, true);
       character.UpdateGroundVelocity();
       const bool onGround = character.GetGroundState() == JPH::CharacterVirtual::EGroundState::OnGround;
 
@@ -418,8 +467,8 @@ struct PhysicsSystem::Impl {
       JPH::CharacterVirtual::ExtendedUpdateSettings update;
       update.mWalkStairsStepUp = JPH::Vec3(0.0f, controller.stepHeight, 0.0f);
       character.ExtendedUpdate(stepTime, gravity * controller.gravityScale, update,
-                               system->GetDefaultBroadPhaseLayerFilter(Layers::Moving),
-                               system->GetDefaultLayerFilter(Layers::Moving), {}, {}, *tempAllocator);
+                               system->GetDefaultBroadPhaseLayerFilter(objectLayer),
+                               system->GetDefaultLayerFilter(objectLayer), {}, {}, *tempAllocator);
     }
   }
 
@@ -457,8 +506,8 @@ struct PhysicsSystem::Impl {
 };
 
 PhysicsSystem::PhysicsSystem(ComponentManager &componentManager, ResourceSystem &resourceSystem,
-                             TransformSystem &transformSystem)
-    : m_impl(std::make_unique<Impl>(componentManager, resourceSystem, transformSystem)) {}
+                             TransformSystem &transformSystem, const CollisionLayers &layers)
+    : m_impl(std::make_unique<Impl>(componentManager, resourceSystem, transformSystem, layers)) {}
 
 PhysicsSystem::~PhysicsSystem() = default;
 
@@ -524,7 +573,7 @@ void PhysicsSystem::addForce(Entity entity, const glm::vec3 &force) {
 }
 
 std::optional<RayHit> PhysicsSystem::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
-                                             const std::function<bool(Entity)> &accept) const {
+                                             const std::function<bool(Entity)> &accept, uint32_t layerMask) const {
   if (glm::length(direction) <= 0.0f || maxDistance <= 0.0f)
     return std::nullopt;
   const glm::vec3 dir = glm::normalize(direction);
@@ -543,7 +592,8 @@ std::optional<RayHit> PhysicsSystem::raycast(const glm::vec3 &origin, const glm:
   } filter(accept);
 
   JPH::RayCastResult hit;
-  if (!m_impl->system->GetNarrowPhaseQuery().CastRay(ray, hit, {}, {}, filter))
+  const LayerMaskFilter layerFilter(layerMask);
+  if (!m_impl->system->GetNarrowPhaseQuery().CastRay(ray, hit, {}, layerFilter, filter))
     return std::nullopt;
   JPH::BodyLockRead lock(m_impl->system->GetBodyLockInterface(), hit.mBodyID);
   if (!lock.Succeeded())

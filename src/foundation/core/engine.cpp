@@ -434,9 +434,9 @@ std::vector<std::string> Engine::getAnimationClips(Entity entity) {
 }
 
 std::optional<RayHit> Engine::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
-                                      const std::function<bool(Entity)> &accept) {
+                                      const std::function<bool(Entity)> &accept, uint32_t layerMask) {
   return m_systemManager.getSystem<CollisionSystem>().raycast(origin, direction, maxDistance, m_componentManager,
-                                                             accept);
+                                                             accept, layerMask);
 }
 
 std::optional<Engine::Ray> Engine::screenRay(glm::vec2 windowPosition) {
@@ -991,6 +991,8 @@ GameEntity Engine::create(std::string_view name, const EntityDesc &desc) {
   if (!desc.script.empty())
     builder.withScript(desc.script);
   GameEntity created(*this, builder.build());
+  if (!desc.layer.empty())
+    created.setLayer(desc.layer);
   for (const std::string &tag : desc.tags)
     created.addTag(tag);
   for (const std::string &component : desc.components) {
@@ -1111,9 +1113,9 @@ void Engine::registerSystems() {
   m_systemManager.insert<SceneSystem>(m_entityManager, m_componentManager, m_systemManager);
   m_systemManager.insert<SceneSerializer>(m_entityManager, m_componentManager, m_systemManager);
   m_systemManager.insert<ParticleSystem>(m_componentManager);
-  m_systemManager.insert<CollisionSystem>();
+  m_systemManager.insert<CollisionSystem>(m_layers);
   m_systemManager.insert<PhysicsSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>(),
-                                        m_systemManager.getSystem<TransformSystem>());
+                                        m_systemManager.getSystem<TransformSystem>(), m_layers);
   m_systemManager.insert<NavigationSystem>(m_componentManager, m_systemManager.getSystem<PhysicsSystem>());
   m_systemManager.insert<AnimationSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>());
   m_systemManager.insert<ScriptSystem>(*this);

@@ -3,7 +3,9 @@
 //
 // A Collision box is min/max around the entity's Transform position (not rotated or scaled). Queries look at the
 // positions as they are when called, so a game can move things and then ask what touches what in the same frame.
+// Boxes on layers that do not collide (see CollisionLayers) never overlap, and rays can be limited to some layers.
 
+#include "foundation/core/collisionLayers.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
 #include <functional>
@@ -25,24 +27,29 @@ struct RayHit {
 
 class CollisionSystem : public BaseSystem {
 public:
+  explicit CollisionSystem(const CollisionLayers &layers) : m_layers(layers) {}
+
   // Every pair of entities whose boxes overlap now, each pair once (two static boxes never count). Sort and sweep
   // along x: about n log n plus the pairs found, rather than testing every pair.
   const std::vector<CollisionEvent> &findCollisions(ComponentManager &componentManager);
   // Whether these two entities' boxes overlap now (false if either has no Collision)
   bool overlaps(Entity a, Entity b, ComponentManager &componentManager) const;
   // The nearest box the ray enters within maxDistance (a ray starting inside a box hits it at distance 0).
-  // `accept` skips entities it returns false for. With maxDistance the length of a step, this is a swept test:
-  // nothing fast slips through a thin box between two frames.
+  // `accept` skips entities it returns false for, and only boxes on the layers in `layerMask` (bit n: layer n, see
+  // CollisionLayers::maskOf) are hit. With maxDistance the length of a step, this is a swept test: nothing fast slips
+  // through a thin box between two frames.
   std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
-                                ComponentManager &componentManager,
-                                const std::function<bool(Entity)> &accept = nullptr) const;
+                                ComponentManager &componentManager, const std::function<bool(Entity)> &accept = nullptr,
+                                uint32_t layerMask = CollisionLayers::kAllLayers) const;
 
 private:
   struct Box {
     Entity entity;
     glm::vec3 min, max;
     bool isStatic;
+    int layer;
   };
+  const CollisionLayers &m_layers;
   std::vector<Box> m_boxes;
   std::vector<CollisionEvent> m_collisions;
 };

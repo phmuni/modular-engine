@@ -614,6 +614,9 @@ struct ScriptSystem::Impl {
         "impulse", &GameEntity::impulse,
         "force", &GameEntity::force,
 
+        // The collision layer, by name (see physics.addLayer); also settable in engine.create
+        "layer", sol::property(&GameEntity::layer, &GameEntity::setLayer),
+
         // Characters
         "move", &GameEntity::move,
         "jump", &GameEntity::jump,
@@ -684,6 +687,7 @@ struct ScriptSystem::Impl {
     desc.mass = o.get_or("mass", desc.mass);
     desc.collision = o.get_or("collision", false);
     desc.script = o.get_or<std::string>("script", "");
+    desc.layer = o.get_or<std::string>("layer", "");
     // character = true for the defaults, or { radius, height, maxSlope, stepHeight } (every field optional)
     if (const sol::optional<sol::table> character = o["character"]) {
       desc.character = CharacterController();
@@ -703,6 +707,24 @@ struct ScriptSystem::Impl {
         if (entry.second.get_type() == sol::type::string)
           desc.tags.push_back(entry.second.as<std::string>());
     return desc;
+  }
+
+  // Layer names in a Lua list as the mask raycasts take; a name that is no layer is an error, not a silent miss
+  uint32_t layerMaskOf(const sol::table &names) {
+    std::vector<std::string> layers;
+    for (const auto &entry : names)
+      if (entry.second.get_type() == sol::type::string)
+        layers.push_back(entry.second.as<std::string>());
+    std::vector<std::string> unknown;
+    const uint32_t mask = engine.layers().maskOf(layers, &unknown);
+    if (!unknown.empty())
+      throw std::runtime_error("physics.raycast: \"" + unknown.front() + "\" is not a collision layer");
+    return mask;
+  }
+
+  void requireLayer(const char *function, const std::string &name) {
+    if (engine.layers().indexOf(name) < 0)
+      throw std::runtime_error(std::string(function) + ": \"" + name + "\" is not a collision layer (physics.addLayer defines one)");
   }
 
   // "easeOutQuad" and friends, as tween.to takes them; a name nothing answers to is an error, not a silent linear
@@ -933,9 +955,15 @@ struct ScriptSystem::Impl {
 
     // physics
     sol::table physics = lua.create_named_table("physics");
+    // physics.raycast(origin, direction, distance, { layers = {"enemy", "static"} }): the nearest body, or nil. Only bodies on
+    // the listed layers count (all of them without `layers`); a name that is no layer is an error.
     physics.set_function("raycast", [this](const glm::vec3 &origin, const glm::vec3 &direction,
-                                           sol::optional<float> distance) -> sol::object {
-      const auto hit = engine.physics().raycast(origin, direction, distance.value_or(1000.0f));
+                                           sol::optional<float> distance, sol::optional<sol::table> options) -> sol::object {
+      uint32_t layerMask = CollisionLayers::kAllLayers;
+      if (options)
+        if (const sol::optional<sol::table> layers = (*options)["layers"])
+          layerMask = layerMaskOf(*layers);
+      const auto hit = engine.physics().raycast(origin, direction, distance.value_or(1000.0f), nullptr, layerMask);
       if (!hit)
         return sol::lua_nil;
       sol::table result = lua.create_table();
@@ -944,6 +972,24 @@ struct ScriptSystem::Impl {
       result["normal"] = hit->normal;
       result["distance"] = hit->distance;
       return result;
+    });
+    // Collision layers: bodies, characters and Collision boxes are on one (entity.layer, or layer = in engine.create), and
+    // layers that do not collide pass through each other. "default", "static", "player", "enemy", "projectile" and
+    // "trigger" exist; addLayer defines more (32 in all). Everything collides until setLayersCollide says otherwise.
+    physics.set_function("addLayer", [this](const std::string &name) {
+      if (engine.layers().add(name) < 0)
+        throw std::runtime_error("physics.addLayer: cannot define \"" + name + "\" (the name is empty or all 32 layers are taken)");
+    });
+    physics.set_function("layers", [this]() { return sol::as_table(std::vector<std::string>(engine.layers().names())); });
+    physics.set_function("setLayersCollide", [this](const std::string &a, const std::string &b, bool collide) {
+      requireLayer("physics.setLayersCollide", a);
+      requireLayer("physics.setLayersCollide", b);
+      engine.layers().setCollide(a, b, collide);
+    });
+    physics.set_function("layersCollide", [this](const std::string &a, const std::string &b) {
+      requireLayer("physics.layersCollide", a);
+      requireLayer("physics.layersCollide", b);
+      return engine.layers().collide(a, b);
     });
     physics.set_function("gravity", [this](sol::optional<glm::vec3> gravity) {
       if (gravity)

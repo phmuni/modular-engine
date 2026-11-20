@@ -5,6 +5,7 @@
 // `onGround` and `velocity`.
 
 #include <glm/glm.hpp>
+#include <string>
 
 struct CharacterController {
   float radius = 0.35f;
@@ -12,6 +13,8 @@ struct CharacterController {
   float maxSlope = 50.0f; // degrees
   float stepHeight = 0.35f;
   float gravityScale = 1.0f;
+  // The collision layer it is on, by name (see CollisionLayers): it walks through what its layer does not collide with
+  std::string layer = "default";
 
   // In: the horizontal velocity it wants this frame (world units per second; y is ignored), and a jump speed
   // (used, then reset to 0, when it stands on the ground)

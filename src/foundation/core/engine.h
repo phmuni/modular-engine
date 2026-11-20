@@ -10,6 +10,7 @@
 #include "components/skybox.h"
 #include "components/transform.h"
 #include "foundation/core/app.h"
+#include "foundation/core/collisionLayers.h"
 #include "foundation/core/componentRegistry.h"
 #include "foundation/core/gameEntity.h"
 #include "foundation/ecs/componentManager.h"
@@ -250,6 +251,10 @@ public:
   // Physics (Jolt): bodies come from RigidBody components and characters from CharacterController ones. physics()
   // gives velocities, impulses, gravity, raycasts against bodies and the contacts of the last update.
   PhysicsSystem &physics();
+  // The collision layers and which of them collide: the names bodies, characters and Collision boxes are put on
+  // (RigidBody::layer, GameEntity::setLayer), the matrix, and the masks raycasts take. Set them up in `setup`; a Lua
+  // project's project.json does it for you. See CollisionLayers.
+  CollisionLayers &layers() { return m_layers; }
   // Pathfinding over the walkable ground of the physics world: build() the map once the level exists, then
   // findPath(from, to) for a path around obstacles (see NavigationSystem)
   NavigationSystem &navigation();
@@ -277,9 +282,11 @@ public:
           fn(contact.b, *a, contact.a, *b);
     }
   }
-  // The nearest Collision box along a ray, within maxDistance; see CollisionSystem::raycast
+  // The nearest Collision box along a ray, within maxDistance, on the layers in `layerMask` (all by default); see
+  // CollisionSystem::raycast
   std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
-                                const std::function<bool(Entity)> &accept = nullptr);
+                                const std::function<bool(Entity)> &accept = nullptr,
+                                uint32_t layerMask = CollisionLayers::kAllLayers);
   // Only entities that have component T, e.g. raycast<Enemy>(muzzle, forward, 100.0f)
   template <typename T>
   std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance) {
@@ -497,6 +504,7 @@ private:
     return m_componentManager.addInPlace<T>(entity, std::forward<Args>(args)...);
   }
 
+  CollisionLayers m_layers; // before the systems that read it
   EntityManager m_entityManager;
   ComponentManager m_componentManager;
   SystemManager m_systemManager;

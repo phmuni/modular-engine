@@ -6,6 +6,7 @@
 // and push dynamic ones out of the way. The shape is built in the entity's own space and scaled by its Transform.
 
 #include <glm/glm.hpp>
+#include <string>
 
 enum class BodyType { Static, Dynamic, Kinematic };
 enum class BodyShape {
@@ -30,7 +31,11 @@ struct RigidBody {
   float gravityScale = 1.0f;
   bool lockRotation = false; // only moves, never turns (dynamic)
   bool sensor = false;       // reports contacts but lets things pass through
+  // The collision layer it is on, by name (see CollisionLayers): which other layers it hits. Changing it takes effect
+  // at once, without rebuilding the body.
+  std::string layer = "default";
 
+  // Equal in everything that needs the body built again: the layer is applied to the live body instead
   friend bool operator==(const RigidBody &a, const RigidBody &b) {
     return a.type == b.type && a.shape == b.shape && a.size == b.size && a.mass == b.mass &&
            a.friction == b.friction && a.restitution == b.restitution && a.linearDamping == b.linearDamping &&

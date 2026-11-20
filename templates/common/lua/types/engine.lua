@@ -129,6 +129,7 @@ function vec3.lerp(a, b, t) end
 ---@field visible boolean (read-only) false after setVisible(false)
 ---@field velocity vec3 Linear velocity of its physics body
 ---@field onGround boolean (read-only) whether its character controller stands on the ground
+---@field layer string Its collision layer (see physics.addLayer), for its body, character and collision box; "default" without any. Takes effect at once, also on a body that is already simulating; a name that is no layer is a warning and changes nothing
 ---@field audioPlaying boolean (read-only) its AudioSource is playing (not paused; false once a sound that does not loop ended)
 ---@field audioVolume number Its AudioSource's volume, 1 is normal (0 without an AudioSource)
 ---@field audioPitch number Its AudioSource's pitch, 1 is as recorded
@@ -269,6 +270,7 @@ function Entity:sound(path, volume) end
 ---@field collision? boolean Adds collision from its model
 ---@field script? string Script path relative to assets/ ("scripts/coin.lua")
 ---@field tags? string[] Tags to give it, e.g. {"enemy"}
+---@field layer? string Collision layer of its body, character and collision box: "default", "static", "player", "enemy", "projectile", "trigger", or one from physics.addLayer. Defaults to "default"
 ---@field character? CharacterOptions|boolean A walking character (true for the defaults); it is its own physics body, so it replaces `body`. Its position is the capsule's middle
 ---@field components? string[] Game components registered by C++ (Engine::registerComponent), by name, added with their default values: {"Player"}. A project with no C++ has none
 
@@ -637,12 +639,41 @@ function input.bindings(path) end
 ---@class physics
 physics = {}
 
+---Options for physics.raycast.
+---@class RaycastOptions
+---@field layers? string[] Only bodies on these collision layers count, e.g. {"enemy", "static"}; a name that is no layer is an error. Every layer without it
+
 ---Casts a ray and returns the first thing it hits, or nil.
 ---@param origin vec3
 ---@param direction vec3
 ---@param distance? number Defaults to 1000
+---@param options? RaycastOptions
 ---@return RaycastHit|nil
-function physics.raycast(origin, direction, distance) end
+function physics.raycast(origin, direction, distance, options) end
+
+---Defines a collision layer (up to 32 in all; "default", "static", "player", "enemy", "projectile" and "trigger" always exist). Layers
+---are for entity.layer, `layer =` in engine.create and the editor's dropdowns; a Lua project can also list them in project.json:
+---`"layers": { "names": ["water"], "ignore": [["enemy", "enemy"]] }`.
+---@param name string
+function physics.addLayer(name) end
+
+---The names of the collision layers.
+---@return string[]
+function physics.layers() end
+
+---Says whether things on two layers collide. Everything collides until told otherwise, e.g. physics.setLayersCollide("enemy", "enemy", false)
+---makes enemies pass through each other, and ("projectile", "player", false) lets bullets through the player. It applies to physics bodies,
+---characters and Collision boxes, and takes effect at once. A name that is no layer is an error.
+---@param a string
+---@param b string
+---@param collide boolean
+function physics.setLayersCollide(a, b, collide) end
+
+---Whether things on two layers collide.
+---@param a string
+---@param b string
+---@return boolean
+function physics.layersCollide(a, b) end
 
 ---Sets the gravity when given one; returns the current gravity.
 ---@param gravity? vec3

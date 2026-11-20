@@ -4,8 +4,10 @@
 // Each update the system creates bodies for new components and removes those of destroyed entities, hands Transforms
 // that game code or the editor moved over to the simulation, steps it in fixed 1/60 s steps, and writes the result
 // back into the Transforms of dynamic bodies and characters. Changing a RigidBody's settings (or the entity's scale)
-// rebuilds its body. Jolt itself stays inside physicsSystem.cpp.
+// rebuilds its body; changing its layer (or the layer matrix) does not, the live body is moved to the new layer.
+// Which bodies and characters collide follows CollisionLayers. Jolt itself stays inside physicsSystem.cpp.
 
+#include "foundation/core/collisionLayers.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "systems/collisionSystem.h"
@@ -28,7 +30,7 @@ struct PhysicsContact {
 class PhysicsSystem : public BaseSystem {
 public:
   PhysicsSystem(ComponentManager &componentManager, ResourceSystem &resourceSystem,
-                TransformSystem &transformSystem);
+                TransformSystem &transformSystem, const CollisionLayers &layers);
   ~PhysicsSystem();
 
   // Syncs bodies with the components and advances the simulation by deltaTime (0, while paused: no step)
@@ -51,9 +53,11 @@ public:
   void addImpulse(Entity entity, const glm::vec3 &impulse); // kg * units/s, at the center of mass
   void addForce(Entity entity, const glm::vec3 &force);     // for this step
 
-  // The nearest body along a ray (characters are not bodies); `accept` skips entities it returns false for
+  // The nearest body along a ray (characters are not bodies); `accept` skips entities it returns false for, and only
+  // bodies on the layers in `layerMask` (bit n: layer n, see CollisionLayers::maskOf) are hit
   std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
-                                const std::function<bool(Entity)> &accept = nullptr) const;
+                                const std::function<bool(Entity)> &accept = nullptr,
+                                uint32_t layerMask = CollisionLayers::kAllLayers) const;
 
   // Whether an upright capsule standing on `base` (its lowest point), `height` tall in all and `radius` wide,
   // overlaps a static or kinematic body (dynamic bodies and sensors are not obstacles: they move or do not block)
