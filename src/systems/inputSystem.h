@@ -43,6 +43,11 @@ public:
   InputSystem();
 
   void update(bool *running, SystemManager &systemManager);
+  // Forgets what happened "this frame" (presses, releases, mouse motion, typed text) without reading events: for
+  // frames drawn from inside the OS's move/resize loop, which must not poll, so they do not repeat the last press
+  void clearFrameState();
+  // True only while SDL is pumping events inside update, where the OS may run a modal loop
+  bool isPolling() const { return m_polling; }
 
   // While blocked (a menu is open), the game sees no keys, clicks, actions or gamepad input: everything reads as
   // idle, and presses that arrive meanwhile are dropped. The engine's toggle keys (F-keys) are blocked too.
@@ -189,6 +194,7 @@ private:
   std::map<std::string, std::vector<InputBinding>, std::less<>> m_axes;
   // Each action's state this frame and the last, for pressed / released
   std::map<std::string, std::pair<bool, bool>, std::less<>> m_actionStates;
+  bool m_polling = false;
   bool readAction(const std::vector<InputBinding> &bindings) const;
   float readBinding(const InputBinding &binding) const;
 };

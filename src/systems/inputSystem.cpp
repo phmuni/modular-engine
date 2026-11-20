@@ -67,18 +67,11 @@ size_t characterCount(const std::string &utf8) {
 }
 } // namespace
 
-void InputSystem::update(bool *running, SystemManager &systemManager) {
-  auto &windowSystem = systemManager.getSystem<WindowSystem>();
-  auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
-  auto &gameUI = systemManager.getSystem<GameUISystem>();
-  const auto &state = systemManager.getSystem<StateSystem>();
-
+void InputSystem::clearFrameState() {
   m_mouseXOffset = 0.0f;
   m_mouseYOffset = 0.0f;
   m_mouseWheel = 0.0f;
   m_flyWheel = 0.0f;
-  if (!m_editorFlyAllowed)
-    m_editorFlying = false; // the editor lost the camera (Play, F2) with the button still down
   std::fill(std::begin(m_pressed), std::end(m_pressed), false);
   std::fill(std::begin(m_released), std::end(m_released), false);
   std::fill(std::begin(m_mousePressed), std::end(m_mousePressed), false);
@@ -86,6 +79,19 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
   std::fill(std::begin(m_gamepadPressed), std::end(m_gamepadPressed), false);
   m_escapePressed = false;
   m_typedText.clear();
+  for (auto &[name, state] : m_actionStates)
+    state.second = state.first; // an action's press or release is an edge too
+}
+
+void InputSystem::update(bool *running, SystemManager &systemManager) {
+  auto &windowSystem = systemManager.getSystem<WindowSystem>();
+  auto &renderer = systemManager.getSystem<RenderSystem>().getRenderer();
+  auto &gameUI = systemManager.getSystem<GameUISystem>();
+  const auto &state = systemManager.getSystem<StateSystem>();
+
+  clearFrameState();
+  if (!m_editorFlyAllowed)
+    m_editorFlying = false; // the editor lost the camera (Play, F2) with the button still down
 
   // Text input is SDL's own switch, and something else (a game UI text field) may turn it off: asked again each frame
   // while the game wants it, at no cost otherwise
@@ -101,7 +107,15 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
   }
 
   SDL_Event event;
-  while (SDL_PollEvent(&event)) {
+  // Only the pump is marked: on Windows and macOS it can sit in the OS's move/resize loop, and the engine draws frames
+  // from there. Handling an event is not such a place.
+  auto poll = [&]() {
+    m_polling = true;
+    const bool got = SDL_PollEvent(&event);
+    m_polling = false;
+    return got;
+  };
+  while (poll()) {
     ImGui_ImplSDL3_ProcessEvent(&event);
 
     // The game UI gets what the debug panels do not want; with the cursor locked, the mouse belongs to the camera

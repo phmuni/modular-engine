@@ -25,7 +25,9 @@
 #include "systems/physicsSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/stateSystem.h"
+#include <SDL3/SDL_events.h>
 #include <deque>
+#include <exception>
 #include <functional>
 #include <limits>
 #include <glm/glm.hpp>
@@ -602,6 +604,15 @@ private:
   bool loadResources();
 
   void loop(bool &isRunning);
-  void update(bool &isRunning);
+  // `pollInput` is false for a frame drawn from inside the OS's move/resize loop, where events must not be polled
+  void update(bool &isRunning, bool pollInput = true);
   void render();
+
+  // While the OS moves or resizes the window it runs its own loop inside the event pump, and the main loop is stuck.
+  // SDL sends EXPOSED repeatedly from that loop; the watch draws a frame from it so the game keeps running.
+  static bool SDLCALL onSdlEvent(void *userdata, SDL_Event *event);
+  void runFrameInEventPump();
+  bool m_loopRunning = false;
+  bool m_inLiveFrame = false;
+  std::exception_ptr m_liveFrameError; // thrown in the watch, which SDL's C code must not unwind through
 };
