@@ -69,7 +69,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
-| **Pause Menu**             | A ready-made menu (Resume, Options with volumes, fullscreen and vsync, Quit) on `Escape`: `engine.enablePauseMenu(true)`, or `ui.pauseMenu(true)` in Lua |
+| **Pause Menu**             | A ready-made menu (Resume, Options, Quit) on `Escape`, a document of your project written on the generic `pause_menu` data model: `engine.ui().pauseMenu(true)`, or `ui.pauseMenu(true)` in Lua; the player's options are the `settings` service |
 | **Saved Data**             | A per-game key-value store for progress and settings in the user's preferences folder, written atomically: `engine.saveData()`, or `save.get` / `save.set` in Lua |
 | **Lua Scripting**          | Entity and game scripts with hot reload, the engine's API, and C++ functions handed to them (Lua 5.4, sol2) |
 | **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds, plays and exports them, opens them in VS Code |
@@ -453,7 +453,8 @@ What scripts can use:
 | `physics` | `raycast(origin, direction, distance, { layers = {"enemy"} })` (a table with `entity`, `point`, `normal`, `distance`; `layers` is optional), `gravity(v)`; collision layers: `addLayer(name)`, `layers()`, `setLayersCollide(a, b, bool)`, `layersCollide(a, b)` |
 | `nav` | `build({ min, max, cellSize, agentRadius, agentHeight, maxSlope, stepHeight })` (all optional; without `min` and `max` it covers the static bodies), `path(from, to)` (a table of `vec3` on the ground, or `nil` if there is no way), `walkable(point)` |
 | `sound` | `play(path, volume, pitch)` and `playAt(path, position, volume)` (return a handle for `stop(handle)`, `setVolume(handle, v)`, `isPlaying(handle)`), `preload(path)`, `music(path, volume, loop)` (returns a handle), `musicVolume(v, handle)`, `stopMusic(handle)`, `isMusicPlaying(handle)` |
-| `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `style(id, property, value)`, `attribute(id, name, value)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled)`, `openPauseMenu()`, `closePauseMenu()`, `isPaused()` (whether it is open) |
+| `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `style(id, property, value)`, `attribute(id, name, value)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled or options)`, `openPauseMenu(screen)`, `closePauseMenu()`, `isPauseMenuOpen()` (`isPaused()` is the same) |
+| `settings` | The player's options: `get(name)`, `set(name, value)`, `step(name, dir)`, `choices(name)`, `label(name)`, `enabled(name)`, `kind(name)`, `range(name)`, `names()`, `reset(name)`; see Player settings |
 | `save` | `set(key, value)` (a number, string, boolean, or a table of those, nested), `get(key, default)`, `has(key)`, `remove(key)`, `write()` |
 
 `require("name")` loads `assets/scripts/name.lua`, and `print` writes to the engine's log. C++ hands its own functions
@@ -1496,36 +1497,170 @@ save.write()                                       -- now, not just when the gam
 
 Lua tables hold numbers, strings, booleans and other tables; anything else (functions, userdata) is refused with an
 error in the log. Whole numbers come back as integers (`12`, not `12.0`). The engine keeps its own settings (the pause
-menu's options) under keys that start with `engine.`: avoid that prefix.
+player settings) under keys that start with `engine.`: avoid that prefix.
 
 ### Menus
 
-The engine ships a pause menu, an RmlUi document in [`assets/ui/engine/`](assets/ui/engine/) that is copied into every
-game's `bin/engine-assets`. Turn it on and `Escape` opens it: Resume, Options (Master, Music and Effects volume,
-Ambient occlusion, Fullscreen, VSync, Back) and Quit. Opening it pauses the game like `F7` does, frees the cursor and keeps keys, clicks
-and gamepad input away from the game until it closes (`Escape` again, or Resume; in Options it goes back first). The
-options are saved in the saved data and applied the next time the game starts.
+The pause menu is a document of your project, `assets/ui/pauseMenu.rml` (with `pauseMenu.rcss` next to it): new
+projects get a copy, and the engine only knows how to open it, close it and bind a generic data model to it. There
+are three levels of use.
+
+**1. As it ships.** Turn it on and `Escape` opens it: Resume, Options (Master, Music and Effects volume, Window size,
+Fullscreen, VSync, Render scale, AA, FXAA, FSR and its sharpness, Ambient occlusion and its quality, Back) and Quit.
+Opening it pauses the game like `F7` does, frees the cursor and keeps keys, clicks and gamepad input away from the
+game until it closes (`Escape` again, or Resume; in Options it goes back first).
+
+```lua
+ui.pauseMenu(true)       -- Escape opens it
+ui.openPauseMenu()       -- from code; ui.openPauseMenu("options") starts on a screen of the document
+ui.closePauseMenu()
+if ui.isPauseMenuOpen() then ... end   -- ui.isPaused() is the same
+```
 
 ```cpp
-engine.enablePauseMenu(true);                  // Escape opens it
+engine.ui().pauseMenu(true);                   // or engine.enablePauseMenu(true)
 engine.openPauseMenu();                        // from code, e.g. a button of your own
 engine.closePauseMenu();
 if (engine.isPauseMenuOpen()) { /* ... */ }
 engine.quit();                                 // closes the game at the end of the frame
 ```
 
+The behavior has options, each with the shipped behavior as its default. In Lua a table (`ui.pauseMenu(true)` is
+`{ enabled = true }`), in C++ `PauseMenuOptions` with `engine.ui().pauseMenu(options)`:
+
 ```lua
-ui.pauseMenu(true)       -- Escape opens it
-ui.openPauseMenu()       -- from code
-ui.closePauseMenu()
-if ui.isPaused() then ... end
+ui.pauseMenu{
+  enabled    = true,                  -- Escape opens it (false: only code does)
+  document   = "ui/pauseMenu.rml",    -- relative to assets/; default: the project's ui/pauseMenu.rml
+  pause      = true,                  -- opening pauses the game; false: physics, animation and scripts keep running under it
+  freeCursor = true,                  -- opening frees the mouse and shows the cursor; closing gives it back as it was
+  blockInput = true,                  -- keys and clicks do not reach the game while it is open
+  escape     = true,                  -- Escape opens it, goes back a screen and closes it; false: Escape does nothing
+}
 ```
 
 `Escape` is left alone while an editor text field is active, or while the editor panels (`F2`) are showing and one of
-them has focus, and when the game's own UI used the key. To restyle the menu, put your own copy of `pauseMenu.rml` and
-`pauseMenu.rcss` in your game's `assets/ui/engine/` (it is used instead of the engine's); keep the `engine_pause` data
-model's bindings (`master`, `music`, `effects`, `fullscreen`, `vsync`, `options` and the `resume`, `show_options`,
-`back`, `quit`, `toggle_fullscreen`, `toggle_vsync` events).
+them has focus, and when the game's own UI used the key. The document is looked for in this order: the `document`
+option (a path that does not exist is a warning in the log, then the next one), the project's `assets/ui/pauseMenu.rml`,
+and the engine's own copy (`assets/ui/engine/pauseMenu.rml`, which projects made before the file was part of the
+template keep using).
+
+**2. Edit the project's `pauseMenu.rml`.** It is your file: change the texts, the screens, the style in
+`pauseMenu.rcss`, add a button. The document is written against a data model named `pause_menu`, the same for every
+document, which has one entry per player setting (see below):
+
+| Name | What it is |
+| --- | --- |
+| `settings.<name>` | The value of a setting: a number, a boolean, or a choice's value. A number also works as `data-value="settings.masterVolume"` on `<input type="range">` (with `min`, `max` and `step` of the setting) |
+| `labels.<name>` | Its text for the screen: `MSAA 4x`, `1920 x 1080`, `75%`, `On` |
+| `enabled.<name>` | Whether it matters now (`data-class-disabled="!enabled.fsrSharpness"`): FSR's sharpness needs FSR on and a Render scale below 100 %, the Window size is fixed in fullscreen, the AO quality needs AO on |
+| `screen` | The screen shown: `main` when the menu opens. Use `data-if="screen == 'options'"` on a `div` for each screen |
+
+| Event | What it does |
+| --- | --- |
+| `set('name', value)` | Sets a setting: `set('msaa', 4)`, `set('fxaa', true)`, `set('ssaoQuality', 'high')` |
+| `step('name', 1)` | One step up (`1`) or down (`-1`): a number by its step, a choice to the next one (around the ends), a boolean flips |
+| `toggle('name')` | A boolean flips, a choice goes to the next one |
+| `show('screen')` | Goes to another screen of the document; `back()` returns |
+| `back()` | Back to the screen before; from the first screen it closes the menu |
+| `resume()`, `quit()` | Close the menu; close the game |
+| `action('name')` | Calls the game's callback (below), for anything the menu does that is yours |
+
+```xml
+<body data-model="pause_menu">
+  <div data-if="screen == 'main'">
+    <button data-event-click="resume()">Resume</button>
+    <button data-event-click="show('options')">Options</button>
+    <button data-event-click="action('restart')">Restart level</button>
+  </div>
+  <div data-if="screen == 'options'">
+    <input type="range" min="0" max="1" step="0.01" data-value="settings.masterVolume"/> {{ labels.masterVolume }}
+    <button data-event-click="step('msaa', 1)">{{ labels.msaa }}</button>
+    <button data-class-on="settings.fxaa" data-event-click="toggle('fxaa')">FXAA {{ labels.fxaa }}</button>
+    <button data-event-click="back()">Back</button>
+  </div>
+</body>
+```
+
+The game hears about the menu with callbacks. In Lua they are functions of the game script, in C++ they go through
+`engine.ui()`:
+
+```lua
+function onPauseMenuOpened() end
+function onPauseMenuClosed() end
+function onPauseMenuAction(name)               -- from action('name') in the document
+  if name == "restart" then
+    ui.closePauseMenu()
+    engine.loadScene("scenes/level.json")
+  end
+end
+```
+
+```cpp
+engine.ui().onPauseMenuAction([&](const std::string &name) { if (name == "restart") { /* ... */ } });
+engine.ui().onPauseMenuOpened([] { /* ... */ });
+engine.ui().onPauseMenuClosed([] { /* ... */ });
+```
+
+**3. Your own menu.** The settings are a service of their own, so a menu you build with `ui.load` (or in RmlUi
+directly) uses the same options, the same save keys and the same startup, without the pause menu:
+
+```lua
+-- a title screen with a volume slider and a quality button
+ui.load("ui/title.rml")
+ui.onClick("quality", function()
+  settings.step("msaa")                        -- applies it and keeps it in the save data
+  ui.text("quality", settings.label("msaa"))   -- "MSAA 4x"
+end)
+settings.set("masterVolume", 0.5)
+```
+
+### Player settings
+
+`PlayerSettings` (`engine.settings()` in C++, the `settings` table in Lua) owns every option a player can change. Each
+one has a name, a type, a range and step or a list of choices, and is applied to the engine and kept in the save data
+under the key it has always had, so saves from before keep working.
+
+| Name | Type | Range or choices | Save key |
+| --- | --- | --- | --- |
+| `masterVolume`, `musicVolume`, `effectsVolume` | number | 0 to 1, step 0.01 | `engine.volume.master`, `.music`, `.effects` |
+| `resolution` | choice | the window sizes that fit the display (`"1920 x 1080"`) and the window's own | `engine.window.width`, `engine.window.height` |
+| `renderScale` | number | 0.5 to 2, step 0.05 | `engine.renderScale` |
+| `msaa` | choice | `0`, `2`, `4`, `8` (`Off`, `MSAA 2x`...; the GPU may cap it) | `engine.msaa` |
+| `fxaa`, `fsr` | bool | | `engine.fxaa`, `engine.fsr` |
+| `fsrSharpness` | number | 0 to 2, step 0.05 | `engine.fsrSharpness` |
+| `ssao` | bool | | `engine.ssao` |
+| `ssaoQuality` | choice | `"low"`, `"medium"`, `"high"` | `engine.ssaoQuality` |
+| `fullscreen`, `vsync` | bool | | `engine.fullscreen`, `engine.vsync` |
+
+```lua
+settings.get("msaa")                -- 4
+settings.set("msaa", 2)             -- also settings.set("msaa", "MSAA 2x"); false if it does not fit
+settings.step("resolution", 1)      -- the next window size; -1 the previous (a boolean flips)
+settings.label("renderScale")       -- "75%"
+settings.choices("msaa")            -- { "Off", "MSAA 2x", "MSAA 4x", "MSAA 8x" }
+settings.enabled("fsrSharpness")    -- whether it matters now
+settings.kind("msaa")               -- "choice" ("number", "bool"); settings.range("renderScale") gives min, max, step
+settings.names()                    -- every name
+settings.reset("msaa")              -- back to the game's default, out of the save data; settings.reset() for all
+```
+
+```cpp
+engine.settings().set("msaa", 4.0);              // Value is a variant of bool, double and std::string
+engine.settings().step("resolution", 1);
+std::string text = engine.settings().label("msaa");
+```
+
+A number is clamped and rounded to its step. `set` and `step` apply the value, then keep what took effect in the save data
+(written when the pause menu closes and when the game quits). Adding an option is one entry in the registry in
+`src/systems/playerSettings.cpp`; the pause menu, Lua and the saves pick it up from there.
+
+**Start-up order.** The player's saved choices are applied when the game starts, whether or not any menu is used: first
+the engine's defaults, then the game's (`project.json`'s `window` and `graphics`, or what C++ code configured before
+`Engine::run`), then what the player saved, then the game's `setup` and `onStart`. The saved choice wins. The window's
+size and place are restored with the window (see the window section). A C++ game that names itself with `setGameName` in
+`setup` has its own save applied at that point; call it first, before setting the game's own defaults. `reset` goes
+back to the defaults of the second step. `--deterministic` runs do not read the player's save.
 
 ---
 

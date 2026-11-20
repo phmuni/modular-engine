@@ -22,7 +22,9 @@ cmake -B build && cmake --build build -j     # Release; add -DCMAKE_BUILD_TYPE=D
   with `engine.spawn("prefabs/coin.json", position)`. To change every coin, run the game, press `F2`, click a coin,
   edit it in the Properties panel (color, size, its script's `spin` and `bob`...) and press **Save as prefab**
   (set the path to `../assets/prefabs/coin.json` first: it suggests the entity's name). The next coins use it.
-- `Escape` opens the pause menu (`ui.pauseMenu(true)` in `game.lua`), and `game.lua` keeps the best score between runs
+- `Escape` opens the pause menu (`ui.pauseMenu(true)` in `game.lua`; its document is `assets/ui/pauseMenu.rml`, yours to
+  edit, and a button's `action('name')` calls `onPauseMenuAction(name)` in `game.lua`), and `game.lua` keeps the best
+  score between runs
   with `save.set` / `save.get` and shows it on the HUD (`assets/ui/hud.rml`) with `ui.text`.
 - `assets/scenes/level.json` is the level, its sky color (the `Sky` entity) included: `F2` in the game opens the
   editor, `Ctrl+P` plays and stops.

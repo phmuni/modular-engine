@@ -19,8 +19,12 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
   from a script). In the game, `F2` opens the editor: click to select, `W` `E` `R` `T` to move,
   rotate, scale and resize, the Properties panel to edit (and to give an entity a script), Settings to save.
   `Ctrl+P` freezes the game, plays it from there and puts the level back on Stop.
-- `Escape` opens the pause menu (`ui.pauseMenu(true)` in `game.lua`): Resume, Options (volumes, fullscreen, vsync)
-  and Quit. The best score is kept between runs with `save.set` / `save.get` (see `game.lua`).
+- `Escape` opens the pause menu (`ui.pauseMenu(true)` in `game.lua`): Resume, Options (volumes, window, graphics) and
+  Quit. It is the file `assets/ui/pauseMenu.rml` (with `pauseMenu.rcss`): edit it to change the screens and the style. A
+  button with `data-event-click="action('restart')"` calls `function onPauseMenuAction(name)` in `game.lua`, and
+  `ui.pauseMenu{ pause = false }` keeps the game running under the menu (the options are in the engine's README, under
+  Menus). The player's options are in `settings` (`settings.set("masterVolume", 0.5)`). The best score is kept
+  between runs with `save.set` / `save.get` (see `game.lua`).
 - `assets/prefabs/coin.json` is the coin: a prefab, an entity saved to a file, that `game.lua` copies into the level
   with `engine.spawn("prefabs/coin.json", position)`. To change every coin, run the game, press `F2`, click a coin,
   edit it in the Properties panel (color, size, its script's `spin` and `bob`...) and press **Save as prefab**

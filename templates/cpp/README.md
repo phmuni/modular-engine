@@ -26,7 +26,9 @@ cmake -B build && cmake --build build -j     # Release; add -DCMAKE_BUILD_TYPE=D
 - `assets/ui/hud.rml` is the score on screen (RmlUi: HTML-like markup and CSS), changed from code with
   `engine.ui().text("score", n)`. The best score is kept between runs with `engine.saveData()`, in a folder named by
   `engine.setGameName`.
-- `Escape` opens the pause menu (`engine.ui().pauseMenu(true)` in `setup`): Resume, Options and Quit.
+- `Escape` opens the pause menu (`engine.ui().pauseMenu(true)` in `setup`): Resume, Options and Quit. It is the file
+  `assets/ui/pauseMenu.rml` (with `pauseMenu.rcss`), yours to edit; a button with `action('name')` calls the function
+  given to `engine.ui().onPauseMenuAction(...)`, and `engine.settings()` has the player's options.
 - `assets/input.json` maps keys, mouse buttons and gamepad buttons and sticks to the game's actions and axes
   ("jump", "moveX"...): change it to rebind without a rebuild.
 - `bin/` is where it builds, with `bin/engine-assets` (the engine's shaders, fonts and basic models). To ship the
