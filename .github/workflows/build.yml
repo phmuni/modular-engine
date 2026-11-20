@@ -1,7 +1,8 @@
 # Builds the engine, its tools and a game of each kind on macOS, Linux and Windows, and checks that the launcher creates
 # projects that build. Linux also runs the behavior tests (tests/, tools/run_tests.py) on a virtual screen with Mesa's
 # software OpenGL, as the runners have no GPU. macOS runs them too, without failing the build (a runner's OpenGL is not
-# something to rely on); Windows does not: it has no software OpenGL 4.1 without extra downloads.
+# something to rely on). Windows has no OpenGL beyond 1.1 on a runner, so its tests run with Mesa's llvmpipe
+# (pal1000/mesa-dist-win, a pinned release) copied next to engine_tests.exe, and do not fail the build either.
 name: Build
 
 on:
@@ -57,7 +58,7 @@ jobs:
         shell: bash
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-            -DMODULAR_ENGINE_BUILD_TESTS=${{ (runner.os == 'Linux' || runner.os == 'macOS') && 'ON' || 'OFF' }} \
+            -DMODULAR_ENGINE_BUILD_TESTS=ON \
             ${{ matrix.toolset && format('-T {0}', matrix.toolset) || '' }}
 
       - name: Build the engine, the examples, the runner, the launcher and the tests
@@ -77,6 +78,39 @@ jobs:
         continue-on-error: true
         run: python3 tools/run_tests.py
 
+      # A runner has no GPU and Windows' own opengl32.dll is OpenGL 1.1. Mesa's opengl32.dll and libgallium_wgl.dll (its
+      # software rasterizer, llvmpipe: OpenGL 4.5 core) in the folder of the program are loaded instead of the system's.
+      # The MinGW build is the one that has them: the MSVC builds of this release carry only Vulkan and Direct3D parts.
+      - name: Mesa software OpenGL (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          MESA_VERSION: "26.2.7"
+          MESA_SHA256: 19c74aad7b09e682473b8de4c35b47e6498de97b71cae5511a231b8eb02f2b22
+        run: |
+          archive="mesa3d-${MESA_VERSION}-release-mingw.7z"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" "https://github.com/pal1000/mesa-dist-win/releases/download/${MESA_VERSION}/$archive"
+          echo "$MESA_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          7z x -y "-o$RUNNER_TEMP/mesa" "$RUNNER_TEMP/$archive" > /dev/null
+          cp "$RUNNER_TEMP/mesa/x64/opengl32.dll" "$RUNNER_TEMP/mesa/x64/libgallium_wgl.dll" bin/
+          ls -la bin/*.dll
+
+      # Not required to pass until it has been seen passing. If it fails, look first at the output of this one test
+      # (does a window open, which OpenGL version does the engine report?), then at which tests fail and why.
+      - name: Behavior tests, one first (Windows, not required to pass)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        env:
+          GALLIUM_DRIVER: llvmpipe
+        run: python tools/run_tests.py -v tags
+
+      - name: Behavior tests (Windows, not required to pass)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        env:
+          GALLIUM_DRIVER: llvmpipe
+        run: python tools/run_tests.py -j 2
+
       - name: Create a project of each kind with the launcher
         shell: bash
         run: |
@@ -85,7 +119,13 @@ jobs:
           "$launcher" --create "$RUNNER_TEMP/LuaGame" lua
           "$launcher" --create "$RUNNER_TEMP/CppGame" cpp
           "$launcher" --create "$RUNNER_TEMP/MixedGame" mixed
+          "$launcher" --create "$RUNNER_TEMP/EmptyLua" lua --empty
+          "$launcher" --create "$RUNNER_TEMP/EmptyCpp" cpp --empty
+          "$launcher" --create "$RUNNER_TEMP/EmptyMixed" mixed --empty
           ls "$RUNNER_TEMP/LuaGame/bin"
+          test -f "$RUNNER_TEMP/EmptyLua/assets/scenes/level.json"
+          test -f "$RUNNER_TEMP/EmptyMixed/assets/scripts/game.lua"
+          test ! -e "$RUNNER_TEMP/EmptyLua/assets/prefabs/coin.json"
 
       - name: Build the C++ + Lua game against this checkout
         shell: bash

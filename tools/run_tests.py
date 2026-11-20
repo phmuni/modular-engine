@@ -36,7 +36,9 @@ def find_tests(binary):
     for name in sorted(os.listdir(LUA_DIR)):
         if name.endswith(".lua") and name != HELPER:
             tests.append(("lua/" + name[:-4], os.path.join(LUA_DIR, name)))
-    listed = subprocess.run([binary, "--list"], capture_output=True, text=True, timeout=30)
+    # Decoded as UTF-8 whatever the console's code page is (Windows': cp1252, where some bytes do not decode)
+    listed = subprocess.run([binary, "--list"], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                            timeout=30)
     if listed.returncode != 0:
         sys.exit("engine_tests --list failed:\n" + listed.stdout + listed.stderr)
     for name in listed.stdout.split():
@@ -48,7 +50,7 @@ def run_test(binary, test):
     name, argument = test
     start = time.time()
     try:
-        done = subprocess.run([binary, argument], capture_output=True, text=True, errors="replace",
+        done = subprocess.run([binary, argument], capture_output=True, text=True, encoding="utf-8", errors="replace",
                               timeout=TIMEOUT_SECONDS)
         output = done.stdout + done.stderr
         passed = done.returncode == 0
@@ -69,6 +71,11 @@ def main():
     parser.add_argument("--list", action="store_true", help="list the tests and exit")
     parser.add_argument("--binary", default=os.path.join(ROOT, "bin", EXE), help="engine_tests to run")
     args = parser.parse_args()
+
+    # The engine's output may have characters the console's code page (Windows') cannot print: never fail on them
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
 
     if not os.path.exists(args.binary):
         sys.exit("%s is not built: configure with -DMODULAR_ENGINE_BUILD_TESTS=ON and build target engine_tests" %
