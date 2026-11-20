@@ -3,6 +3,7 @@
 
 #include "systems/windowSystem.h"
 #include "foundation/core/logger.h"
+#include <algorithm>
 
 WindowSystem::WindowSystem(float screenWidth, float screenHeight) : m_window(nullptr), m_glContext(nullptr) {
   initialize(screenWidth, screenHeight);
@@ -22,10 +23,27 @@ bool WindowSystem::initialize(float screenWidth, float screenHeight) {
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 #endif
 
-  m_window = SDL_CreateWindow("Engine", screenWidth, screenHeight, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+  SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+  if (s_highDensity)
+    flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+  m_window = SDL_CreateWindow("Engine", static_cast<int>(screenWidth), static_cast<int>(screenHeight), flags);
   if (!m_window) {
     LOG_E("[Window System] Failed to create the window: %s", SDL_GetError());
     return false;
+  }
+
+  // Where window units are pixels on a scaled display (Windows at 150 %), the default size would be a small window
+  // there: grow it by the scale, but keep it inside the screen
+  const float autoScale = getAutoUiScale();
+  if (s_highDensity && autoScale > 1.01f) {
+    int width = static_cast<int>(screenWidth * autoScale), height = static_cast<int>(screenHeight * autoScale);
+    SDL_Rect usable;
+    if (SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(m_window), &usable) && usable.w > 0 && usable.h > 0) {
+      width = std::min(width, usable.w * 9 / 10);
+      height = std::min(height, usable.h * 9 / 10);
+    }
+    SDL_SetWindowSize(m_window, width, height);
+    SDL_SetWindowPosition(m_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
   }
 
   m_glContext = SDL_GL_CreateContext(m_window);
@@ -83,3 +101,13 @@ void WindowSystem::setFullscreen(bool enabled) {
 }
 
 bool WindowSystem::isFullscreen() const { return (SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN) != 0; }
+
+float WindowSystem::getPixelDensity() const {
+  const float density = SDL_GetWindowPixelDensity(m_window);
+  return density > 0.0f ? density : 1.0f;
+}
+
+float WindowSystem::getAutoUiScale() const {
+  const float displayScale = SDL_GetWindowDisplayScale(m_window);
+  return displayScale > 0.0f ? displayScale / getPixelDensity() : 1.0f;
+}

@@ -77,7 +77,10 @@ GameUISystem::GameUISystem(SDL_Window *window) : m_impl(std::make_unique<Impl>()
     shutdown();
     return;
   }
-  impl.context->SetDensityIndependentPixelRatio(SDL_GetWindowPixelDensity(window));
+  // dp units follow the display's scale: the pixel density on a Retina screen, the content scale where window
+  // units are pixels (Windows at 150 %). 1 for the same pictures anywhere (deterministic runs).
+  const float displayScale = SDL_GetWindowDisplayScale(window);
+  impl.context->SetDensityIndependentPixelRatio(displayScale > 0.0f ? displayScale : SDL_GetWindowPixelDensity(window));
   Rml::Debugger::Initialise(impl.context);
 
   for (const char *font : EngineConfig::UI_FONTS)
