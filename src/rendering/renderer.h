@@ -2,6 +2,7 @@
 // Renderer class for managing OpenGL context, drawing meshes, and handling shadow/particle passes.
 
 #include "foundation/core/config.h"
+#include "rendering/graphicsSettings.h"
 #include "rendering/postProcess.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
@@ -57,6 +58,7 @@ private:
   int m_renderWidth = 1280;
   int m_renderHeight = 720;
   void updateTargets();
+  AntialiasingSettings m_antialiasing;
 
   // The scene renders into an HDR target; finishScene brings it to the screen
   PostProcess m_postProcess;
@@ -82,8 +84,7 @@ public:
   void beginScene(const glm::vec3 &clearColor);
   // Lit passes done: tone maps into the display target, where particles draw next
   void resolveScene(Shader &tonemap, const PostProcess::Settings &settings);
-  void finishScene(Shader &bloomDownsample, Shader &bloomUpsample, Shader &composite,
-                   const PostProcess::Settings &settings);
+  void finishScene(const PostProcess::Shaders &shaders, const PostProcess::Settings &settings);
   const RenderStats &getStats() const { return m_stats; }
   void endFrame() const;
 
@@ -140,6 +141,24 @@ public:
   float getRenderScale() const { return m_renderScale; }
   int getRenderWidth() const { return m_renderWidth; }
   int getRenderHeight() const { return m_renderHeight; }
+  // Antialiasing and upscaling (see graphicsSettings.h). The sample count is 0 (off), 2, 4 or 8, capped by the GPU:
+  // changing it remakes the scene targets. msaa() is what is in use. Before init() the choice waits for the targets.
+  void setMsaa(int samples);
+  int getMsaa() const { return m_antialiasing.msaa; }
+  void setFxaa(bool enabled) { m_antialiasing.fxaa = enabled; }
+  bool getFxaa() const { return m_antialiasing.fxaa; }
+  void setFsr(bool enabled) { m_antialiasing.fsr = enabled; }
+  bool getFsr() const { return m_antialiasing.fsr; }
+  void setFsrSharpness(float stops);
+  float getFsrSharpness() const { return m_antialiasing.fsrSharpness; }
+  // The filters' settings for PostProcess
+  void applyAntialiasing(PostProcess::Settings &settings) const;
+  // Alpha-to-coverage for the draws that follow (cut-out materials); only does anything while MSAA is on
+  void setAlphaToCoverage(bool enabled) const;
+  bool alphaToCoverageAvailable() const { return m_antialiasing.msaa >= 2; }
+  // The resolved single-sample scene depth (DEPTH_COMPONENT24, nearest) and HDR color, valid after resolveScene()
+  GLuint sceneDepthTexture() const { return m_postProcess.sceneDepthTexture(); }
+  GLuint sceneColorTexture() const { return m_postProcess.sceneColorTexture(); }
   int getScreenWidth() const { return m_screenWidth; }
   int getScreenHeight() const { return m_screenHeight; }
   void shutdown();

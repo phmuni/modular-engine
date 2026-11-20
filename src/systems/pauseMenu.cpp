@@ -10,6 +10,7 @@
 #include <RmlUi/Core.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,10 @@ constexpr const char *KEY_VSYNC = "engine.vsync";
 constexpr const char *KEY_WINDOW_WIDTH = "engine.window.width";
 constexpr const char *KEY_WINDOW_HEIGHT = "engine.window.height";
 constexpr const char *KEY_RENDER_SCALE = "engine.renderScale";
+constexpr const char *KEY_MSAA = "engine.msaa";
+constexpr const char *KEY_FXAA = "engine.fxaa";
+constexpr const char *KEY_FSR = "engine.fsr";
+constexpr const char *KEY_FSR_SHARPNESS = "engine.fsrSharpness";
 
 int toPercent(float volume) { return std::clamp(static_cast<int>(std::lround(volume * 100.0f)), 0, 100); }
 // 0.49 in the file, not the 0.49000000953674316 a float widens to
@@ -33,6 +38,15 @@ double percentToSaved(int percent) { return static_cast<double>(percent) / 100.0
 
 // The render scale slider moves in steps of 5 %, as the document's step says
 int scaleToSlider(float scale) { return std::clamp(static_cast<int>(std::lround(scale * 20.0f)) * 5, 50, 200); }
+
+// FSR's sharpness slider is in hundredths of a stop (0 to 200, steps of 5)
+int sharpnessToSlider(float stops) { return std::clamp(static_cast<int>(std::lround(stops * 20.0f)) * 5, 0, 200); }
+Rml::String sharpnessText(int slider) {
+  char text[16];
+  std::snprintf(text, sizeof(text), "%.2f", static_cast<double>(slider) / 100.0);
+  return text;
+}
+Rml::String msaaName(int samples) { return samples >= 2 ? "MSAA " + std::to_string(samples) + "x" : "Off"; }
 
 std::string sizeText(const glm::ivec2 &size) { return std::to_string(size.x) + " x " + std::to_string(size.y); }
 } // namespace
@@ -57,6 +71,15 @@ struct PauseMenu::Impl {
   int renderScale = 100; // percent of the framebuffer's pixels the scene is drawn at; the slider is 50 to 200
   Rml::String resolution;       // the window's size, as shown
   Rml::String renderResolution; // the scene's size in pixels, as shown
+  // Antialiasing and upscaling (one block: the rows in pauseMenu.rml, and the same-named keys in the save data)
+  Rml::String msaaText = "Off";
+  bool fxaa = false;
+  bool fsr = false;
+  int fsrSharpness = 20; // hundredths of a stop
+  Rml::String fsrSharpnessText = "0.20";
+  int stepMsaa = 0; // -1 or 1: the previous or next MSAA level
+  bool toggleFxaa = false;
+  bool toggleFsr = false;
   bool options = false;         // the Options screen instead of the main one
 
   // What buttons asked for: handled in update(), outside RmlUi's event dispatch
@@ -92,6 +115,14 @@ struct PauseMenu::Impl {
     // The window's own size comes back with its place when the window is shown (Engine::startWindow)
     if (data.has(KEY_RENDER_SCALE))
       engine.setRenderScale(static_cast<float>(data.getNumber(KEY_RENDER_SCALE, 1.0)));
+    if (data.has(KEY_MSAA))
+      engine.setMsaa(static_cast<int>(data.getNumber(KEY_MSAA, engine.msaa())));
+    if (data.has(KEY_FXAA))
+      engine.setFxaa(data.getBool(KEY_FXAA, false));
+    if (data.has(KEY_FSR))
+      engine.setFsr(data.getBool(KEY_FSR, false));
+    if (data.has(KEY_FSR_SHARPNESS))
+      engine.setFsrSharpness(static_cast<float>(data.getNumber(KEY_FSR_SHARPNESS, engine.fsrSharpness())));
   }
 
   // The model's view of the engine, as it is now (F6 or the game may have changed it since)
@@ -102,8 +133,63 @@ struct PauseMenu::Impl {
     fullscreen = window().isFullscreen();
     vsync = engine.getState(Toggle::VSync);
     renderScale = scaleToSlider(engine.renderScale());
+    readAntialiasing();
     refreshResolutions();
     model.DirtyAllVariables();
+  }
+
+  void readAntialiasing() {
+    msaaText = msaaName(engine.msaa());
+    fxaa = engine.fxaa();
+    fsr = engine.fsr();
+    fsrSharpness = sharpnessToSlider(engine.fsrSharpness());
+    fsrSharpnessText = sharpnessText(fsrSharpness);
+  }
+
+  // Applies the antialiasing rows' requests (the MSAA step, the FXAA and FSR switches, the sharpness slider) and keeps
+  // them in the save data
+  void applyAntialiasing() {
+    if (stepMsaa != 0) {
+      const int direction = stepMsaa;
+      stepMsaa = 0;
+      static const int levels[] = {0, 2, 4, 8};
+      const int before = engine.msaa();
+      int index = 0;
+      for (int i = 0; i < 4; ++i)
+        if (levels[i] == before)
+          index = i;
+      index = (index + direction + 4) % 4;
+      engine.setMsaa(levels[index]);
+      if (engine.msaa() == before) // the GPU does not go that high: around to Off (or to the top, going down)
+        engine.setMsaa(direction > 0 ? 0 : 8);
+      save().set(KEY_MSAA, engine.msaa());
+    }
+    if (toggleFxaa) {
+      toggleFxaa = false;
+      engine.setFxaa(!engine.fxaa());
+      save().set(KEY_FXAA, engine.fxaa());
+    }
+    if (toggleFsr) {
+      toggleFsr = false;
+      engine.setFsr(!engine.fsr());
+      save().set(KEY_FSR, engine.fsr());
+    }
+    if (fsrSharpness != sharpnessToSlider(engine.fsrSharpness())) {
+      engine.setFsrSharpness(static_cast<float>(fsrSharpness) / 100.0f);
+      save().set(KEY_FSR_SHARPNESS, percentToSaved(fsrSharpness));
+    }
+    const Rml::String text = msaaName(engine.msaa());
+    if (text != msaaText || fxaa != engine.fxaa() || fsr != engine.fsr() ||
+        sharpnessText(fsrSharpness) != fsrSharpnessText) {
+      msaaText = text;
+      fxaa = engine.fxaa();
+      fsr = engine.fsr();
+      fsrSharpnessText = sharpnessText(fsrSharpness);
+      model.DirtyVariable("msaaText");
+      model.DirtyVariable("fxaa");
+      model.DirtyVariable("fsr");
+      model.DirtyVariable("fsrSharpnessText");
+    }
   }
 
   // The texts that follow the window's and the scene's sizes, which change by themselves (dragging the window)
@@ -186,6 +272,23 @@ struct PauseMenu::Impl {
     constructor.Bind("resolution", &resolution);
     constructor.Bind("renderResolution", &renderResolution);
     constructor.Bind("options", &options);
+    constructor.Bind("msaaText", &msaaText);
+    constructor.Bind("fxaa", &fxaa);
+    constructor.Bind("fsr", &fsr);
+    constructor.Bind("fsrSharpness", &fsrSharpness);
+    constructor.Bind("fsrSharpnessText", &fsrSharpnessText);
+    constructor.BindEventCallback("aa_prev", [this](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
+      stepMsaa = -1;
+    });
+    constructor.BindEventCallback("aa_next", [this](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
+      stepMsaa = 1;
+    });
+    constructor.BindEventCallback("toggle_fxaa", [this](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
+      toggleFxaa = true;
+    });
+    constructor.BindEventCallback("toggle_fsr", [this](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
+      toggleFsr = true;
+    });
     const auto onClick = [](bool &flag) {
       return [&flag](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) { flag = true; };
     };
@@ -228,6 +331,8 @@ struct PauseMenu::Impl {
     options = false;
     resumeRequested = quitRequested = backRequested = toggleFullscreen = toggleVSync = false;
     stepResolution = 0;
+    stepMsaa = 0;
+    toggleFxaa = toggleFsr = false;
     readOptions();
     document->Show(Rml::ModalFlag::Modal, Rml::FocusFlag::Document);
     document->PullToFront(); // over the game's own documents, whenever they were loaded
@@ -281,6 +386,7 @@ struct PauseMenu::Impl {
     applyVolumes();
     applyResolutionStep();
     applyRenderScale();
+    applyAntialiasing();
     // The sizes can change without a click: the window was dragged, or the menu's own request just landed
     const Rml::String windowText = sizeText(engine.windowSize());
     const Rml::String sceneText = sizeText(engine.renderResolution());

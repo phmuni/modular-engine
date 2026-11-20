@@ -138,6 +138,9 @@ constexpr const char *SHADER_FRAGMENT_BLOOM_DOWNSAMPLE = "../assets/shaders/bloo
 constexpr const char *SHADER_FRAGMENT_BLOOM_UPSAMPLE = "../assets/shaders/bloomUpsample.frag";
 constexpr const char *SHADER_FRAGMENT_TONEMAP = "../assets/shaders/tonemap.frag";
 constexpr const char *SHADER_FRAGMENT_COMPOSITE = "../assets/shaders/composite.frag";
+constexpr const char *SHADER_FRAGMENT_FXAA = "../assets/shaders/fxaa.frag";
+constexpr const char *SHADER_FRAGMENT_FSR_EASU = "../assets/shaders/fsrEasu.frag";
+constexpr const char *SHADER_FRAGMENT_FSR_RCAS = "../assets/shaders/fsrRcas.frag";
 // Skeletal animation: the joints a skinned model's vertex shader can take (the bones[] uniform array)
 constexpr int MAX_JOINTS = 128;
 constexpr const char *SHADER_VERTEX_SKYBOX = "../assets/shaders/skybox.vert";

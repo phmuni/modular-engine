@@ -81,7 +81,22 @@ uniform float fogDensity;
 
 vec3 toLinear(vec3 c) { return gammaCorrect == 1 ? pow(c, vec3(2.2)) : c; }
 
+// Alpha-to-coverage (MSAA on): cut-out edges get a partial coverage instead of a hard discard. Set for the opaque
+// draws of cut-out materials and of custom shaders that call cutBelow(); the alpha written below is then the coverage.
+uniform int alphaToCoverage;
+float cutCoverage = 1.0; // what cutBelow() leaves of the surface, for the alpha written at the end
+
 #ifdef CUSTOM_SURFACE
+// For custom shaders: cut the surface away where `value` is below `threshold`. A discard, or with MSAA a smooth
+// edge (alpha-to-coverage, about one pixel wide).
+void cutBelow(float value, float threshold) {
+    float width = max(fwidth(value), 1e-5);
+    if (alphaToCoverage == 1)
+        cutCoverage = min(cutCoverage, clamp((value - threshold) / width + 0.5, 0.0, 1.0));
+    else if (value < threshold)
+        discard;
+}
+
 // A custom surface shader (see README, "Custom surface shaders"): its code goes in at the marker, and surface() is
 // called once the base color and textures are known, before lighting. Colors are authored values, like the
 // material's own: the engine converts them for lighting afterwards.
@@ -226,7 +241,9 @@ void main()
 #ifdef ALPHA_MASK
     // Only in the mask variant: any discard in a shader turns off hidden surface removal on tile-based GPUs,
     // which slows down every opaque draw that uses it
-    if (diffuseSample.a < alphaCutoff)
+    if (alphaToCoverage == 1)
+        cutCoverage = min(cutCoverage, clamp((diffuseSample.a - alphaCutoff) / max(fwidth(diffuseSample.a), 1e-4) + 0.5, 0.0, 1.0));
+    else if (diffuseSample.a < alphaCutoff)
         discard;
 #endif
     vec3 diffuseTex  = toLinear(diffuseSample.rgb);
@@ -308,5 +325,7 @@ void main()
 
     // Cut-out materials are opaque where they are not discarded
     float alpha = alphaMode == 1 ? 1.0 : diffuseSample.a;
+    if (alphaToCoverage == 1)
+        alpha = cutCoverage; // the draw is opaque: this alpha only sets the coverage of the samples
     FragColor = vec4(max(result, vec3(0.0)), alpha * opacity);
 }

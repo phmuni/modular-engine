@@ -113,6 +113,7 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "run": "lifecycle (the Lua runner starts the loop)",
     "setGameName": "the Lua runner sets it from project.json's name",
     "configureWindow": "the Lua runner applies project.json's window; scripts use setWindowSize and setFullscreen",
+    "configureGraphics": "the Lua runner applies project.json's graphics; scripts use setMsaa, setFxaa, setFsr and setFsrSharpness",
     "setDeterministic": "set before start-up, for tests (--deterministic)",
     "runBenchmark": "command line (--benchmark)",
     "parseCommandLine": "the game's main() reads the command line",

@@ -126,7 +126,7 @@ button.step {
 }
 /* Not available (the window's size cannot be chosen in fullscreen) */
 .row.disabled { opacity: 0.4; }
-.row.disabled button.step { pointer-events: none; }
+.row.disabled button.step, .row.disabled input { pointer-events: none; }
 
 .note {
 	margin: -4dp 0 16dp;

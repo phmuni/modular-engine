@@ -21,6 +21,11 @@ struct Surface {
     vec3 worldPos;
     vec3 viewDir;
 };
+// Shadow maps are single-sample: the cut is a plain discard (see cutBelow in fragmentShader.frag)
+void cutBelow(float value, float threshold) {
+    if (value < threshold)
+        discard;
+}
 //@CUSTOM_SURFACE_CODE
 #endif
 

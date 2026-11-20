@@ -16,6 +16,7 @@
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
+#include "rendering/graphicsSettings.h"
 #include "systems/collisionSystem.h"
 #include "systems/gameCamera.h"
 #include "systems/gameTime.h"
@@ -50,6 +51,8 @@ class SceneSerializer;
 class InputSystem;
 struct Camera;
 class ScriptSystem;
+
+class Renderer;
 
 class Engine {
 public:
@@ -545,6 +548,27 @@ public:
   float renderScale();
   // The scene's size in pixels now: the framebuffer's times the render scale
   glm::ivec2 renderResolution();
+  // Antialiasing and upscaling (graphicsSettings.h). Defaults: MSAA 2x on, FXAA off, FSR off.
+  // MSAA samples: 0 (off), 2, 4 or 8; other numbers snap down (1 and below are off) and the GPU's maximum caps it.
+  // Changing it remakes the scene targets; msaa() is what is in use. The scene's size (renderResolution) is not
+  // affected, and neither are shadow maps (single-sample). Cut-out edges (alpha-mask materials, custom shaders that
+  // call cutBelow) are smoothed with alpha-to-coverage while it is on.
+  void setMsaa(int samples);
+  int msaa();
+  // FXAA 3.11 on the tone mapped image, before the upscale and the final composite
+  void setFxaa(bool enabled);
+  bool fxaa();
+  // AMD FSR 1 (EASU upscale, RCAS sharpening) in place of the linear stretch while the render scale is below 1; at 1
+  // or above it does nothing
+  void setFsr(bool enabled);
+  bool fsr();
+  // RCAS sharpness in stops, 0 (sharpest) to 2, clamped; AMD's default is 0.2
+  void setFsrSharpness(float stops);
+  float fsrSharpness();
+  // The game's antialiasing and upscaling defaults, as project.json's "graphics" describes them (the Lua runner reads
+  // it). Call it before initialize() or later (in setup); what the player chose in the pause menu still comes after.
+  // Ignored by deterministic runs, which keep the defaults.
+  void configureGraphics(const AntialiasingSettings &config);
   // Borderless fullscreen at the desktop's size; the window comes back at its old size
   void setFullscreen(bool enabled);
   bool isFullscreen();
@@ -592,6 +616,8 @@ private:
   static inline bool s_deterministicRun = false;
   bool m_initialized = false;
   bool m_windowShown = false; // the window was put in place and shown: its size is worth remembering
+  Renderer &renderer(); // the render system's
+  AntialiasingSettings m_graphicsConfig; // from configureGraphics before initialize()
   WindowConfig m_windowConfig; // from configureWindow before initialize()
   // Puts the window where it was last time and shows it; the window starts hidden for this
   void startWindow();

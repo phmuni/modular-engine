@@ -1002,6 +1002,15 @@ struct ScriptSystem::Impl {
       const glm::ivec2 size = engine.renderResolution();
       return std::make_tuple(size.x, size.y);
     });
+    // Antialiasing and upscaling (see Engine::setMsaa and friends)
+    api.set_function("setMsaa", [this](int samples) { engine.setMsaa(samples); });
+    api.set_function("msaa", [this]() { return engine.msaa(); });
+    api.set_function("setFxaa", [this](bool enabled) { engine.setFxaa(enabled); });
+    api.set_function("fxaa", [this]() { return engine.fxaa(); });
+    api.set_function("setFsr", [this](bool enabled) { engine.setFsr(enabled); });
+    api.set_function("fsr", [this]() { return engine.fsr(); });
+    api.set_function("setFsrSharpness", [this](float stops) { engine.setFsrSharpness(stops); });
+    api.set_function("fsrSharpness", [this]() { return engine.fsrSharpness(); });
     api.set_function("setFullscreen", [this](bool enabled) { engine.setFullscreen(enabled); });
     api.set_function("isFullscreen", [this]() { return engine.isFullscreen(); });
     // The engine's switches by name (see TOGGLE_NAMES): engine.setToggle("freeCamera", true)

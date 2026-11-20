@@ -47,6 +47,27 @@
 		</div>
 		<div class="note">Render: {{ renderResolution }} px</div>
 
+		<!-- Antialiasing: MSAA off, 2x, 4x, 8x (the GPU's maximum caps it), then the FXAA filter -->
+		<div class="row">
+			<div class="name">AA</div>
+			<button class="step" data-event-click="aa_prev">&lt;</button>
+			<div class="choice">{{ msaaText }}</div>
+			<button class="step" data-event-click="aa_next">&gt;</button>
+		</div>
+		<button class="toggle" data-class-on="fxaa" data-event-click="toggle_fxaa">
+			FXAA <span class="state">{{ fxaa ? 'On' : 'Off' }}</span>
+		</button>
+		<!-- FSR 1 upscaling and its sharpening, in effect when the scene renders below 100% -->
+		<button class="toggle" data-class-on="fsr" data-event-click="toggle_fsr">
+			FSR <span class="state">{{ fsr ? 'On' : 'Off' }}</span>
+		</button>
+		<div class="row" data-class-disabled="renderScale >= 100 || !fsr">
+			<div class="name">Sharp</div>
+			<input type="range" min="0" max="200" step="5" data-value="fsrSharpness"/>
+			<div class="value">{{ fsrSharpnessText }}</div>
+		</div>
+		<div class="note">FSR: upscales when Render &lt; 100%</div>
+
 		<button class="toggle" data-class-on="fullscreen" data-event-click="toggle_fullscreen">
 			Fullscreen <span class="state">{{ fullscreen ? 'On' : 'Off' }}</span>
 		</button>

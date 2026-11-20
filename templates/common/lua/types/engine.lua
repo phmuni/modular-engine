@@ -492,6 +492,42 @@ function engine.renderScale() end
 ---@return integer height
 function engine.renderResolution() end
 
+---Multisample antialiasing of the 3D scene: 0 (off), 2, 4 or 8 samples per pixel. Other numbers snap down to one of
+---these (1 and below mean off) and the GPU's maximum caps it. 2 by default. Changing it remakes the scene targets;
+---`engine.renderResolution()` and shadow maps are not affected. While it is on, the edges of cut-out surfaces
+---(alpha-mask materials, custom shaders that call `cutBelow`) are smoothed too.
+---@param samples integer
+function engine.setMsaa(samples) end
+
+---The MSAA sample count in use: 0 (off), 2, 4 or 8 (what the GPU allows).
+---@return integer
+function engine.msaa() end
+
+---FXAA 3.11 on the tone mapped image, before the upscale and the final composite. Off by default.
+---@param enabled boolean
+function engine.setFxaa(enabled) end
+
+---Whether FXAA is on.
+---@return boolean
+function engine.fxaa() end
+
+---AMD FidelityFX Super Resolution 1 (EASU upscale, RCAS sharpening) in place of the linear stretch while the render
+---scale is below 1; at 1 or above it does nothing. Off by default.
+---@param enabled boolean
+function engine.setFsr(enabled) end
+
+---Whether FSR is turned on (it only upscales while the render scale is below 1).
+---@return boolean
+function engine.fsr() end
+
+---FSR's RCAS sharpening in stops of attenuation, 0 (sharpest) to 2 (mildest), clamped. 0.2 by default.
+---@param stops number
+function engine.setFsrSharpness(stops) end
+
+---FSR's sharpness (0 to 2).
+---@return number
+function engine.fsrSharpness() end
+
 ---Borderless fullscreen at the desktop's size; the window comes back at its old size when it is turned off.
 ---@param enabled boolean
 function engine.setFullscreen(enabled) end

@@ -1100,7 +1100,7 @@ void vertex(inout VertexData v) {      // moves the vertex, after skinning and t
 void surface(inout Surface s) {        // after base color and textures, before lighting
     s.albedo *= tintColor;
     s.emission = tintColor * 0.2;
-    s.alpha = 0.8;                     // `discard;` works too (a dissolve)
+    s.alpha = 0.8;                     // `discard;` works too (a dissolve); cutBelow(v, t) is a discard with smooth edges under MSAA
 }
 ```
 
@@ -1368,6 +1368,52 @@ are saved too (`engine.window.x`, `y`, `width`, `height`) and restored at the ne
 connected display, otherwise the window opens centered; a player's saved options win over the game's `window` defaults.
 `--deterministic` runs ignore all of this: a fixed window, density 1 and render scale 1.
 
+### Antialiasing and upscaling
+
+The 3D scene is antialiased with **MSAA** (2x by default), and two optional filters are off by default: **FXAA** and
+**FSR 1** (AMD FidelityFX Super Resolution) upscaling for a render scale below 1.
+
+```json
+"graphics": { "msaa": 2, "fxaa": false, "fsr": false, "fsrSharpness": 0.2 }
+```
+
+In `project.json` every field is optional (a C++ game calls `engine.configureGraphics({...})`, before `initialize()` or in
+`setup`). At run time:
+
+```cpp
+engine.setMsaa(4);          // 0 (off), 2, 4 or 8; other numbers snap down, the GPU's GL_MAX_SAMPLES caps it; engine.msaa()
+engine.setFxaa(true);       // engine.fxaa()
+engine.setFsr(true);        // engine.fsr(): upscales only while the render scale is below 1
+engine.setFsrSharpness(0.2f); // engine.fsrSharpness(): RCAS, 0 to 2 stops, 0 the sharpest
+```
+
+The same names are in Lua (`engine.setMsaa(4)`, `engine.msaa()`, ...). The pause menu's Options has an AA selector (Off,
+MSAA 2x, 4x, 8x), an FXAA switch, an FSR switch and a sharpness slider (in effect when Render is below 100 %); the choices
+are kept in the save data (`engine.msaa`, `engine.fxaa`, `engine.fsr`, `engine.fsrSharpness`) and win over the project's
+defaults. The editor's Settings > Interface has the same controls next to Render scale. `--deterministic` runs ignore the
+project's and the player's choices and use the defaults.
+
+- **Pipeline.** The lit passes draw into a multisampled RGBA16F color and depth target. It is resolved with
+  `glBlitFramebuffer` into the single-sample scene texture and depth texture before anything samples them (tone mapping,
+  bloom). Then: tone map -> particles (display space, not multisampled) -> FXAA -> FSR (EASU, then RCAS) -> composite with
+  the bloom -> screen. The bloom is added after the upscale, at screen size: it is soft light that sharpening should not
+  touch. FXAA runs before the upscale, at the render size, so EASU gets a clean image. Shadow maps stay single-sample.
+- **Resolved depth.** `Renderer::sceneDepthTexture()` (and `sceneColorTexture()`) are single-sample, at the render size and
+  valid after `resolveScene`: a `GL_DEPTH_COMPONENT24` texture with `GL_NEAREST` and no compare mode, from the depth blit.
+  Passes that read depth use it, never the multisampled buffers.
+- **FSR at a render scale of 1 or above does nothing** (there is nothing to reconstruct; above 1 the linear downsample is
+  kept). EASU and RCAS are fragment-shader ports of `ffx_fsr1.h` (GLSL 330, no compute) in
+  [`assets/shaders/fsrEasu.frag`](assets/shaders/fsrEasu.frag) and [`fsrRcas.frag`](assets/shaders/fsrRcas.frag), MIT
+  licensed, copyright (c) 2021 Advanced Micro Devices, Inc., with their license header kept in each file. The optional
+  RCAS denoise is left out. FXAA is NVIDIA's FXAA 3.11 (quality preset 39), [`fxaa.frag`](assets/shaders/fxaa.frag).
+- **Alpha-to-coverage.** While MSAA is on, the edges of cut-out surfaces are smoothed in the opaque pass: alpha-mask
+  materials (leaves, fences) and custom shaders that call `cutBelow(value, threshold)` in `surface()`, which discards where
+  `value < threshold`, or with MSAA gives a one-pixel soft edge (the dissolve example uses it). A plain `discard` in a
+  custom shader stays a hard edge. Blending materials and the transparent pass are not affected.
+- **Limits.** MSAA resolves in linear HDR, so a very bright edge (a lamp against a dark sky) is averaged before tone
+  mapping and can look slightly harsher than in a post-tonemap resolve. Particles and the game UI are not multisampled
+  (FXAA covers the particles).
+
 ### Saved data
 
 A small key-value store keeps a game's progress (level reached, best score, unlocked items) and settings between runs.
@@ -1490,6 +1536,10 @@ Check the [Issues](https://github.com/phmuni/modular-engine/issues) and [Project
 ## License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+Third-party code in the engine's own files: the FSR 1 shaders (`assets/shaders/fsrEasu.frag`, `fsrRcas.frag`) are ports of
+AMD FidelityFX Super Resolution 1.0 (`ffx_fsr1.h`), MIT License, copyright (c) 2021 Advanced Micro Devices, Inc.; the
+license text is in each file's header. `assets/shaders/fxaa.frag` follows Timothy Lottes' FXAA 3.11.
 
 ---
 

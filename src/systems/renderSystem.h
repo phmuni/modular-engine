@@ -38,6 +38,12 @@ public:
     m_bloomUpsampleShader = bloomUpsample;
     m_compositeShader = composite;
   }
+  // The antialiasing and upscaling filters (assets/shaders/fxaa.frag, fsrEasu.frag, fsrRcas.frag)
+  void setAntialiasingShaders(uint32_t fxaa, uint32_t easu, uint32_t rcas) {
+    m_fxaaShader = fxaa;
+    m_easuShader = easu;
+    m_rcasShader = rcas;
+  }
   void setSkyboxShader(uint32_t handle) { m_skyboxShader = handle; }
   void markBatchesDirty();
   // The seconds custom surface shaders see as `time`: the game clock (the engine sets it every frame)
@@ -82,6 +88,9 @@ private:
   uint32_t m_bloomDownsampleShader = 0;
   uint32_t m_bloomUpsampleShader = 0;
   uint32_t m_compositeShader = 0;
+  uint32_t m_fxaaShader = 0;
+  uint32_t m_easuShader = 0;
+  uint32_t m_rcasShader = 0;
   Renderer m_renderer;
   // The first Skybox component's panorama, behind the opaque geometry
   SceneEnvironment m_environment;

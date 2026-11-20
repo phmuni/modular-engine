@@ -1281,6 +1281,27 @@ glm::ivec2 Engine::renderResolution() {
   const Renderer &renderer = m_systemManager.getSystem<RenderSystem>().getRenderer();
   return {renderer.getRenderWidth(), renderer.getRenderHeight()};
 }
+Renderer &Engine::renderer() { return m_systemManager.getSystem<RenderSystem>().getRenderer(); }
+void Engine::setMsaa(int samples) { renderer().setMsaa(samples); }
+int Engine::msaa() { return renderer().getMsaa(); }
+void Engine::setFxaa(bool enabled) { renderer().setFxaa(enabled); }
+bool Engine::fxaa() { return renderer().getFxaa(); }
+void Engine::setFsr(bool enabled) { renderer().setFsr(enabled); }
+bool Engine::fsr() { return renderer().getFsr(); }
+void Engine::setFsrSharpness(float stops) { renderer().setFsrSharpness(stops); }
+float Engine::fsrSharpness() { return renderer().getFsrSharpness(); }
+void Engine::configureGraphics(const AntialiasingSettings &config) {
+  if (m_deterministic || s_deterministicRun)
+    return;
+  if (m_initialized) {
+    setMsaa(config.msaa);
+    setFxaa(config.fxaa);
+    setFsr(config.fsr);
+    setFsrSharpness(config.fsrSharpness);
+    return;
+  }
+  m_graphicsConfig = config;
+}
 void Engine::setFullscreen(bool enabled) { m_systemManager.getSystem<WindowSystem>().setFullscreen(enabled); }
 bool Engine::isFullscreen() { return m_systemManager.getSystem<WindowSystem>().isFullscreen(); }
 
@@ -1399,6 +1420,10 @@ bool Engine::loadResources() {
   auto &windowSystem = m_systemManager.getSystem<WindowSystem>();
   auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
   renderer.setRenderScale(m_windowConfig.renderScale); // before init: it makes the targets at that size
+  renderer.setMsaa(m_graphicsConfig.msaa);              // ... and with that many samples
+  renderer.setFxaa(m_graphicsConfig.fxaa);
+  renderer.setFsr(m_graphicsConfig.fsr);
+  renderer.setFsrSharpness(m_graphicsConfig.fsrSharpness);
   renderer.init(windowSystem.getWindow());
   TextureProcessing::detectSupport();
 
@@ -1420,10 +1445,13 @@ bool Engine::loadResources() {
   uint32_t bloomDownsample = fullscreen(EngineConfig::SHADER_FRAGMENT_BLOOM_DOWNSAMPLE);
   uint32_t bloomUpsample = fullscreen(EngineConfig::SHADER_FRAGMENT_BLOOM_UPSAMPLE);
   uint32_t composite = fullscreen(EngineConfig::SHADER_FRAGMENT_COMPOSITE);
+  uint32_t fxaa = fullscreen(EngineConfig::SHADER_FRAGMENT_FXAA);
+  uint32_t fsrEasu = fullscreen(EngineConfig::SHADER_FRAGMENT_FSR_EASU);
+  uint32_t fsrRcas = fullscreen(EngineConfig::SHADER_FRAGMENT_FSR_RCAS);
   uint32_t skybox = resourceSystem.loadShader(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_SKYBOX),
                                               EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_SKYBOX));
   if (!baseShader || !shadowShader || !particleShader || !maskShader || !tonemap || !bloomDownsample ||
-      !bloomUpsample || !composite || !skybox) {
+      !bloomUpsample || !composite || !fxaa || !fsrEasu || !fsrRcas || !skybox) {
     LOG_E("[Engine] Failed to load shaders.");
     return false;
   }
@@ -1433,6 +1461,7 @@ bool Engine::loadResources() {
   resourceSystem.getMaterial(0).setShaderHandle(baseShader);
   m_systemManager.getSystem<RenderSystem>().setShadowShaderHandle(shadowShader);
   m_systemManager.getSystem<RenderSystem>().setPostProcessShaders(tonemap, bloomDownsample, bloomUpsample, composite);
+  m_systemManager.getSystem<RenderSystem>().setAntialiasingShaders(fxaa, fsrEasu, fsrRcas);
   m_systemManager.getSystem<RenderSystem>().setSkyboxShader(skybox);
 
   auto &particleSystem = m_systemManager.getSystem<ParticleSystem>();

@@ -24,8 +24,7 @@ float noise(vec3 x) {
 
 void surface(inout Surface s) {
     float n = noise(s.worldPos * noiseScale);
-    if (n < dissolve)
-        discard;
+    cutBelow(n, dissolve); // a discard, or a smooth edge when antialiasing is on
     float edge = 1.0 - smoothstep(dissolve, dissolve + edgeWidth, n);
     s.emission += edgeColor * edge * 3.0;
 }

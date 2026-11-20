@@ -128,6 +128,8 @@ CustomShaderCode parseCustomShader(const std::string &text) {
   // Each stage gets the file without the other stage's function: it may use things only that stage has
   code.vertexStage = code.hasSurface ? eraseKeepingLines(text, surfaceBegin, surfaceEnd) : text;
   code.fragmentStage = code.hasVertex ? eraseKeepingLines(text, vertexBegin, vertexEnd) : text;
+  static const std::regex cutBelowPattern(R"(\bcutBelow\s*\()");
+  code.cutout = !code.blend && std::regex_search(withoutComments(code.fragmentStage), cutBelowPattern);
   return code;
 }
 

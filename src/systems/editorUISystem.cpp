@@ -408,6 +408,32 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
                         "100%% is faster, above sharper. The panels are not affected.",
                         scene.x, scene.y);
     }
+    // Antialiasing and upscaling (graphicsSettings.h)
+    {
+      static const char *const kMsaaNames[] = {"Off", "MSAA 2x", "MSAA 4x", "MSAA 8x"};
+      const int samples = engine.msaa();
+      int msaaIndex = samples >= 8 ? 3 : samples >= 4 ? 2 : samples >= 2 ? 1 : 0;
+      if (ImGui::Combo("Antialiasing", &msaaIndex, kMsaaNames, 4))
+        engine.setMsaa(msaaIndex == 0 ? 0 : 1 << msaaIndex);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Multisampling of the 3D scene (the GPU's maximum caps it). Also smooths the edges of "
+                          "cut-out materials.");
+      bool fxaa = engine.fxaa();
+      if (ImGui::Checkbox("FXAA", &fxaa))
+        engine.setFxaa(fxaa);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Post filter on the tone mapped image; softens remaining jagged edges");
+      bool fsr = engine.fsr();
+      if (ImGui::Checkbox("FSR upscaling", &fsr))
+        engine.setFsr(fsr);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("AMD FidelityFX Super Resolution 1: upscales the scene when Render scale is below 100%%");
+      float sharpness = engine.fsrSharpness();
+      if (ImGui::SliderFloat("FSR sharpness", &sharpness, kMinFsrSharpness, kMaxFsrSharpness, "%.2f stops"))
+        engine.setFsrSharpness(sharpness);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("RCAS sharpening: 0 is the sharpest, each stop halves it (AMD's default is 0.2)");
+    }
     if (ImGui::SmallButton("Reset scale")) {
       m_uiScaleUser = 0.0f;
       ImGui::MarkIniSettingsDirty();

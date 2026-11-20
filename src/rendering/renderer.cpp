@@ -121,9 +121,45 @@ void Renderer::resolveScene(Shader &tonemap, const PostProcess::Settings &settin
   m_postProcess.resolveToDisplay(tonemap, settings);
 }
 
-void Renderer::finishScene(Shader &bloomDownsample, Shader &bloomUpsample, Shader &composite,
-                           const PostProcess::Settings &settings) {
-  m_postProcess.finish(bloomDownsample, bloomUpsample, composite, settings);
+void Renderer::finishScene(const PostProcess::Shaders &shaders, const PostProcess::Settings &settings) {
+  m_postProcess.finish(shaders, settings);
+}
+
+namespace {
+// 0, 2, 4 or 8: other numbers snap down (1 and below mean off)
+int snapSamples(int samples) {
+  if (samples >= 8)
+    return 8;
+  if (samples >= 4)
+    return 4;
+  return samples >= 2 ? 2 : 0;
+}
+} // namespace
+
+void Renderer::setMsaa(int samples) {
+  m_antialiasing.msaa = snapSamples(samples);
+  if (!m_window) // before init() the choice waits for the targets to be made (and for GL_MAX_SAMPLES)
+    return;
+  m_antialiasing.msaa = snapSamples(std::min(m_antialiasing.msaa, PostProcess::maxSamples()));
+  updateTargets();
+}
+
+void Renderer::setFsrSharpness(float stops) {
+  m_antialiasing.fsrSharpness = std::isfinite(stops) ? std::clamp(stops, kMinFsrSharpness, kMaxFsrSharpness)
+                                                     : AntialiasingSettings().fsrSharpness;
+}
+
+void Renderer::applyAntialiasing(PostProcess::Settings &settings) const {
+  settings.fxaa = m_antialiasing.fxaa;
+  settings.fsr = m_antialiasing.fsr;
+  settings.fsrSharpness = m_antialiasing.fsrSharpness;
+}
+
+void Renderer::setAlphaToCoverage(bool enabled) const {
+  if (enabled && alphaToCoverageAvailable())
+    glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+  else
+    glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
 }
 
 void Renderer::endShadowPass() {
@@ -288,7 +324,8 @@ void Renderer::updateTargets() {
   };
   m_renderWidth = scaled(m_screenWidth);
   m_renderHeight = scaled(m_screenHeight);
-  m_postProcess.resize(m_renderWidth, m_renderHeight, m_screenWidth, m_screenHeight);
+  m_postProcess.resize(m_renderWidth, m_renderHeight, m_screenWidth, m_screenHeight, m_antialiasing.msaa);
+  m_antialiasing.msaa = m_postProcess.samples(); // what the GPU gave (a multisampled target that failed is off)
 }
 
 void Renderer::beginTransparentPass() {

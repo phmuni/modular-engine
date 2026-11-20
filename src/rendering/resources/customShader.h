@@ -28,6 +28,7 @@ struct CustomShaderCode {
   bool hasSurface = false;
   bool hasVertex = false;
   bool blend = false; // `#pragma blend`: parts using it are drawn in the transparent pass
+  bool cutout = false;     // the fragment stage calls cutBelow(): its draws use alpha-to-coverage when MSAA is on
   bool castsShadow = true; // false with `#pragma noshadow`: parts using it cast no shadow
   std::string error;  // why the file cannot be used (empty when it can)
 };
@@ -36,6 +37,8 @@ struct CustomShaderCode {
 //   uniform float speed = 1.0;            // parameters: float, vec2, vec3, vec4 and sampler2D, one per declaration
 //   void surface(inout Surface s) { }     // after base color and textures, before lighting
 //   void vertex(inout VertexData v) { }   // moves the vertex (world space) before projection
+//   cutBelow(value, threshold);           // in surface(): cuts the surface away where value < threshold; a discard, or a
+//                                         // smooth edge with MSAA (alpha-to-coverage). Prefer it to `discard`.
 //   #pragma blend                         // draw with alpha blending (the transparent pass)
 //   #pragma noshadow                      // the part casts no shadow (otherwise vertex() and discard show in it)
 // `time` (seconds) is provided by the engine; do not declare it.

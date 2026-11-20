@@ -5,7 +5,8 @@
 //   { "name": "MyGame", "scene": "scenes/level.json", "script": "scripts/game.lua", "input": "input.json" }
 // (paths relative to assets/). An optional "layers" sets the collision layers (see CollisionLayers::fromJson), and an
 // optional "window" the window: { "width": 1280, "height": 720, "fullscreen": false, "renderScale": 1.0 }, every field
-// optional (see Engine::configureWindow). The scene loads first, then the game script runs (onStart, then onUpdate every frame),
+// optional (see Engine::configureWindow), and an optional "graphics": { "msaa": 2, "fxaa": false, "fsr": false,
+// "fsrSharpness": 0.2 } the antialiasing and upscaling (see Engine::configureGraphics). The scene loads first, then the game script runs (onStart, then onUpdate every frame),
 // and the entities' own scripts come with the scene. The editor (F2), Play and Stop work as in any game.
 
 #include "foundation/core/config.h"
@@ -27,6 +28,7 @@ struct Project {
   std::string input;
   nlohmann::json layers; // null when the project does not set any
   Engine::WindowConfig window;
+  AntialiasingSettings graphics; // project.json's "graphics" over the defaults
 };
 
 std::string inAssets(const std::string &path) { return path.empty() ? path : "../assets/" + path; }
@@ -53,6 +55,13 @@ bool readProject(Project &project, std::string &error) {
       project.window.height = window.value("height", project.window.height);
       project.window.fullscreen = window.value("fullscreen", project.window.fullscreen);
       project.window.renderScale = window.value("renderScale", project.window.renderScale);
+    }
+    if (json.contains("graphics") && json["graphics"].is_object()) {
+      const nlohmann::json &graphics = json["graphics"];
+      project.graphics.msaa = graphics.value("msaa", project.graphics.msaa);
+      project.graphics.fxaa = graphics.value("fxaa", project.graphics.fxaa);
+      project.graphics.fsr = graphics.value("fsr", project.graphics.fsr);
+      project.graphics.fsrSharpness = graphics.value("fsrSharpness", project.graphics.fsrSharpness);
     }
   } catch (const std::exception &exception) {
     error = path + " is not valid JSON: " + exception.what();
@@ -109,6 +118,7 @@ int main(int argc, char **argv) {
   }
 
   Engine engine;
+  engine.configureGraphics(project.graphics); // MSAA decides the scene's targets: set before initialize()
   engine.configureWindow(project.window); // before initialize(): the window is created at its size
   if (!engine.initialize())
     return 1;

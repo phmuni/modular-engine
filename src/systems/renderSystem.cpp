@@ -664,6 +664,10 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     lightSystem.uploadLightsToShader(shader, componentManager);
   };
 
+  // Alpha-to-coverage smooths the edges of cut-out surfaces (alpha-mask materials, custom shaders using cutBelow) in
+  // the opaque pass when MSAA is on. Blending draws and see-through models never use it.
+  bool opaquePass = true;
+  bool coverageOn = false;
   auto applyMaterial = [&](Shader &shader, const Material &material, float opacity) {
     shader.setTex("material.diffuse", material.getDiffuse(), 0);
     shader.setTex("material.specular", material.getSpecular(), 1);
@@ -681,9 +685,18 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setFloat("alphaCutoff", material.getAlphaCutoff());
     shader.setInt("doubleSided", material.isDoubleSided() ? 1 : 0);
     shader.setInt("unlit", material.isUnlit() ? 1 : 0);
+    bool cutout = material.getAlphaMode() == AlphaMode::Mask;
     if (resourceSystem.hasCustomShaders())
-      if (const CustomShader *custom = resourceSystem.customShaderForHandle(material.getShaderHandle()))
+      if (const CustomShader *custom = resourceSystem.customShaderForHandle(material.getShaderHandle())) {
         applyShaderParams(shader, material, *custom, resourceSystem.getMaterial(0).getEmission());
+        cutout = cutout || custom->code.cutout;
+      }
+    const bool coverage = cutout && opaquePass && opacity >= 1.0f && renderer.alphaToCoverageAvailable();
+    shader.setInt("alphaToCoverage", coverage ? 1 : 0);
+    if (coverage != coverageOn) {
+      coverageOn = coverage;
+      renderer.setAlphaToCoverage(coverage);
+    }
     renderer.setFaceCulling(!material.isDoubleSided());
   };
 
@@ -794,6 +807,12 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     }
   }
 
+  opaquePass = false;
+  if (coverageOn) {
+    coverageOn = false;
+    renderer.setAlphaToCoverage(false);
+  }
+
   // The sky fills what the opaque geometry left empty; transparent surfaces then blend over it
   drawSkybox(componentManager, resourceSystem, view, projection, gammaCorrect);
 
@@ -847,6 +866,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   post.bloomStrength = EngineConfig::BLOOM_STRENGTH;
   post.bloomThreshold = EngineConfig::BLOOM_THRESHOLD;
   post.gammaCorrect = gammaCorrect;
+  renderer.applyAntialiasing(post);
   renderer.resolveScene(resourceSystem.getShader(m_tonemapShader), post);
 
   if (systemManager.hasSystem<ParticleSystem>()) {
@@ -854,8 +874,14 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   }
 
   // Bloom of the HDR scene added onto the screen
-  renderer.finishScene(resourceSystem.getShader(m_bloomDownsampleShader), resourceSystem.getShader(m_bloomUpsampleShader),
-                       resourceSystem.getShader(m_compositeShader), post);
+  PostProcess::Shaders shaders;
+  shaders.bloomDownsample = &resourceSystem.getShader(m_bloomDownsampleShader);
+  shaders.bloomUpsample = &resourceSystem.getShader(m_bloomUpsampleShader);
+  shaders.composite = &resourceSystem.getShader(m_compositeShader);
+  shaders.fxaa = &resourceSystem.getShader(m_fxaaShader);
+  shaders.easu = &resourceSystem.getShader(m_easuShader);
+  shaders.rcas = &resourceSystem.getShader(m_rcasShader);
+  renderer.finishScene(shaders, post);
 }
 
 void RenderSystem::drawSkybox(ComponentManager &componentManager, ResourceSystem &resourceSystem,
