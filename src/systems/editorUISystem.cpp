@@ -1565,43 +1565,41 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   if (!model || !camera || io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
     return false;
 
-  // The cursor's ray, onto the nearest surface of anything but the entity itself
-  const glm::vec2 ndc(io.MousePos.x / io.DisplaySize.x * 2.0f - 1.0f, 1.0f - io.MousePos.y / io.DisplaySize.y * 2.0f);
-  const glm::mat4 inverse = glm::inverse(cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera));
+  auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
+  const float baseHeight = resourceSystem.getMesh(model->meshHandle).getBoundsMin().y * transform.scale.y;
+  const glm::mat4 viewProjection = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
+  const glm::vec2 display(io.DisplaySize.x, io.DisplaySize.y);
+  const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
+
+  // The first frame: where the base (its lowest point, under its own up) is on screen from the cursor. The gizmo is
+  // grabbed on the entity, away from its base, and the cursor's ray there passes through the entity onto whatever is
+  // far behind it: followed as it is, the entity would jump, then move more than the mouse does.
+  if (!m_alignGrabbed) {
+    const glm::vec3 base = transform.position + rotationOf(transform) * glm::vec3(0.0f, baseHeight, 0.0f);
+    const glm::vec4 clip = viewProjection * glm::vec4(base, 1.0f);
+    m_alignGrabOffset = glm::vec2(0.0f);
+    if (clip.w > 1e-4f) {
+      const glm::vec2 baseNdc = glm::vec2(clip) / clip.w;
+      m_alignGrabOffset = glm::vec2((baseNdc.x + 1.0f) * 0.5f, (1.0f - baseNdc.y) * 0.5f) * display - mouse;
+    }
+    m_alignGrabbed = true;
+  }
+
+  // The ray through where the base is to be on screen (the cursor, kept at that offset), onto the nearest surface of
+  // anything but the entity itself: the base stays under the same screen point it was grabbed at
+  const glm::vec2 screen = mouse + m_alignGrabOffset;
+  const glm::vec2 ndc(screen.x / display.x * 2.0f - 1.0f, 1.0f - screen.y / display.y * 2.0f);
+  const glm::mat4 inverse = glm::inverse(viewProjection);
   glm::vec4 nearPoint = inverse * glm::vec4(ndc, -1.0f, 1.0f), farPoint = inverse * glm::vec4(ndc, 1.0f, 1.0f);
   nearPoint /= nearPoint.w;
   farPoint /= farPoint.w;
-  auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   const ModelQueries queries(componentManager, resourceSystem, systemManager.getSystem<TransformSystem>());
   const auto hit = queries.raycast(glm::vec3(nearPoint), glm::vec3(farPoint - nearPoint),
                                    std::numeric_limits<float>::max(),
                                    [&](Entity entity) { return entity != m_gizmoEntity && !isSelected(entity); });
   if (!hit)
     return false;
-
-  const float baseHeight = resourceSystem.getMesh(model->meshHandle).getBoundsMin().y * transform.scale.y;
-  // The first frame: how far the base is from where the cursor met the surface, along the surface (the base itself,
-  // under the entity's own up, is where it touches)
-  if (!m_alignGrabbed) {
-    const glm::vec3 base = transform.position + rotationOf(transform) * glm::vec3(0.0f, baseHeight, 0.0f);
-    const glm::vec3 offset = base - hit->point;
-    m_alignGrabOffset = offset - hit->normal * glm::dot(offset, hit->normal);
-    m_alignGrabbed = true;
-  }
-  // The cursor's point moved by that offset, then dropped back onto whatever surface is there (a step, a slope): from
-  // above it along the normal. Off any surface it stays on the cursor's surface plane.
-  ModelHit target = *hit;
-  if (glm::dot(m_alignGrabOffset, m_alignGrabOffset) > 1e-8f) {
-    const glm::vec3 moved = hit->point + m_alignGrabOffset;
-    const float reach = std::max(1.0f, glm::length(m_alignGrabOffset));
-    const auto below = queries.raycast(moved + hit->normal * reach, -hit->normal, reach * 2.0f,
-                                       [&](Entity entity) { return entity != m_gizmoEntity && !isSelected(entity); });
-    if (below) {
-      target = *below;
-    } else {
-      target.point = moved;
-    }
-  }
+  const ModelHit &target = *hit;
 
   // Its up (+Y) along the surface's normal, keeping the heading it had when the drag started (to 15 degrees when
   // snapping: the rotation around the normal)
