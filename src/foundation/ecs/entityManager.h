@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <unordered_set>
 
 using Entity = int;
@@ -18,6 +19,6 @@ public:
   void restore(const EntityManager &saved);
 
   bool isAlive(Entity entity) const { return m_activeEntities.count(entity) > 0; }
-  size_t count() const { return m_activeEntities.size(); }
+  std::size_t count() const { return m_activeEntities.size(); }
   const std::unordered_set<Entity> &entities() const { return m_activeEntities; }
 };
