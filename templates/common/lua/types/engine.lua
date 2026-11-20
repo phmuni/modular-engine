@@ -121,9 +121,12 @@ function vec3.lerp(a, b, t) end
 ---@field transform Transform|nil (read-only)
 ---@field position vec3 Without a Transform, setting it does nothing
 ---@field rotation vec3 In degrees
----@field forward vec3 (read-only) -Z turned by the entity's yaw (rotation.y)
+---@field scale vec3 Size factor per axis
+---@field forward vec3 (read-only) -Z turned by the entity's yaw (rotation.y), on the ground (y is 0)
+---@field right vec3 (read-only) The way to its right, on the ground
 ---@field light Light|nil (read-only)
 ---@field script Entity|nil (read-only) the entity itself when it has a Script component, else nil
+---@field visible boolean (read-only) false after setVisible(false)
 ---@field velocity vec3 Linear velocity of its physics body
 ---@field onGround boolean (read-only) whether its character controller stands on the ground
 local Entity = {}
@@ -132,7 +135,8 @@ local Entity = {}
 function Entity:destroy() end
 
 ---Whether it has an engine component: "Model", "RigidBody", "CharacterController", "Light", "Camera", "Animator",
----"Script" or "Transform".
+---"Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter" or "Hidden", or a game component
+---registered in C++ (by the name it was registered with).
 ---@param component string
 ---@return boolean
 function Entity:has(component) end
@@ -159,9 +163,18 @@ function Entity:setColor(color) end
 ---@param strength? number Defaults to 1
 function Entity:setEmission(color, strength) end
 
----Shows or hides it.
+---Shows or hides it (and its model's shadow).
 ---@param visible boolean
 function Entity:setVisible(visible) end
+
+---Puts an image on its model (a part of the material).
+---@param slot "diffuse"|"specular"|"normal"|"emission"
+---@param path string Relative to assets/ ("textures/brick.png")
+function Entity:setTexture(slot, path) end
+
+---How shiny its model is (the specular exponent).
+---@param shininess number
+function Entity:setShininess(shininess) end
 
 ---Adds an impulse to its physics body.
 ---@param impulse vec3
@@ -192,6 +205,7 @@ function Entity:clips() end
 ---Plays a sound from the entity's position.
 ---@param path string Relative to assets/ ("sounds/laser.wav")
 ---@param volume? number Defaults to 1
+---@return integer handle For sound.stop, sound.setVolume and sound.isPlaying (0: nothing played)
 function Entity:sound(path, volume) end
 
 -- engine -------------------------------------------------------------------------------------------------------------
@@ -220,6 +234,16 @@ engine = {}
 ---@return Entity|nil
 function engine.find(name) end
 
+---Every entity with this name, by entity number.
+---@param name string
+---@return Entity[]
+function engine.findAll(name) end
+
+---Every entity with a component, by entity number ("Model", "Script", or a game component registered in C++).
+---@param component string
+---@return Entity[]
+function engine.findWithComponent(component) end
+
 ---Puts a copy of a prefab in the scene (its root at `position`, turned `rotation`).
 ---@param prefab string Path relative to assets/
 ---@param position? vec3
@@ -245,6 +269,18 @@ function engine.loadScene(path) end
 ---@param title string
 function engine.setTitle(title) end
 
+---Closes the game at the end of this frame.
+function engine.quit() end
+
+---Sets the color behind everything (the skybox panorama, if there is one, draws over it). It is kept in the scene file
+---(on the first Skybox component, which this adds when there is none) and shows in the editor.
+---@param color vec3 0-1 per channel; black until set
+function engine.setSkyColor(color) end
+
+---The sky color.
+---@return vec3
+function engine.getSkyColor() end
+
 -- game ---------------------------------------------------------------------------------------------------------------
 
 ---State shared by every script; it starts empty again when the game stops and plays again.
@@ -269,6 +305,51 @@ function camera.position() end
 ---The direction the camera looks at.
 ---@return vec3
 function camera.forward() end
+
+---The vertical field of view in degrees: reads it, or sets it when given one (between 1 and 179).
+---@param degrees? number
+---@return number
+function camera.fov(degrees) end
+
+-- time ---------------------------------------------------------------------------------------------------------------
+
+---Game time (what onUpdate's dt measures: it stands still while paused) and timers.
+---@class time
+time = {}
+
+---The speed of time: 1 is normal, 0.5 slow motion, 0 stands still. Sets it when given a number.
+---@param scale? number
+---@return number
+function time.scale(scale) end
+
+---Whether the game is paused (like F7 and the pause menu). Pauses or resumes when given a boolean.
+---@param paused? boolean
+---@return boolean
+function time.paused(paused) end
+
+---Seconds of game time since the game started.
+---@return number
+function time.elapsed() end
+
+---Seconds of game time this frame took (onUpdate's dt).
+---@return number
+function time.delta() end
+
+---Calls a function once after some seconds of game time.
+---@param seconds number
+---@param action fun()
+---@return integer handle For time.cancel
+function time.after(seconds, action) end
+
+---Calls a function every so many seconds of game time.
+---@param seconds number
+---@param action fun()
+---@return integer handle For time.cancel
+function time.every(seconds, action) end
+
+---Stops a timer (nothing for one that already ran).
+---@param handle integer
+function time.cancel(handle) end
 
 -- input --------------------------------------------------------------------------------------------------------------
 
@@ -315,6 +396,15 @@ function input.mouse() end
 ---@param button? integer 1 left, 2 middle, 3 right. Defaults to 1
 ---@return boolean
 function input.click(button) end
+
+---Whether a mouse button is held down.
+---@param button? integer 1 left, 2 middle, 3 right. Defaults to 1
+---@return boolean
+function input.mouseDown(button) end
+
+---How far the wheel turned this frame (positive: away from you).
+---@return number
+function input.wheel() end
 
 ---Loads actions and axes from a JSON file; false if it cannot be read.
 ---@param path string Relative to assets/
@@ -388,13 +478,33 @@ sound = {}
 ---@param path string
 ---@param volume? number Defaults to 1
 ---@param pitch? number Defaults to 1
+---@return integer handle For sound.stop, sound.setVolume and sound.isPlaying (0: nothing played)
 function sound.play(path, volume, pitch) end
 
 ---Plays a sound from a position in the world.
 ---@param path string
 ---@param position vec3
 ---@param volume? number Defaults to 1
+---@return integer handle As sound.play returns
 function sound.playAt(path, position, volume) end
+
+---Stops a sound that is playing (nothing for one that ended).
+---@param handle integer
+function sound.stop(handle) end
+
+---Changes the volume of a sound that is playing.
+---@param handle integer
+---@param volume number
+function sound.setVolume(handle, volume) end
+
+---Whether a sound is still playing.
+---@param handle integer
+---@return boolean
+function sound.isPlaying(handle) end
+
+---Reads a sound in the background, so its first play does not wait for the file.
+---@param path string
+function sound.preload(path) end
 
 ---Plays music.
 ---@param path string
@@ -403,6 +513,10 @@ function sound.music(path, volume) end
 
 ---Stops the music.
 function sound.stopMusic() end
+
+---Changes the volume of the music playing now.
+---@param volume number
+function sound.musicVolume(volume) end
 
 -- save ---------------------------------------------------------------------------------------------------------------
 
@@ -474,6 +588,18 @@ function ui.show(id, visible) end
 ---@param name string
 ---@param on boolean
 function ui.class(id, name, on) end
+
+---Sets one style property of an element ("color", "#ff0000"; "width", "50%"); "" goes back to the stylesheet's.
+---@param id string
+---@param property string
+---@param value string
+function ui.style(id, property, value) end
+
+---Sets an attribute of an element ("src" of an image, "value" of an input).
+---@param id string
+---@param name string
+---@param value string
+function ui.attribute(id, name, value) end
 
 ---Calls a function when an element is clicked; false if there is no such element.
 ---@param id string

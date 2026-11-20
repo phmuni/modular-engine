@@ -33,6 +33,10 @@ jobs:
         if: runner.os == 'Linux'
         run: python3 tools/check_lua_api.py
 
+      - name: Every C++ game API method is bound in Lua
+        if: runner.os == 'Linux'
+        run: python3 tools/check_api_parity.py
+
       - uses: actions/cache@v4
         with:
           path: .cpm-cache
