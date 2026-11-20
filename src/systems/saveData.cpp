@@ -89,6 +89,16 @@ void SaveData::setInMemory(bool inMemory) {
   impl.dirty = false;
 }
 
+void SaveData::setFolder(const std::string &folder) {
+  Impl &impl = *m_impl;
+  std::error_code ignored;
+  std::filesystem::create_directories(folder, ignored);
+  impl.path = (std::filesystem::path(folder) / "save.json").string();
+  impl.inMemory = false;
+  impl.loaded = false;
+  impl.dirty = false;
+}
+
 std::string SaveData::getPath() { return m_impl->inMemory ? std::string() : m_impl->filePath(); }
 
 void SaveData::set(std::string_view key, double value) { m_impl->store(key, value); }

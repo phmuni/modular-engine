@@ -559,11 +559,12 @@ struct ScriptSystem::Impl {
         "Entity", sol::no_constructor,
         sol::meta_function::equal_to, [](const GameEntity &a, const GameEntity &b) { return a == b; },
         sol::meta_function::to_string, &GameEntity::describe,
-        // Unknown keys are the entity's own fields: self.speed = 5, other.health
+        // Unknown keys are the entity's own fields: self.speed = 5, other.health. Taken as objects, not stack
+        // references: inside a coroutine the stack is the coroutine's, not the state these tables belong to.
         sol::meta_function::index,
-        [this](GameEntity &e, sol::stack_object key) -> sol::object { return fieldsOf(e.id())[key]; },
+        [this](GameEntity &e, sol::object key) -> sol::object { return fieldsOf(e.id())[key]; },
         sol::meta_function::new_index,
-        [this](GameEntity &e, sol::stack_object key, sol::stack_object value) { fieldsOf(e.id())[key] = value; },
+        [this](GameEntity &e, sol::object key, sol::object value) { fieldsOf(e.id())[key] = value; },
 
         "id", sol::readonly_property(&GameEntity::id),
         "valid", sol::readonly_property(&GameEntity::valid),
