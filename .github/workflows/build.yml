@@ -76,7 +76,7 @@ jobs:
       - name: Behavior tests (macOS, not required to pass)
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: python3 tools/run_tests.py
+        run: python3 tools/run_tests.py -j 2
 
       # A runner has no GPU and Windows' own opengl32.dll is OpenGL 1.1. Mesa's opengl32.dll and libgallium_wgl.dll (its
       # software rasterizer, llvmpipe: OpenGL 4.5 core) in the folder of the program are loaded instead of the system's.

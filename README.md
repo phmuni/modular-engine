@@ -277,9 +277,9 @@ References and baselines describe this machine's GPU, speed and build type, so t
 
 ```bash
 cmake -B build -DMODULAR_ENGINE_BUILD_TESTS=ON && cmake --build build --target engine_tests
-python3 tools/run_tests.py                 # all of them: exit code 1 if any fails, failures print their output
+python3 tools/run_tests.py                 # all of them, in parallel (the CPU count, at most 8): exit code 1 if any fails, failures print their output
 python3 tools/run_tests.py tags camera     # only tests whose name contains one of these words
-python3 tools/run_tests.py -j 4 -v         # four at a time, with the output of passing tests too
+python3 tools/run_tests.py -j 1 -v         # one at a time, with the output of passing tests too
 ./bin/engine_tests ../tests/lua/tags.lua   # one Lua test; ./bin/engine_tests --list names the C++ ones
 ```
 

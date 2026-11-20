@@ -184,6 +184,9 @@ TEST_CASE(prefab_save_and_spawn) {
 
 // The scene the engine ships: a character computes a path around the maze to the target and walks it
 TEST_CASE(navigation_scene) {
+  // The walk takes several hundred frames and none of it is about light: without shadow passes each frame is much
+  // cheaper where OpenGL is in software (CI)
+  engine.setState(Toggle::Shadows, false);
   engine.loadScene("../assets/scenes/navigation.json");
   steps.until([&engine]() { return !engine.isLoadingScene(); }, "the scene to load", 300);
   steps.step(3, [&engine]() {
