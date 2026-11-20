@@ -689,7 +689,7 @@ class SpaceAliens : public App {
 
 public:
   void setup(Engine &engine) override {
-    engine.setState(Toggle::CameraMovement, false);
+    engine.setState(Toggle::FreeCamera, false);
     engine.setState(Toggle::CursorLock, false);
 
     engine.entities().create("Sky").withSkybox(SKYBOX, 1.0f).build();
@@ -739,7 +739,7 @@ public:
     if (hudDocument)
       hudDocument->Hide();
     engine.stopMusic();
-    engine.setState(Toggle::CameraMovement, true);
+    engine.setState(Toggle::FreeCamera, true);
   }
 
   void update(Engine &engine, float deltaTime) override {
@@ -777,7 +777,7 @@ public:
     updatePlayer(engine, deltaTime);
     updateInvaders(engine, deltaTime);
     updateCollisions(engine, deltaTime);
-    if (!engine.getState(Toggle::CameraMovement)) // the chase camera steps aside while the free camera is on
+    if (!engine.getState(Toggle::FreeCamera)) // the chase camera steps aside while the free camera is on
       updateCamera(engine, deltaTime);
     updateReticle(engine);
     updatePlayerEmission(engine);

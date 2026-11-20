@@ -224,7 +224,7 @@ In the black hole example and the model viewer the camera orbits on its own: `â†
 | `F1` | Wireframe |
 | `F2` | Debug UI (scene explorer, properties, settings), docked at the sides so the middle of the view stays free; it gives the cursor back, and the cursor lock returns when it closes |
 | `F3` | Shadows |
-| `F4` | Camera fly mode (up and down with the locked cursor) |
+| `F4` | Free camera up/down: with the free camera on, `Space` and `Shift` also move it vertically |
 | `F5` | Performance overlay |
 | `F6` | VSync |
 | `F7` | Pause the simulation |

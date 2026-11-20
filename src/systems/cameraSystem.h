@@ -55,5 +55,5 @@ private:
   void updateOrientation(Camera &cam);
   void updatePositionFromInput(Camera &cam, float deltaTime, const StateSystem &state);
   // Right button flight: along where the camera looks, W A S D, E/Space up, Q/Ctrl down, Shift faster, wheel for speed
-  void updateEditorFlight(Camera &cam, float deltaTime);
+  void updateEditorFlight(Camera &cam, float deltaTime, const StateSystem &state);
 };

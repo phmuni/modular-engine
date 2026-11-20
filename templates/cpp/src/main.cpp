@@ -178,7 +178,7 @@ public:
     engine.ui().text("score", score);
     engine.ui().text("best", best);
 
-    engine.setState(Toggle::CameraMovement, false); // the game drives the camera
+    engine.setState(Toggle::FreeCamera, false); // the game drives the camera
     engine.loadScene(LEVEL);                         // its entities arrive in onSceneLoaded
   }
 

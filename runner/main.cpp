@@ -60,7 +60,7 @@ public:
     engine.setGameName(m_project.name); // where the save data is kept
     if (!m_project.layers.is_null())
       engine.layers().fromJson(m_project.layers); // before the scene: its bodies are made on these layers
-    engine.setState(Toggle::CameraMovement, false); // the game's scripts drive the camera
+    engine.setState(Toggle::FreeCamera, false); // the game's scripts drive the camera
     if (!m_project.input.empty() && std::filesystem::exists(EngineConfig::resolvePath(inAssets(m_project.input))))
       engine.input().loadBindings(inAssets(m_project.input));
     if (!m_project.scene.empty())

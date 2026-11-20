@@ -18,7 +18,7 @@ void TestHost::setup(Engine &engine) {
       SDL_SetWindowSize(windows[i], 320, 180);
     SDL_free(windows);
   }
-  engine.setState(Toggle::CameraMovement, false); // the free camera would fight the game's, as the Lua runner knows
+  engine.setState(Toggle::FreeCamera, false); // the free camera would fight the game's, as the Lua runner knows
   engine.setMouseCaptured(false);
   engine.createCameraEntity("TestCamera", glm::vec3(0.0f, 2.0f, 8.0f));
   try {

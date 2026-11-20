@@ -16,7 +16,7 @@ class Stress : public App {
 
 public:
   void setup(Engine &engine) override {
-    engine.setState(Toggle::CameraMovement, false);
+    engine.setState(Toggle::FreeCamera, false);
     engine.setState(Toggle::CursorLock, false);
 
     engine.entities().create("Sun").withLight(Light::directional({-0.5f, -1.0f, -0.3f}, {1.0f, 0.95f, 0.9f})).build();

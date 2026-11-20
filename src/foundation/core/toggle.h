@@ -2,8 +2,8 @@
 // Global toggles shared by the state system, input bindings and engine config.
 
 enum class Toggle {
-  CameraMovement,
-  CameraFly,
+  FreeCamera,         // the player flies the camera (WASD + mouse) instead of the game driving it
+  FreeCameraVertical, // the free camera also moves up and down (Space/Shift), else it stays on its plane
   CursorLock,
   Wireframe,
   ShowUI,

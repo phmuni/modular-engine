@@ -8,7 +8,7 @@
 #include "systems/cameraSystem.h"
 
 void GameCamera::lookAt(const glm::vec3 &from, const glm::vec3 &target) {
-  if (m_engine.getState(Toggle::CameraMovement))
+  if (m_engine.getState(Toggle::FreeCamera))
     return;
   if (Camera *active = m_engine.getActiveCamera()) {
     active->lookAt(from, target);

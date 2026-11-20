@@ -55,7 +55,7 @@ public:
   explicit Viewer(std::string path) : m_path(std::move(path)) {}
 
   void setup(Engine &engine) override {
-    engine.setState(Toggle::CameraMovement, false);
+    engine.setState(Toggle::FreeCamera, false);
     engine.setState(Toggle::CursorLock, false);
 
     engine.entities().create("Sun").withLight(Light::directional({-0.4f, -1.0f, -0.6f})).build();
@@ -98,7 +98,7 @@ public:
   // A loaded scene brings its own camera; stop orbiting it around this example's target
   void onSceneLoaded(Engine &engine, const std::string &) override {
     sceneReplaced = true;
-    engine.setState(Toggle::CameraMovement, true);
+    engine.setState(Toggle::FreeCamera, true);
   }
 
   void update(Engine &engine, float deltaTime) override {
@@ -106,7 +106,7 @@ public:
       if (engine.input().wasKeyPressed(static_cast<SDL_Scancode>(SDL_SCANCODE_1 + i)))
         engine.playAnimation(m_model, m_clips[i], 0.3f);
     // The orbit steps aside while the free camera is on (Settings), and picks up again when it is turned off
-    if (!sceneReplaced && !engine.getState(Toggle::CameraMovement))
+    if (!sceneReplaced && !engine.getState(Toggle::FreeCamera))
       updateCamera(engine, deltaTime);
   }
 

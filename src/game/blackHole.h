@@ -155,7 +155,7 @@ class BlackHole : public App {
 
 public:
   void setup(Engine &engine) override {
-    engine.setState(Toggle::CameraMovement, false);
+    engine.setState(Toggle::FreeCamera, false);
     engine.setState(Toggle::CursorLock, false);
 
     engine.createCameraEntity("Camera", glm::vec3(0.0f, 0.0f, distance), 0.0f, 0.0f, 55.0f);
@@ -167,12 +167,12 @@ public:
   // A loaded scene brings its own camera; stop orbiting it around this example's target
   void onSceneLoaded(Engine &engine, const std::string &) override {
     sceneReplaced = true;
-    engine.setState(Toggle::CameraMovement, true);
+    engine.setState(Toggle::FreeCamera, true);
   }
 
   void update(Engine &engine, float deltaTime) override {
     // The orbit steps aside while the free camera is on (Settings), and picks up again when it is turned off
-    if (!sceneReplaced && !engine.getState(Toggle::CameraMovement))
+    if (!sceneReplaced && !engine.getState(Toggle::FreeCamera))
       updateCamera(engine, deltaTime);
   }
 

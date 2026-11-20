@@ -471,18 +471,25 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
   }
 
   if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-    toggleCheckbox("Free camera", Toggle::CameraMovement,
+    toggleCheckbox("Free camera", Toggle::FreeCamera,
                    "Fly the camera yourself in any mode, instead of the game or its CameraRig: hold the right mouse\n"
                    "button in the view and use W A S D, or lock the cursor. Off by default; a game drives its camera.\n"
                    "While editing (Edit), the right button flies the camera without this.");
     if (engine.getPlayMode() == Engine::PlayMode::Editing)
       ImGui::TextDisabled("  Editing: right-drag in the view to fly");
-    else if (!state.isToggled(Toggle::CameraMovement))
+    else if (!state.isToggled(Toggle::FreeCamera))
       ImGui::TextDisabled("  The game drives the camera");
     else if (!state.isToggled(Toggle::CursorLock))
       ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "  Right-drag in the view to fly (or lock: %s)",
                          toggleKeyName(Toggle::CursorLock) ? toggleKeyName(Toggle::CursorLock) : "Cursor lock");
-    toggleCheckbox("Fly mode", Toggle::CameraFly, "Space and Shift move up and down while the cursor is locked");
+    // Only a setting of the free camera: greyed out while it is off, so a ticked box does not read as flying being on
+    ImGui::BeginDisabled(!state.isToggled(Toggle::FreeCamera));
+    ImGui::Indent();
+    toggleCheckbox("Up / down", Toggle::FreeCameraVertical,
+                   "The free camera also moves up and down: Space / Shift with the cursor locked, E / Q or Space /\n"
+                   "Ctrl while right-dragging. Off: it moves on the ground plane, at its height. Key: F4");
+    ImGui::Unindent();
+    ImGui::EndDisabled();
     toggleCheckbox("Cursor lock", Toggle::CursorLock, "Holds the mouse for looking around (with the free camera on or while editing)");
 
     Entity cameraEntity = cameraSystem.getActiveCamera();
@@ -2118,7 +2125,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         }
         if (!rig.target.empty() && rig.targetEntity == -1)
           ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "No entity named \"%s\"", rig.target.c_str());
-        if (systemManager.getSystem<StateSystem>().isToggled(Toggle::CameraMovement))
+        if (systemManager.getSystem<StateSystem>().isToggled(Toggle::FreeCamera))
           ImGui::TextDisabled("Off while Free camera is on (Settings)");
       }
     }

@@ -172,7 +172,7 @@ constexpr const char *SCREENSHOT_PATH = "screenshot.bmp";
 // Default toggle states. The free camera is off: a game drives its camera, and the editor's right-drag flight needs
 // no toggle; examples that want the free camera (the scene browser) turn it on.
 inline const std::pair<Toggle, bool> DEFAULT_TOGGLES[] = {
-    {Toggle::CameraMovement, false}, {Toggle::CameraFly, true}, {Toggle::CursorLock, true},
+    {Toggle::FreeCamera, false}, {Toggle::FreeCameraVertical, true}, {Toggle::CursorLock, true},
     {Toggle::Wireframe, false},     {Toggle::ShowUI, false},   {Toggle::Shadows, true},
     {Toggle::ShowStats, false},     {Toggle::VSync, true},     {Toggle::Paused, false},
     {Toggle::GammaCorrect, true},   {Toggle::UIDebugger, false},
@@ -183,7 +183,7 @@ constexpr int DEFAULT_TOGGLES_COUNT = std::size(DEFAULT_TOGGLES);
 // Default toggle keybinds
 inline const std::pair<SDL_Scancode, Toggle> DEFAULT_TOGGLE_KEYBINDS[] = {
     {SDL_SCANCODE_RALT, Toggle::CursorLock}, {SDL_SCANCODE_F1, Toggle::Wireframe}, {SDL_SCANCODE_F2, Toggle::ShowUI},
-    {SDL_SCANCODE_F3, Toggle::Shadows},      {SDL_SCANCODE_F4, Toggle::CameraFly},
+    {SDL_SCANCODE_F3, Toggle::Shadows},      {SDL_SCANCODE_F4, Toggle::FreeCameraVertical},
     {SDL_SCANCODE_F5, Toggle::ShowStats},    {SDL_SCANCODE_F6, Toggle::VSync},
     {SDL_SCANCODE_F7, Toggle::Paused},       {SDL_SCANCODE_F8, Toggle::GammaCorrect},
     {SDL_SCANCODE_F9, Toggle::UIDebugger},  {SDL_SCANCODE_F10, Toggle::Bloom},

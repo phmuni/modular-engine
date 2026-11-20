@@ -103,7 +103,7 @@ public:
     // A C++ function for the scripts: game.lua calls celebrate() when every coin is picked up
     engine.scripts().lua()["celebrate"] = [this] { celebration = 1.5f; };
 
-    engine.setState(Toggle::CameraMovement, false); // the game drives the camera
+    engine.setState(Toggle::FreeCamera, false); // the game drives the camera
     engine.loadScene(LEVEL);                         // its entities arrive in onSceneLoaded
   }
 

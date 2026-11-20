@@ -31,7 +31,7 @@ void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
   if (m_navigating) {
     updateOrientation(cam);
     if (flying)
-      updateEditorFlight(cam, deltaTime);
+      updateEditorFlight(cam, deltaTime, state);
     else
       updatePositionFromInput(cam, deltaTime, state);
     m_editorOverridesRig = m_editorOverridesRig || (m_editing && m_editorShown);
@@ -48,7 +48,7 @@ void CameraSystem::setEditorNavigation(bool editing, bool editorShown) {
 }
 
 bool CameraSystem::canNavigate(const StateSystem &state) const {
-  return (m_editing && m_editorShown) || state.isToggled(Toggle::CameraMovement);
+  return (m_editing && m_editorShown) || state.isToggled(Toggle::FreeCamera);
 }
 
 bool CameraSystem::resolveRigTarget(CameraRig &rig, float deltaTime) {
@@ -84,7 +84,7 @@ void CameraSystem::updateRigs(float deltaTime, SystemManager &systemManager) {
   if (!rig || !cam)
     return;
   const auto &state = systemManager.getSystem<StateSystem>();
-  if (state.isToggled(Toggle::CameraMovement) || placedByGame || m_editorOverridesRig) {
+  if (state.isToggled(Toggle::FreeCamera) || placedByGame || m_editorOverridesRig) {
     rig->primed = false; // whoever moved the camera, the rig starts from where it should be when it takes over again
     return;
   }
@@ -190,7 +190,7 @@ void CameraSystem::updatePositionFromInput(Camera &cam, float deltaTime, const S
     cam.position.z -= sinA * velocity;
     cam.position.x += cosA * velocity;
   }
-  if (state.isToggled(Toggle::CameraFly)) {
+  if (state.isToggled(Toggle::FreeCameraVertical)) {
     if (m_input.isActionPressed(Action::MoveUp))
       cam.position.y += velocity;
     if (m_input.isActionPressed(Action::MoveDown))
@@ -198,7 +198,7 @@ void CameraSystem::updatePositionFromInput(Camera &cam, float deltaTime, const S
   }
 }
 
-void CameraSystem::updateEditorFlight(Camera &cam, float deltaTime) {
+void CameraSystem::updateEditorFlight(Camera &cam, float deltaTime, const StateSystem &state) {
   const float wheel = m_input.getFlyWheel();
   if (wheel != 0.0f)
     m_flySpeedScale = glm::clamp(m_flySpeedScale * std::pow(1.25f, wheel), 0.05f, 50.0f);
@@ -206,10 +206,20 @@ void CameraSystem::updateEditorFlight(Camera &cam, float deltaTime) {
   cam.updateFront(); // the mouse turned it this frame
   const glm::vec3 right = glm::normalize(glm::cross(cam.front, cam.worldUp));
   auto down = [&](SDL_Scancode key) { return m_input.isRawKeyDown(key) ? 1.0f : 0.0f; };
-  glm::vec3 move = cam.front * (down(SDL_SCANCODE_W) - down(SDL_SCANCODE_S)) +
-                   right * (down(SDL_SCANCODE_D) - down(SDL_SCANCODE_A)) +
-                   cam.worldUp * (std::max(down(SDL_SCANCODE_E), down(SDL_SCANCODE_SPACE)) -
-                                  std::max(down(SDL_SCANCODE_Q), down(SDL_SCANCODE_LCTRL)));
+  // Up and down always while editing; in Play the free camera's up/down setting (FreeCameraVertical) decides, as it does with
+  // the cursor locked
+  const bool free3d = (m_editing && m_editorShown) || state.isToggled(Toggle::FreeCameraVertical);
+  const float vertical = free3d ? std::max(down(SDL_SCANCODE_E), down(SDL_SCANCODE_SPACE)) -
+                                   std::max(down(SDL_SCANCODE_Q), down(SDL_SCANCODE_LCTRL))
+                             : 0.0f;
+  // Without up/down, forward stays on the ground plane: looking up and pressing W does not climb
+  glm::vec3 forward = cam.front;
+  if (!free3d) {
+    forward.y = 0.0f;
+    forward = glm::dot(forward, forward) > 1e-6f ? glm::normalize(forward) : glm::vec3(0.0f);
+  }
+  glm::vec3 move = forward * (down(SDL_SCANCODE_W) - down(SDL_SCANCODE_S)) +
+                   right * (down(SDL_SCANCODE_D) - down(SDL_SCANCODE_A)) + cam.worldUp * vertical;
   if (glm::dot(move, move) < 1e-6f)
     return;
   const bool fast = m_input.isRawKeyDown(SDL_SCANCODE_LSHIFT) || m_input.isRawKeyDown(SDL_SCANCODE_RSHIFT);
