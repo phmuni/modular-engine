@@ -1,0 +1,9 @@
+# What an empty project takes from the example template (templates/lua or templates/cpp): these files and nothing
+# else. One path per line, relative to that template; a folder name keeps everything in it. Then the files of
+# templates/empty/<lua|cpp|mixed> go over them. Lines starting with # are comments.
+# New files in the example templates (more screens, prefabs...) stay out of empty projects unless listed here.
+.gitignore
+CMakeLists.txt
+assets/input.json
+assets/ui/pauseMenu.rml
+assets/ui/pauseMenu.rcss

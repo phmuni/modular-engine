@@ -357,16 +357,22 @@ cmake -B build && cmake --build build -j
 ./bin/launcher/launcher
 ```
 
-**New project** asks for a name, a folder and the kind; each project in the list then has **Play** (a C++ project
+**New project** asks for a name, a folder, the kind and what to start from (the example game or an empty project); each project in the list then has **Play** (a C++ project
 builds what changed first), **Build**, **VS Code** and **Folder**. From a terminal, the same:
 
 ```bash
 ./bin/launcher/launcher --create ~/Games/Asteroids lua     # or cpp, mixed
 python3 tools/new_game.py ~/Games/Asteroids --type lua     # the same, in Python (asks the kind when left out)
+./bin/launcher/launcher --create ~/Games/Asteroids lua --empty   # an empty project (new_game.py has --empty too)
 ```
 
-Each kind starts as the same small game (walk, jump, push the crates, collect coins: [`templates/`](templates/)),
-whose level is a scene file you edit in the game with `F2`.
+By default each kind starts as the same small game (walk, jump, push the crates, collect coins: [`templates/`](templates/)),
+whose level is a scene file you edit in the game with `F2`. An **empty project** (`--empty`) is the same kind without
+the game: a level with a camera, a light, a sky and a floor, a game script or `main.cpp` with the lifecycle functions
+stubbed and commented, `project.json`, the input bindings, the Lua types and VS Code settings, and the pause menu's
+files (`assets/ui/pauseMenu.rml`, off until the code calls `ui.pauseMenu(true)`). It builds, runs and opens in the
+editor. It is made from the example template's files listed in [`templates/empty/keep.txt`](templates/empty/keep.txt)
+with `templates/empty/<lua|cpp|mixed>` over them, so the example's other files never end up in it.
 
 A Lua project is `project.json` (its name, start scene, game script and input file, and optionally its collision `layers` and `window`), `assets/`, and `bin/` with the
 runner named after the game. A C++ project's `CMakeLists.txt` points at this checkout (`MODULAR_ENGINE_DIR`; left

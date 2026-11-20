@@ -1,0 +1,90 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Camera",
+      "components": {
+        "Transform": {},
+        "Camera": {
+          "active": true,
+          "position": [
+            0.0,
+            4.0,
+            10.0
+          ],
+          "pitch": -20.0,
+          "fov": 60.0,
+          "moveSpeed": 6.0
+        }
+      }
+    },
+    {
+      "name": "Sun",
+      "components": {
+        "Transform": {},
+        "Light": {
+          "type": "directional",
+          "direction": [
+            -0.45,
+            -1.0,
+            -0.35
+          ],
+          "color": [
+            1.0,
+            0.95,
+            0.85
+          ],
+          "intensity": 1.0,
+          "ambient": 0.35,
+          "castShadows": true
+        }
+      }
+    },
+    {
+      "name": "Sky",
+      "components": {
+        "Skybox": {
+          "color": [
+            0.53,
+            0.72,
+            0.95
+          ]
+        }
+      }
+    },
+    {
+      "name": "Floor",
+      "components": {
+        "Transform": {
+          "position": [
+            0.0,
+            -0.1,
+            0.0
+          ],
+          "scale": [
+            24.0,
+            0.2,
+            24.0
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.32,
+                0.36,
+                0.3
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    }
+  ]
+}

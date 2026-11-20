@@ -300,10 +300,22 @@ struct ProjectFiles {
   // The template's files into the project (a C++ + Lua project is the C++ template with the mixed one over it),
   // named after the game, and for a Lua project the runner in bin/. Projects with Lua also get the editor's Lua
   // settings and API definitions (templates/common/lua). Throws on failure.
-  void create(const Project &project) const {
-    copyTemplate(project.type == ProjectType::Lua ? "lua" : "cpp", project.path);
-    if (project.type == ProjectType::Mixed)
-      copyTemplate("mixed", project.path);
+  //
+  // An empty project is the same with the example game left out: from the example template only what
+  // templates/empty/keep.txt lists is taken (the input bindings, the pause menu, CMake's file), and then
+  // templates/empty/<lua|cpp|mixed> (the minimal scene, the stubbed game code, the README) goes over it.
+  void create(const Project &project, bool empty = false) const {
+    const std::string base = project.type == ProjectType::Lua ? "lua" : "cpp";
+    if (empty) {
+      copyTemplate(base, project.path, readKeepList());
+      copyTemplate("empty/" + base, project.path);
+      if (project.type == ProjectType::Mixed)
+        copyTemplate("empty/mixed", project.path);
+    } else {
+      copyTemplate(base, project.path);
+      if (project.type == ProjectType::Mixed)
+        copyTemplate("mixed", project.path);
+    }
     if (project.type != ProjectType::Cpp)
       copyTemplate("common/lua", project.path);
     fillPlaceholders(project.path, project.name);
@@ -311,19 +323,44 @@ struct ProjectFiles {
       installRunner(project);
   }
 
-  void copyTemplate(const std::string &name, const fs::path &into) const {
+  // The paths templates/empty/keep.txt lists (one per line; # starts a comment)
+  std::vector<std::string> readKeepList() const {
+    const fs::path path = engineDir / "templates" / "empty" / "keep.txt";
+    std::ifstream file(path);
+    if (!file)
+      throw std::runtime_error("no empty-project list at " + path.string());
+    std::vector<std::string> keep;
+    for (std::string line; std::getline(file, line);) {
+      while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
+        line.pop_back();
+      if (!line.empty() && line[0] != '#')
+        keep.push_back(line);
+    }
+    return keep;
+  }
+
+  // The files of templates/<name> into `into`; with `only`, just those paths (a folder's name takes what is in it)
+  void copyTemplate(const std::string &name, const fs::path &into, const std::vector<std::string> &only = {}) const {
     const fs::path source = engineDir / "templates" / name;
     if (!fs::exists(source))
       throw std::runtime_error("no template at " + source.string());
+    const auto wanted = [&only](const fs::path &relative) {
+      const std::string path = relative.generic_string();
+      for (const std::string &entry : only)
+        if (path == entry || path.rfind(entry + "/", 0) == 0)
+          return true;
+      return false;
+    };
     for (const auto &entry : fs::recursive_directory_iterator(source)) {
       const fs::path relative = fs::relative(entry.path(), source);
       const std::string first = relative.begin()->string();
       if (first == "build" || first == "bin")
         continue;
       const fs::path target = into / relative;
-      if (entry.is_directory())
-        fs::create_directories(target);
-      else {
+      if (entry.is_directory()) {
+        if (only.empty())
+          fs::create_directories(target);
+      } else if (only.empty() || wanted(relative)) {
         fs::create_directories(target.parent_path());
         fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing);
       }
@@ -542,6 +579,7 @@ private:
   std::string m_newName = "MyGame";
   std::string m_location;
   int m_newType = 0;
+  int m_newContent = 0; // 0: the example game, 1: an empty project
 
   // The system's folder picker answers on its own time (and maybe thread)
   enum class PickPurpose { Location, AddExisting, ExportTo };
@@ -749,6 +787,14 @@ private:
     ImGui::SameLine(160);
     ImGui::TextDisabled("C++ code and Lua scripts together");
     ImGui::Spacing();
+    ImGui::TextUnformatted("Start from");
+    ImGui::RadioButton("Example game", &m_newContent, 0);
+    ImGui::SameLine(160);
+    ImGui::TextDisabled("a small playable game to read and change");
+    ImGui::RadioButton("Empty project", &m_newContent, 1);
+    ImGui::SameLine(160);
+    ImGui::TextDisabled("a camera, a light, a sky and a floor, with the code stubbed");
+    ImGui::Spacing();
     ImGui::Separator();
     if (ImGui::Button("Create", ImVec2(120, 0))) {
       if (create())
@@ -773,6 +819,7 @@ private:
     }
     const ProjectType type = m_newType == 0 ? ProjectType::Lua : m_newType == 1 ? ProjectType::Cpp : ProjectType::Mixed;
     const Project project{m_newName, folder, type};
+    const bool empty = m_newContent == 1;
 
     if (type == ProjectType::Lua && !fs::exists(m_files.runner())) {
       if (!m_files.hasSources()) {
@@ -783,21 +830,21 @@ private:
       if (!requireToolchain(toolchain))
         return false;
       // The prebuilt runner comes first: build it, then create
-      m_tasks.run("Building the Lua runner (once)", m_files.buildRunnerCommands(toolchain), [this, project](bool ok) {
+      m_tasks.run("Building the Lua runner (once)", m_files.buildRunnerCommands(toolchain), [this, project, empty](bool ok) {
         if (ok)
-          finishCreating(project);
+          finishCreating(project, empty);
         else
           say("Could not build the Lua runner; see the output", true);
       });
       return true;
     }
-    finishCreating(project);
+    finishCreating(project, empty);
     return true;
   }
 
-  void finishCreating(const Project &project) {
+  void finishCreating(const Project &project, bool empty) {
     try {
-      m_files.create(project);
+      m_files.create(project, empty);
     } catch (const std::exception &exception) {
       say(std::string("Could not create it: ") + exception.what(), true);
       return;
@@ -883,19 +930,30 @@ private:
   }
 };
 
-// launcher --create <folder> <lua|cpp|mixed> [name]: the same as New project, from a terminal
+// launcher --create <folder> <lua|cpp|mixed> [name] [--empty]: the same as New project, from a terminal. The project
+// is the example game, or with --empty (anywhere after the folder) an empty one.
 int createFromCommandLine(const fs::path &engineDir, int argc, char **argv) {
-  if (argc < 4) {
-    std::fprintf(stderr, "usage: launcher --create <folder> <lua|cpp|mixed> [name]\n");
+  std::vector<std::string> arguments;
+  bool empty = false;
+  for (int i = 2; i < argc; ++i) {
+    if (std::string(argv[i]) == "--empty")
+      empty = true;
+    else
+      arguments.push_back(argv[i]);
+  }
+  if (arguments.size() < 2 || arguments.size() > 3) {
+    std::fprintf(stderr,
+                 "usage: launcher --create <folder> <lua|cpp|mixed> [name] [--empty]\n"
+                 "  --empty: a camera, a light, a sky and a floor with the code stubbed, instead of the example game\n");
     return 1;
   }
-  const fs::path folder = fs::absolute(argv[2]);
-  const std::string kind = argv[3];
+  const fs::path folder = fs::absolute(arguments[0]);
+  const std::string kind = arguments[1];
   if (kind != "lua" && kind != "cpp" && kind != "mixed") {
     std::fprintf(stderr, "launcher: the type is lua, cpp or mixed, not '%s'\n", kind.c_str());
     return 1;
   }
-  const std::string name = argc > 4 ? argv[4] : folder.filename().string();
+  const std::string name = arguments.size() > 2 ? arguments[2] : folder.filename().string();
   if (!validName(name)) {
     std::fprintf(stderr, "launcher: '%s' cannot name the program and C++ code: letters, digits and _ only\n",
                  name.c_str());
@@ -930,7 +988,7 @@ int createFromCommandLine(const fs::path &engineDir, int argc, char **argv) {
     }
   }
   try {
-    files.create(project);
+    files.create(project, empty);
   } catch (const std::exception &exception) {
     std::fprintf(stderr, "launcher: could not create it: %s\n", exception.what());
     return 1;
@@ -953,8 +1011,8 @@ int createFromCommandLine(const fs::path &engineDir, int argc, char **argv) {
   list["projects"].insert(list["projects"].begin(), entry);
   std::ofstream(listFile()) << list.dump(2);
 
-  std::printf("Created %s (%s) in %s\n\n  cd %s\n", name.c_str(), typeName(project.type), folder.string().c_str(),
-              folder.string().c_str());
+  std::printf("Created %s (%s%s) in %s\n\n  cd %s\n", name.c_str(), typeName(project.type), empty ? ", empty" : "",
+              folder.string().c_str(), folder.string().c_str());
   if (project.compiled())
     std::printf("  cmake -B build && cmake --build build -j\n");
   std::printf("  ./bin/%s\n", name.c_str());

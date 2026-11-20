@@ -69,13 +69,20 @@ jobs:
           fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
-      - name: Smoke test (the packaged launcher creates a Lua project)
+      - name: Smoke test (the packaged launcher creates a Lua project, the example game and an empty one)
         shell: bash
         run: |
           launcher="dist/${{ steps.archive.outputs.name }}/bin/launcher/launcher"
           [ -f "$launcher.exe" ] && launcher="$launcher.exe"
           "$launcher" --create "$RUNNER_TEMP/SmokeGame" lua
           ls "$RUNNER_TEMP/SmokeGame/bin"
+          "$launcher" --create "$RUNNER_TEMP/SmokeEmpty" lua --empty
+          ls "$RUNNER_TEMP/SmokeEmpty/bin"
+          test -f "$RUNNER_TEMP/SmokeEmpty/assets/scenes/level.json"
+          test -f "$RUNNER_TEMP/SmokeEmpty/assets/ui/pauseMenu.rml"
+          test ! -e "$RUNNER_TEMP/SmokeEmpty/assets/prefabs/coin.json"
+          "$launcher" --create "$RUNNER_TEMP/SmokeEmptyCpp" cpp --empty
+          test -f "$RUNNER_TEMP/SmokeEmptyCpp/src/main.cpp"
 
       - uses: actions/upload-artifact@v4
         with:
