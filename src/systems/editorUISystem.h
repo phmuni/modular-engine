@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <string>
+#include <vector>
 #include "components/transform.h"
 
 class EntityManager;
@@ -18,8 +19,15 @@ using Entity = int;
 
 class EditorUISystem : public BaseSystem {
 public:
+  // The primary selection: the one clicked last, shown in the Properties panel (-1: nothing selected). The whole
+  // selection is selection(), the primary last.
   Entity selectedEntity = -1;
   bool m_renderUI = false;
+
+  const std::vector<Entity> &selection() const { return m_selection; }
+  bool isSelected(Entity entity) const;
+  // Drops the entities that no longer exist (after undo, Stop or loading a scene)
+  void pruneSelection(const EntityManager &entityManager);
 
   EditorUISystem(SDL_Window *window, SDL_GLContext glContext);
 
@@ -34,6 +42,26 @@ public:
 
 private:
   bool m_showStats = false;
+
+  // Selection: a set with a primary. Everything that changes it goes through these, which keep selectedEntity the
+  // last of m_selection.
+  std::vector<Entity> m_selection;
+  Entity m_selectionAnchor = -1; // where a Shift+click range starts: the entity last clicked without Shift
+  void setSelection(std::vector<Entity> entities);
+  void selectOnly(Entity entity);
+  void toggleSelected(Entity entity);
+  // The selected entities that have no selected ancestor: what moves, duplicates and deletes (the rest follow them)
+  std::vector<Entity> selectionRoots(ComponentManager &componentManager) const;
+  // A click on a row of a list shown in `order`: Ctrl/Cmd toggles, Shift selects from the anchor, plain selects it
+  // alone (or, with `toggleOff`, clears it when it already is the only one)
+  void clickInList(Entity entity, const std::vector<Entity> &order, bool toggleOff);
+  // Dragging a box in empty space of the view selects the models inside it
+  struct Marquee {
+    bool active = false;   // pressed on empty space
+    bool dragging = false; // moved far enough to be a box
+    glm::vec2 start{0.0f};
+  } m_marquee;
+  void updateMarquee(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
 
   // Interface scale. Automatic (from the display: 1 on macOS, the content scale on Windows) until the user picks
   // one in Settings (0 = automatic); kept in imgui.ini. Panels and fonts are drawn at it, and the fonts at the
@@ -58,9 +86,12 @@ private:
   // The hint over the view about flying the camera
   void renderViewportHint(SystemManager &systemManager);
 
-  // Gizmo on the selected entity: move (W), rotate (E) or scale (R), in world or local axes, optionally snapped
+  // Gizmo on the primary selection: move (W), rotate (E) or scale (R), in world or local axes, optionally snapped.
+  // It acts on one entity (m_gizmoEntity: the primary, or its topmost selected ancestor); what it does to that
+  // entity's transform is then done to the rest of the selection around it, so they move, turn and scale together.
   enum class GizmoOperation { Move, Rotate, Scale, Resize };
   GizmoOperation m_gizmoOperation = GizmoOperation::Move;
+  Entity m_gizmoEntity = -1;
   bool m_gizmoLocal = false;
   bool m_gizmoSnap = false;
   // Solid: the gizmo does not push the entity into other models (it stops against them and slides along them)
@@ -96,12 +127,18 @@ private:
   bool applyGizmoChange(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
                         const Transform &wanted, bool translating);
   void renderGizmo(SystemManager &systemManager, ComponentManager &componentManager);
+  void renderGizmoOn(SystemManager &systemManager, ComponentManager &componentManager);
+  // Carries the change that took `before` to `after` (the gizmo entity's transform) over to the other selected roots
+  void followGizmo(SystemManager &systemManager, ComponentManager &componentManager, const Transform &before,
+                   const Transform &after);
   bool m_gizmoShown = false; // drawn this frame, so ImGuizmo::IsOver means something
 
   // Clicking a model in the scene selects it, clicking empty space clears the selection (debug UI shown, cursor
   // unlocked, not over a panel or the gizmo). The selected model's box is outlined.
-  void handleClickSelection(Engine &engine, SystemManager &systemManager);
-  void drawSelectionBox(SystemManager &systemManager, ComponentManager &componentManager);
+  void handleClickSelection(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  void drawSelectionBoxes(SystemManager &systemManager, ComponentManager &componentManager);
+  void drawBox(SystemManager &systemManager, ComponentManager &componentManager, Entity entity, unsigned color,
+               float thickness);
   // The navigation map's walkable cells and the last path found, over the scene (Settings: Show navigation)
   void drawNavigation(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   bool m_showNavigation = false;
@@ -132,9 +169,9 @@ private:
   // clipboard, Delete (Backspace too) deletes them; each is one undo step
   void handleEditShortcuts(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   void duplicateSelected(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
-  void copySelected(SystemManager &systemManager);
-  void pasteClipboard(Engine &engine, SystemManager &systemManager);
-  void deleteSelected(Engine &engine, SystemManager &systemManager);
+  void copySelected(SystemManager &systemManager, ComponentManager &componentManager);
+  void pasteClipboard(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  void deleteSelected(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   // The right-click menu of the entity just drawn (hierarchy and section lists)
   void entityContextMenu(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
                          Entity entity);

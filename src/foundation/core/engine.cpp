@@ -737,8 +737,7 @@ void Engine::restoreScene(SceneSnapshot snapshot) {
   // The walls may be back or gone: the navigation map is built again (with its last settings) on the next update
   m_systemManager.getSystem<NavigationSystem>().markDirty();
   auto &editor = m_systemManager.getSystem<EditorUISystem>();
-  if (!m_entityManager.isAlive(editor.selectedEntity))
-    editor.selectedEntity = -1;
+  editor.pruneSelection(m_entityManager);
 }
 
 void Engine::refreshPinnedMaterials() {

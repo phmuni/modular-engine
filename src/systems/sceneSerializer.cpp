@@ -366,13 +366,22 @@ bool SceneSerializer::savePrefab(Entity root, const std::string &path) const {
   return writeFile(path, entitiesToJson(entities, root));
 }
 
-std::string SceneSerializer::copyToJson(Entity root) const {
-  if (!m_entityManager.isAlive(root))
+std::string SceneSerializer::copyToJson(Entity root) const { return copyToJson(std::vector<Entity>{root}); }
+
+std::string SceneSerializer::copyToJson(const std::vector<Entity> &roots) const {
+  std::vector<Entity> entities;
+  auto &transformSystem = m_systemManager.getSystem<TransformSystem>();
+  for (Entity root : roots) {
+    if (!m_entityManager.isAlive(root) || std::find(entities.begin(), entities.end(), root) != entities.end())
+      continue;
+    entities.push_back(root);
+    for (Entity descendant : transformSystem.getDescendants(m_componentManager, root))
+      if (std::find(entities.begin(), entities.end(), descendant) == entities.end())
+        entities.push_back(descendant);
+  }
+  if (entities.empty())
     return {};
-  std::vector<Entity> entities{root};
-  const auto descendants = m_systemManager.getSystem<TransformSystem>().getDescendants(m_componentManager, root);
-  entities.insert(entities.end(), descendants.begin(), descendants.end());
-  // No root given: the root keeps its position; its parent is not in the list, so it is not written either
+  // No root given: the roots keep their positions; their parents are not in the list, so they are not written either
   json scene = {{"format", kFormat}, {"version", kVersion}, {"entities", entitiesToJson(entities, -1)}};
   roundFloats(scene);
   return scene.dump();

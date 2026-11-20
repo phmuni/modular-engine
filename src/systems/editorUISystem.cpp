@@ -44,6 +44,7 @@
 #include <fstream>
 #include <filesystem>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <array>
 #include <glm/glm.hpp>
@@ -561,11 +562,11 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   if (selectedEntity != -1) {
     if (panels)
       renderPropertiesPanel(engine, systemManager, componentManager);
-    drawSelectionBox(systemManager, componentManager);
+    drawSelectionBoxes(systemManager, componentManager);
     renderGizmo(systemManager, componentManager);
   }
   renderViewportHint(systemManager);
-  handleClickSelection(engine, systemManager);
+  handleClickSelection(engine, systemManager, componentManager);
   endEditTracking(engine);
 }
 
@@ -586,7 +587,7 @@ void EditorUISystem::handleEditShortcuts(Engine &engine, SystemManager &systemMa
   const ImGuiIO &io = ImGui::GetIO();
   if (m_deleteRequested) {
     m_deleteRequested = false;
-    deleteSelected(engine, systemManager);
+    deleteSelected(engine, systemManager, componentManager);
   }
   if (io.WantTextInput || io.KeyAlt || systemManager.getSystem<CameraSystem>().isNavigating())
     return;
@@ -594,47 +595,141 @@ void EditorUISystem::handleEditShortcuts(Engine &engine, SystemManager &systemMa
     if (ImGui::IsKeyPressed(ImGuiKey_D, false))
       duplicateSelected(engine, systemManager, componentManager);
     else if (ImGui::IsKeyPressed(ImGuiKey_C, false))
-      copySelected(systemManager);
+      copySelected(systemManager, componentManager);
     else if (ImGui::IsKeyPressed(ImGuiKey_V, false))
-      pasteClipboard(engine, systemManager);
+      pasteClipboard(engine, systemManager, componentManager);
   } else if (!io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))) {
-    deleteSelected(engine, systemManager);
+    deleteSelected(engine, systemManager, componentManager);
   }
+}
+
+bool EditorUISystem::isSelected(Entity entity) const {
+  return std::find(m_selection.begin(), m_selection.end(), entity) != m_selection.end();
+}
+
+void EditorUISystem::setSelection(std::vector<Entity> entities) {
+  m_selection.clear();
+  for (Entity entity : entities)
+    if (entity != -1 && !isSelected(entity))
+      m_selection.push_back(entity);
+  selectedEntity = m_selection.empty() ? -1 : m_selection.back();
+}
+
+void EditorUISystem::selectOnly(Entity entity) {
+  setSelection(entity == -1 ? std::vector<Entity>{} : std::vector<Entity>{entity});
+  m_selectionAnchor = entity;
+}
+
+void EditorUISystem::toggleSelected(Entity entity) {
+  std::vector<Entity> entities = m_selection;
+  auto it = std::find(entities.begin(), entities.end(), entity);
+  if (it != entities.end())
+    entities.erase(it);
+  else
+    entities.push_back(entity); // the one just added is the primary
+  setSelection(std::move(entities));
+  m_selectionAnchor = entity;
+}
+
+void EditorUISystem::pruneSelection(const EntityManager &entityManager) {
+  m_selection.erase(std::remove_if(m_selection.begin(), m_selection.end(),
+                                   [&](Entity entity) { return !entityManager.isAlive(entity); }),
+                    m_selection.end());
+  selectedEntity = m_selection.empty() ? -1 : m_selection.back();
+  if (m_selectionAnchor != -1 && !entityManager.isAlive(m_selectionAnchor))
+    m_selectionAnchor = -1;
+}
+
+std::vector<Entity> EditorUISystem::selectionRoots(ComponentManager &componentManager) const {
+  std::vector<Entity> roots;
+  for (Entity entity : m_selection) {
+    bool covered = false;
+    Entity at = entity;
+    for (int guard = 0; guard < 256 && !covered; ++guard) {
+      const Parent *parent = componentManager.tryGet<Parent>(at);
+      if (!parent)
+        break;
+      at = parent->entity;
+      covered = isSelected(at);
+    }
+    if (!covered)
+      roots.push_back(entity);
+  }
+  return roots;
+}
+
+void EditorUISystem::clickInList(Entity entity, const std::vector<Entity> &order, bool toggleOff) {
+  const ImGuiIO &io = ImGui::GetIO();
+  if (io.KeyCtrl) {
+    toggleSelected(entity);
+    return;
+  }
+  if (io.KeyShift && m_selectionAnchor != -1) {
+    const auto from = std::find(order.begin(), order.end(), m_selectionAnchor);
+    const auto to = std::find(order.begin(), order.end(), entity);
+    if (from != order.end() && to != order.end()) {
+      std::vector<Entity> range = from <= to ? std::vector<Entity>(from, to + 1)
+                                             : std::vector<Entity>(std::make_reverse_iterator(from + 1),
+                                                                   std::make_reverse_iterator(to));
+      // the one clicked is the primary, the last
+      range.erase(std::remove(range.begin(), range.end(), entity), range.end());
+      range.push_back(entity);
+      setSelection(std::move(range)); // the anchor stays, so the range can be changed
+      return;
+    }
+  }
+  if (toggleOff && m_selection.size() == 1 && m_selection.front() == entity)
+    selectOnly(-1);
+  else
+    selectOnly(entity);
 }
 
 // The scene is not edited while testing: the snapshot taken at Play brings it back on Stop, and no undo step is kept
 void EditorUISystem::duplicateSelected(Engine &engine, SystemManager &systemManager,
                                        ComponentManager &componentManager) {
-  if (selectedEntity == -1 || engine.getPlayMode() == Engine::PlayMode::Testing)
+  if (engine.getPlayMode() == Engine::PlayMode::Testing)
+    return;
+  const std::vector<Entity> roots = selectionRoots(componentManager);
+  if (roots.empty())
     return;
   auto &serializer = systemManager.getSystem<SceneSerializer>();
   auto &transformSystem = systemManager.getSystem<TransformSystem>();
-  const std::string text = serializer.copyToJson(selectedEntity);
+  const std::string text = serializer.copyToJson(roots);
   if (text.empty())
     return;
-  const Entity parent = transformSystem.getParent(componentManager, selectedEntity);
+  std::vector<Entity> parents;
+  for (Entity root : roots)
+    parents.push_back(transformSystem.getParent(componentManager, root));
   engine.beginCheckpoint();
   const std::vector<Entity> created = serializer.pasteFromJson(text);
-  if (!created.empty()) {
-    if (parent != -1)
-      transformSystem.setParent(componentManager, created.front(), parent);
-    if (Name *name = componentManager.tryGet<Name>(created.front()))
+  // The copies of the roots are the created entities with no parent, in the order of the roots
+  std::vector<Entity> copies;
+  for (Entity entity : created)
+    if (!componentManager.has<Parent>(entity))
+      copies.push_back(entity);
+  for (size_t i = 0; i < copies.size() && i < roots.size(); ++i) {
+    if (parents[i] != -1)
+      transformSystem.setParent(componentManager, copies[i], parents[i]);
+    if (Name *name = componentManager.tryGet<Name>(copies[i]))
       name->name += " (1)";
-    selectedEntity = created.front();
+  }
+  if (!copies.empty()) {
+    setSelection(copies);
     m_scrollToSelection = true;
   }
   engine.endCheckpoint();
 }
 
-void EditorUISystem::copySelected(SystemManager &systemManager) {
-  if (selectedEntity == -1)
+void EditorUISystem::copySelected(SystemManager &systemManager, ComponentManager &componentManager) {
+  const std::vector<Entity> roots = selectionRoots(componentManager);
+  if (roots.empty())
     return;
-  const std::string text = systemManager.getSystem<SceneSerializer>().copyToJson(selectedEntity);
+  const std::string text = systemManager.getSystem<SceneSerializer>().copyToJson(roots);
   if (!text.empty() && !SDL_SetClipboardText(text.c_str()))
     LOG_W("[Editor] Could not copy to the clipboard: %s", SDL_GetError());
 }
 
-void EditorUISystem::pasteClipboard(Engine &engine, SystemManager &systemManager) {
+void EditorUISystem::pasteClipboard(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
   if (engine.getPlayMode() == Engine::PlayMode::Testing || !SDL_HasClipboardText())
     return;
   char *clipboard = SDL_GetClipboardText();
@@ -647,21 +742,27 @@ void EditorUISystem::pasteClipboard(Engine &engine, SystemManager &systemManager
     return;
   engine.beginCheckpoint();
   const std::vector<Entity> created = systemManager.getSystem<SceneSerializer>().pasteFromJson(text);
-  if (created.empty())
+  if (created.empty()) {
     LOG_W("[Editor] The clipboard does not hold entities to paste");
-  else {
-    selectedEntity = created.front();
+  } else {
+    std::vector<Entity> pasted;
+    for (Entity entity : created)
+      if (!componentManager.has<Parent>(entity))
+        pasted.push_back(entity);
+    setSelection(pasted);
     m_scrollToSelection = true;
   }
   engine.endCheckpoint();
 }
 
-void EditorUISystem::deleteSelected(Engine &engine, SystemManager &systemManager) {
-  if (selectedEntity == -1 || engine.getPlayMode() == Engine::PlayMode::Testing)
+void EditorUISystem::deleteSelected(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
+  if (m_selection.empty() || engine.getPlayMode() == Engine::PlayMode::Testing)
     return;
+  const std::vector<Entity> roots = selectionRoots(componentManager); // their descendants go with them
   engine.beginCheckpoint();
-  systemManager.getSystem<SceneSystem>().destroyEntity(selectedEntity);
-  selectedEntity = -1;
+  for (Entity root : roots)
+    systemManager.getSystem<SceneSystem>().destroyEntity(root);
+  selectOnly(-1);
   engine.endCheckpoint();
 }
 
@@ -669,13 +770,14 @@ void EditorUISystem::entityContextMenu(Engine &engine, SystemManager &systemMana
                                        ComponentManager &componentManager, Entity entity) {
   if (!ImGui::BeginPopupContextItem())
     return;
-  selectedEntity = entity;
+  if (!isSelected(entity)) // right-clicking one of several keeps them all
+    selectOnly(entity);
   if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
     duplicateSelected(engine, systemManager, componentManager);
   if (ImGui::MenuItem("Copy", "Ctrl+C"))
-    copySelected(systemManager);
+    copySelected(systemManager, componentManager);
   if (ImGui::MenuItem("Paste", "Ctrl+V"))
-    pasteClipboard(engine, systemManager);
+    pasteClipboard(engine, systemManager, componentManager);
   ImGui::Separator();
   if (ImGui::MenuItem("Delete", "Del"))
     m_deleteRequested = true;
@@ -704,8 +806,10 @@ void EditorUISystem::endEditTracking(Engine &engine) {
   engine.endCheckpoint();
 }
 
-void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemManager) {
+void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemManager,
+                                          ComponentManager &componentManager) {
   const ImGuiIO &io = ImGui::GetIO();
+  updateMarquee(engine, systemManager, componentManager);
   if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left) || io.WantCaptureMouse ||
       systemManager.getSystem<StateSystem>().isToggled(Toggle::CursorLock))
     return;
@@ -713,14 +817,89 @@ void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemM
     return; // the click grabs the gizmo
   if (m_resizeHovered || m_resize.axis >= 0)
     return; // the click grabs a resize handle
-  const auto hit = engine.pickModel(glm::vec2(io.MousePos.x, io.MousePos.y));
-  selectedEntity = hit ? hit->entity : -1;
-  m_scrollToSelection = hit.has_value();
+  const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
+  const auto hit = engine.pickModel(mouse);
+  if (hit) {
+    m_marquee.active = false;
+    if (io.KeyCtrl)
+      toggleSelected(hit->entity); // Ctrl/Cmd adds or removes
+    else
+      selectOnly(hit->entity);
+    m_scrollToSelection = isSelected(hit->entity);
+  } else {
+    // Empty space: clears (unless adding), and may start a box
+    if (!io.KeyCtrl)
+      selectOnly(-1);
+    m_marquee = {true, false, mouse};
+  }
 }
 
-void EditorUISystem::drawSelectionBox(SystemManager &systemManager, ComponentManager &componentManager) {
-  const auto *model = componentManager.tryGet<Model>(selectedEntity);
-  const auto *transform = componentManager.tryGet<Transform>(selectedEntity);
+// A drag that began on empty space draws a box and, when released, selects the models whose center is inside it
+void EditorUISystem::updateMarquee(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
+  if (!m_marquee.active)
+    return;
+  const ImGuiIO &io = ImGui::GetIO();
+  const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
+  const glm::vec2 low = glm::min(m_marquee.start, mouse), high = glm::max(m_marquee.start, mouse);
+  if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    if (!m_marquee.dragging && glm::distance(mouse, m_marquee.start) > 6.0f)
+      m_marquee.dragging = true;
+    if (m_marquee.dragging) {
+      ImDrawList *drawList = ImGui::GetForegroundDrawList();
+      drawList->AddRectFilled(ImVec2(low.x, low.y), ImVec2(high.x, high.y), IM_COL32(255, 200, 60, 40));
+      drawList->AddRect(ImVec2(low.x, low.y), ImVec2(high.x, high.y), IM_COL32(255, 200, 60, 200));
+    }
+    return;
+  }
+  const bool dragged = m_marquee.dragging;
+  m_marquee.active = m_marquee.dragging = false;
+  if (!dragged)
+    return;
+
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
+  if (!camera || io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
+    return;
+  const glm::mat4 toClip = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
+  auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
+  auto &transformSystem = systemManager.getSystem<TransformSystem>();
+  std::vector<Entity> inside;
+  componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
+    const Transform *transform = componentManager.tryGet<Transform>(entity);
+    if (!transform || componentManager.has<Hidden>(entity))
+      return;
+    const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
+    const glm::vec3 center = (mesh.getBoundsMin() + mesh.getBoundsMax()) * 0.5f;
+    const glm::vec4 clip = toClip * transformSystem.calculateModelMatrix(*transform) * glm::vec4(center, 1.0f);
+    if (clip.w <= 0.01f)
+      return; // behind the camera
+    const glm::vec2 screen((clip.x / clip.w * 0.5f + 0.5f) * io.DisplaySize.x,
+                           (0.5f - clip.y / clip.w * 0.5f) * io.DisplaySize.y);
+    if (screen.x >= low.x && screen.x <= high.x && screen.y >= low.y && screen.y <= high.y)
+      inside.push_back(entity);
+  });
+  std::sort(inside.begin(), inside.end());
+  if (io.KeyCtrl)
+    for (Entity entity : m_selection)
+      if (std::find(inside.begin(), inside.end(), entity) == inside.end())
+        inside.insert(inside.begin(), entity); // what was selected stays
+  setSelection(inside);
+  m_selectionAnchor = selectedEntity;
+}
+
+void EditorUISystem::drawSelectionBoxes(SystemManager &systemManager, ComponentManager &componentManager) {
+  for (Entity entity : m_selection) {
+    const bool primary = entity == selectedEntity;
+    drawBox(systemManager, componentManager, entity, primary ? IM_COL32(255, 200, 60, 230) : IM_COL32(255, 140, 40, 170),
+            primary ? 1.8f : 1.2f);
+  }
+}
+
+void EditorUISystem::drawBox(SystemManager &systemManager, ComponentManager &componentManager, Entity entity,
+                             unsigned color, float thickness) {
+  const auto *model = componentManager.tryGet<Model>(entity);
+  const auto *transform = componentManager.tryGet<Transform>(entity);
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();
   const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
@@ -746,7 +925,7 @@ void EditorUISystem::drawSelectionBox(SystemManager &systemManager, ComponentMan
       const int b = a | bit;
       if (b == a || corners[a].w <= 0.01f || corners[b].w <= 0.01f) // skip edges behind the camera
         continue;
-      drawList->AddLine(toScreen(corners[a]), toScreen(corners[b]), IM_COL32(255, 200, 60, 200), 1.5f);
+      drawList->AddLine(toScreen(corners[a]), toScreen(corners[b]), color, thickness);
     }
 }
 
@@ -867,9 +1046,57 @@ glm::vec3 snapToSurfaceGrid(const glm::vec3 &point, const glm::vec3 &normal, flo
 } // namespace
 
 void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager &componentManager) {
+  // The gizmo sits on the primary; when an ancestor of it is selected too, on the topmost such ancestor, which
+  // carries the primary along
+  m_gizmoEntity = selectedEntity;
+  Entity at = selectedEntity;
+  for (int guard = 0; guard < 256; ++guard) {
+    const Parent *parent = componentManager.tryGet<Parent>(at);
+    if (!parent)
+      break;
+    at = parent->entity;
+    if (isSelected(at))
+      m_gizmoEntity = at;
+  }
+  const Transform *transform = componentManager.tryGet<Transform>(m_gizmoEntity);
+  const Transform before = transform ? *transform : Transform();
+  renderGizmoOn(systemManager, componentManager);
+  // What it did to that entity is done to the others, except resizing a face: that is for one entity
+  transform = componentManager.tryGet<Transform>(m_gizmoEntity);
+  if (m_selection.size() > 1 && transform && *transform != before && m_gizmoOperation != GizmoOperation::Resize)
+    followGizmo(systemManager, componentManager, before, *transform);
+}
+
+// The roots of the selection other than the gizmo's entity move, turn and scale as it did, around its place: the
+// whole selection acts as one body with the pivot at the primary's (the gizmo)
+void EditorUISystem::followGizmo(SystemManager &systemManager, ComponentManager &componentManager,
+                                 const Transform &before, const Transform &after) {
+  const glm::quat turnBefore = rotationOf(before);
+  const bool turned = after.rotation != before.rotation, scaled = after.scale != before.scale;
+  const glm::quat turn = turned ? rotationOf(after) * glm::inverse(turnBefore) : glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+  const glm::vec3 ratio = after.scale / glm::max(before.scale, glm::vec3(1e-6f));
+  for (Entity entity : selectionRoots(componentManager)) {
+    Transform *transform = componentManager.tryGet<Transform>(entity);
+    if (entity == m_gizmoEntity || !transform || componentManager.has<Camera>(entity))
+      continue;
+    glm::vec3 offset = transform->position - before.position;
+    if (scaled) // along the gizmo entity's own axes, where scaling happens
+      offset = turnBefore * (ratio * (glm::inverse(turnBefore) * offset));
+    if (turned) {
+      offset = turn * offset;
+      transform->rotation = eulerOf(turn * rotationOf(*transform));
+    }
+    if (scaled)
+      transform->scale *= ratio;
+    transform->position = after.position + offset;
+  }
+  (void)systemManager;
+}
+
+void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManager &componentManager) {
   // Cameras place themselves from their Camera component, not the Transform the gizmo would move
-  auto *transform = componentManager.tryGet<Transform>(selectedEntity);
-  if (!transform || componentManager.has<Camera>(selectedEntity))
+  auto *transform = componentManager.tryGet<Transform>(m_gizmoEntity);
+  if (!transform || componentManager.has<Camera>(m_gizmoEntity))
     return;
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();
@@ -979,7 +1206,7 @@ bool boxesOverlap(const WorldBox &a, const WorldBox &b) {
 
 bool EditorUISystem::applyGizmoChange(SystemManager &systemManager, ComponentManager &componentManager,
                                       Transform &transform, const Transform &wanted, bool translating) {
-  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  const auto *model = componentManager.tryGet<Model>(m_gizmoEntity);
   if (!m_gizmoSolid || !model) {
     transform = wanted;
     return true;
@@ -996,11 +1223,11 @@ bool EditorUISystem::applyGizmoChange(SystemManager &systemManager, ComponentMan
   const WorldBox startBox = worldBox(mesh, transformSystem.calculateModelMatrix(transform));
   componentManager.forEachComponent<Model>([&](Entity entity, Model &other) {
     const auto *otherTransform = componentManager.tryGet<Transform>(entity);
-    if (entity == selectedEntity || !otherTransform || componentManager.has<Hidden>(entity))
+    if (entity == m_gizmoEntity || !otherTransform || componentManager.has<Hidden>(entity))
       return;
     const WorldBox box =
         worldBox(resourceSystem.getMesh(other.meshHandle), transformSystem.calculateModelMatrix(*otherTransform));
-    if (boxesOverlap(startBox, box) && queries.intersects(selectedEntity, transform, entity)) {
+    if (boxesOverlap(startBox, box) && queries.intersects(m_gizmoEntity, transform, entity)) {
       alreadyIn.push_back(entity);
       alreadyInBoxes.push_back(box);
     }
@@ -1013,8 +1240,8 @@ bool EditorUISystem::applyGizmoChange(SystemManager &systemManager, ComponentMan
     const auto collidesAt = [&](const Transform &pose) {
       bool collides = false;
       componentManager.forEachComponent<Model>([&](Entity entity, Model &) {
-        if (!collides && entity != selectedEntity && blocks(entity) && !componentManager.has<Hidden>(entity))
-          collides = queries.intersects(selectedEntity, pose, entity);
+        if (!collides && entity != m_gizmoEntity && blocks(entity) && !componentManager.has<Hidden>(entity))
+          collides = queries.intersects(m_gizmoEntity, pose, entity);
       });
       if (collides)
         return true;
@@ -1046,7 +1273,7 @@ bool EditorUISystem::applyGizmoChange(SystemManager &systemManager, ComponentMan
     delta[axis] = wanted.position[axis] - pose.position[axis];
     if (delta[axis] == 0.0f)
       continue;
-    float fraction = queries.sweep(selectedEntity, pose, delta, blocks).fraction;
+    float fraction = queries.sweep(m_gizmoEntity, pose, delta, blocks).fraction;
 
     // Not deeper into what it already cuts into: sticking out past its top (resting on a floor), no further down,
     // and so on for each side. Within it (a room) or across it on this axis there is nothing to sink into.
@@ -1068,7 +1295,7 @@ bool EditorUISystem::applyGizmoChange(SystemManager &systemManager, ComponentMan
 glm::vec3 EditorUISystem::oneSidedScalePosition(SystemManager &systemManager, ComponentManager &componentManager,
                                                 const Transform &transform, const glm::vec3 &newScale,
                                                 bool keepLowSide) const {
-  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  const auto *model = componentManager.tryGet<Model>(m_gizmoEntity);
   if (!model)
     return transform.position;
   const Mesh &mesh = systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle);
@@ -1088,7 +1315,7 @@ glm::vec3 EditorUISystem::oneSidedScalePosition(SystemManager &systemManager, Co
 Transform EditorUISystem::resizedTransform(SystemManager &systemManager, ComponentManager &componentManager,
                                           float offset) const {
   Transform result = m_resize.start;
-  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  const auto *model = componentManager.tryGet<Model>(m_gizmoEntity);
   if (!model)
     return result;
   const Mesh &mesh = systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle);
@@ -1109,7 +1336,7 @@ Transform EditorUISystem::resizedTransform(SystemManager &systemManager, Compone
 
 void EditorUISystem::renderResizeHandles(SystemManager &systemManager, ComponentManager &componentManager,
                                          Transform &transform, const glm::mat4 &view, const glm::mat4 &projection) {
-  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  const auto *model = componentManager.tryGet<Model>(m_gizmoEntity);
   ImGuiIO &io = ImGui::GetIO();
   if (!model || io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f) {
     m_resize.axis = -1;
@@ -1235,7 +1462,7 @@ void EditorUISystem::renderResizeHandles(SystemManager &systemManager, Component
 
 bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManager &componentManager,
                                     Transform &transform, bool snapped) {
-  const auto *model = componentManager.tryGet<Model>(selectedEntity);
+  const auto *model = componentManager.tryGet<Model>(m_gizmoEntity);
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();
   const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
@@ -1253,7 +1480,7 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   const ModelQueries queries(componentManager, resourceSystem, systemManager.getSystem<TransformSystem>());
   const auto hit = queries.raycast(glm::vec3(nearPoint), glm::vec3(farPoint - nearPoint),
                                    std::numeric_limits<float>::max(),
-                                   [&](Entity entity) { return entity != selectedEntity; });
+                                   [&](Entity entity) { return entity != m_gizmoEntity && !isSelected(entity); });
   if (!hit)
     return false;
 
@@ -1315,18 +1542,26 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
   });
   std::sort(roots.begin(), roots.end());
 
+  // The rows as drawn, for Shift+click ranges; the range is made once they all are
+  std::vector<Entity> visible;
+  Entity rangeTarget = -1;
   std::function<void(Entity, int)> node = [&](Entity entity, int depth) {
     const std::vector<Entity> children = transformSystem.getChildren(componentManager, entity);
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen |
                                ImGuiTreeNodeFlags_SpanAvailWidth;
     if (children.empty())
       flags |= ImGuiTreeNodeFlags_Leaf;
-    if (selectedEntity == entity)
+    if (isSelected(entity))
       flags |= ImGuiTreeNodeFlags_Selected;
     const std::string label = displayName(componentManager, entity) + "##tree" + std::to_string(entity);
+    visible.push_back(entity);
     const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
-    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
-      selectedEntity = entity;
+    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+      if (ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl)
+        rangeTarget = entity;
+      else
+        clickInList(entity, visible, false);
+    }
     dragToParent(systemManager, componentManager, entity, label);
     entityContextMenu(engine, systemManager, componentManager, entity);
     if (open) {
@@ -1338,6 +1573,8 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
   };
   for (Entity root : roots)
     node(root, 0);
+  if (rangeTarget != -1)
+    clickInList(rangeTarget, visible, false);
   if (roots.empty())
     ImGui::TextDisabled("  Drag an entity onto another\n  to attach it to it");
 
@@ -1520,8 +1757,8 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
     ImGui::BeginChild(header, ImVec2(0, kSectionHeight), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
     for (Entity entity : entities) {
       std::string label = entityLabel(entity, icon);
-      if (ImGui::Selectable(label.c_str(), selectedEntity == entity))
-        selectedEntity = (selectedEntity == entity) ? -1 : entity;
+      if (ImGui::Selectable(label.c_str(), isSelected(entity)))
+        clickInList(entity, entities, true);
       dragToParent(systemManager, componentManager, entity, label);
       entityContextMenu(engine, systemManager, componentManager, entity);
       if (m_scrollToSelection && selectedEntity == entity) {
@@ -1633,7 +1870,6 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
                                            ComponentManager &componentManager) {
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
-  auto &sceneSystem = systemManager.getSystem<SceneSystem>();
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
@@ -1645,7 +1881,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
   ImGui::Begin("Properties", &propOpen, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
   if (!propOpen) {
-    selectedEntity = -1;
+    selectOnly(-1);
     ImGui::End();
     return;
   }
@@ -1668,6 +1904,12 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
       }
     }
     ImGui::Text("Entity ID: %d", selectedEntity);
+    if (m_selection.size() > 1) {
+      ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%zu selected; showing the last one clicked", m_selection.size());
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Position, rotation and scale edits here apply to all of them (as changes);\n"
+                          "the gizmo moves, turns and scales them together");
+    }
     renderParentAndPrefab(systemManager, componentManager);
     ImGui::Separator();
   }
@@ -1685,9 +1927,23 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         auto &t = componentManager.get<Transform>(selectedEntity);
         if (!componentManager.has<Camera>(selectedEntity))
           renderGizmoControls();
-        ImGui::DragFloat3("Position##t", &t.position.x, 0.1f);
-        ImGui::DragFloat3("Rotation##t", &t.rotation.x, 0.1f);
-        ImGui::DragFloat3("Scale##t", &t.scale.x, 0.01f);
+        const Transform editedFrom = t;
+        const bool movedField = ImGui::DragFloat3("Position##t", &t.position.x, 0.1f);
+        const bool turnedField = ImGui::DragFloat3("Rotation##t", &t.rotation.x, 0.1f);
+        const bool scaledField = ImGui::DragFloat3("Scale##t", &t.scale.x, 0.01f);
+        // With several selected, the same change goes to the others (the roots, which carry their children)
+        if ((movedField || turnedField || scaledField) && m_selection.size() > 1)
+          for (Entity other : selectionRoots(componentManager)) {
+            Transform *otherTransform = componentManager.tryGet<Transform>(other);
+            if (other == selectedEntity || !otherTransform || componentManager.has<Camera>(other))
+              continue;
+            if (movedField)
+              otherTransform->position += t.position - editedFrom.position;
+            if (turnedField)
+              otherTransform->rotation += t.rotation - editedFrom.rotation;
+            if (scaledField)
+              otherTransform->scale = glm::max(otherTransform->scale + (t.scale - editedFrom.scale), glm::vec3(0.001f));
+          }
       }
     }
   }
@@ -2166,9 +2422,10 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
     ImGui::Separator();
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.15f, 0.15f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.2f, 0.2f, 1.0f));
-    if (ImGui::Button("Delete Entity", ImVec2(-1, 0))) {
-      sceneSystem.destroyEntity(selectedEntity);
-      selectedEntity = -1;
+    const std::string deleteLabel =
+        m_selection.size() > 1 ? "Delete " + std::to_string(m_selection.size()) + " Entities" : "Delete Entity";
+    if (ImGui::Button(deleteLabel.c_str(), ImVec2(-1, 0))) {
+      deleteSelected(engine, systemManager, componentManager);
       earlyOut = true;
     }
     ImGui::PopStyleColor(2);
@@ -2446,7 +2703,7 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
         position = camera->position + glm::normalize(camera->front) * 5.0f;
       const Entity placed = engine.instantiate(prefabFile, position);
       if (placed != -1) {
-        selectedEntity = placed;
+        selectOnly(placed);
         m_scrollToSelection = true;
         ImGui::CloseCurrentPopup();
       }
@@ -2640,7 +2897,7 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
         systemManager.getSystem<CameraSystem>().setActiveCamera(e);
     }
 
-    selectedEntity = e;
+    selectOnly(e);
 
     // Reset some fields
     memset(entityName, 0, sizeof(entityName));

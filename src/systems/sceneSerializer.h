@@ -59,6 +59,8 @@ public:
   // The entity and its descendants as scene-file text (what the editor copies to the clipboard), the root keeping its
   // place in the world but not its parent; empty if the entity does not exist
   std::string copyToJson(Entity root) const;
+  // Several roots at once, each with its descendants
+  std::string copyToJson(const std::vector<Entity> &roots) const;
   // Adds the entities of such text to the scene; returns them in order, the root first (empty if the text is not
   // a scene or prefab in this format)
   std::vector<Entity> pasteFromJson(const std::string &text);
