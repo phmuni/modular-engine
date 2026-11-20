@@ -1235,10 +1235,14 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   if (!ImGuizmo::IsUsing()) {
     m_alignHeading = headingAround(rotationOf(*transform));
     m_alignGrabbed = false;
+    m_dragStartRotation = rotationOf(*transform);
+    m_dragStartAngles = transform->rotation;
   }
   const bool snapping = m_gizmoSnap || io.KeyCtrl;
-  const bool gizmoMoved = ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode,
-                                               glm::value_ptr(model), nullptr, snapping ? snap : nullptr);
+  // Rotations are snapped here, not by the gizmo (which only steps from where the drag started): see below
+  const bool gizmoMoved =
+      ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode, glm::value_ptr(model),
+                           nullptr, snapping && operation != ImGuizmo::ROTATE ? snap : nullptr);
   // Align to surface: dragging the gizmo's center (its free move) follows the cursor over surfaces (off any surface,
   // the gizmo moves it as usual). Only the center: an arrow or a plane square is a request to keep to that axis or
   // plane, and following the surface there would carry the entity somewhere the handle does not point (the cursor's
@@ -1267,13 +1271,13 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   if (operation == ImGuizmo::TRANSLATE)
     wanted.position = glm::vec3(model[3]);
   else if (operation == ImGuizmo::ROTATE)
-    wanted.rotation = eulerOf(glm::quat_cast(rotation)); // steady at +-90 degrees of pitch, and without round-off
+    wanted.rotation = snapping ? snappedRotation(glm::quat_cast(rotation))
+                               : eulerOf(glm::quat_cast(rotation)); // steady at 90 degrees of pitch, no round-off
   else
     wanted.scale = scale;
   // The gizmo snaps how far it moved, from where the drag started: an entity at 1.3 went to 1.8 and 2.3, never onto
   // the grid. The axes that changed go onto it instead (world axes: along local ones the grid has no meaning), and a
-  // scale that changed to the 0.1 steps. Angles keep the gizmo's steps from where they were: rounding three Euler
-  // angles is not rounding the turn the ring made.
+  // scale that changed to the 0.1 steps (angles: snappedRotation).
   if (snapping) {
     const auto onto = [](float value, float step) {
       const float snapped = std::round(value / step) * step;
@@ -1565,6 +1569,39 @@ void EditorUISystem::renderResizeHandles(SystemManager &systemManager, Component
     if (active || static_cast<int>(i) == hovered)
       drawList->AddCircle(screen, kRadius + 2.5f, IM_COL32(255, 255, 255, 230), 0, 2.0f);
   }
+}
+
+glm::vec3 EditorUISystem::snappedRotation(const glm::quat &dragged) const {
+  // A turn that changed one angle only (about the world's up: the heading, whatever the entity's tilt; or one axis of
+  // an entity that is not tilted otherwise) puts that angle on the 15 degree steps: a crate at 7 degrees goes to 0 or
+  // 15, not 22. Wrapped, so 179 to -179 is a change of 2.
+  const glm::vec3 angles = eulerOf(dragged);
+  int changed = -1, count = 0;
+  for (int axis = 0; axis < 3; ++axis) {
+    const float difference = std::remainder(angles[axis] - m_dragStartAngles[axis], 360.0f);
+    if (std::abs(difference) > 1e-3f) {
+      changed = axis;
+      ++count;
+    }
+  }
+  if (count == 0)
+    return m_dragStartAngles;
+  if (count == 1) {
+    glm::vec3 snapped = angles;
+    snapped[changed] = std::round(angles[changed] / kSnapAngle) * kSnapAngle;
+    if (snapped[changed] == 0.0f || std::abs(snapped[changed]) == 360.0f)
+      snapped[changed] = 0.0f;
+    return snapped;
+  }
+  // A turn that moved several angles at once (a ring tilted with the entity): rounding each would not be the turn the
+  // ring made, so the turn itself goes to 15 degree steps, around its own axis, from where the drag started
+  const glm::quat turn = glm::normalize(dragged * glm::inverse(m_dragStartRotation));
+  const float angle = 2.0f * std::acos(std::clamp(std::abs(turn.w), 0.0f, 1.0f));
+  if (angle < 1e-5f)
+    return m_dragStartAngles;
+  const glm::vec3 axis = glm::normalize(glm::vec3(turn.x, turn.y, turn.z) * (turn.w < 0.0f ? -1.0f : 1.0f));
+  const float stepped = glm::radians(std::round(glm::degrees(angle) / kSnapAngle) * kSnapAngle);
+  return eulerOf(glm::angleAxis(stepped, axis) * m_dragStartRotation);
 }
 
 bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManager &componentManager,

@@ -5,6 +5,7 @@
 #include "systems/editor/assetBrowser.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <string>
 #include <vector>
 #include "components/transform.h"
@@ -120,6 +121,9 @@ private:
   // The transform with the dragged face moved `offset` outward from where it started
   Transform resizedTransform(SystemManager &systemManager, ComponentManager &componentManager, float offset) const;
   // Align to surface: the move gizmo drags the entity over surfaces under the cursor, tilted to their slope
+  // The entity's rotation and angles when the gizmo drag started: snapped rotations are measured from it
+  glm::quat m_dragStartRotation{1.0f, 0.0f, 0.0f, 0.0f};
+  glm::vec3 m_dragStartAngles{0.0f};
   bool m_gizmoAlign = false;
   float m_alignHeading = 0.0f; // degrees around +Y, from when the drag started
   // Where the entity's origin (the gizmo's center) was on screen from the cursor when the drag started, in pixels: it
@@ -128,6 +132,9 @@ private:
   bool m_alignGrabbed = false; // m_alignGrabOffset is set for this drag
   // Places the selected entity on the surface under the cursor; false if there is none. With `snapped`, its place on
   // the surface goes to the grid (0.5 units along the surface) and its heading to 15 degrees.
+  // The rotate gizmo's result with Snap on, as angles: on the 15 degree steps when the turn changed one angle, else
+  // the turn itself in 15 degree steps from where the drag started
+  glm::vec3 snappedRotation(const glm::quat &dragged) const;
   bool alignToSurface(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
                       bool snapped);
   // Applies a gizmo change to the transform: as is, or kept out of other models when m_gizmoSolid is on
