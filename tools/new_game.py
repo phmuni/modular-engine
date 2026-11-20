@@ -8,7 +8,8 @@
 
 The name is the folder's unless --name gives one. Each type starts as the same small game (walk, jump, push crates,
 collect coins) written its way. C++ projects build against this engine checkout (its path goes into their
-CMakeLists.txt as MODULAR_ENGINE_DIR); Lua projects get a copy of the engine's prebuilt runner (bin/runner), built
+CMakeLists.txt as MODULAR_ENGINE_DIR; empty in the prebuilt package, which has no sources, so the engine is
+downloaded); Lua projects get a copy of the engine's prebuilt runner (bin/runner), built
 first if needed.
 """
 
@@ -38,7 +39,9 @@ def fill_placeholders(folder, name):
     for path in folder.rglob("*"):
         if path.is_file() and path.suffix in {".txt", ".cpp", ".h", ".md", ".json", ".lua"}:
             text = path.read_text()
-            new = text.replace(PLACEHOLDER, name).replace("@ENGINE_DIR@", ENGINE_DIR.as_posix())
+            # With no engine sources here (the prebuilt package), an empty directory makes the project download the engine
+            engine_dir = ENGINE_DIR.as_posix() if (ENGINE_DIR / "CMakeLists.txt").exists() else ""
+            new = text.replace(PLACEHOLDER, name).replace("@ENGINE_DIR@", engine_dir)
             if new != text:
                 path.write_text(new)
 
@@ -51,6 +54,9 @@ def ensure_runner():
     """The prebuilt Lua runner, built from this checkout the first time it is needed."""
     if runner_executable().exists():
         return True
+    if not (ENGINE_DIR / "CMakeLists.txt").exists():
+        print(f"This engine has no Lua runner ({runner_executable()}) and no sources to build one from.")
+        return False
     print("Building the Lua runner (once)...")
     build = ENGINE_DIR / "build"
     steps = [["cmake", "-S", str(ENGINE_DIR), "-B", str(build)],

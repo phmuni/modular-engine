@@ -1,8 +1,10 @@
 // The project launcher: creates game projects (Lua, C++ or both) from the engine's templates, builds and plays them,
-// and opens them in VS Code or the file browser. The same as tools/new_game.py, with a window.
+// exports them to a folder (an .app bundle on macOS) to give to players, and opens them in VS Code or the file
+// browser. The same as tools/new_game.py, with a window.
 //
-// It lives in the engine's bin/launcher; the engine checkout (its templates and its prebuilt Lua runner) is two
-// folders up. The project list is kept in the user's preferences folder.
+// It lives in the engine's bin/launcher; the engine (a checkout, or the prebuilt package of tools/package_engine.py,
+// which has the templates and the Lua runner but no sources) is two folders up. The project list is kept in the
+// user's preferences folder.
 
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
@@ -15,11 +17,13 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <mutex>
 #include <regex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -57,6 +61,107 @@ struct Project {
 };
 
 std::string quoted(const fs::path &path) { return "\"" + path.string() + "\""; }
+
+// --- The build tools -------------------------------------------------------------------------------------------------
+
+// CMake and a compiler, which only C++ projects need. A program started from the macOS Finder does not get the shell's
+// PATH (just /usr/bin:/bin:/usr/sbin:/sbin), so cmake from Homebrew or CMake.app would not be found by name: it is
+// looked for in the usual places and run by its full path.
+struct Toolchain {
+  fs::path cmake; // empty when not found
+
+  static Toolchain locate() {
+    std::vector<fs::path> folders;
+    if (const char *path = std::getenv("PATH")) {
+#ifdef _WIN32
+      const char separator = ';';
+#else
+      const char separator = ':';
+#endif
+      std::stringstream stream(path);
+      std::string folder;
+      while (std::getline(stream, folder, separator))
+        if (!folder.empty())
+          folders.push_back(folder);
+    }
+    for (const fs::path &folder : commonFolders())
+      folders.push_back(folder);
+    for (const fs::path &folder : folders) {
+      std::error_code error;
+      const fs::path candidate = folder / (std::string("cmake") + kExeSuffix);
+      if (fs::is_regular_file(candidate, error))
+        return {candidate};
+    }
+    return {};
+  }
+
+  static std::vector<fs::path> commonFolders() {
+#if defined(__APPLE__)
+    return {"/opt/homebrew/bin", "/usr/local/bin", "/Applications/CMake.app/Contents/bin"};
+#elif defined(_WIN32)
+    return {"C:\\Program Files\\CMake\\bin", "C:\\Program Files (x86)\\CMake\\bin"};
+#else
+    return {"/usr/local/bin", "/usr/bin", "/snap/bin"};
+#endif
+  }
+
+  // A cmake command line. CMake runs git, ninja and the compiler by name, so the child's PATH starts with cmake's own
+  // folder and, on macOS, Homebrew's.
+  std::string command(const std::string &arguments) const {
+    std::string folders = cmake.parent_path().string();
+#ifdef __APPLE__
+    for (const char *homebrew : {"/opt/homebrew/bin", "/usr/local/bin"})
+      if (folders != homebrew)
+        folders += std::string(":") + homebrew;
+#endif
+#ifdef _WIN32
+    return "set \"PATH=" + folders + ";%PATH%\" && " + quoted(cmake) + " " + arguments;
+#else
+    return "PATH=\"" + folders + ":$PATH\" " + quoted(cmake) + " " + arguments;
+#endif
+  }
+
+  // Empty when C++ projects can be built; otherwise what is missing and what to install
+  std::string problem() const {
+    std::string text;
+#ifdef __APPLE__
+    // Without the command line tools there is no compiler, and no git for downloading the dependencies
+    if (std::system("xcode-select -p > /dev/null 2>&1") != 0)
+      text += "No compiler found. In a terminal, run: xcode-select --install (it installs the compiler and git).\n";
+    if (cmake.empty())
+      text += "CMake not found. Install it with Homebrew (brew install cmake) or from cmake.org, then try again.\n";
+#elif defined(_WIN32)
+    if (cmake.empty())
+      text += "CMake not found. Install CMake (cmake.org) and Visual Studio Build Tools with the C++ workload, then "
+              "try again.\n";
+#else
+    if (cmake.empty())
+      text += "CMake not found. Install a C++ compiler, git and cmake with your package manager (for example: "
+              "sudo apt install build-essential git cmake), then try again.\n";
+#endif
+    return text;
+  }
+};
+
+// A project's name: a Lua project's is in project.json, a C++ one's is the program CMake builds (the folder's name
+// when the project was created)
+std::string readProjectName(const fs::path &folder) {
+  const std::string name = folder.filename().string();
+  if (std::ifstream file{folder / "project.json"}) {
+    try {
+      return nlohmann::json::parse(file).value("name", name);
+    } catch (const std::exception &) {
+      return name;
+    }
+  }
+  if (std::ifstream file{folder / "CMakeLists.txt"}) {
+    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::smatch match;
+    if (std::regex_search(text, match, std::regex("modular_engine_add_game\\(\\s*([A-Za-z_][A-Za-z0-9_]*)")))
+      return match[1];
+  }
+  return name;
+}
 
 // Starts a program without waiting for it
 void launch(const std::string &command) {
@@ -183,10 +288,13 @@ struct ProjectFiles {
 
   fs::path runner() const { return engineDir / "bin" / "runner" / (std::string("runner") + kExeSuffix); }
 
-  std::string buildRunnerCommand() const {
+  // The packaged engine has no sources: its runner is already built, and cannot be
+  bool hasSources() const { return fs::exists(engineDir / "CMakeLists.txt"); }
+
+  std::vector<std::string> buildRunnerCommands(const Toolchain &toolchain) const {
     const fs::path build = engineDir / "build";
-    return "cmake -S " + quoted(engineDir) + " -B " + quoted(build) + " && cmake --build " + quoted(build) +
-           " --target runner -j";
+    return {toolchain.command("-S " + quoted(engineDir) + " -B " + quoted(build)),
+            toolchain.command("--build " + quoted(build) + " --target runner -j")};
   }
 
   // The template's files into the project (a C++ + Lua project is the C++ template with the mixed one over it),
@@ -230,7 +338,8 @@ struct ProjectFiles {
       in.close();
       const std::string original = text;
       replaceAll(text, "MyGame", name);
-      replaceAll(text, "@ENGINE_DIR@", engineDir.generic_string());
+      // With no engine sources here (the package), an empty directory makes the project download the engine
+      replaceAll(text, "@ENGINE_DIR@", hasSources() ? engineDir.generic_string() : "");
       if (text != original)
         std::ofstream(entry.path(), std::ios::binary) << text;
     }
@@ -257,6 +366,105 @@ struct ProjectFiles {
     fs::rename(bin / runner().filename(), project.executable());
     fs::permissions(project.executable(), fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec |
                                               fs::perms::others_read | fs::perms::others_exec);
+  }
+};
+
+// --- Exporting: the files a player needs, and nothing else -----------------------------------------------------------
+
+struct Exporter {
+  static fs::path releaseDir(const Project &project) { return project.path / "build-release"; }
+
+  // A C++ project is built in Release in its own build folder and its own output folder, so the build/ and bin/ the
+  // developer plays from stay as they are; a Lua project has nothing to build
+  static std::vector<std::string> buildCommands(const Project &project, const Toolchain &toolchain) {
+    if (!project.compiled())
+      return {};
+    const fs::path build = releaseDir(project);
+    return {toolchain.command("-S " + quoted(project.path) + " -B " + quoted(build) +
+                              " -DCMAKE_BUILD_TYPE=Release -DMODULAR_ENGINE_GAME_OUTPUT_DIR=" + quoted(build / "bin")),
+            toolchain.command("--build " + quoted(build) + " --config Release -j")};
+  }
+
+  // The game from the built program, SDL, the engine's assets and the project's assets into outputDir; returns what
+  // was made: <name>.app on macOS, a <name> folder elsewhere. Throws on failure.
+  static fs::path assemble(const Project &project, const fs::path &outputDir) {
+    const fs::path built = project.compiled() ? releaseDir(project) / "bin" : project.path / "bin";
+    if (!fs::exists(built / (project.name + kExeSuffix)))
+      throw std::runtime_error((built / (project.name + kExeSuffix)).string() + " is not there (build it first)");
+    if (!fs::exists(project.path / "assets"))
+      throw std::runtime_error(project.path.string() + " has no assets folder");
+    if (!project.compiled() && !fs::exists(project.path / "project.json"))
+      throw std::runtime_error(project.path.string() + " has no project.json");
+
+    // The program looks for ../assets and ../project.json from its base folder, which is its own folder, except in a
+    // macOS app bundle, where SDL makes it Contents/Resources: there engine-assets goes with it, and the program and
+    // SDL's library stay in Contents/MacOS
+#ifdef __APPLE__
+    const fs::path result = outputDir / (project.name + ".app");
+    const fs::path root = result / "Contents";
+    const fs::path program = root / "MacOS";
+    const fs::path baseFolder = root / "Resources";
+#else
+    const fs::path result = outputDir / project.name;
+    const fs::path root = result;
+    const fs::path program = root / "bin";
+    const fs::path baseFolder = program;
+#endif
+    std::error_code error;
+    fs::remove_all(result, error);
+    fs::create_directories(program);
+
+    copyTree(built, program, [](const fs::path &relative) {
+      // What a run leaves behind: the texture and mesh caches, saved settings, screenshots, logs
+      const std::string extension = relative.extension().string();
+      return relative.begin()->string() == "cache" || extension == ".ini" || extension == ".bmp" ||
+             extension == ".log" || extension == ".pdb" || extension == ".ilk";
+    });
+    if (baseFolder != program) {
+      fs::create_directories(baseFolder);
+      fs::rename(program / "engine-assets", baseFolder / "engine-assets");
+    }
+    copyTree(project.path / "assets", root / "assets", [](const fs::path &) { return false; });
+    if (!project.compiled())
+      fs::copy_file(project.path / "project.json", root / "project.json");
+#ifdef __APPLE__
+    writeInfoPlist(project, root / "Info.plist");
+    // The programs are signed ad hoc by the linker; signing the bundle too lets macOS treat it as one app. Optional.
+    std::system(("codesign --force --deep --sign - " + quoted(result) + " > /dev/null 2>&1").c_str());
+#endif
+    return result;
+  }
+
+  static void copyTree(const fs::path &from, const fs::path &to, const std::function<bool(const fs::path &)> &skip) {
+    fs::create_directories(to);
+    for (auto it = fs::recursive_directory_iterator(from); it != fs::recursive_directory_iterator(); ++it) {
+      const fs::path relative = fs::relative(it->path(), from);
+      if (skip(relative)) {
+        if (it->is_directory() && !it->is_symlink())
+          it.disable_recursion_pending();
+        continue;
+      }
+      const fs::path target = to / relative;
+      if (it->is_symlink())
+        fs::copy_symlink(it->path(), target);
+      else if (it->is_directory())
+        fs::create_directories(target);
+      else
+        fs::copy_file(it->path(), target, fs::copy_options::overwrite_existing);
+    }
+  }
+
+  static void writeInfoPlist(const Project &project, const fs::path &path) {
+    std::ofstream(path) << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                           "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+                           "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+                           "<plist version=\"1.0\">\n<dict>\n"
+                           "  <key>CFBundleExecutable</key><string>" << project.name << "</string>\n"
+                           "  <key>CFBundleIdentifier</key><string>com.modular-engine." << project.name << "</string>\n"
+                           "  <key>CFBundleName</key><string>" << project.name << "</string>\n"
+                           "  <key>CFBundlePackageType</key><string>APPL</string>\n"
+                           "  <key>NSHighResolutionCapable</key><true/>\n"
+                           "</dict>\n</plist>\n";
   }
 };
 
@@ -333,11 +541,12 @@ private:
   int m_newType = 0;
 
   // The system's folder picker answers on its own time (and maybe thread)
-  enum class PickPurpose { Location, AddExisting };
+  enum class PickPurpose { Location, AddExisting, ExportTo };
   PickPurpose m_pickPurpose = PickPurpose::Location;
   std::mutex m_pickMutex;
   std::string m_picked;
   bool m_hasPick = false;
+  Project m_exporting; // the project whose Export asked for a folder
 
   void say(std::string message, bool error = false) {
     m_message = std::move(message);
@@ -396,7 +605,7 @@ private:
       ImGui::TableSetupColumn("Project", ImGuiTableColumnFlags_WidthStretch, 1.0f);
       ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 80.0f);
       ImGui::TableSetupColumn("Folder", ImGuiTableColumnFlags_WidthStretch, 2.0f);
-      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 330.0f);
+      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 440.0f);
       ImGui::TableHeadersRow();
       int remove = -1;
       for (size_t i = 0; i < m_projects.size(); ++i) {
@@ -422,6 +631,13 @@ private:
           if (ImGui::Button("Build"))
             build(project, false);
         }
+        ImGui::SameLine();
+        if (ImGui::Button("Export")) {
+          m_exporting = project;
+          pickFolder(PickPurpose::ExportTo);
+        }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Makes the game to give to players (an app on macOS), in a folder you choose");
         ImGui::EndDisabled();
         ImGui::BeginDisabled(!exists);
         ImGui::SameLine();
@@ -488,19 +704,16 @@ private:
       m_location = picked;
       return;
     }
+    if (m_pickPurpose == PickPurpose::ExportTo) {
+      exportProject(m_exporting, picked);
+      return;
+    }
     const fs::path folder(picked);
     if (!fs::exists(folder / "project.json") && !fs::exists(folder / "CMakeLists.txt")) {
       say(folder.string() + " is not a game project (no project.json or CMakeLists.txt)", true);
       return;
     }
-    // A Lua project is named in project.json; a C++ one after its folder
-    std::string name = folder.filename().string();
-    if (std::ifstream file{folder / "project.json"}) {
-      try {
-        name = nlohmann::json::parse(file).value("name", name);
-      } catch (const std::exception &) {
-      }
-    }
+    const std::string name = readProjectName(folder);
     add({name, folder, detectType(folder)});
     say("Added " + name);
   }
@@ -559,8 +772,15 @@ private:
     const Project project{m_newName, folder, type};
 
     if (type == ProjectType::Lua && !fs::exists(m_files.runner())) {
+      if (!m_files.hasSources()) {
+        say("This engine has no Lua runner (bin/runner) and no sources to build one from", true);
+        return false;
+      }
+      const Toolchain toolchain = Toolchain::locate();
+      if (!requireToolchain(toolchain))
+        return false;
       // The prebuilt runner comes first: build it, then create
-      m_tasks.run("Building the Lua runner (once)", {m_files.buildRunnerCommand()}, [this, project](bool ok) {
+      m_tasks.run("Building the Lua runner (once)", m_files.buildRunnerCommands(toolchain), [this, project](bool ok) {
         if (ok)
           finishCreating(project);
         else
@@ -591,12 +811,25 @@ private:
 
   // --- Build and play ---------------------------------------------------------------------------------------------
 
+  // Whether C++ can be built here; if not, the output says what to install
+  bool requireToolchain(const Toolchain &toolchain) {
+    const std::string problem = toolchain.problem();
+    if (problem.empty())
+      return true;
+    m_tasks.append("\n== C++ needs CMake and a compiler\n" + problem);
+    say("C++ needs CMake and a compiler: the output says what to install", true);
+    return false;
+  }
+
   void build(const Project &project, bool thenPlay) {
+    const Toolchain toolchain = Toolchain::locate();
+    if (!requireToolchain(toolchain))
+      return;
     const fs::path buildDir = project.path / "build";
     std::vector<std::string> commands;
     if (!fs::exists(buildDir / "CMakeCache.txt"))
-      commands.push_back("cmake -S " + quoted(project.path) + " -B " + quoted(buildDir));
-    commands.push_back("cmake --build " + quoted(buildDir) + " -j");
+      commands.push_back(toolchain.command("-S " + quoted(project.path) + " -B " + quoted(buildDir)));
+    commands.push_back(toolchain.command("--build " + quoted(buildDir) + " -j"));
     m_tasks.run("Building " + project.name, commands, [this, project, thenPlay](bool ok) {
       if (!ok) {
         say("The build of " + project.name + " failed; the output shows why", true);
@@ -613,6 +846,28 @@ private:
       build(project, true); // only what changed is built again
     else
       start(project);
+  }
+
+  // A C++ project is built in Release first; then the files a player needs go into the folder
+  void exportProject(const Project &project, const fs::path &folder) {
+    const Toolchain toolchain = Toolchain::locate();
+    if (project.compiled() && !requireToolchain(toolchain))
+      return;
+    m_tasks.run("Exporting " + project.name, Exporter::buildCommands(project, toolchain),
+                [this, project, folder](bool ok) {
+                  if (!ok) {
+                    say("The build of " + project.name + " failed; the output shows why", true);
+                    return;
+                  }
+                  try {
+                    const fs::path result = Exporter::assemble(project, folder);
+                    m_tasks.append("Exported to " + result.string() + "\n");
+                    say("Exported " + project.name + " to " + result.string());
+                    openFolder(folder);
+                  } catch (const std::exception &exception) {
+                    say(std::string("Could not export: ") + exception.what(), true);
+                  }
+                });
   }
 
   void start(const Project &project) {
@@ -651,8 +906,22 @@ int createFromCommandLine(const fs::path &engineDir, int argc, char **argv) {
   const Project project{name, folder, typeFromKey(kind)};
   const ProjectFiles files{engineDir};
   if (project.type == ProjectType::Lua && !fs::exists(files.runner())) {
+    if (!files.hasSources()) {
+      std::fprintf(stderr, "launcher: this engine has no Lua runner (bin/runner) and no sources to build one from\n");
+      return 1;
+    }
+    const Toolchain toolchain = Toolchain::locate();
+    if (const std::string problem = toolchain.problem(); !problem.empty()) {
+      std::fprintf(stderr, "launcher: building the Lua runner needs CMake and a compiler\n%s", problem.c_str());
+      return 1;
+    }
     std::printf("Building the Lua runner (once)...\n");
-    if (std::system(files.buildRunnerCommand().c_str()) != 0 || !fs::exists(files.runner())) {
+    for (const std::string &command : files.buildRunnerCommands(toolchain))
+      if (std::system(command.c_str()) != 0) {
+        std::fprintf(stderr, "launcher: could not build the Lua runner\n");
+        return 1;
+      }
+    if (!fs::exists(files.runner())) {
       std::fprintf(stderr, "launcher: could not build the Lua runner\n");
       return 1;
     }
@@ -689,6 +958,44 @@ int createFromCommandLine(const fs::path &engineDir, int argc, char **argv) {
   return 0;
 }
 
+// launcher --export <projectDir> <outputDir>: the same as the window's Export
+int exportFromCommandLine(int argc, char **argv) {
+  if (argc < 4) {
+    std::fprintf(stderr, "usage: launcher --export <projectDir> <outputDir>\n");
+    return 1;
+  }
+  const fs::path folder = fs::absolute(argv[2]).lexically_normal();
+  const fs::path output = fs::absolute(argv[3]).lexically_normal();
+  if (!fs::exists(folder / "project.json") && !fs::exists(folder / "CMakeLists.txt")) {
+    std::fprintf(stderr, "launcher: %s is not a game project (no project.json or CMakeLists.txt)\n",
+                 folder.string().c_str());
+    return 1;
+  }
+  const Project project{readProjectName(folder), folder, detectType(folder)};
+  const Toolchain toolchain = Toolchain::locate();
+  if (project.compiled()) {
+    if (const std::string problem = toolchain.problem(); !problem.empty()) {
+      std::fprintf(stderr, "launcher: C++ needs CMake and a compiler\n%s", problem.c_str());
+      return 1;
+    }
+  }
+  for (const std::string &command : Exporter::buildCommands(project, toolchain)) {
+    std::printf("$ %s\n", command.c_str());
+    std::fflush(stdout);
+    if (std::system(command.c_str()) != 0) {
+      std::fprintf(stderr, "launcher: the build of %s failed\n", project.name.c_str());
+      return 1;
+    }
+  }
+  try {
+    std::printf("Exported %s to %s\n", project.name.c_str(), Exporter::assemble(project, output).string().c_str());
+  } catch (const std::exception &exception) {
+    std::fprintf(stderr, "launcher: could not export: %s\n", exception.what());
+    return 1;
+  }
+  return 0;
+}
+
 // The window's pixels as a BMP (the back buffer, before it is shown)
 void saveScreenshot(SDL_Window *window, const std::string &path) {
   int width = 0, height = 0;
@@ -713,6 +1020,8 @@ int main(int argc, char **argv) {
   const fs::path engineDir = fs::weakly_canonical(fs::path(base ? base : ".") / ".." / "..");
   if (argc > 1 && std::string(argv[1]) == "--create")
     return fs::exists(engineDir / "templates") ? createFromCommandLine(engineDir, argc, argv) : 1;
+  if (argc > 1 && std::string(argv[1]) == "--export")
+    return fs::exists(engineDir / "templates") ? exportFromCommandLine(argc, argv) : 1;
   std::string screenshot; // --screenshot <file.bmp>: saves the window after a few frames and quits
   if (argc > 2 && std::string(argv[1]) == "--screenshot")
     screenshot = fs::absolute(argv[2]).string();

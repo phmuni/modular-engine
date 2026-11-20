@@ -1,5 +1,5 @@
 #pragma once
-// Helpers for caches that store processed assets in bin/cache: entry names, source-file stamps and binary I/O.
+// Helpers for caches that store processed assets in bin/cache (see cacheRoot): entry names, source-file stamps and binary I/O.
 
 #include "foundation/core/config.h"
 #include <cstdint>
@@ -12,7 +12,30 @@
 
 namespace FileCache {
 
-// Where entries for `key` live: bin/cache/<folder>/<hash of key><extension>
+// The cache folder: bin/cache next to the executable, except inside a macOS app bundle (where SDL's base path is the
+// bundle's Contents/Resources), which should not be written to (it may be read-only, and writing breaks its
+// signature): there it is the user's preferences folder for the game
+// (~/Library/Application Support/modular-engine/<App name>/cache)
+inline const std::string &cacheRoot() {
+  static const std::string root = [] {
+    const std::string &base = EngineConfig::getBasePath();
+    const size_t bundle = base.find(".app/Contents/");
+    if (bundle != std::string::npos) {
+      const size_t slash = base.rfind('/', bundle);
+      const size_t nameStart = slash == std::string::npos ? 0 : slash + 1;
+      const std::string appName = base.substr(nameStart, bundle - nameStart);
+      if (char *preferences = SDL_GetPrefPath("modular-engine", appName.c_str())) {
+        std::string path = std::string(preferences) + "cache/";
+        SDL_free(preferences);
+        return path;
+      }
+    }
+    return EngineConfig::resolvePath("cache/");
+  }();
+  return root;
+}
+
+// Where entries for `key` live: <cache folder>/<folder>/<hash of key><extension>
 inline std::string entryPath(const std::string &folder, const std::string &key, const char *extension) {
   uint64_t hash = 1469598103934665603ull; // FNV-1a
   for (unsigned char c : key) {
@@ -21,7 +44,7 @@ inline std::string entryPath(const std::string &folder, const std::string &key, 
   }
   char name[40];
   std::snprintf(name, sizeof(name), "%016llx%s", static_cast<unsigned long long>(hash), extension);
-  return EngineConfig::resolvePath("cache/" + folder + "/") + name;
+  return cacheRoot() + folder + "/" + name;
 }
 
 // A key that names the same file however its path was written

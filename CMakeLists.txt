@@ -12,6 +12,9 @@ option(MODULAR_ENGINE_BUILD_EXAMPLES "Build the example apps (bin/engine)" ${MOD
 option(MODULAR_ENGINE_BUILD_TOOLS "Build the Lua runner (bin/runner) and the project launcher (bin/launcher)"
        ${MODULAR_ENGINE_TOP_LEVEL})
 set(ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+# Where this checkout's own programs (bin/engine, bin/runner, bin/launcher) are built; tools/package_engine.py points it
+# elsewhere so packaging does not disturb the development build
+set(MODULAR_ENGINE_BIN_DIR "${ENGINE_DIR}/bin" CACHE PATH "Where the engine's own programs are built")
 # Also for modular_engine_add_game, which runs in the scope of the game that calls it
 set(MODULAR_ENGINE_ROOT "${ENGINE_DIR}" CACHE INTERNAL "modular-engine checkout")
 
@@ -219,9 +222,13 @@ endif()
 # Next to it go SDL's shared library and bin/engine-assets: the shaders, fonts and basic models the engine itself
 # loads, which it looks for there when the game's own assets/ folder does not have them. A game folder is then
 # complete: copy bin/ and assets/ to ship it. ENGINE_ASSETS_IN_PLACE skips that copy, for the engine's own examples.
+# MODULAR_ENGINE_GAME_OUTPUT_DIR (a cache variable, for a game built on its own) replaces OUTPUT_DIR: the launcher's
+# Export builds a Release into its own folder this way, so the game's bin/ keeps the build it was playing.
 function(modular_engine_add_game target)
   cmake_parse_arguments(GAME "ENGINE_ASSETS_IN_PLACE" "OUTPUT_DIR" "SOURCES" ${ARGN})
-  if(NOT GAME_OUTPUT_DIR)
+  if(MODULAR_ENGINE_GAME_OUTPUT_DIR)
+    set(GAME_OUTPUT_DIR "${MODULAR_ENGINE_GAME_OUTPUT_DIR}")
+  elseif(NOT GAME_OUTPUT_DIR)
     set(GAME_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bin")
   endif()
   add_executable(${target} ${GAME_SOURCES})
@@ -253,15 +260,15 @@ endfunction()
 
 # --- Examples ---
 if(MODULAR_ENGINE_BUILD_EXAMPLES)
-  modular_engine_add_game(engine OUTPUT_DIR "${ENGINE_DIR}/bin" SOURCES "${ENGINE_DIR}/src/main.cpp"
+  modular_engine_add_game(engine OUTPUT_DIR "${MODULAR_ENGINE_BIN_DIR}" SOURCES "${ENGINE_DIR}/src/main.cpp"
                           ENGINE_ASSETS_IN_PLACE)
 endif()
 
 # --- Tools ---
 # bin/runner: the prebuilt player of Lua projects, copied (with its engine-assets and SDL) into each Lua project's bin/
 if(MODULAR_ENGINE_BUILD_TOOLS)
-  modular_engine_add_game(runner OUTPUT_DIR "${ENGINE_DIR}/bin/runner" SOURCES "${ENGINE_DIR}/runner/main.cpp")
+  modular_engine_add_game(runner OUTPUT_DIR "${MODULAR_ENGINE_BIN_DIR}/runner" SOURCES "${ENGINE_DIR}/runner/main.cpp")
   # bin/launcher: creates, builds and plays projects; finds the templates two folders up (no engine assets needed)
-  modular_engine_add_game(launcher OUTPUT_DIR "${ENGINE_DIR}/bin/launcher" SOURCES "${ENGINE_DIR}/launcher/main.cpp"
+  modular_engine_add_game(launcher OUTPUT_DIR "${MODULAR_ENGINE_BIN_DIR}/launcher" SOURCES "${ENGINE_DIR}/launcher/main.cpp"
                           ENGINE_ASSETS_IN_PLACE)
 endif()

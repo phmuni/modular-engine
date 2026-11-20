@@ -67,7 +67,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
 | **Lua Scripting**          | Entity and game scripts with hot reload, the engine's API, and C++ functions handed to them (Lua 5.4, sol2) |
-| **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds and plays them, opens them in VS Code |
+| **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds, plays and exports them, opens them in VS Code |
 | **Skeletal Animation**     | glTF skins and clips (linear, step, cubic spline), crossfades, rigid parts following their nodes, animated shadows |
 | **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
@@ -318,6 +318,27 @@ gets `--screenshot`, `--benchmark`, `--deterministic` and `--save-scene` on its 
 
 Setting the `CPM_SOURCE_CACHE` environment variable to a folder shares the dependency downloads (SDL, RmlUi...)
 between C++ projects.
+
+**Export** (a button per project, or `./bin/launcher/launcher --export ~/Games/Asteroids ~/Desktop`) makes the game
+to give to players: only the program, SDL's library, `engine-assets` and the project's `assets/` (and `project.json`),
+without sources, build folders or caches. A C++ project is built in Release first, in its own `build-release/`, so
+your Debug `build/` and `bin/` are left alone. On macOS the result is `<Name>.app` (the program and SDL in
+`Contents/MacOS`, `assets/` and `project.json` in `Contents`, `engine-assets` in `Contents/Resources`, which is where
+SDL says an app's files are); elsewhere a `<Name>/` folder with `bin/` and `assets/`.
+The texture and mesh caches normally go in `bin/cache`; inside an `.app` they go to
+`~/Library/Application Support/modular-engine/<Name>/cache` instead. The app is signed ad hoc, enough to run on this
+Mac; to give it to others it needs your own Apple signing and notarization.
+
+**Without a compiler**: `python3 tools/package_engine.py` builds the launcher and runner in Release and gathers
+`dist/modular-engine-<platform>/` (`bin/launcher`, `bin/runner`, `templates`, this README and the LICENSE). Whoever gets
+that folder creates, plays and exports Lua projects with its launcher, with no toolchain and no sources. A C++ project
+made from it has an empty `MODULAR_ENGINE_DIR`, so it downloads the engine from GitHub when built.
+
+C++ builds need CMake and a compiler. The launcher looks for `cmake` on the `PATH`, then in the usual places (Homebrew,
+CMake.app, `C:\Program Files\CMake`), so it also works when opened from the Finder, which does not pass the shell's
+`PATH`. If something is missing, it says what to install (macOS: `xcode-select --install` and `brew install cmake`;
+Windows: Visual Studio Build Tools with C++ and CMake; Linux: compiler, git and cmake from the package manager). Lua
+projects need none of it.
 
 ### Lua scripts
 
