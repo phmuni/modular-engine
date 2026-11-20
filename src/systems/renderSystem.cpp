@@ -205,19 +205,48 @@ void RenderSystem::gatherShadowCasters(ComponentManager &componentManager, Resou
     return;
   m_shadowCastersGathered = true;
   m_shadowCasters.clear();
+  m_customShadowCasters.clear();
   componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
     if (isHidden(componentManager, entity))
       return;
-    // Custom shaders that move vertices or fade the surface cannot show in the depth pass, which draws the original
-    // geometry; a model made only of parts that say `#pragma noshadow` casts none instead of a wrong one
-    if (resourceSystem.hasCustomShaders() && !model.materialHandles.empty() &&
-        std::all_of(model.materialHandles.begin(), model.materialHandles.end(), [&](uint32_t material) {
-          const CustomShader *custom = resourceSystem.customShaderForHandle(resourceSystem.getMaterial(material).getShaderHandle());
-          return custom && !custom->code.castsShadow;
-        }))
-      return;
     const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
     const glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(componentManager.get<Transform>(entity));
+    // Parts with a custom shader are drawn through its shadow variant, so its vertex() movement and its discards
+    // show in the shadow. A part that says `#pragma noshadow` casts none (when all of a model's parts do, the whole
+    // model); one whose variant did not compile casts the shadow of its original geometry.
+    if (resourceSystem.hasCustomShaders() && !model.materialHandles.empty()) {
+      auto customOf = [&](uint32_t material) {
+        return resourceSystem.customShaderForHandle(resourceSystem.getMaterial(material).getShaderHandle());
+      };
+      const bool anyCustom = std::any_of(model.materialHandles.begin(), model.materialHandles.end(),
+                                         [&](uint32_t material) { return customOf(material) != nullptr; });
+      if (anyCustom) {
+        CustomShadowCaster caster{model.meshHandle,
+                                  modelMatrix,
+                                  glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f)),
+                                  mesh.getBoundsRadius() * maxScaleOf(modelMatrix),
+                                  mesh.isSkinned() && m_animation ? m_animation->getJointMatrices(entity) : nullptr,
+                                  {},
+                                  {}};
+        auto isPlain = [&](uint32_t material) {
+          const CustomShader *custom = customOf(material);
+          return !custom || (custom->code.castsShadow && custom->shadowHandle == 0);
+        };
+        auto isCustom = [&](uint32_t material) {
+          const CustomShader *custom = customOf(material);
+          return custom && custom->code.castsShadow && custom->shadowHandle != 0;
+        };
+        forEachDrawRange(mesh, model, false, isPlain, [&](uint32_t start, uint32_t count, uint32_t material) {
+          caster.plain.push_back({start, count, material, nullptr});
+        });
+        forEachDrawRange(mesh, model, false, isCustom, [&](uint32_t start, uint32_t count, uint32_t material) {
+          caster.custom.push_back({start, count, material, customOf(material)});
+        });
+        if (!caster.plain.empty() || !caster.custom.empty())
+          m_customShadowCasters.push_back(std::move(caster));
+        return;
+      }
+    }
     m_shadowCasters.push_back({model.meshHandle, modelMatrix,
                                glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f)),
                                mesh.getBoundsRadius() * maxScaleOf(modelMatrix),
@@ -273,6 +302,61 @@ void RenderSystem::drawShadowCasters(Shader &depthShader, const glm::mat4 &viewP
     m_instanceData.push_back({caster.model, {}});
   }
   flush();
+  if (!m_customShadowCasters.empty())
+    drawCustomShadowCasters(depthShader, viewProjection, resourceSystem);
+}
+
+// Models with custom-shader parts, one at a time (the shadow variant moves vertices from per-draw uniforms)
+void RenderSystem::drawCustomShadowCasters(Shader &depthShader, const glm::mat4 &viewProjection,
+                                           ResourceSystem &resourceSystem) {
+  const Frustum frustum(viewProjection);
+  auto setPose = [&](Shader &shader, const CustomShadowCaster &caster) {
+    shader.setInt("useInstancing", 0);
+    shader.setMat4("model", caster.model);
+    shader.setInt("useSkinning", caster.joints ? 1 : 0);
+    if (caster.joints)
+      shader.setMat4Array("bones", caster.joints->data(),
+                          std::min(static_cast<int>(caster.joints->size()), EngineConfig::MAX_JOINTS));
+  };
+
+  // The standard depth shader first, for the parts without a shadow shader of their own
+  const bool instanced = depthShader.supportsInstancing();
+  for (const CustomShadowCaster &caster : m_customShadowCasters) {
+    if (caster.plain.empty() || !frustum.intersectsSphere(caster.center, caster.radius))
+      continue;
+    setPose(depthShader, caster);
+    for (const ShadowRange &range : caster.plain)
+      m_renderer.drawIndexRange(resourceSystem.getMesh(caster.meshHandle), range.indexStart, range.indexCount);
+  }
+  depthShader.setInt("useSkinning", 0);
+  depthShader.setInt("useInstancing", instanced ? 1 : 0);
+
+  // Then each shadow variant, with the values of the part it draws
+  bool usedCustom = false;
+  uint32_t boundShader = 0;
+  for (const CustomShadowCaster &caster : m_customShadowCasters) {
+    if (caster.custom.empty() || !frustum.intersectsSphere(caster.center, caster.radius))
+      continue;
+    const glm::mat3 normalMatrix = calculateNormalMatrix(caster.model);
+    for (const ShadowRange &range : caster.custom) {
+      Shader &shader = resourceSystem.getShader(range.shader->shadowHandle);
+      if (range.shader->shadowHandle != boundShader) {
+        shader.use();
+        boundShader = range.shader->shadowHandle;
+        shader.setMat4("lightSpaceMatrix", viewProjection);
+        shader.setFloat("time", m_shaderTime);
+        shader.setVec3("viewPos", m_shadowViewPos);
+      }
+      usedCustom = true;
+      setPose(shader, caster);
+      shader.setMat3("normalMatrix", normalMatrix);
+      applyShaderParams(shader, resourceSystem.getMaterial(range.material), *range.shader,
+                        resourceSystem.getMaterial(0).getEmission());
+      m_renderer.drawIndexRange(resourceSystem.getMesh(caster.meshHandle), range.indexStart, range.indexCount);
+    }
+  }
+  if (usedCustom)
+    depthShader.use(); // the caller goes on drawing with it (the next cascade or face)
 }
 
 RenderSystem::DirectionalShadow
@@ -387,6 +471,33 @@ uint64_t RenderSystem::pointShadowSignature(const PointShadowCaster &light) cons
     casters += hashBytes(&caster.model, sizeof(caster.model), meshHash);
     ++count;
   }
+  // Models with custom-shader parts: their shadow also depends on the shader's clock and on the values of the parts
+  // (an animated dissolve), so the cube map is drawn again whenever those change, which is every frame with a clock
+  // running
+  for (const CustomShadowCaster &caster : m_customShadowCasters) {
+    if (glm::length(caster.center - light.position) > caster.radius + light.range)
+      continue;
+    uint64_t meshHash = hashBytes(&caster.meshHandle, sizeof(caster.meshHandle));
+    if (caster.joints && !caster.joints->empty())
+      meshHash = hashBytes(caster.joints->data(), caster.joints->size() * sizeof(glm::mat4), meshHash);
+    meshHash = hashBytes(&caster.model, sizeof(caster.model), meshHash);
+    meshHash = hashBytes(&m_shaderTime, sizeof(m_shaderTime), meshHash);
+    meshHash = hashBytes(&m_shadowViewPos, sizeof(m_shadowViewPos), meshHash);
+    for (const ShadowRange &range : caster.custom) {
+      const uint32_t shadowHandle = range.shader->shadowHandle;
+      meshHash = hashBytes(&shadowHandle, sizeof(shadowHandle), meshHash);
+      for (const auto &[name, param] : m_resourceSystemForSignature->getMaterial(range.material).getShaderParams()) {
+        const glm::vec4 value = shaderValueAsVec4(param.value);
+        meshHash = hashBytes(name.data(), name.size(), meshHash);
+        meshHash = hashBytes(&value, sizeof(value), meshHash);
+        meshHash = hashBytes(&param.texture, sizeof(param.texture), meshHash);
+      }
+    }
+    for (const ShadowRange &range : caster.plain)
+      meshHash = hashBytes(&range.indexStart, sizeof(range.indexStart), meshHash);
+    casters += meshHash;
+    ++count;
+  }
   uint64_t signature = hashBytes(&lightKey, sizeof(lightKey));
   signature = hashBytes(&casters, sizeof(casters), signature);
   signature = hashBytes(&count, sizeof(count), signature);
@@ -402,6 +513,7 @@ void RenderSystem::renderPointShadows(ComponentManager &componentManager, Resour
     return;
 
   gatherShadowCasters(componentManager, resourceSystem, transformSystem);
+  m_resourceSystemForSignature = &resourceSystem;
   Shader &depthShader = resourceSystem.getShader(m_shadowShaderHandle);
   bool rendering = false;
   for (const PointShadowCaster &caster : casters) {
@@ -473,6 +585,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
 
   // Shadow passes
   m_shadowCastersGathered = false;
+  m_shadowViewPos = viewPos;
   DirectionalShadow sunShadow;
   if (shadowsEnabled)
     sunShadow = renderDirectionalShadow(componentManager, resourceSystem, transformSystem, lightSystem, camera, view);

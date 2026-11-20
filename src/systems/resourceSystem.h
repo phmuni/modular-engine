@@ -37,6 +37,10 @@ struct CustomShader {
   bool ok = false;         // whether any version compiled; if not, materials draw with the standard shader
   uint32_t handle = 0;     // the shader running it (0 while it does not compile)
   uint32_t maskHandle = 0; // the alpha-masked variant, made when a cut-out material first needs it
+  // The depth-pass variant (shadow shaders with the file injected): vertex() moves what the shadow draws and
+  // surface() may discard. 0 when the file says `#pragma noshadow` or the variant did not compile, in which case the
+  // part casts a shadow from its original geometry (or none, for noshadow).
+  uint32_t shadowHandle = 0;
 };
 
 class ResourceSystem : public BaseSystem {

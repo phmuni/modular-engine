@@ -490,6 +490,18 @@ std::unique_ptr<Shader> buildCustomShader(const CustomShader &custom, const Cust
                                          defineLines(code, mask), injection);
   return shader->getShaderID() == 0 ? nullptr : std::move(shader);
 }
+
+// The depth shaders with the file injected, for the shadow passes (see CustomShader::shadowHandle)
+std::unique_ptr<Shader> buildCustomShadowShader(const CustomShader &custom, const CustomShaderCode &code) {
+  std::string defines = defineLines(code, false);
+  if (code.blend)
+    defines += "#define CUSTOM_BLEND\n";
+  ShaderInjection injection{custom.path, code.vertexStage, code.fragmentStage};
+  auto shader = std::make_unique<Shader>(EngineConfig::resolvePath(EngineConfig::SHADER_VERTEX_SHADOW),
+                                         EngineConfig::resolvePath(EngineConfig::SHADER_FRAGMENT_SHADOW), defines,
+                                         injection);
+  return shader->getShaderID() == 0 ? nullptr : std::move(shader);
+}
 } // namespace
 
 std::string ResourceSystem::canonicalShaderPath(std::string_view path) {
@@ -529,8 +541,27 @@ bool ResourceSystem::refreshCustomShader(CustomShader &custom) {
     return false;
   }
 
+  // The shadow variant is separate: if it does not compile, the shader still draws and its parts cast the shadow of
+  // their original geometry, as before it existed
+  std::unique_ptr<Shader> shadow;
+  if (code.castsShadow) {
+    shadow = buildCustomShadowShader(custom, code);
+    if (!shadow)
+      LOG_W("[Shader] %s: its shadow variant did not compile (the file may use something only the lit shader has); "
+            "parts using it cast the shadow of their original geometry",
+            custom.path.c_str());
+  }
+
   custom.code = std::move(code);
   custom.ok = true;
+  if (shadow) {
+    if (!custom.shadowHandle)
+      custom.shadowHandle = m_nextShader++;
+    m_shaders[custom.shadowHandle] = std::move(shadow);
+  } else if (custom.shadowHandle) {
+    m_shaders.erase(custom.shadowHandle);
+    custom.shadowHandle = 0;
+  }
   if (!custom.handle)
     custom.handle = m_nextShader++;
   m_shaders[custom.handle] = std::move(normal);

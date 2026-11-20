@@ -368,3 +368,39 @@ TEST_CASE(custom_shader_prefab_overrides) {
     CHECK_NEAR(high, 0.8f, 1e-5f);
   });
 }
+
+TEST_CASE(custom_shader_shadow_variants) {
+  // Shadows follow vertex() and discard through a variant of the depth shaders with the file injected: made for
+  // every file that casts a shadow, none for `#pragma noshadow`, and a file only the lit shader can compile keeps
+  // drawing, its parts casting the shadow of their original geometry
+  const std::string dir = testing::tempDir("shader_shadow");
+  const std::string litOnly = dir + "/lit_only.glsl";
+  const std::string vertexOnly = dir + "/vertex_only.glsl";
+  writeFile(litOnly, "void surface(inout Surface s) { if (numLights > 100) discard; }\n"); // numLights: lit shader only
+  writeFile(vertexOnly, "void vertex(inout VertexData v) { v.position.y += 0.5 * sin(time + v.position.x); }\n");
+
+  GameEntity dissolve = engine.create("Dissolve", Desc("box"));
+  GameEntity hologram = engine.create("Hologram", Desc("sphere"));
+  GameEntity water = engine.create("Water", Desc("box"));
+  GameEntity lit = engine.create("LitOnly", Desc("box"));
+  GameEntity moved = engine.create("Moved", Desc("box"));
+  dissolve.setShader(kDissolve);
+  hologram.setShader("shaders/examples/hologram.glsl");
+  water.setShader(kWater);
+  lit.setShader(litOnly);
+  moved.setShader(vertexOnly);
+
+  auto &resources = resourcesOf(engine);
+  CHECK(resources.findCustomShader(kDissolve)->shadowHandle != 0);
+  CHECK(resources.findCustomShader("shaders/examples/hologram.glsl")->shadowHandle != 0);
+  CHECK(resources.findCustomShader(vertexOnly)->shadowHandle != 0);
+  CHECK_EQ(resources.findCustomShader(kWater)->shadowHandle, uint32_t(0)); // #pragma noshadow
+  CHECK(resources.findCustomShader(litOnly)->ok);
+  CHECK_EQ(resources.findCustomShader(litOnly)->shadowHandle, uint32_t(0)); // no shadow variant: original geometry
+
+  // Frames with shadow passes over all of them go by without trouble
+  steps.step(5, [dissolve, moved]() {
+    CHECK(dissolve.valid());
+    CHECK(moved.valid());
+  });
+}
