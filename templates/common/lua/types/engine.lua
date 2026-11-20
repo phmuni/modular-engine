@@ -129,6 +129,7 @@ function vec3.lerp(a, b, t) end
 ---@field visible boolean (read-only) false after setVisible(false)
 ---@field velocity vec3 Linear velocity of its physics body
 ---@field onGround boolean (read-only) whether its character controller stands on the ground
+---@field layer string Its collision layer (see physics.addLayer), for its body, character and collision box; "default" without any. Takes effect at once, also on a body that is already simulating; a name that is no layer is a warning and changes nothing
 ---@field audioPlaying boolean (read-only) its AudioSource is playing (not paused; false once a sound that does not loop ended)
 ---@field audioVolume number Its AudioSource's volume, 1 is normal (0 without an AudioSource)
 ---@field audioPitch number Its AudioSource's pitch, 1 is as recorded
@@ -269,6 +270,7 @@ function Entity:sound(path, volume) end
 ---@field collision? boolean Adds collision from its model
 ---@field script? string Script path relative to assets/ ("scripts/coin.lua")
 ---@field tags? string[] Tags to give it, e.g. {"enemy"}
+---@field layer? string Collision layer of its body, character and collision box: "default", "static", "player", "enemy", "projectile", "trigger", or one from physics.addLayer. Defaults to "default"
 ---@field character? CharacterOptions|boolean A walking character (true for the defaults); it is its own physics body, so it replaces `body`. Its position is the capsule's middle
 ---@field components? string[] Game components registered by C++ (Engine::registerComponent), by name, added with their default values: {"Player"}. A project with no C++ has none
 
@@ -362,6 +364,36 @@ function engine.setSkyColor(color) end
 ---The sky color.
 ---@return vec3
 function engine.getSkyColor() end
+
+---Settings for engine.setFog. Everything is optional.
+---@class FogOptions
+---@field enabled? boolean Defaults to true when a table is given
+---@field color? vec3 The fog color; without one the fog takes the sky color (engine.setSkyColor), so distant things fade into the sky
+---@field matchSky? boolean Take the sky color (the default until a `color` is given)
+---@field mode? "linear"|"exponential" "linear" is clear up to `start` and solid from `finish`; "exponential" thickens smoothly with `density`
+---@field start? number Linear: distance from the camera where it begins. Defaults to 10
+---@field finish? number Linear: distance where it is solid. Defaults to 100
+---@field density? number Exponential: per world unit, about 0.02 is gentle. Defaults to 0.02
+
+---Fog for the scene, kept in the scene file with the sky and shown in the editor's Skybox panel. Lit things blend toward
+---the fog color with distance; particles fade out. Only the fields given change; `false` turns it off.
+---@param settings FogOptions|false
+function engine.setFog(settings) end
+
+---The fog's settings. `color` is the sky color while `matchSky` is true.
+---@return FogOptions
+function engine.getFog() end
+
+---Light added to everything lit, from nowhere, on top of each Light's own `ambient`: color times intensity (an intensity of 0 adds
+---nothing, which is how scenes start). Kept in the scene file with the sky.
+---@param color vec3 0-1 per channel
+---@param intensity? number Defaults to 1
+function engine.setAmbient(color, intensity) end
+
+---The scene's ambient light.
+---@return vec3 color
+---@return number intensity
+function engine.getAmbient() end
 
 -- game ---------------------------------------------------------------------------------------------------------------
 
@@ -637,12 +669,41 @@ function input.bindings(path) end
 ---@class physics
 physics = {}
 
+---Options for physics.raycast.
+---@class RaycastOptions
+---@field layers? string[] Only bodies on these collision layers count, e.g. {"enemy", "static"}; a name that is no layer is an error. Every layer without it
+
 ---Casts a ray and returns the first thing it hits, or nil.
 ---@param origin vec3
 ---@param direction vec3
 ---@param distance? number Defaults to 1000
+---@param options? RaycastOptions
 ---@return RaycastHit|nil
-function physics.raycast(origin, direction, distance) end
+function physics.raycast(origin, direction, distance, options) end
+
+---Defines a collision layer (up to 32 in all; "default", "static", "player", "enemy", "projectile" and "trigger" always exist). Layers
+---are for entity.layer, `layer =` in engine.create and the editor's dropdowns; a Lua project can also list them in project.json:
+---`"layers": { "names": ["water"], "ignore": [["enemy", "enemy"]] }`.
+---@param name string
+function physics.addLayer(name) end
+
+---The names of the collision layers.
+---@return string[]
+function physics.layers() end
+
+---Says whether things on two layers collide. Everything collides until told otherwise, e.g. physics.setLayersCollide("enemy", "enemy", false)
+---makes enemies pass through each other, and ("projectile", "player", false) lets bullets through the player. It applies to physics bodies,
+---characters and Collision boxes, and takes effect at once. A name that is no layer is an error.
+---@param a string
+---@param b string
+---@param collide boolean
+function physics.setLayersCollide(a, b, collide) end
+
+---Whether things on two layers collide.
+---@param a string
+---@param b string
+---@return boolean
+function physics.layersCollide(a, b) end
 
 ---Sets the gravity when given one; returns the current gravity.
 ---@param gravity? vec3

@@ -92,6 +92,12 @@ public:
   void impulse(const glm::vec3 &impulse);
   void force(const glm::vec3 &force);
 
+  // The collision layer (see CollisionLayers) of its RigidBody, CharacterController and Collision, whichever it has: what
+  // it hits and what hits it. "default" for an entity with none of them. setLayer takes effect at once, also on a body
+  // that is already simulating; a name that is no layer is a warning and changes nothing.
+  std::string layer() const;
+  void setLayer(const std::string &layer);
+
   // Character (CharacterController): walk at this velocity until told otherwise, jump at this speed
   void move(const glm::vec3 &velocity);
   void jump(float speed);
@@ -143,6 +149,8 @@ struct EntityDesc {
   // Game components registered with Engine::registerComponent, by their name, added with the values their default
   // constructor gives ("Player"); one nothing registered is skipped with a warning
   std::vector<std::string> components;
+  // The collision layer of its body, character and collision box (see CollisionLayers); empty: "default"
+  std::string layer;
   std::string script;     // a Lua script, relative to assets/ ("scripts/coin.lua")
   std::vector<std::string> tags; // see GameEntity::addTag
 };

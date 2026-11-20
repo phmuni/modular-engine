@@ -61,9 +61,12 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Camera, position, yaw, pitch, fo
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(CameraRig, target, offset, lookAhead, positionSmoothing,
                                                 rotationSmoothing, followRotation, orbit, orbitSensitivity, orbitSpeed)
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Collision, min, max, isStatic)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Collision, min, max, isStatic, layer)
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation, color)
+NLOHMANN_JSON_SERIALIZE_ENUM(FogMode, {{FogMode::Linear, "linear"}, {FogMode::Exponential, "exponential"}})
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Fog, enabled, mode, matchSky, color, start, finish, density)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation, color, fog, ambientColor,
+                                                ambientIntensity)
 
 NLOHMANN_JSON_SERIALIZE_ENUM(BodyType, {{BodyType::Static, "static"},
                                         {BodyType::Dynamic, "dynamic"},
@@ -74,7 +77,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(BodyShape, {{BodyShape::Box, "box"},
                                          {BodyShape::ConvexHull, "convexHull"},
                                          {BodyShape::Mesh, "mesh"}})
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(RigidBody, type, shape, size, mass, friction, restitution, linearDamping,
-                                                angularDamping, gravityScale, lockRotation, sensor)
+                                                angularDamping, gravityScale, lockRotation, sensor, layer)
 // Property overrides by name, as plain JSON values: {"path": "scripts/player.lua", "properties": {"speed": 8}}.
 // A vec3 is an array, so a color reads [1, 0.8, 0.2].
 inline void to_json(nlohmann::json &j, const Script &script) {
@@ -122,7 +125,7 @@ inline void from_json(const nlohmann::json &j, Tags &tags) {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Animator, clip, time, speed, loop, playing)
 // move, jump, onGround and velocity are per frame, not part of the scene
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(CharacterController, radius, height, maxSlope, stepHeight,
-                                                gravityScale)
+                                                gravityScale, layer)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(GravityLens, schwarzschildRadius, maxMagnification)
 

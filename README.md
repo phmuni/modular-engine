@@ -57,7 +57,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Asset Loading**          | OBJ (Tiny_Obj) and glTF/GLB (tinygltf) with named parts, shared materials, background loading (`preloadModel`) and a binary mesh cache (`bin/cache/meshes`) |
 | **Texture Streaming**      | Textures converted once to GPU-compressed BC1/BC3 (BC5 for normal maps) with mipmaps, cached in `bin/cache/textures`, and uploaded over several frames, smallest mip first |
 | **Normal Maps**            | Tangent-space normal maps on OBJ and glTF models; tangents read from glTF or generated from UVs |
-| **Skybox**                 | Equirectangular panorama (png/jpg/hdr) behind the scene: `withSkybox(path, intensity, rotation)`, saved in scene files, editable in the Properties panel |
+| **Skybox**                 | Equirectangular panorama (png/jpg/hdr) behind the scene: `withSkybox(path, intensity, rotation)`, plus the scene's fog and ambient light; saved in scene files, editable in the Properties panel |
 | **HDR & Bloom**            | Lighting rendered in HDR, highlights rolled off instead of clipped, and bloom around emission and strong highlights (`F10`) |
 | **glTF Materials**         | Base color tint, alpha modes (opaque, mask, blend), double-sided and unlit (`KHR_materials_unlit`) materials |
 | **Camera System**          | Flexible camera control with quaternion-based rotations                        |
@@ -74,7 +74,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Lua Scripting**          | Entity and game scripts with hot reload, the engine's API, and C++ functions handed to them (Lua 5.4, sol2) |
 | **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds, plays and exports them, opens them in VS Code |
 | **Skeletal Animation**     | glTF skins and clips (linear, step, cubic spline), crossfades, rigid parts following their nodes, animated shadows |
-| **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events |
+| **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events, collision layers with a matrix |
 | **Navigation**             | A walkable grid built from the physics world and A* paths around obstacles, smoothed (`engine.navigation().findPath`, `nav.path` in Lua), drawn by the editor's "Show navigation" |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
 | **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
@@ -89,6 +89,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Scenes**                 | Save the running scene to JSON and load or switch scenes at runtime (`Engine::saveScene`/`loadScene`, Settings panel) |
 | **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
 | **UI Integration**         | ImGui-based editor (`F2`) with click-to-select in the scene, move/rotate/scale gizmos (ImGuizmo), material inspector, light tweaks, entity hierarchy and a settings panel |
+| **Behavior Tests**         | `tools/run_tests.py` runs Lua and C++ tests of the game API (entities, tags, timers, coroutines, tweens, camera, physics, navigation, saves, UI, input) in CI, headless under xvfb |
 | **Regression Tests**       | `tools/regression.py` compares screenshots and frame times of every example and scene with references, on repeatable `--deterministic` runs |
 | **Settings Panel**         | Every toggle with its key (`F1`–`F10`), time scale, camera FOV/speed, audio volumes, screenshots and render stats (draw calls, culled meshes, particles) |
 | **Scene Management**       | Entity lifecycle management and component composition                          |
@@ -176,6 +177,8 @@ modular-engine/
 ├── cmake/                      # CPM package manager script
 ├── external/                   # Bundled third-party dependencies
 ├── assets/                     # Models, shaders, sounds, scenes (JSON) and game UI (RML/RCSS)
+├── tests/                      # Behavior tests: Lua scripts (lua/), C++ cases (cpp/), fixtures; tests/regression/ is local
+├── tools/                      # Python tools: regression.py, run_tests.py, packaging, API checks
 ├── bin/                        # Compiled binaries
 ├── build/                      # CMake build output
 └── CMakeLists.txt              # Build configuration
@@ -267,6 +270,49 @@ python3 tools/regression.py --only aliens --images-only
 
 References and baselines describe this machine's GPU, speed and build type, so they live in `tests/regression/` and are not committed; changed screenshots and diff images (changes in red) go to `tests/regression/out/`. Python's standard library is enough.
 
+### Behavior tests
+
+`tests/` holds tests of the game API itself (entity handles, `engine.create`, prefabs, tags, timers, `wait`, tweens, the camera rig, physics, navigation, saved data, UI helpers, text and mouse input). Each one is a start of `bin/engine_tests`, which opens a window, runs the test on fixed 1/60 s frames (`--deterministic`) and exits non-zero when a check fails or the test hangs. Lua tests are scripts in `tests/lua`; C++ tests are `TEST_CASE`s in `tests/cpp` that drive `Engine` through the same facades.
+
+```bash
+cmake -B build -DMODULAR_ENGINE_BUILD_TESTS=ON && cmake --build build --target engine_tests
+python3 tools/run_tests.py                 # all of them: exit code 1 if any fails, failures print their output
+python3 tools/run_tests.py tags camera     # only tests whose name contains one of these words
+python3 tools/run_tests.py -j 4 -v         # four at a time, with the output of passing tests too
+./bin/engine_tests ../tests/lua/tags.lua   # one Lua test; ./bin/engine_tests --list names the C++ ones
+```
+
+They need a window with OpenGL 4.1, but not a GPU: on Linux without a screen, install `xvfb` and Mesa's software driver (`libgl1-mesa-dri`) and run `xvfb-run -a -s "-screen 0 1280x720x24" python3 tools/run_tests.py`, as CI does. The engine's systems all start together with the window and the GL context, so there is no logic-only mode; a small window and software rendering keep the whole suite under a few minutes. Tests keep the save data in memory or in a temporary folder, never in the real save folder.
+
+To add a Lua test, create `tests/lua/<name>.lua`; the runner finds it. The global `test` helper reports failures with their line and lets the script go on:
+
+```lua
+-- tests/lua/pickups.lua
+test.run(function()                      -- engine.run, then test.done() when it returns; it may wait()
+  local coin = engine.create("Coin", { model = "sphere", tags = { "pickup" } })
+  test.eq(#engine.findTagged("pickup"), 1)
+  test.near(coin.position, vec3(0, 0, 0), 0.01)
+  tween.to(coin, "position", vec3(0, 3, 0), 1)
+  wait(1.1)                              -- game time: 66 fixed frames
+  test.near(coin.position.y, 3, 0.001)
+end)
+```
+
+`test.ok`, `test.eq` (also tables and vec3s), `test.near`, `test.expectError("part of a message")` (for a script error the test provokes on purpose; any other reported script error fails the test), `test.frame()` and `test.done()` are in `tests/lua/test.lua`. A test that never calls `test.done()` fails after 1200 frames. Files it needs go in `tests/fixtures` (paths like `../tests/fixtures/turret.json` work from the executable's folder).
+
+To add a C++ test, add a `TEST_CASE` to a file in `tests/cpp` (the build picks up new files after a CMake re-run). The body runs once at the start and queues later checks with `steps`, since the engine owns the loop:
+
+```cpp
+TEST_CASE(coin_spins) {
+  GameEntity coin = engine.create("Coin", Desc("sphere").at(0, 1, 0).tags({"pickup"}));
+  CHECK_EQ(engine.findTagged("pickup").size(), size_t(1));
+  steps.seconds(1.0f, [coin]() { CHECK_NEAR(coin.position(), glm::vec3(0, 1, 0), 0.01f); });
+  steps.until([&engine]() { return !engine.isLoadingScene(); }, "the scene to load", 300);
+}
+```
+
+`CHECK`, `CHECK_EQ` and `CHECK_NEAR` record a failure and go on; `testing::tempDir("name")` gives a temporary folder removed at exit; `Desc` (`tests/cpp/describe.h`) writes an `EntityDesc` in a line. Events can be pushed with `SDL_PushEvent` (see `uiInputTests.cpp`); the engine reads them at the start of the next frame.
+
 ### Benchmarking
 
 `--benchmark [seconds]` (10 by default) turns vsync off, skips a 1 s warm-up and logs frame-time statistics before exiting:
@@ -322,7 +368,7 @@ python3 tools/new_game.py ~/Games/Asteroids --type lua     # the same, in Python
 Each kind starts as the same small game (walk, jump, push the crates, collect coins: [`templates/`](templates/)),
 whose level is a scene file you edit in the game with `F2`.
 
-A Lua project is `project.json` (its name, start scene, game script and input file), `assets/`, and `bin/` with the
+A Lua project is `project.json` (its name, start scene, game script and input file, and optionally its collision `layers`), `assets/`, and `bin/` with the
 runner named after the game. A C++ project's `CMakeLists.txt` points at this checkout (`MODULAR_ENGINE_DIR`; left
 empty, the engine is downloaded from GitHub) and builds `src/*.cpp` with `modular_engine_add_game(...)`. Either way
 `bin/` holds `bin/engine-assets` (the engine's shaders, fonts and basic models) and SDL's library, asset paths are
@@ -397,14 +443,14 @@ What scripts can use:
 | | |
 | --- | --- |
 | `vec3(x, y, z)` | `+ - * /`, `:length()`, `:normalized()`, `:dot(v)`, `:cross(v)`, `:distance(v)`, `:lerp(v, t)` |
-| Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setShininess(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; tags: `:addTag(t)`, `:removeTag(t)`, `:hasTag(t)`, `:tags()`; its `AudioSource`: `:playAudio()`, `:stopAudio()`, `:pauseAudio()`, `audioPlaying`, `audioVolume`, `audioPitch`, `audioLoop`; `:getColor()`; `:run(fn)` (a coroutine that ends with the entity); any other field is the entity's own (`other.health`) |
-| `engine` | `find(name)`, `findAll(name)`, `findTagged(tag)`, `findWithComponent(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script, tags, character, components })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)`, `quit()`, `setSkyColor(c)`, `getSkyColor()`, `run(fn)` and `stop(handle)` (coroutines) |
+| Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setShininess(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `layer` (collision layer, by name); `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; tags: `:addTag(t)`, `:removeTag(t)`, `:hasTag(t)`, `:tags()`; its `AudioSource`: `:playAudio()`, `:stopAudio()`, `:pauseAudio()`, `audioPlaying`, `audioVolume`, `audioPitch`, `audioLoop`; `:getColor()`; `:run(fn)` (a coroutine that ends with the entity); any other field is the entity's own (`other.health`) |
+| `engine` | `find(name)`, `findAll(name)`, `findTagged(tag)`, `findWithComponent(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script, tags, layer, character, components })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)`, `quit()`, `setSkyColor(c)`, `getSkyColor()`, `setFog({...})`, `getFog()`, `setAmbient(c, intensity)`, `getAmbient()`, `run(fn)` and `stop(handle)` (coroutines) |
 | `wait(seconds)` | inside `engine.run` / `self:run`: suspends the coroutine for game time; `wait()` until the next frame |
 | `tween` | `to(entity, "position" \| "rotation" \| "scale" \| "color", value, seconds, easing, onComplete)`, `value(from, to, seconds, easing, fn, onComplete)`, `cancel(handle)`; easings `linear`, `easeInQuad`, `easeOutQuad`, `easeInOutQuad`, `easeInCubic`, `easeOutCubic`, `easeInOutCubic` |
 | `input` | `axis(name)`, `down(name)`, `pressed(name)`, `released(name)` (the actions and axes of `input.json`), `key("Space")`, `keyPressed("Space")`, `mouse()`, `mouseDown(button)`, `wheel()`, `click(button)`, `bindings(path)`; `mouseDelta()`, `captureMouse(b)`, `isMouseCaptured()`, `showCursor(b)`; text entry: `startText(initial, maxLength)`, `text()`, `typed()`, `stopText()`; `rumble(low, high, seconds)`, `stopRumble()` |
 | `camera` | `lookAt(from, target)`, `position()`, `forward()`, `fov(degrees)` (reads the field of view, or sets it), `follow(entity, { offset, lookAhead, smoothing, orbit... })`, `stopFollow()`, `following()` |
 | `time` | `scale(n)` (slow motion: reads the time scale, or sets it), `paused(b)`, `elapsed()`, `delta()`, `after(seconds, fn)` and `every(seconds, fn)` (timers on game time, return a handle), `cancel(handle)` |
-| `physics` | `raycast(origin, direction, distance)` (a table with `entity`, `point`, `normal`, `distance`), `gravity(v)` |
+| `physics` | `raycast(origin, direction, distance, { layers = {"enemy"} })` (a table with `entity`, `point`, `normal`, `distance`; `layers` is optional), `gravity(v)`; collision layers: `addLayer(name)`, `layers()`, `setLayersCollide(a, b, bool)`, `layersCollide(a, b)` |
 | `nav` | `build({ min, max, cellSize, agentRadius, agentHeight, maxSlope, stepHeight })` (all optional; without `min` and `max` it covers the static bodies), `path(from, to)` (a table of `vec3` on the ground, or `nil` if there is no way), `walkable(point)` |
 | `sound` | `play(path, volume, pitch)` and `playAt(path, position, volume)` (return a handle for `stop(handle)`, `setVolume(handle, v)`, `isPlaying(handle)`), `preload(path)`, `music(path, volume, loop)` (returns a handle), `musicVolume(v, handle)`, `stopMusic(handle)`, `isMusicPlaying(handle)` |
 | `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `style(id, property, value)`, `attribute(id, name, value)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled)`, `openPauseMenu()`, `closePauseMenu()`, `isPaused()` (whether it is open) |
@@ -441,6 +487,9 @@ Everything above is implemented once, in C++, and Lua only adapts types and call
 | `input.rumble(0.5, 0.5, 0.2)`, `input.captureMouse(true)` | `engine.input().rumble(0.5f, 0.5f, 0.2f);`, `engine.setMouseCaptured(true);` |
 | `time.scale(0.5)`, `time.after(2, fn)` | `engine.time().setScale(0.5f);`, `engine.time().after(2.0f, [] { ... });` |
 | `engine.setSkyColor(vec3(0.5, 0.7, 1))` | `engine.setSkyColor({0.5f, 0.7f, 1.0f});` |
+| `engine.setFog({ start = 20, finish = 90 })`, `engine.setAmbient(vec3(0.5, 0.6, 0.8), 0.3)` | `Fog fog; fog.enabled = true; fog.start = 20; fog.finish = 90; engine.setFog(fog);`, `engine.setAmbient({0.5f, 0.6f, 0.8f}, 0.3f);` |
+| `physics.setLayersCollide("enemy", "enemy", false)`, `p.layer = "enemy"` | `engine.layers().setCollide("enemy", "enemy", false);`, `p.setLayer("enemy");` |
+| `physics.raycast(o, d, 50, { layers = {"enemy"} })` | `engine.physics().raycast(o, d, 50.0f, nullptr, engine.layers().maskOf({"enemy"}));` |
 | `sound.play("sounds/laser.wav")` | `engine.playSound("sounds/laser.wav");` |
 
 An entity handle ([`GameEntity`](src/foundation/core/gameEntity.h)) is a pointer and a number: cheap to copy and keep,
@@ -660,6 +709,48 @@ by game code or the editor's gizmo as teleports; changing a `RigidBody` (or the 
 components are saved in scenes and edited in the Properties panel, the simulation stands still while editing, and
 Stop rebuilds the bodies. [`assets/scenes/physics.json`](assets/scenes/physics.json) is a small example.
 
+#### Collision layers
+
+Everything collides with everything until layers say otherwise. A layer is a name; each `RigidBody`,
+`CharacterController` and `Collision` is on one (`layer`, "default" unless set), and a matrix says which pairs of layers
+interact, so bullets can pass the player or enemies stop pushing each other. There are six layers from the start
+("default", "static", "player", "enemy", "projectile", "trigger") and up to 26 more a game defines, 32 in all.
+
+```cpp
+engine.layers().add("water");                              // another layer
+engine.layers().setCollide("enemy", "enemy", false);       // enemies pass through each other
+engine.layers().setCollide("projectile", "player", false); // bullets do not hit the player
+EntityDesc bullet; bullet.body = BodyType::Dynamic; bullet.layer = "projectile";
+GameEntity b = engine.create("Bullet", bullet);
+b.setLayer("enemy");                                       // takes effect at once, on a body that is already simulating
+
+// Rays: only bodies on these layers (and Collision boxes, with engine.raycast) are hit
+const uint32_t mask = engine.layers().maskOf({"enemy", "static"});
+auto hit = engine.physics().raycast(origin, direction, 50.0f, nullptr, mask);
+```
+
+In a Lua project the layers live in `project.json`, and scripts can change them at run time:
+
+```json
+{ "name": "MyGame", "layers": { "names": ["water"], "ignore": [["enemy", "enemy"], ["projectile", "player"]] } }
+```
+
+```lua
+physics.setLayersCollide("enemy", "enemy", false)
+engine.create("Bullet", { model = "sphere", body = "dynamic", layer = "projectile" })
+local hit = physics.raycast(origin, direction, 50, { layers = { "enemy", "static" } })
+```
+
+A layer is saved in scenes by its name (`"layer": "enemy"` in `RigidBody`, `CharacterController` and `Collision`), so
+defining layers in another order never breaks a scene; a name nothing defines counts as "default". The layers
+themselves and the matrix are not part of a scene: they belong to the project (`project.json`, or `engine.layers()` in
+`setup`). The Settings panel's "Collision layers" has the matrix, with a button that writes it to `project.json`, and
+the Rigid Body, Character Controller and Collision panels have a layer dropdown.
+
+Physics keeps Jolt's static/moving broadphase split (an object layer is the collision layer times two, plus whether it
+moves), so adding layers costs nothing per frame; characters use the same filters as bodies, and the `Collision` boxes
+skip layer lookups entirely while every pair collides.
+
 ### Navigation
 
 `NavigationSystem` finds paths that go around obstacles. `build` makes a grid over the XZ plane from the physics world:
@@ -833,7 +924,7 @@ if (engine.isColliding(player, door))
     openDoor();
 ```
 
-Two static boxes (`Collision::isStatic`) are never reported. Pairs are found by sorting the boxes along one axis, not by testing every pair.
+Two static boxes (`Collision::isStatic`) are never reported, nor are boxes on layers that do not collide (see [Collision layers](#collision-layers)); `engine.raycast` takes a layer mask too. Pairs are found by sorting the boxes along one axis, not by testing every pair.
 
 `withModelCollision(fit)` sizes the box to the model's bounds as rotated and scaled, instead of a size you guess; `fit` below 1 makes a forgiving hitbox (Space Aliens uses 0.6 for the ship). The box does not rotate with the entity: after turning it a lot, call `engine.fitCollisionToModel(entity, fit)` again.
 
@@ -919,6 +1010,33 @@ engine.entities().create("Sky").withSkybox("../assets/textures/skybox/space.png"
 ```
 
 Its `color` (black by default) is what the image is cleared to, the sky color: with no `path` a plain sky, and with one the panorama draws over it. `engine.setSkyColor({0.5f, 0.7f, 1.0f})` (`engine.setSkyColor(vec3(0.5, 0.7, 1))` in Lua) sets it on the first Skybox, adding an entity named "Sky" with one when the scene has none; the Properties panel edits it, and scene files keep it: `{ "name": "Sky", "components": { "Skybox": { "color": [0.53, 0.72, 0.95] } } }`.
+
+The same component holds the scene's fog and ambient light (a scene without them loads as before):
+
+```cpp
+Fog fog;
+fog.enabled = true;                  // blends lit things toward the fog color with distance from the camera
+fog.mode = FogMode::Linear;          // clear up to `start`, solid from `finish`; or Exponential, with `density`
+fog.start = 20.0f; fog.finish = 90.0f;
+engine.setFog(fog);                  // fog.matchSky (the default) uses the sky color, so far things fade into the sky
+engine.setAmbient({0.5f, 0.6f, 0.8f}, 0.3f); // light added to everything lit, on top of each Light's own ambient
+```
+
+```lua
+engine.setFog({ start = 20, finish = 90 })          -- only the fields given change; color = vec3(...) picks a color
+engine.setFog({ mode = "exponential", density = 0.02 })
+engine.setFog(false)
+engine.setAmbient(vec3(0.5, 0.6, 0.8), 0.3)
+```
+
+```json
+{ "name": "Sky", "components": { "Skybox": { "color": [0.53, 0.72, 0.95], "fog": { "enabled": true, "start": 20, "finish": 90 }, "ambientColor": [0.5, 0.6, 0.8], "ambientIntensity": 0.3 } } }
+```
+
+The fog is in the lit shader behind one uniform branch (nothing to pay while it is off), the sky itself is not fogged,
+and particles fade out with distance instead of mixing toward the fog color, as they are drawn after tone mapping.
+Ambient is a scene-wide term next to each light's own `ambient`; 0, the default, adds nothing. The Skybox panel in the
+editor edits all of it.
 
 The image goes through the same texture cache and streaming as model textures. Its center column is straight ahead (-Z); `intensity` above 1 lets bright stars reach the bloom. [`tools/generateSpaceSkybox.c`](tools/generateSpaceSkybox.c) generated the space panorama used by Space Aliens.
 

@@ -70,6 +70,15 @@ uniform int unlit; // KHR_materials_unlit: base color only, no lights or shadows
 // (composite.frag) tone maps it and converts it for display.
 uniform int gammaCorrect;
 
+// The scene's environment (the Skybox component), already in the space the scene target is in: light added to
+// everything lit, and fog that blends toward the sky's color with distance. fogMode 0 skips the fog.
+uniform vec3 sceneAmbient;
+uniform int fogMode; // 0 off, 1 linear, 2 exponential
+uniform vec3 fogColor;
+uniform float fogStart;
+uniform float fogFinish;
+uniform float fogDensity;
+
 vec3 toLinear(vec3 c) { return gammaCorrect == 1 ? pow(c, vec3(2.2)) : c; }
 
 float calculateShadow(vec3 normal)
@@ -198,6 +207,7 @@ void main()
     } else if (numLights == 0) {
         result += diffuseTex * 0.7;
     } else {
+        result += sceneAmbient * diffuseTex;
         for (int i = 0; i < numLights; ++i) {
 
             Light light = lights[i];
@@ -243,6 +253,13 @@ void main()
 
             result += lightResult;
         }
+    }
+
+    if (fogMode != 0) {
+        float dist = length(viewPos - FragPos);
+        float fog = fogMode == 1 ? clamp((dist - fogStart) / (fogFinish - fogStart), 0.0, 1.0)
+                                 : 1.0 - exp(-dist * dist * fogDensity * fogDensity);
+        result = mix(result, fogColor, fog);
     }
 
     // Cut-out materials are opaque where they are not discarded

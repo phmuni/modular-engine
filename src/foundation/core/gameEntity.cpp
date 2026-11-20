@@ -3,6 +3,7 @@
 #include "foundation/core/gameEntity.h"
 
 #include "components/characterController.h"
+#include "components/collision.h"
 #include "components/audioSource.h"
 #include "components/hidden.h"
 #include "components/light.h"
@@ -11,6 +12,7 @@
 #include "components/tags.h"
 #include "components/transform.h"
 #include "foundation/core/engine.h"
+#include "foundation/core/logger.h"
 #include "rendering/resources/material.h"
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
@@ -191,6 +193,40 @@ void GameEntity::impulse(const glm::vec3 &impulse) {
 void GameEntity::force(const glm::vec3 &force) {
   if (m_engine)
     m_engine->physics().addForce(m_id, force);
+}
+
+std::string GameEntity::layer() const {
+  if (!m_engine)
+    return CollisionLayers::kDefaultLayer;
+  if (const CharacterController *character = m_engine->tryGet<CharacterController>(m_id))
+    return character->layer;
+  if (const RigidBody *body = m_engine->tryGet<RigidBody>(m_id))
+    return body->layer;
+  if (const Collision *collision = m_engine->tryGet<Collision>(m_id))
+    return collision->layer;
+  return CollisionLayers::kDefaultLayer;
+}
+
+void GameEntity::setLayer(const std::string &layer) {
+  if (!m_engine)
+    return;
+  if (m_engine->layers().indexOf(layer) < 0) {
+    LOG_W("[Entity] %s: \"%s\" is not a collision layer (Engine::layers().add defines one)", describe().c_str(),
+          layer.c_str());
+    return;
+  }
+  CharacterController *character = m_engine->tryGet<CharacterController>(m_id);
+  RigidBody *body = m_engine->tryGet<RigidBody>(m_id);
+  Collision *collision = m_engine->tryGet<Collision>(m_id);
+  if (!character && !body && !collision)
+    LOG_W("[Entity] %s has no RigidBody, CharacterController or Collision to put on layer \"%s\"", describe().c_str(),
+          layer.c_str());
+  if (character)
+    character->layer = layer;
+  if (body)
+    body->layer = layer;
+  if (collision)
+    collision->layer = layer;
 }
 
 void GameEntity::move(const glm::vec3 &velocity) {

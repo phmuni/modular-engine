@@ -17,10 +17,13 @@ bool boxesOverlap(const glm::vec3 &minA, const glm::vec3 &maxA, const glm::vec3 
 const std::vector<CollisionEvent> &CollisionSystem::findCollisions(ComponentManager &componentManager) {
   m_boxes.clear();
   m_collisions.clear();
+  // Layer names are only looked up when some pair does not collide; with the default matrix this costs nothing
+  const bool useLayers = !m_layers.allCollide();
   componentManager.forEachComponent<Collision>([&](Entity entity, Collision &collision) {
     const auto *transform = componentManager.tryGet<Transform>(entity);
     const glm::vec3 offset = transform ? transform->position : glm::vec3(0.0f);
-    m_boxes.push_back({entity, collision.min + offset, collision.max + offset, collision.isStatic});
+    m_boxes.push_back({entity, collision.min + offset, collision.max + offset, collision.isStatic,
+                       useLayers ? m_layers.resolve(collision.layer) : 0});
   });
 
   // Sorted by their left edge, a box can only overlap the boxes after it that start before it ends
@@ -29,7 +32,8 @@ const std::vector<CollisionEvent> &CollisionSystem::findCollisions(ComponentMana
     const Box &a = m_boxes[i];
     for (size_t j = i + 1; j < m_boxes.size() && m_boxes[j].min.x < a.max.x; ++j) {
       const Box &b = m_boxes[j];
-      if ((a.isStatic && b.isStatic) || !boxesOverlap(a.min, a.max, b.min, b.max))
+      if ((a.isStatic && b.isStatic) || !boxesOverlap(a.min, a.max, b.min, b.max) ||
+          (useLayers && !m_layers.collide(a.layer, b.layer)))
         continue;
       m_collisions.push_back({a.entity, b.entity});
     }
@@ -39,7 +43,7 @@ const std::vector<CollisionEvent> &CollisionSystem::findCollisions(ComponentMana
 
 std::optional<RayHit> CollisionSystem::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
                                                ComponentManager &componentManager,
-                                               const std::function<bool(Entity)> &accept) const {
+                                               const std::function<bool(Entity)> &accept, uint32_t layerMask) const {
   const float length = glm::length(direction);
   if (length <= 0.0f || maxDistance < 0.0f)
     return std::nullopt;
@@ -48,6 +52,8 @@ std::optional<RayHit> CollisionSystem::raycast(const glm::vec3 &origin, const gl
   std::optional<RayHit> nearest;
   componentManager.forEachComponent<Collision>([&](Entity entity, Collision &collision) {
     if (accept && !accept(entity))
+      return;
+    if (layerMask != CollisionLayers::kAllLayers && ((layerMask >> m_layers.resolve(collision.layer)) & 1u) == 0)
       return;
     const auto *transform = componentManager.tryGet<Transform>(entity);
     const glm::vec3 offset = transform ? transform->position : glm::vec3(0.0f);
@@ -90,6 +96,8 @@ bool CollisionSystem::overlaps(Entity a, Entity b, ComponentManager &componentMa
   const auto *transformB = componentManager.tryGet<Transform>(b);
   const glm::vec3 offsetA = transformA ? transformA->position : glm::vec3(0.0f);
   const glm::vec3 offsetB = transformB ? transformB->position : glm::vec3(0.0f);
+  if (!m_layers.allCollide() && !m_layers.collide(collisionA->layer, collisionB->layer))
+    return false;
   return boxesOverlap(collisionA->min + offsetA, collisionA->max + offsetA, collisionB->min + offsetB,
                       collisionB->max + offsetB);
 }

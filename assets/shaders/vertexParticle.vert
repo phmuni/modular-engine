@@ -14,6 +14,13 @@ uniform vec3 lensPosition;
 uniform float lensRadius; // Schwarzschild radius
 uniform float lensMaxMagnification;
 
+// The scene's fog (see fragmentShader.frag). Particles are drawn after tone mapping, where the fog's color is not
+// theirs to mix toward, so they fade out into the fogged scene behind them instead.
+uniform int fogMode; // 0 off, 1 linear, 2 exponential
+uniform float fogStart;
+uniform float fogFinish;
+uniform float fogDensity;
+
 out vec4 ParticleColor;
 
 void main() {
@@ -51,7 +58,14 @@ void main() {
     }
 
     // Lensing keeps surface brightness: magnified images grow, demagnified ones fade
-    ParticleColor = vec4(aColor.rgb, aColor.a * min(magnification, 1.0));
+    float fade = 1.0;
+    if (fogMode != 0) {
+        float dist = length(eyePos.xyz);
+        float fog = fogMode == 1 ? clamp((dist - fogStart) / (fogFinish - fogStart), 0.0, 1.0)
+                                 : 1.0 - exp(-dist * dist * fogDensity * fogDensity);
+        fade = 1.0 - fog;
+    }
+    ParticleColor = vec4(aColor.rgb, aColor.a * min(magnification, 1.0) * fade);
     gl_Position = projection * eyePos;
     // Scale point size by distance to camera
     gl_PointSize = max(aSize * sqrt(max(magnification, 1.0)) * (300.0 / -eyePos.z), 1.0);

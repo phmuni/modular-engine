@@ -11,6 +11,7 @@ endif()
 option(MODULAR_ENGINE_BUILD_EXAMPLES "Build the example apps (bin/engine)" ${MODULAR_ENGINE_TOP_LEVEL})
 option(MODULAR_ENGINE_BUILD_TOOLS "Build the Lua runner (bin/runner) and the project launcher (bin/launcher)"
        ${MODULAR_ENGINE_TOP_LEVEL})
+option(MODULAR_ENGINE_BUILD_TESTS "Build bin/engine_tests, the behavior tests of the game API (see tests/ and tools/run_tests.py)" OFF)
 set(ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 # Where this checkout's own programs (bin/engine, bin/runner, bin/launcher) are built; tools/package_engine.py points it
 # elsewhere so packaging does not disturb the development build
@@ -273,5 +274,14 @@ if(MODULAR_ENGINE_BUILD_TOOLS)
   modular_engine_add_game(runner OUTPUT_DIR "${MODULAR_ENGINE_BIN_DIR}/runner" SOURCES "${ENGINE_DIR}/runner/main.cpp")
   # bin/launcher: creates, builds and plays projects; finds the templates two folders up (no engine assets needed)
   modular_engine_add_game(launcher OUTPUT_DIR "${MODULAR_ENGINE_BIN_DIR}/launcher" SOURCES "${ENGINE_DIR}/launcher/main.cpp"
+                          ENGINE_ASSETS_IN_PLACE)
+endif()
+
+# --- Tests ---
+# bin/engine_tests: runs one C++ test (tests/cpp) or Lua test script (tests/lua) per start, deterministically; it needs a
+# window with OpenGL 4.1 (on a machine with no GPU: xvfb and Mesa, see the README). tools/run_tests.py runs them all.
+if(MODULAR_ENGINE_BUILD_TESTS)
+  file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${ENGINE_DIR}/tests/cpp/*.cpp")
+  modular_engine_add_game(engine_tests OUTPUT_DIR "${MODULAR_ENGINE_BIN_DIR}" SOURCES ${TEST_SOURCES}
                           ENGINE_ASSETS_IN_PLACE)
 endif()

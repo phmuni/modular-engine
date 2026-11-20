@@ -1,5 +1,7 @@
-# Builds the engine, its tools and a game of each kind on macOS, Linux and Windows. Nothing here draws a frame (the
-# runners have no GPU), so it checks that everything compiles and that the launcher creates projects that build.
+# Builds the engine, its tools and a game of each kind on macOS, Linux and Windows, and checks that the launcher creates
+# projects that build. Linux also runs the behavior tests (tests/, tools/run_tests.py) on a virtual screen with Mesa's
+# software OpenGL, as the runners have no GPU. macOS runs them too, without failing the build (a runner's OpenGL is not
+# something to rely on); Windows does not: it has no software OpenGL 4.1 without extra downloads.
 name: Build
 
 on:
@@ -48,14 +50,32 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgl-dev libegl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
             libxi-dev libxss-dev libxinerama-dev libxfixes-dev libxtst-dev libwayland-dev libxkbcommon-dev \
-            libdecor-0-dev libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+            libdecor-0-dev libasound2-dev libpulse-dev libdbus-1-dev libudev-dev \
+            xvfb xauth libgl1-mesa-dri libglx-mesa0
 
       - name: Configure
         shell: bash
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.toolset && format('-T {0}', matrix.toolset) || '' }}
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DMODULAR_ENGINE_BUILD_TESTS=${{ (runner.os == 'Linux' || runner.os == 'macOS') && 'ON' || 'OFF' }} \
+            ${{ matrix.toolset && format('-T {0}', matrix.toolset) || '' }}
 
-      - name: Build the engine, the examples, the runner and the launcher
+      - name: Build the engine, the examples, the runner, the launcher and the tests
         run: cmake --build build --config Release --parallel 4
+
+      # One start of bin/engine_tests per test, each on fixed 1/60 s frames; the runner exits non-zero on any failure and
+      # prints the failing test's output. Mesa's llvmpipe gives the OpenGL 4.5 core context that the engine asks 4.1 of.
+      - name: Behavior tests (virtual screen, software OpenGL)
+        if: runner.os == 'Linux'
+        env:
+          SDL_VIDEODRIVER: x11
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a -s "-screen 0 1280x720x24" python3 tools/run_tests.py -j 2
+
+      - name: Behavior tests (macOS, not required to pass)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: python3 tools/run_tests.py
 
       - name: Create a project of each kind with the launcher
         shell: bash

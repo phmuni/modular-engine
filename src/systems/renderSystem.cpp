@@ -451,12 +451,24 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   // The first Skybox's color is the sky behind everything (shown as written: the scene target is linear). The
   // panorama, if it has one, draws over it.
   glm::vec3 skyColor(0.0f);
+  m_environment = SceneEnvironment();
   bool skyFound = false;
   componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
-    if (!skyFound && !componentManager.has<Hidden>(entity)) {
-      skyColor = skybox.color;
-      skyFound = true;
+    if (skyFound || componentManager.has<Hidden>(entity))
+      return;
+    skyFound = true;
+    skyColor = skybox.color;
+    // Fog color and ambient go through the same conversion as the sky, so a fog that matches the sky matches exactly
+    auto toScene = [&](const glm::vec3 &color) { return gammaCorrect ? glm::pow(color, glm::vec3(2.2f)) : color; };
+    const Fog &fog = skybox.fog;
+    if (fog.enabled) {
+      m_environment.fogMode = fog.mode == FogMode::Exponential ? 2 : 1;
+      m_environment.fogColor = toScene(fog.matchSky ? skybox.color : fog.color);
+      m_environment.fogStart = fog.start;
+      m_environment.fogFinish = std::max(fog.finish, fog.start + 1e-3f);
+      m_environment.fogDensity = std::max(fog.density, 0.0f);
     }
+    m_environment.ambient = toScene(skybox.ambientColor) * std::max(skybox.ambientIntensity, 0.0f);
   });
   if (gammaCorrect)
     skyColor = glm::pow(skyColor, glm::vec3(2.2f));
@@ -489,6 +501,14 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
                     GL_TEXTURE_CUBE_MAP);
     shader.setFloat("pointShadowTexel", 2.0f / static_cast<float>(EngineConfig::POINT_SHADOW_SIZE));
     shader.setInt("gammaCorrect", gammaCorrect ? 1 : 0);
+    shader.setInt("fogMode", m_environment.fogMode);
+    if (m_environment.fogMode != 0) {
+      shader.setVec3("fogColor", m_environment.fogColor);
+      shader.setFloat("fogStart", m_environment.fogStart);
+      shader.setFloat("fogFinish", m_environment.fogFinish);
+      shader.setFloat("fogDensity", m_environment.fogDensity);
+    }
+    shader.setVec3("sceneAmbient", m_environment.ambient);
 
     lightSystem.uploadLightsToShader(shader, componentManager);
   };
