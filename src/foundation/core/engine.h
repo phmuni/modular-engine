@@ -439,6 +439,13 @@ private:
     EntityManager entities;
     Entity activeCamera = -1;
     std::vector<uint32_t> materials; // the models' materials, kept alive while the snapshot exists
+
+    // Move-only (see ComponentManager::Snapshot), so the undo history's vectors move it rather than try to copy
+    SceneSnapshot() = default;
+    SceneSnapshot(SceneSnapshot &&) = default;
+    SceneSnapshot &operator=(SceneSnapshot &&) = default;
+    SceneSnapshot(const SceneSnapshot &) = delete;
+    SceneSnapshot &operator=(const SceneSnapshot &) = delete;
   };
   SceneSnapshot captureScene();
   // Replaces the scene with the snapshot's and refreshes what depends on it (camera, lights, render caches, physics)

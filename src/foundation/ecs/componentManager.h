@@ -185,8 +185,16 @@ private:
 public:
   // Every component of every type, copied: what restore() puts back. Types that cannot be copied are left out (with
   // a warning), and restore() empties them.
+  // Move-only, said outright: otherwise a container of snapshots may pick copying when its move is not noexcept
+  // (MSVC's standard library does), which fails on the pools' unique_ptrs
   struct Snapshot {
     std::vector<std::unique_ptr<ecs_detail::IComponentPool>> pools;
+
+    Snapshot() = default;
+    Snapshot(Snapshot &&) = default;
+    Snapshot &operator=(Snapshot &&) = default;
+    Snapshot(const Snapshot &) = delete;
+    Snapshot &operator=(const Snapshot &) = delete;
   };
   Snapshot snapshot() const {
     Snapshot result;
