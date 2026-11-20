@@ -179,7 +179,8 @@ function Entity:children() end
 
 ---Paints its model one solid color (0-1 per channel).
 ---@param color vec3
-function Entity:setColor(color) end
+---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
+function Entity:setColor(color, part) end
 
 ---The color of its model's first part (white without a model).
 ---@return vec3
@@ -196,7 +197,8 @@ function Entity:run(fn) end
 ---Makes its model glow with a color.
 ---@param color vec3
 ---@param strength? number Defaults to 1
-function Entity:setEmission(color, strength) end
+---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
+function Entity:setEmission(color, strength, part) end
 
 ---Shows or hides it (and its model's shadow).
 ---@param visible boolean
@@ -205,11 +207,25 @@ function Entity:setVisible(visible) end
 ---Puts an image on its model (a part of the material).
 ---@param slot "diffuse"|"specular"|"normal"|"emission"
 ---@param path string Relative to assets/ ("textures/brick.png")
-function Entity:setTexture(slot, path) end
+---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
+function Entity:setTexture(slot, path, part) end
 
 ---How shiny its model is (the specular exponent).
 ---@param shininess number
-function Entity:setShininess(shininess) end
+---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
+function Entity:setShininess(shininess, part) end
+
+---Sizes its Collision box (made if it has none) to its model, as rotated and scaled now. Call it again after changing the
+---rotation or scale a lot: the box itself does not rotate.
+---@param fit? number Scales the box around its center: below 1 for forgiving hitboxes, above 1 for generous ones. Defaults to 1
+---@param isStatic? boolean A box that never moves counts only against moving ones. Defaults to false
+function Entity:fitCollision(fit, isStatic) end
+
+---Whether its Collision box overlaps the other's now (the boxes `collision = true` in engine.create makes, or
+---fitCollision). Positions are as they are when called, so move, then ask. For physics bodies there is onContact.
+---@param other Entity|nil
+---@return boolean
+function Entity:isTouching(other) end
 
 ---Adds an impulse to its physics body.
 ---@param impulse vec3
@@ -348,6 +364,39 @@ function engine.destroy(entity) end
 ---Loads a scene file, replacing the current one.
 ---@param path string Relative to assets/
 function engine.loadScene(path) end
+
+---The scene file last loaded (or saved), "" before one was.
+---@return string
+function engine.scenePath() end
+
+---Whether a loadScene is still waiting for its models (the old scene keeps running until they are ready).
+---@return boolean
+function engine.isLoadingScene() end
+
+---Reads a model on a worker thread, so creating it later (engine.create, engine.spawn) does not stall a frame.
+---@param path string Relative to assets/
+function engine.preload(path) end
+
+---Saves a BMP of the next frame.
+---@param path string
+---@param delay? number Seconds to wait after start-up first. Defaults to 0
+---@param quitAfter? boolean Closes the game afterwards. Defaults to false
+function engine.screenshot(path, delay, quitAfter) end
+
+---The ray from the active camera through a point of the window, for picking. Takes window coordinates, so
+---`engine.screenRay(input.mouse())` works as it is.
+---@param x number
+---@param y number
+---@return vec3|nil origin
+---@return vec3|nil direction Unit length; nil with both when there is no active camera
+function engine.screenRay(x, y) end
+
+---The nearest visible model under a point of the window (triangle accurate, unlike physics bodies):
+---`local hit = engine.pick(input.mouse())`.
+---@param x number
+---@param y number
+---@return RaycastHit|nil
+function engine.pick(x, y) end
 
 ---Sets the window's title.
 ---@param title string
@@ -746,6 +795,21 @@ physics = {}
 ---@return RaycastHit|nil
 function physics.raycast(origin, direction, distance, options) end
 
+---Like physics.raycast, for Collision boxes (`collision = true` in engine.create) instead of physics bodies.
+---@param origin vec3
+---@param direction vec3
+---@param distance? number Defaults to 1000
+---@param options? RaycastOptions
+---@return RaycastHit|nil
+function physics.raycastBoxes(origin, direction, distance, options) end
+
+---Casts a ray against the triangles of visible models, and returns the nearest hit with the surface normal there, or nil.
+---@param origin vec3
+---@param direction vec3
+---@param distance? number Unlimited without it
+---@return RaycastHit|nil
+function physics.raycastModels(origin, direction, distance) end
+
 ---Defines a collision layer (up to 32 in all; "default", "static", "player", "enemy", "projectile" and "trigger" always exist). Layers
 ---are for entity.layer, `layer =` in engine.create and the editor's dropdowns; a Lua project can also list them in project.json:
 ---`"layers": { "names": ["water"], "ignore": [["enemy", "enemy"]] }`.
@@ -906,6 +970,12 @@ ui = {}
 ---@param path string Relative to assets/
 ---@return boolean
 function ui.load(path) end
+
+---Loads a font file; documents use it by the family name inside the file (Lato is there already).
+---@param path string Relative to assets/
+---@param fallback? boolean Also supplies glyphs the other fonts lack (symbols, other scripts). Defaults to false
+---@return boolean ok False if the file could not be read
+function ui.loadFont(path, fallback) end
 
 ---Enables the ready-made pause menu (Resume, Options, Quit): Escape opens it.
 ---@param enabled? boolean Defaults to true

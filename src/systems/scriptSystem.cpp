@@ -36,6 +36,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -601,15 +602,42 @@ struct ScriptSystem::Impl {
         "tags", [](GameEntity &e) { return sol::as_table(e.tags()); },
 
         // Looks
-        "setColor", &GameEntity::setColor,
+        // The optional last argument limits the look to one part of the model: a submesh number (from 0) or the
+        // name of an OBJ object/group or glTF node; without it every part changes
+        "setColor", [](GameEntity &e, const glm::vec3 &color, sol::optional<sol::object> part) {
+          if (part && part->is<std::string>())
+            e.setColor(color, part->as<std::string>());
+          else
+            e.setColor(color, part && part->is<int>() ? part->as<int>() : -1);
+        },
         "getColor", &GameEntity::color, // not `color`: a script may keep its own field of that name
-        "setEmission", [](GameEntity &e, const glm::vec3 &color, sol::optional<float> strength) {
-          e.setEmission(color, strength.value_or(1.0f));
+        "setEmission", [](GameEntity &e, const glm::vec3 &color, sol::optional<float> strength,
+                          sol::optional<sol::object> part) {
+          if (part && part->is<std::string>())
+            e.setEmission(color, strength.value_or(1.0f), part->as<std::string>());
+          else
+            e.setEmission(color, strength.value_or(1.0f), part && part->is<int>() ? part->as<int>() : -1);
         },
         "setVisible", &GameEntity::setVisible,
         "visible", sol::readonly_property(&GameEntity::isVisible),
-        "setTexture", &GameEntity::setTexture,
-        "setShininess", &GameEntity::setShininess,
+        "setTexture", [](GameEntity &e, const std::string &slot, const std::string &path, sol::optional<sol::object> part) {
+          if (part && part->is<std::string>())
+            e.setTexture(slot, path, part->as<std::string>());
+          else
+            e.setTexture(slot, path, part && part->is<int>() ? part->as<int>() : -1);
+        },
+        "setShininess", [](GameEntity &e, float shininess, sol::optional<sol::object> part) {
+          if (part && part->is<std::string>())
+            e.setShininess(shininess, part->as<std::string>());
+          else
+            e.setShininess(shininess, part && part->is<int>() ? part->as<int>() : -1);
+        },
+
+        // Collision boxes: fitCollision(fit, isStatic) sizes its box to its model; isTouching(other) tests it against another's
+        "fitCollision", [](GameEntity &e, sol::optional<float> fit, sol::optional<bool> isStatic) {
+          e.fitCollision(fit.value_or(1.0f), isStatic.value_or(false));
+        },
+        "isTouching", [](GameEntity &e, sol::optional<GameEntity> other) { return other && e.isTouching(*other); },
 
         // Physics bodies
         "velocity", sol::property(&GameEntity::velocity, &GameEntity::setVelocity),
@@ -724,6 +752,16 @@ struct ScriptSystem::Impl {
     return mask;
   }
 
+  // A ray hit as Lua sees it: { entity, point, normal, distance }
+  sol::table hitTable(const RayHit &hit) {
+    sol::table result = lua.create_table();
+    result["entity"] = entityObject(engine.entity(hit.entity));
+    result["point"] = hit.point;
+    result["normal"] = hit.normal;
+    result["distance"] = hit.distance;
+    return result;
+  }
+
   void requireLayer(const char *function, const std::string &name) {
     if (engine.layers().indexOf(name) < 0)
       throw std::runtime_error(std::string(function) + ": \"" + name + "\" is not a collision layer (physics.addLayer defines one)");
@@ -825,6 +863,32 @@ struct ScriptSystem::Impl {
         e->destroy();
     });
     api.set_function("loadScene", [this](const std::string &path) { engine.loadScene(path); });
+    // The file last loaded, "" before one was; engine.isLoadingScene() is true while a loadScene waits for its models
+    api.set_function("scenePath", [this]() { return engine.getScenePath(); });
+    api.set_function("isLoadingScene", [this]() { return engine.isLoadingScene(); });
+    // Reads a model on a worker thread so creating it later does not stall a frame
+    api.set_function("preload", [this](const std::string &path) { engine.preloadModel(path); });
+    // engine.screenshot("shot.bmp", 0, false) saves a BMP of the next frame (after `delay` seconds; quitAfter closes the game)
+    api.set_function("screenshot", [this](const std::string &path, sol::optional<float> delay, sol::optional<bool> quitAfter) {
+      engine.captureScreenshot(path, delay.value_or(0.0f), quitAfter.value_or(false));
+    });
+    // Picking, with window coordinates such as input.mouse() gives: engine.screenRay(input.mouse()) returns the active
+    // camera's ray through that point as origin, direction (nil without a camera); engine.pick(input.mouse()) the
+    // nearest model it hits, as { entity, point, normal, distance }, or nil
+    api.set_function("screenRay", [this](float x, float y) {
+      sol::variadic_results results;
+      if (const auto ray = engine.screenRay(glm::vec2(x, y))) {
+        results.push_back(sol::make_object(lua, ray->origin));
+        results.push_back(sol::make_object(lua, ray->direction));
+      } else {
+        results.push_back(sol::make_object(lua, sol::lua_nil));
+      }
+      return results;
+    });
+    api.set_function("pick", [this](float x, float y) -> sol::object {
+      const auto hit = engine.pickModel(glm::vec2(x, y));
+      return hit ? sol::object(hitTable(*hit)) : sol::object(sol::lua_nil);
+    });
     api.set_function("setTitle", [this](const std::string &title) { engine.setWindowTitle(title); });
     api.set_function("quit", [this]() { engine.quit(); });
     // The window and the resolution the scene renders at (see Engine::setWindowSize, Engine::setRenderScale).
@@ -1055,12 +1119,25 @@ struct ScriptSystem::Impl {
       const auto hit = engine.physics().raycast(origin, direction, distance.value_or(1000.0f), nullptr, layerMask);
       if (!hit)
         return sol::lua_nil;
-      sol::table result = lua.create_table();
-      result["entity"] = entityObject(engine.entity(hit->entity));
-      result["point"] = hit->point;
-      result["normal"] = hit->normal;
-      result["distance"] = hit->distance;
-      return result;
+      return hitTable(*hit);
+    });
+    // physics.raycastBoxes(origin, direction, distance, { layers = {...} }): the same for the Collision boxes (the ones
+    // engine.create makes with collision = true, and isTouching tests), which are not physics bodies
+    physics.set_function("raycastBoxes", [this](const glm::vec3 &origin, const glm::vec3 &direction,
+                                                sol::optional<float> distance, sol::optional<sol::table> options) -> sol::object {
+      uint32_t layerMask = CollisionLayers::kAllLayers;
+      if (options)
+        if (const sol::optional<sol::table> layers = (*options)["layers"])
+          layerMask = layerMaskOf(*layers);
+      const auto hit = engine.raycast(origin, direction, distance.value_or(1000.0f), nullptr, layerMask);
+      return hit ? sol::object(hitTable(*hit)) : sol::object(sol::lua_nil);
+    });
+    // physics.raycastModels(origin, direction, distance): the nearest triangle of a visible model, with the surface
+    // normal there (physics.raycast stops at the body's shape); distance is unlimited without one
+    physics.set_function("raycastModels", [this](const glm::vec3 &origin, const glm::vec3 &direction,
+                                                 sol::optional<float> distance) -> sol::object {
+      const auto hit = engine.raycastModels(origin, direction, distance.value_or(std::numeric_limits<float>::max()));
+      return hit ? sol::object(hitTable(*hit)) : sol::object(sol::lua_nil);
     });
     // Collision layers: bodies, characters and Collision boxes are on one (entity.layer, or layer = in engine.create), and
     // layers that do not collide pass through each other. "default", "static", "player", "enemy", "projectile" and
@@ -1161,6 +1238,11 @@ struct ScriptSystem::Impl {
     // ui: RmlUi documents, changed by element id
     sol::table ui = lua.create_named_table("ui");
     ui.set_function("load", &GameUI::load, &engine.ui());
+    // ui.loadFont("fonts/Pixel.ttf"): documents use it by the family name inside the file; with fallback = true it
+    // also supplies glyphs the other fonts lack
+    ui.set_function("loadFont", [this](const std::string &path, sol::optional<bool> fallback) {
+      return engine.ui().loadFont(path, fallback.value_or(false));
+    });
     // The ready-made pause menu: Escape opens it once enabled (see Engine::enablePauseMenu)
     ui.set_function("pauseMenu", [this](sol::optional<bool> enabled) { engine.ui().pauseMenu(enabled.value_or(true)); });
     ui.set_function("openPauseMenu", &GameUI::openPauseMenu, &engine.ui());

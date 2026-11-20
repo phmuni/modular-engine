@@ -22,6 +22,10 @@ public:
   // shows the same one, so a game script that runs again (after Stop) does not stack copies. False if it failed.
   bool load(const std::string &path);
 
+  // Loads a font file (path relative to assets/); documents use it by the family name inside the file. With `fallback`
+  // it also serves glyphs the other fonts lack (symbols, other scripts). False if the file could not be read.
+  bool loadFont(const std::string &path, bool fallback = false);
+
   // Sets an element's content: a string, or a number written plainly (12, 1.5)
   void text(const std::string &id, const std::string &value);
   void text(const std::string &id, int value);

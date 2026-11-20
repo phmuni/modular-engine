@@ -77,14 +77,26 @@ public:
 
   // Looks: a color for the whole model (no model: nothing), emission, and whether it is drawn at all. color() is the
   // first part's color (white without a model).
+  // A `submesh` (counted from 0, as the editor lists them) or a `part` (an OBJ object/group or glTF node, by name)
+  // limits a look to that part of the model; -1, the default, is every part.
   glm::vec3 color() const;
-  void setColor(const glm::vec3 &color);
-  void setEmission(const glm::vec3 &color, float strength = 1.0f);
+  void setColor(const glm::vec3 &color, int submesh = -1);
+  void setColor(const glm::vec3 &color, const std::string &part);
+  void setEmission(const glm::vec3 &color, float strength = 1.0f, int submesh = -1);
+  void setEmission(const glm::vec3 &color, float strength, const std::string &part);
   void setVisible(bool visible);
   bool isVisible() const;
   // slot: "diffuse", "specular", "normal" or "emission"; path relative to assets/ like every asset path
-  void setTexture(const std::string &slot, const std::string &path);
-  void setShininess(float shininess);
+  void setTexture(const std::string &slot, const std::string &path, int submesh = -1);
+  void setTexture(const std::string &slot, const std::string &path, const std::string &part);
+  void setShininess(float shininess, int submesh = -1);
+  void setShininess(float shininess, const std::string &part);
+
+  // Sets its Collision box (adding one if needed) to its model's bounds, as rotated and scaled now; `fit` scales the
+  // box around its center (see Engine::fitCollisionToModel). Call it again after changing the rotation or scale a lot.
+  void fitCollision(float fit = 1.0f, bool isStatic = false);
+  // Whether its Collision box overlaps the other's now (see Engine::isColliding)
+  bool isTouching(const GameEntity &other) const;
 
   // Physics body (RigidBody): its velocity, and a push now (impulse) or this frame (force)
   glm::vec3 velocity() const;

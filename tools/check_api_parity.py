@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fails when the C++ game API gets ahead of Lua: every public method of the facade classes (GameEntity, GameUI,
-GameCamera, GameTime, GameTween) must be bound in src/systems/scriptSystem.cpp, or listed below with the reason it is C++ only.
+GameCamera, GameTime, GameTween) and of Engine (src/foundation/core/engine.h) must be bound in src/systems/scriptSystem.cpp, or listed below with the reason it is C++ only.
 Needs no build.
 
     python3 tools/check_api_parity.py
@@ -9,7 +9,8 @@ Together with tools/check_lua_api.py (every binding is described in templates/co
 a new C++ method fail CI until Lua has it and the editor's definitions describe it.
 
 A method counts as bound when scriptSystem.cpp takes its address (`&GameUI::load`), or binds a Lua name made from it:
-the same name, or `setX` / `isX` for the property or function `x`.
+the same name, or `setX` / `isX` for the property or function `x`. Engine's methods live in several Lua tables (engine,
+sound, input, physics...) or on Entity, so ENGINE_ALIASES says where a method went when its name differs.
 """
 import re
 import sys
@@ -27,6 +28,7 @@ FACADES = {
     "GameCamera": ("src/systems/gameCamera.h", "camera"),
     "GameTime": ("src/systems/gameTime.h", "time"),
     "GameTween": ("src/systems/gameTween.h", "tween"),
+    "Engine": ("src/foundation/core/engine.h", "engine"),
 }
 
 # Classes named Game... that are not facades of the game API
@@ -38,12 +40,131 @@ ALIASES = {
     ("GameEntity", "color"): "getColor",  # not `color`: a script may keep its own field of that name
 }
 
+# Engine methods bound under another name or in another Lua table: method -> "table.name" (Entity.name for a method
+# of the entity handle). An engine function that is only a different name in the `engine` table needs no table.
+ENGINE_ALIASES = {
+    "destroyEntity": "destroy",
+    "setParent": "Entity.setParent",
+    "getParent": "Entity.parent",
+    "getChildren": "Entity.children",
+    "findEntity": "find",
+    "isAlive": "Entity.valid",
+    "hasComponent": "Entity.has",
+    "instantiate": "spawn",  # spawn is the same call for the game API, returning a handle
+    "playAnimation": "Entity.play",
+    "getAnimationClips": "Entity.clips",
+    "raycast": "physics.raycastBoxes",
+    "raycastModels": "physics.raycastModels",
+    "pickModel": "pick",
+    "isColliding": "Entity.isTouching",
+    "fitCollisionToModel": "Entity.fitCollision",
+    "setEmission": "Entity.setEmission",
+    "setTexture": "Entity.setTexture",
+    "setShininess": "Entity.setShininess",
+    "setSolidColor": "Entity.setColor",
+    "setMouseCaptured": "input.captureMouse",
+    "isMouseCaptured": "input.isMouseCaptured",
+    "setCursorVisible": "input.showCursor",
+    "isCursorVisible": "input.isCursorVisible",
+    "preloadModel": "preload",
+    "setState": "setToggle",
+    "getState": "isToggled",
+    "preloadSound": "sound.preload",
+    "playSound": "sound.play",
+    "playSoundAt": "sound.playAt",
+    "stopSound": "sound.stop",
+    "setSoundVolume": "sound.setVolume",
+    "isSoundPlaying": "sound.isPlaying",
+    "playMusic": "sound.music",
+    "stopMusic": "sound.stopMusic",
+    "setMusicVolume": "sound.musicVolume",
+    "isMusicPlaying": "sound.isMusicPlaying",
+    "getScenePath": "scenePath",
+    "loadUIDocument": "ui.load",
+    "loadUIFont": "ui.loadFont",
+    "enablePauseMenu": "ui.pauseMenu",
+    "openPauseMenu": "ui.openPauseMenu",
+    "closePauseMenu": "ui.closePauseMenu",
+    "isPauseMenuOpen": "ui.isPaused",
+    "captureScreenshot": "screenshot",
+    "setWindowTitle": "setTitle",
+    "getAmbientColor": "getAmbient",
+    "getAmbientIntensity": "getAmbient",
+}
+
 # Not bound on purpose: (class, method) -> why
 C_PLUS_PLUS_ONLY = {
     ("GameTime", "tick"): "the engine calls it once per frame",
     ("GameTime", "clear"): "the engine calls it when a play session ends",
     ("GameTween", "tick"): "the engine calls it once per frame",
     ("GameTween", "clear"): "the engine calls it when a play session ends",
+}
+
+# Engine methods that stay C++ only: method -> why. Anything else public on Engine must be bound (or aliased above).
+ENGINE_C_PLUS_PLUS_ONLY = {
+    # Lifecycle: the game's main() or the Lua runner calls these
+    "shutdown": "lifecycle",
+    "initialize": "lifecycle",
+    "run": "lifecycle (the Lua runner starts the loop)",
+    "setGameName": "the Lua runner sets it from project.json's name",
+    "configureWindow": "the Lua runner applies project.json's window; scripts use setWindowSize and setFullscreen",
+    "setDeterministic": "set before start-up, for tests (--deterministic)",
+    "runBenchmark": "command line (--benchmark)",
+    "parseCommandLine": "the game's main() reads the command line",
+    "commandLineHelp": "the game's main() reads the command line",
+    "applyCommandLine": "the game's main() reads the command line",
+    "saveSceneAfter": "command line (--save-scene)",
+    # Accessors of C++ objects: Lua has a table or handle for each
+    "getSystemManager": "engine internals",
+    "getComponentManager": "engine internals",
+    "getEntityManager": "engine internals",
+    "entities": "C++ builder; engine.create takes a table",
+    "entity": "a handle from an entity number; Lua gets its handles from find, create and spawn",
+    "ui": "accessor; the Lua ui table",
+    "camera": "accessor; the Lua camera table",
+    "time": "accessor; the Lua time table",
+    "tween": "accessor; the Lua tween table",
+    "physics": "accessor; the Lua physics table",
+    "navigation": "accessor; the Lua nav table",
+    "input": "accessor; the Lua input table",
+    "scripts": "accessor of the script system",
+    "layers": "accessor; physics.addLayer, setLayersCollide and layersCollide",
+    "saveData": "accessor; the Lua save table",
+    "getUIContext": "raw RmlUi, for C++ data models",
+    "getActiveCamera": "raw Camera; the Lua camera table",
+    "getSceneSerializer": "C++ game components in scene files",
+    "registerComponent": "C++ game components (Lua games use fields on the entity)",
+    "getReflectedComponents": "C++ game components (editor)",
+    # Templates and ECS access by type
+    "get": "template over C++ component types",
+    "tryGet": "template over C++ component types",
+    "has": "template over C++ component types; entity:has takes a name",
+    "removeComponent": "template over C++ component types",
+    "forEachCollision": "template over C++ component types; entity:isTouching",
+    "forEachContact": "template over C++ component types; the onContact callback",
+    "findCollisions": "C++ iteration of Collision pairs; entity:isTouching asks about one pair",
+    # Raw entity creation: Lua has engine.create, which does the same from a description
+    "createEntity": "an empty entity; engine.create",
+    "createModelEntity": "engine.create takes a model in its table",
+    "createLightEntity": "C++ builder; the Lua entity's light",
+    "createCameraEntity": "the scene's camera is the active one, driven by the camera table",
+    "setLocalTransform": "a C++ editor/hierarchy call; scripts move entities with position, rotation and scale",
+    # Editor and tooling
+    "getPlayMode": "editor",
+    "edit": "editor",
+    "resume": "editor",
+    "play": "editor",
+    "stop": "editor",
+    "beginCheckpoint": "editor undo",
+    "endCheckpoint": "editor undo",
+    "hasOpenCheckpoint": "editor undo",
+    "isSceneDirty": "editor",
+    "undo": "editor",
+    "redo": "editor",
+    "canUndo": "editor",
+    "canRedo": "editor",
+    "saveScene": "tooling: writes scene files, which games author in the editor (save is for player data)",
+    "savePrefab": "tooling: writes prefab files, which games author in the editor",
 }
 
 
@@ -109,6 +230,11 @@ def public_methods(body, class_name):
     return names
 
 
+def split_alias(alias, owner):
+    """"table.name" as (table, name); a bare name is in `owner`."""
+    return tuple(alias.split(".", 1)) if "." in alias else (owner, alias)
+
+
 def lua_names_for(method):
     names = {method}
     for prefix in ("set", "is"):
@@ -145,25 +271,31 @@ def main():
         lua_members = bound.get(owner, set())
         if owner not in bound.get("", set()):
             problems.append(f"{class_name}: nothing called {owner} is bound in {BINDINGS.name}")
+        engine = class_name == "Engine"
         for method in methods:
             total += 1
             key = (class_name, method)
             seen.add(key)
-            if key in C_PLUS_PLUS_ONLY:
+            if key in C_PLUS_PLUS_ONLY or (engine and method in ENGINE_C_PLUS_PLUS_ONLY):
                 continue
-            if key in ALIASES:
-                if ALIASES[key] not in lua_members:
-                    problems.append(f"{class_name}::{method}: aliased to {owner}.{ALIASES[key]}, which is not bound")
+            alias = ENGINE_ALIASES.get(method) if engine else ALIASES.get(key)
+            if alias:
+                table, name = split_alias(alias, owner)
+                if name not in bound.get(table, set()):
+                    problems.append(f"{class_name}::{method}: aliased to {table}.{name}, which is not bound")
                 continue
             if f"&{class_name}::{method}" in code or lua_names_for(method) & lua_members:
                 continue
             problems.append(f"{class_name}::{method}: not bound in Lua. Bind it in {BINDINGS.name} (as {owner}."
                             f"{method}), describe it in templates/common/lua/types/engine.lua, or list it in "
-                            f"C_PLUS_PLUS_ONLY here with the reason")
+                            f"{'ENGINE_C_PLUS_PLUS_ONLY' if engine else 'C_PLUS_PLUS_ONLY'} here with the reason")
 
-    for key in list(ALIASES) + list(C_PLUS_PLUS_ONLY):
+    for key in list(ALIASES) + list(C_PLUS_PLUS_ONLY) + [("Engine", m) for m in ENGINE_ALIASES] + \
+            [("Engine", m) for m in ENGINE_C_PLUS_PLUS_ONLY]:
         if key not in seen:
             problems.append(f"{key[0]}::{key[1]}: listed in {Path(__file__).name} but no longer a public method")
+    for method in ENGINE_ALIASES.keys() & ENGINE_C_PLUS_PLUS_ONLY.keys():
+        problems.append(f"Engine::{method}: both aliased and listed as C++ only in {Path(__file__).name}")
 
     if problems:
         print("The C++ game API and the Lua bindings differ:")

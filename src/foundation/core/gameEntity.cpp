@@ -139,14 +139,24 @@ glm::vec3 GameEntity::color() const {
   return m_engine->getSystemManager().getSystem<ResourceSystem>().getMaterial(model->materialHandles[0]).getDiffuseColor();
 }
 
-void GameEntity::setColor(const glm::vec3 &color) {
+void GameEntity::setColor(const glm::vec3 &color, int submesh) {
   if (m_engine && m_engine->has<Model>(m_id))
-    m_engine->setSolidColor(m_id, color);
+    m_engine->setSolidColor(m_id, color, submesh);
 }
 
-void GameEntity::setEmission(const glm::vec3 &color, float strength) {
+void GameEntity::setColor(const glm::vec3 &color, const std::string &part) {
   if (m_engine && m_engine->has<Model>(m_id))
-    m_engine->setEmission(m_id, color, strength);
+    m_engine->setSolidColor(m_id, color, part);
+}
+
+void GameEntity::setEmission(const glm::vec3 &color, float strength, int submesh) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->setEmission(m_id, color, strength, submesh);
+}
+
+void GameEntity::setEmission(const glm::vec3 &color, float strength, const std::string &part) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->setEmission(m_id, color, strength, part);
 }
 
 void GameEntity::setVisible(bool visible) {
@@ -161,19 +171,40 @@ void GameEntity::setVisible(bool visible) {
 
 bool GameEntity::isVisible() const { return !(m_engine && m_engine->has<Hidden>(m_id)); }
 
-void GameEntity::setTexture(const std::string &slot, const std::string &path) {
-  if (!m_engine || !m_engine->has<Model>(m_id))
-    return;
-  const TextureSlot textureSlot = slot == "specular"   ? TextureSlot::Specular
-                                  : slot == "normal"   ? TextureSlot::Normal
-                                  : slot == "emission" ? TextureSlot::Emission
-                                                       : TextureSlot::Diffuse;
-  m_engine->setTexture(m_id, textureSlot, path);
+static TextureSlot textureSlotNamed(const std::string &slot) {
+  return slot == "specular"   ? TextureSlot::Specular
+         : slot == "normal"   ? TextureSlot::Normal
+         : slot == "emission" ? TextureSlot::Emission
+                              : TextureSlot::Diffuse;
 }
 
-void GameEntity::setShininess(float shininess) {
+void GameEntity::setTexture(const std::string &slot, const std::string &path, int submesh) {
   if (m_engine && m_engine->has<Model>(m_id))
-    m_engine->setShininess(m_id, shininess);
+    m_engine->setTexture(m_id, textureSlotNamed(slot), path, submesh);
+}
+
+void GameEntity::setTexture(const std::string &slot, const std::string &path, const std::string &part) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->setTexture(m_id, textureSlotNamed(slot), path, part);
+}
+
+void GameEntity::setShininess(float shininess, int submesh) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->setShininess(m_id, shininess, submesh);
+}
+
+void GameEntity::setShininess(float shininess, const std::string &part) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->setShininess(m_id, shininess, part);
+}
+
+void GameEntity::fitCollision(float fit, bool isStatic) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->fitCollisionToModel(m_id, fit, isStatic);
+}
+
+bool GameEntity::isTouching(const GameEntity &other) const {
+  return m_engine && other.m_engine && m_engine->isColliding(m_id, other.m_id);
 }
 
 glm::vec3 GameEntity::velocity() const {

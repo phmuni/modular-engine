@@ -102,6 +102,8 @@ bool GameUI::onClick(const std::string &id, std::function<void()> handler) {
   return true;
 }
 
+bool GameUI::loadFont(const std::string &path, bool fallback) { return m_impl->engine.loadUIFont(path, fallback); }
+
 void GameUI::pauseMenu(bool enabled) { m_impl->engine.enablePauseMenu(enabled); }
 void GameUI::openPauseMenu() { m_impl->engine.openPauseMenu(); }
 void GameUI::closePauseMenu() { m_impl->engine.closePauseMenu(); }
