@@ -10,7 +10,9 @@
 #include "components/tags.h"
 #include "components/transform.h"
 #include "foundation/core/engine.h"
+#include "rendering/resources/material.h"
 #include "systems/renderSystem.h"
+#include "systems/resourceSystem.h"
 #include <algorithm>
 #include <cmath>
 
@@ -125,6 +127,13 @@ std::vector<GameEntity> GameEntity::children() const {
   for (Entity child : m_engine->getChildren(m_id))
     list.emplace_back(*m_engine, child);
   return list;
+}
+
+glm::vec3 GameEntity::color() const {
+  const Model *model = m_engine ? m_engine->tryGet<Model>(m_id) : nullptr;
+  if (!model || model->materialHandles.empty())
+    return glm::vec3(1.0f);
+  return m_engine->getSystemManager().getSystem<ResourceSystem>().getMaterial(model->materialHandles[0]).getDiffuseColor();
 }
 
 void GameEntity::setColor(const glm::vec3 &color) {

@@ -106,7 +106,7 @@ def callbacks(code):
 
 def defined_names(text):
     """{Owner: set(names)} the definitions describe: `function Owner.name` / `Owner:name`, the ---@field lines of a
-    ---@class, and globals assigned at the top level (`engine = {}`)."""
+    ---@class, and globals assigned at the top level (`engine = {}`) or defined as functions (`function wait() end`)."""
     defined = {}
     owner = None
     for line in text.splitlines():
@@ -118,6 +118,8 @@ def defined_names(text):
                 defined[owner].add(match.group(1))
         elif match := re.match(r"(?:local\s+)?function\s+(\w+)[.:](\w+)\s*\(", line):
             defined.setdefault(match.group(1), set()).add(match.group(2))
+        elif match := re.match(r"function\s+(\w+)\s*\(", line):  # a global function: `function wait(seconds) end`
+            defined.setdefault("", set()).add(match.group(1))
         elif match := re.match(r"(?:local\s+)?(\w+)\s*=\s*(?:\{\}|nil)", line):
             defined.setdefault("", set()).add(match.group(1))
         if line and not line.startswith("---"):

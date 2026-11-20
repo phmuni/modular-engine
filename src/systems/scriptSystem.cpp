@@ -37,6 +37,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <unordered_map>
 #include <variant>
@@ -167,6 +168,20 @@ struct ScriptSystem::Impl {
 
   // Each entity's own Lua fields (self.speed = 5), kept apart from its script so reloading keeps them
   std::unordered_map<Entity, sol::table> fields;
+
+  // Coroutines started with engine.run / self:run: Lua threads that `wait` suspends. Each wait is a GameTime timer that
+  // resumes the thread, so they follow the time scale and pause, and an error in one is reported like any script's.
+  // This is the one thing here that is Lua's own rather than the C++ game API: C++ has no coroutines (use timers).
+  struct Routine {
+    int id = 0;
+    Entity owner = -1; // an entity's routine ends with it; -1: the game's, which outlives scenes
+    sol::thread thread; // keeps the Lua thread alive
+    int timer = 0;      // the time.after that resumes it
+    bool finished = false;
+    std::string where;
+  };
+  std::unordered_map<int, std::shared_ptr<Routine>> routines;
+  int nextRoutine = 1;
 
   std::string lastError;
   std::string lastErrorPath;
@@ -371,6 +386,8 @@ struct ScriptSystem::Impl {
       reloadChanged();
     }
     syncInstances();
+    if (!routines.empty())
+      pruneRoutines();
 
     if (hasGameScript && !gameScript.started) {
       gameScript.started = true;
@@ -419,6 +436,72 @@ struct ScriptSystem::Impl {
         notify(pair.b, pair.a, "onOverlap");
       }
     }
+  }
+
+  // --- Coroutines -----------------------------------------------------------------------------------------------
+
+  void finishRoutine(const std::shared_ptr<Routine> &routine) {
+    routine->finished = true;
+    engine.time().cancel(routine->timer);
+    routines.erase(routine->id);
+  }
+
+  // Runs the routine until it waits, ends or fails
+  void resumeRoutine(const std::shared_ptr<Routine> &routine) {
+    if (routine->finished)
+      return;
+    if (routine->owner != -1 && !engine.isAlive(routine->owner)) {
+      finishRoutine(routine);
+      return;
+    }
+    lua_State *thread = routine->thread.thread_state();
+    int results = 0;
+    const int status = lua_resume(thread, lua.lua_state(), 0, &results);
+    if (status == LUA_YIELD) {
+      // What it yielded is the seconds to wait (wait() with nothing, or a bare coroutine.yield(): the next frame)
+      const float seconds = results > 0 && lua_isnumber(thread, -results)
+                                ? static_cast<float>(lua_tonumber(thread, -results))
+                                : 0.0f;
+      lua_pop(thread, results);
+      if (!routine->finished) // not stopped from inside itself
+        routine->timer = engine.time().after(seconds, [this, routine]() { resumeRoutine(routine); });
+      return;
+    }
+    if (status != LUA_OK) {
+      const char *message = lua_tostring(thread, -1);
+      report(routine->where, message ? message : "error in a coroutine");
+    }
+    finishRoutine(routine);
+  }
+
+  // Starts `function` as a coroutine, running it now up to its first wait; returns a handle for engine.stop
+  int startRoutine(const sol::protected_function &function, Entity owner, const char *where) {
+    auto routine = std::make_shared<Routine>();
+    routine->id = nextRoutine++;
+    routine->owner = owner;
+    routine->where = where;
+    routine->thread = sol::thread::create(lua.lua_state());
+    function.push(routine->thread.thread_state());
+    routines[routine->id] = routine;
+    const int id = routine->id;
+    resumeRoutine(routine);
+    return id;
+  }
+
+  void stopRoutine(int id) {
+    auto it = routines.find(id);
+    if (it != routines.end())
+      finishRoutine(it->second);
+  }
+
+  // Routines of entities that are gone end now, not when their wait is over
+  void pruneRoutines() {
+    std::vector<std::shared_ptr<Routine>> gone;
+    for (const auto &entry : routines)
+      if (entry.second->owner != -1 && !engine.isAlive(entry.second->owner))
+        gone.push_back(entry.second);
+    for (const auto &routine : gone)
+      finishRoutine(routine);
   }
 
   // --- The API --------------------------------------------------------------------------------------------------
@@ -503,6 +586,11 @@ struct ScriptSystem::Impl {
         },
         "children", [](GameEntity &e) { return sol::as_table(e.children()); },
 
+        // A coroutine that ends with the entity: self:run(function() wait(1) self:setColor(...) end)
+        "run", [this](GameEntity &e, sol::protected_function function) {
+          return startRoutine(function, e.id(), "self:run");
+        },
+
         // Tags
         "addTag", &GameEntity::addTag,
         "removeTag", &GameEntity::removeTag,
@@ -511,6 +599,7 @@ struct ScriptSystem::Impl {
 
         // Looks
         "setColor", &GameEntity::setColor,
+        "getColor", &GameEntity::color, // not `color`: a script may keep its own field of that name
         "setEmission", [](GameEntity &e, const glm::vec3 &color, sol::optional<float> strength) {
           e.setEmission(color, strength.value_or(1.0f));
         },
@@ -593,6 +682,32 @@ struct ScriptSystem::Impl {
     return desc;
   }
 
+  // "easeOutQuad" and friends, as tween.to takes them; a name nothing answers to is an error, not a silent linear
+  static Ease easeNamed(const std::string &name) {
+    static const std::pair<const char *, Ease> names[] = {
+        {"linear", Ease::Linear},          {"easeInQuad", Ease::EaseInQuad},   {"easeOutQuad", Ease::EaseOutQuad},
+        {"easeInOutQuad", Ease::EaseInOutQuad}, {"easeInCubic", Ease::EaseInCubic}, {"easeOutCubic", Ease::EaseOutCubic},
+        {"easeInOutCubic", Ease::EaseInOutCubic}};
+    for (const auto &entry : names)
+      if (name == entry.first)
+        return entry.second;
+    throw std::runtime_error("unknown easing \"" + name +
+                             "\" (linear, easeInQuad, easeOutQuad, easeInOutQuad, easeInCubic, easeOutCubic, "
+                             "easeInOutCubic)");
+  }
+
+  static TweenProperty tweenProperty(const std::string &name) {
+    if (name == "position")
+      return TweenProperty::Position;
+    if (name == "rotation")
+      return TweenProperty::Rotation;
+    if (name == "scale")
+      return TweenProperty::Scale;
+    if (name == "color")
+      return TweenProperty::Color;
+    throw std::runtime_error("tween.to: unknown property \"" + name + "\" (position, rotation, scale, color)");
+  }
+
   // camera.follow's options table as the CameraRig the C++ side takes (see components/cameraRig.h for the fields)
   static CameraRig cameraRigOptions(const sol::optional<sol::table> &options) {
     CameraRig rig;
@@ -624,8 +739,21 @@ struct ScriptSystem::Impl {
       LOG_I("[Lua] %s", line.c_str());
     });
 
+    // wait(seconds) suspends the coroutine it is called in (see engine.run) for that much game time; wait() until the
+    // next frame
+    lua.set_function("wait", sol::yielding([](sol::optional<float> seconds, sol::this_state state) {
+      if (!lua_isyieldable(state.L))
+        throw std::runtime_error("wait() only works inside a coroutine: engine.run(function() ... end) or "
+                                 "self:run(function() ... end)");
+      return seconds.value_or(0.0f);
+    }));
+
     // engine: entities, scenes, the sky
     sol::table api = lua.create_named_table("engine");
+    // engine.run(function() ... wait(1) ... end) runs a function that can wait; returns a handle for engine.stop. It
+    // lasts across scene loads; use self:run for one that should end with an entity
+    api.set_function("run", [this](sol::protected_function function) { return startRoutine(function, -1, "engine.run"); });
+    api.set_function("stop", [this](int handle) { stopRoutine(handle); });
     api.set_function("find", [this](const std::string &name) { return entityObject(engine.find(name)); });
     // The entities named so, or with a component ("Model", "Script", a game component's name), by entity number
     api.set_function("findAll", [this](const std::string &name) { return sol::as_table(engine.findAll(name)); });
@@ -698,6 +826,39 @@ struct ScriptSystem::Impl {
       return engine.time().every(seconds, callback(std::move(action), "time.every"));
     });
     time.set_function("cancel", &GameTime::cancel, &engine.time());
+
+    // tween: animates an entity's "position", "rotation", "scale" or "color" (a vec3), or a number, on game time
+    // tween.to(self, "position", vec3(0, 5, 0), 0.5, "easeOutQuad", function() ... end), tween.value(0, 1, 2, "linear", fn)
+    sol::table tween = lua.create_named_table("tween");
+    tween.set_function("to", [this](sol::optional<GameEntity> entity, const std::string &property, sol::object value,
+                                    float seconds, sol::optional<std::string> ease,
+                                    sol::optional<sol::protected_function> onComplete) {
+      glm::vec3 target(0.0f);
+      if (value.is<glm::vec3>())
+        target = value.as<glm::vec3>();
+      else if (value.get_type() == sol::type::number)
+        target = glm::vec3(value.as<float>()); // a number for all three axes: tween.to(self, "scale", 2, 0.3)
+      else
+        throw std::runtime_error("tween.to: the value is a vec3 (or a number)");
+      if (!entity)
+        return 0;
+      return engine.tween().to(*entity, tweenProperty(property), target, seconds, easeNamed(ease.value_or("linear")),
+                               onComplete ? callback(*onComplete, "tween.to") : std::function<void()>());
+    });
+    tween.set_function("value", [this](float from, float to, float seconds, sol::optional<std::string> ease,
+                                       sol::protected_function onValue, sol::optional<sol::protected_function> onComplete) {
+      return engine.tween().value(
+          from, to, seconds, easeNamed(ease.value_or("linear")),
+          [this, onValue](float value) {
+            const sol::protected_function_result result = onValue(value);
+            if (!result.valid()) {
+              const sol::error error = result;
+              report("tween.value", error.what());
+            }
+          },
+          onComplete ? callback(*onComplete, "tween.value") : std::function<void()>());
+    });
+    tween.set_function("cancel", &GameTween::cancel, &engine.tween());
 
     // input: actions and axes (see InputSystem::bindAction), keys by SDL's names ("Space", "Left Shift")
     sol::table input = lua.create_named_table("input");
@@ -837,6 +998,8 @@ void ScriptSystem::update(float deltaTime) { m_impl->update(deltaTime); }
 void ScriptSystem::reset() {
   Impl &impl = *m_impl;
   impl.instances.clear();
+  while (!impl.routines.empty())
+    impl.finishRoutine(impl.routines.begin()->second);
   impl.fields.clear();
   impl.appliedProperties.clear();
   impl.gameTable = impl.lua.create_named_table("game"); // shared state starts over too

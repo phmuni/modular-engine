@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fails when the C++ game API gets ahead of Lua: every public method of the facade classes (GameEntity, GameUI,
-GameCamera, GameTime) must be bound in src/systems/scriptSystem.cpp, or listed below with the reason it is C++ only.
+GameCamera, GameTime, GameTween) must be bound in src/systems/scriptSystem.cpp, or listed below with the reason it is C++ only.
 Needs no build.
 
     python3 tools/check_api_parity.py
@@ -26,6 +26,7 @@ FACADES = {
     "GameUI": ("src/systems/gameUI.h", "ui"),
     "GameCamera": ("src/systems/gameCamera.h", "camera"),
     "GameTime": ("src/systems/gameTime.h", "time"),
+    "GameTween": ("src/systems/gameTween.h", "tween"),
 }
 
 # Classes named Game... that are not facades of the game API
@@ -34,12 +35,15 @@ NOT_FACADES = {"GameUISystem"}
 # Bound under another Lua name: (class, method) -> the Lua name
 ALIASES = {
     ("GameEntity", "hasScript"): "script",  # Lua's `script` is the entity itself or nil, a different type
+    ("GameEntity", "color"): "getColor",  # not `color`: a script may keep its own field of that name
 }
 
 # Not bound on purpose: (class, method) -> why
 C_PLUS_PLUS_ONLY = {
     ("GameTime", "tick"): "the engine calls it once per frame",
     ("GameTime", "clear"): "the engine calls it when a play session ends",
+    ("GameTween", "tick"): "the engine calls it once per frame",
+    ("GameTween", "clear"): "the engine calls it when a play session ends",
 }
 
 

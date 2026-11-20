@@ -74,7 +74,9 @@ public:
   bool setParent(const GameEntity &parent);
   std::vector<GameEntity> children() const;
 
-  // Looks: a color for the whole model (no model: nothing), emission, and whether it is drawn at all
+  // Looks: a color for the whole model (no model: nothing), emission, and whether it is drawn at all. color() is the
+  // first part's color (white without a model).
+  glm::vec3 color() const;
   void setColor(const glm::vec3 &color);
   void setEmission(const glm::vec3 &color, float strength = 1.0f);
   void setVisible(bool visible);

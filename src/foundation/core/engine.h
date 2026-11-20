@@ -18,6 +18,7 @@
 #include "systems/collisionSystem.h"
 #include "systems/gameCamera.h"
 #include "systems/gameTime.h"
+#include "systems/gameTween.h"
 #include "systems/gameUI.h"
 #include "systems/navigationSystem.h"
 #include "systems/physicsSystem.h"
@@ -198,6 +199,8 @@ public:
   GameUI &ui() { return m_ui; }
   GameCamera &camera() { return m_camera; }
   GameTime &time() { return m_time; }
+  // Animating entities and numbers over time (the Lua tween table), on game time like timers
+  GameTween &tween() { return m_tween; }
 
   // The color the image is cleared to, behind the skybox panorama (black until set). It lives in the scene, on the
   // first Skybox component (setSkyColor adds an entity named "Sky" with one when there is none), so scene files keep
@@ -485,6 +488,7 @@ private:
   GameUI m_ui{*this};
   GameCamera m_camera{*this};
   GameTime m_time{*this};
+  GameTween m_tween{*this};
 
   App *m_app = nullptr;
   bool m_shutdown = false;

@@ -176,6 +176,18 @@ function Entity:children() end
 ---@param color vec3
 function Entity:setColor(color) end
 
+---The color of its model's first part (white without a model).
+---@return vec3
+function Entity:getColor() end
+
+---Runs a function as a coroutine that can `wait`, and ends it when the entity is destroyed:
+---`self:run(function() wait(1) self:setColor(vec3(1, 0, 0)) wait(0.5) self:destroy() end)`.
+---It starts at once, up to its first wait. Waits follow game time (time scale and pause). An error inside is reported
+---on screen like any script error, and ends the coroutine.
+---@param fn fun()
+---@return integer handle For engine.stop
+function Entity:run(fn) end
+
 ---Makes its model glow with a color.
 ---@param color vec3
 ---@param strength? number Defaults to 1
@@ -257,6 +269,29 @@ function engine.find(name) end
 ---@param name string
 ---@return Entity[]
 function engine.findAll(name) end
+
+---Runs a function as a coroutine that can `wait`; it lasts across scene loads (use self:run for one that should end
+---with an entity). It starts at once, up to its first wait. Waits are game time, so they follow time.scale and stand
+---still while paused. An error inside is reported on screen like any script error, and ends the coroutine.
+---```lua
+---engine.run(function()
+---  ui.text("message", "Get ready")
+---  wait(2)
+---  ui.text("message", "Go!")
+---end)
+---```
+---@param fn fun()
+---@return integer handle For engine.stop
+function engine.run(fn) end
+
+---Stops a coroutine started with engine.run or self:run (nothing for one that already ended).
+---@param handle integer
+function engine.stop(handle) end
+
+---Suspends the coroutine it is called in for that many seconds of game time; wait() until the next frame. Only inside
+---engine.run / self:run (anywhere in the functions they call): elsewhere it is an error.
+---@param seconds? number
+function wait(seconds) end
 
 ---Every entity with this tag (self:addTag("enemy"), or tags = {"enemy"} in engine.create), by entity number.
 ---@param tag string
@@ -402,6 +437,46 @@ function time.every(seconds, action) end
 ---Stops a timer (nothing for one that already ran).
 ---@param handle integer
 function time.cancel(handle) end
+
+-- tween --------------------------------------------------------------------------------------------------------------
+
+---Easing curves for tweens: how the speed changes from start to end.
+---@alias Easing "linear"|"easeInQuad"|"easeOutQuad"|"easeInOutQuad"|"easeInCubic"|"easeOutCubic"|"easeInOutCubic"
+
+---Animates an entity's properties or a number over time, on game time (a paused game holds them). The end value is
+---reached exactly.
+---@class tween
+tween = {}
+
+---Moves a property of the entity from what it is now to a value: "position", "rotation" (degrees) or "scale" take a
+---vec3 (a number for all three axes), "color" a vec3 (the entity needs a model). A tween of the same property that is
+---running is replaced; one whose entity is destroyed stops without calling onComplete. Tweening the position of a
+---dynamic body fights the physics.
+---```lua
+---tween.to(self, "position", vec3(0, 5, 0), 0.5, "easeOutQuad", function() self:destroy() end)
+---```
+---@param entity Entity
+---@param property "position"|"rotation"|"scale"|"color"
+---@param value vec3|number
+---@param seconds number
+---@param easing? Easing Defaults to "linear"
+---@param onComplete? fun()
+---@return integer handle For tween.cancel (0 if nothing started)
+function tween.to(entity, property, value, seconds, easing, onComplete) end
+
+---Calls a function every frame with a number going from `from` to `to` (ending exactly on `to`).
+---@param from number
+---@param to number
+---@param seconds number
+---@param easing? Easing Defaults to "linear"
+---@param onValue fun(value: number)
+---@param onComplete? fun()
+---@return integer handle For tween.cancel
+function tween.value(from, to, seconds, easing, onValue, onComplete) end
+
+---Stops a tween where it is, without calling onComplete (nothing for one that already finished).
+---@param handle integer
+function tween.cancel(handle) end
 
 -- input --------------------------------------------------------------------------------------------------------------
 

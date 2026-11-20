@@ -275,8 +275,10 @@ void Engine::update(bool &isRunning) {
   auto &editorUI = m_systemManager.getSystem<EditorUISystem>();
   editorUI.update(m_systemManager);
 
-  if (m_playMode != PlayMode::Editing)
+  if (m_playMode != PlayMode::Editing) {
     m_time.tick(timeSystem.getDeltaTime()); // the game clock and timers, before the app
+    m_tween.tick(timeSystem.getDeltaTime());
+  }
   if (m_app && m_playMode != PlayMode::Editing) {
     m_app->update(*this, timeSystem.getDeltaTime());
   }
@@ -757,6 +759,7 @@ void Engine::applyPlayModeRequest() {
     restoreScene(std::move(snapshot));
     m_systemManager.getSystem<ScriptSystem>().reset();
     m_time.clear();
+    m_tween.clear();
     refreshPinnedMaterials();
     LOG_I("[Engine] Stop: %zu entities restored", m_entityManager.count());
     m_playMode = PlayMode::Editing;
