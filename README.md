@@ -70,6 +70,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
 | **Pause Menu**             | A ready-made menu (Resume, Options, Quit) on `Escape`, a document of your project written on the generic `pause_menu` data model: `engine.ui().pauseMenu(true)`, or `ui.pauseMenu(true)` in Lua; the player's options are the `settings` service |
+| **Menus & Screens**        | Any RmlUi document as a menu (`ui.menu(path, options)` / `engine.ui().menu(path, options)`): a stack where only the top one takes input, options for pausing, the cursor and `Escape`, buttons that reach the game with `action('name')`; the pause menu is one of them. A loading screen for slow scene loads (`ui.loadingScreen()`). New projects ship a main menu, Options, game over and loading screens |
 | **Saved Data**             | A per-game key-value store for progress and settings in the user's preferences folder, written atomically: `engine.saveData()`, or `save.get` / `save.set` in Lua |
 | **Lua Scripting**          | Entity and game scripts with hot reload, the engine's API, and C++ functions handed to them (Lua 5.4, sol2) |
 | **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds, plays and exports them, opens them in VS Code |
@@ -1563,7 +1564,8 @@ document, which has one entry per player setting (see below):
 | `toggle('name')` | A boolean flips, a choice goes to the next one |
 | `show('screen')` | Goes to another screen of the document; `back()` returns |
 | `back()` | Back to the screen before; from the first screen it closes the menu |
-| `resume()`, `quit()` | Close the menu; close the game |
+| `resume()`, `close()`, `quit()` | Close the menu (the two are the same); close the game |
+| `open('ui/options.rml')` | Opens another menu document on top of this one (see Menu documents below); `back()` or `Escape` there returns |
 | `action('name')` | Calls the game's callback (below), for anything the menu does that is yours |
 
 ```xml
@@ -1594,6 +1596,7 @@ function onPauseMenuAction(name)               -- from action('name') in the doc
     engine.loadScene("scenes/level.json")
   end
 end
+-- the pause menu is a menu like any other, so onMenuAction("pause", name) is called too (below)
 ```
 
 ```cpp
@@ -1614,6 +1617,95 @@ ui.onClick("quality", function()
 end)
 settings.set("masterVolume", 0.5)
 ```
+
+### Menu documents and screens
+
+The pause menu is one use of a more general mechanism: **any** RmlUi document of your project can be a menu, with the
+same data model, events and options. A main menu, a game over screen and an Options screen are menus too, and new
+projects ship all three (`assets/ui/mainMenu.rml`, `gameOver.rml`, `options.rml`, styled by `pauseMenu.rcss` and
+`screens.rcss`).
+
+```lua
+local main = ui.menu("ui/mainMenu.rml", { escape = "none" })   -- makes the menu, opens it, returns a handle
+main:isOpen()              -- true
+main:show("credits")       -- a screen of the document (data-if="screen == 'credits'"); back() returns
+main:close()
+main:open()                -- again, later (main:open("credits") starts on a screen)
+```
+
+```cpp
+MenuOptions options;
+options.escape = MenuEscape::None;
+Menu &main = engine.ui().menu("ui/mainMenu.rml", options);   // main.close(), main.isOpen(), main.show("credits")
+```
+
+The document starts with `<body data-model="mainMenu">`: the data model is named after the file, without `.rml`
+(the pause menu's is `pause_menu`), and has everything in the tables above (`settings`, `labels`, `enabled`, `screen`
+and the events). Two menus cannot use the same document at the same time. The document is loaded when `ui.menu` is
+called, so `ui.text("final-score", 12)` and the rest of the `ui` functions reach its elements by id, before and after
+it is shown. The options:
+
+| Option | What it does |
+| --- | --- |
+| `pause` | Opening pauses the game like `F7`; closing gives the pause back as it was (default `true`) |
+| `freeCursor` | Opening frees the mouse and shows the cursor; closing gives it back (default `true`) |
+| `blockInput` | Keys, clicks and gamepad input do not reach the game while it is open (default `true`) |
+| `escape` | What `Escape` does while this menu is on top: `"close"` (default) steps back from a screen and closes the menu on the first one; `"back"` only steps back; `"quit"` quits the game on the first screen; `"none"` does nothing, which is what a main menu wants. `true` and `false` are `"close"` and `"none"` |
+| `name` | What the callbacks call it. Default: the file's name without `.rml` (`mainMenu`) |
+
+Calling `ui.menu` again for the same menu changes its options and opens it.
+
+**A stack.** Only the menu opened last takes input: opening one over another hides the one below, and closing the top
+one (`back()` on its first screen, `Escape`, `close()`) shows it again. That is how Options works in the pause menu and
+the main menu: a button with `open('ui/options.rml')` opens the Options document over them. A menu opened that way
+leaves pause and cursor to the menu below it (`ui.menu("ui/options.rml", { pause = false, freeCursor = false })` is the
+same by hand). Closing a menu with others over it closes those first. `Escape` goes to the menu on top only; with the
+pause menu enabled it opens only when no menu is open.
+
+**Actions.** `action('name')` in a document is how a button reaches the game. One callback serves every menu, with the
+menu's name first:
+
+```lua
+function onMenuAction(menu, name)        -- also onMenuOpened(menu) and onMenuClosed(menu)
+  if menu == "mainMenu" and name == "play" then ... end
+end
+```
+
+```cpp
+engine.ui().onMenuAction([&](const std::string &menu, const std::string &name) { /* ... */ });
+engine.ui().onMenuOpened([](const std::string &menu) { /* ... */ });
+engine.ui().onMenuClosed([](const std::string &menu) { /* ... */ });
+```
+
+The pause menu is the menu named `pause`: its actions call `onMenuAction("pause", name)` and also its own
+`onPauseMenuAction(name)` (and the same for opened and closed), so existing games keep working. A button that should
+close its menu and start something does both in the game (`main:close()` in `onMenuAction`): closing is the game's
+choice, and the document's `close()` button event stays for menus that only close.
+
+**Loading screen.** `engine.loadScene` reads the scene's models in the background and switches when they are ready.
+Turn the loading screen on and a document of yours shows when that takes more than a moment:
+
+```lua
+ui.loadingScreen()    -- shows assets/ui/loading.rml; ui.loadingScreen(false) turns it off
+ui.loadingScreen{ document = "ui/loading.rml", delay = 0.2, minimumTime = 0.5 }
+```
+
+```cpp
+LoadingScreenOptions options;               // document, delay, minimumTime
+engine.ui().loadingScreen(options);         // or engine.ui().loadingScreen(true / false)
+```
+
+It appears when a load has lasted `delay` seconds (a load that is over sooner never shows it), and stays at least
+`minimumTime` seconds, so it does not flash. Its document is written against the data model `loading`: `progress`
+(0 to 1) and `percent` (0 to 100, for `data-style-width="percent + '%'"` and text). **The progress is real, but coarse:**
+it is the share of the scene's models that are read (`engine.sceneLoadProgress()` in Lua and C++ gives the same
+number). The scene's own entities are made in one step at the end and textures upload as they are first drawn, and
+neither is counted, so a scene with one or two models jumps from 0 to 1. That is why the shipped `loading.rml` also
+pulses on its own with an RCSS animation: it looks alive whatever the progress does. Scenes whose models are all loaded
+already switch in the frame they are asked for and never show it.
+
+The shipped game uses all of this: `game.lua` (or `main.cpp`) shows the main menu on start, Play starts a thirty second
+round, and the game over screen (`You win!` for all eight coins, `Time's up` otherwise) offers Try again and Main menu.
 
 ### Player settings
 
