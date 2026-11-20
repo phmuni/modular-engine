@@ -5,9 +5,11 @@
 // its own, and games register theirs (registerComponent<T>) to save their components too. Components without a
 // serializer are left out of the file, and keys in a file that nothing registered are skipped with a warning.
 
+#include "foundation/core/collisionLayers.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
+#include "systems/prefabFileEdit.h"
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -53,6 +55,16 @@ public:
   // Fields a file does not have keep the component's defaults. `component` must outlive the serializer.
   void registerReflected(const ReflectedComponent &component);
 
+  // The layers a scene file carries (see load). Without them, scenes neither save nor change the layers.
+  void setCollisionLayers(CollisionLayers &layers) { m_layers = &layers; }
+
+  // Scene files also hold the collision layers when they are not the default (a "layers" key in the format of
+  // project.json: the layers beyond the built-in ones, and the pairs that do not collide), saved as they are when
+  // saving: the project's, the game's code's and the scene's together. On load the file's layers are merged into the
+  // base the project.json or the game's setup defined: a scene can add layers and switch pairs off, never remove a
+  // layer or switch a pair the base turned off back on. The next load starts again from that base (when nothing
+  // changed the layers in between; changes made by code after a load become the new base), so layers do not pile up
+  // from scene to scene. A file without the key leaves the base alone, as old scenes did.
   bool save(const std::string &path) const;
   // Reads the whole file first; if it cannot be read, the current scene stays
   bool load(const std::string &path);
@@ -96,6 +108,14 @@ public:
   // Rereads the prefab files in use that changed on disk and updates their instances; returns how many it updated.
   // Only a stat per file, but it is not free: the editor calls it a few times a second while it is open.
   size_t refreshPrefabs();
+  // Undo of prefab files. While a journal is on, applyInstance and savePrefab note what each file held before they
+  // wrote it; endFileJournal returns those files (first content before, content at the end after) and switches it
+  // off. Engine::beginCheckpoint/endCheckpoint use it, so an undo step also covers the prefab files it wrote.
+  void beginFileJournal();
+  std::vector<PrefabFileEdit> endFileJournal();
+  // Puts a prefab file back as the journal saw it (nothing: deletes it) and makes the cache match, without touching
+  // the instances: undo and redo restore those with the scene
+  bool restorePrefabFile(const std::string &resolvedPath, const std::optional<std::string> &content);
   // The entity and its descendants as scene-file text (what the editor copies to the clipboard), the root keeping its
   // place in the world but not its parent; empty if the entity does not exist
   std::string copyToJson(Entity root) const;
@@ -123,6 +143,11 @@ private:
 
   EntityManager &m_entityManager;
   ComponentManager &m_componentManager;
+  CollisionLayers *m_layers = nullptr;
+  nlohmann::json m_baseLayers;      // the layers before the last scene merged its own (CollisionLayers::toJson)
+  bool m_sceneLayersMerged = false; // the last load merged some, so they are in effect until the layers change
+  uint32_t m_sceneLayersVersion = 0;
+  void mergeSceneLayers(const json &scene);
   SystemManager &m_systemManager;
   std::vector<Serializer> m_serializers;
   mutable std::unordered_set<std::string> m_warnedKeys;
@@ -139,6 +164,10 @@ private:
   mutable std::unordered_map<std::string, PrefabFile> m_prefabFiles;
   // Set while save() writes a scene: PrefabInstance then holds the overrides too (not wanted in undo copies)
   mutable bool m_writeOverrides = false;
+  bool m_journaling = false;
+  mutable std::vector<PrefabFileEdit> m_journal; // mutable: savePrefab is const
+  // Notes the file's content before a write, while the journal is on (once per file)
+  void noteFileBefore(const std::string &resolvedPath) const;
   // The overrides read from a scene file, by entity, until load() has brought the instances up to date
   std::vector<std::pair<Entity, json>> m_loadedOverrides;
 
@@ -164,7 +193,7 @@ private:
   // entities as a file's "entities" list; `root` (a prefab's) is written without its parent, at the origin, and
   // without links to prefabs. `written` gets the entities that made it into the list, in order.
   json entitiesToJson(const std::vector<Entity> &entities, Entity root, std::vector<Entity> *written = nullptr) const;
-  bool writeFile(const std::string &path, json entities) const;
+  bool writeFile(const std::string &path, json entities, bool withLayers = false) const;
   std::optional<json> readFile(const std::string &path, bool log = true) const;
   std::vector<Entity> createEntities(const json &entries);
   std::optional<json> saveModel(Entity entity) const;

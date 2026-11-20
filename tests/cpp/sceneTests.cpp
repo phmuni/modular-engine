@@ -5,6 +5,7 @@
 #include "foundation/core/engine.h"
 #include "testing.h"
 #include <filesystem>
+#include <fstream>
 #include <memory>
 
 namespace {
@@ -88,6 +89,53 @@ TEST_CASE(scene_round_trip) {
     CHECK(loadedChild.valid() && loadedParent.valid());
     CHECK(loadedChild.parent() == loadedParent);
     CHECK_EQ(engine.getScenePath(), file);
+  });
+}
+
+TEST_CASE(scene_layers_round_trip) {
+  const std::string plain = testing::tempDir("scene") + "/layers_none.json";
+  const std::string layered = testing::tempDir("scene") + "/layers_some.json";
+  CollisionLayers &layers = engine.layers();
+  const auto readText = [](const std::string &path) {
+    std::ifstream in(path);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  };
+
+  // A scene saved with the default layers has no "layers" key (what old files look like)
+  engine.create("Box", Desc("box"));
+  CHECK(engine.saveScene(plain));
+  CHECK(readText(plain).find("\"layers\"") == std::string::npos);
+
+  // A scene with its own layer and pairs
+  layers.add("water");
+  layers.setCollide("water", "enemy", false);
+  layers.setCollide("player", "projectile", false);
+  CHECK(engine.saveScene(layered));
+  CHECK(readText(layered).find("\"layers\"") != std::string::npos);
+
+  // The project's (or the game's) base: another layer and enemies passing through each other, nothing of the scene's
+  layers.reset();
+  layers.add("lava");
+  layers.setCollide("enemy", "enemy", false);
+  engine.loadScene(layered);
+  steps.until([&engine]() { return !engine.isLoadingScene(); }, "the layered scene to load", 300);
+  steps.step(1, [&engine, plain]() {
+    const CollisionLayers &now = engine.layers();
+    CHECK(now.indexOf("water") >= 0);      // the scene added a layer
+    CHECK(now.indexOf("lava") >= 0);       // the base is still there
+    CHECK(!now.collide("water", "enemy")); // the scene's pairs
+    CHECK(!now.collide("player", "projectile"));
+    CHECK(!now.collide("enemy", "enemy")); // a pair the base turned off stays off
+    CHECK(now.collide("water", "player"));
+    engine.loadScene(plain); // a scene without the key: back to the base, the previous scene's layers gone
+  });
+  steps.until([&engine]() { return !engine.isLoadingScene(); }, "the plain scene to load", 300);
+  steps.step(1, [&engine]() {
+    const CollisionLayers &now = engine.layers();
+    CHECK(now.indexOf("water") < 0);
+    CHECK(now.indexOf("lava") >= 0);
+    CHECK(!now.collide("enemy", "enemy"));
+    CHECK(now.collide("player", "projectile"));
   });
 }
 

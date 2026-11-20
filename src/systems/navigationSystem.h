@@ -6,6 +6,9 @@
 // ground and stepping over anything up to `stepHeight`) fits without touching a static or kinematic body. Dynamic
 // bodies (crates) are not obstacles: they move, so a map made from them would be wrong a moment later.
 //
+// A walkable cell must also be reachable: the top of a tall wall or box has no step leading up to it, so it is not
+// walkable (see build()). A ramp or stairs of steps up to `stepHeight` keep what they lead to.
+//
 // The map is a height field: one ground height per cell, the topmost surface inside the bounds. Bridges, floors above
 // floors and ceilings are not told apart; give build() bounds whose top is below a ceiling. Keep cellSize at most
 // about twice agentRadius, or an agent can slip through a wall thinner than a cell.

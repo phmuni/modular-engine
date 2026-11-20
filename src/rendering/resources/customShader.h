@@ -28,7 +28,7 @@ struct CustomShaderCode {
   bool hasSurface = false;
   bool hasVertex = false;
   bool blend = false; // `#pragma blend`: parts using it are drawn in the transparent pass
-  bool castsShadow = true; // false with `#pragma noshadow`: a model whose parts all use such shaders casts none
+  bool castsShadow = true; // false with `#pragma noshadow`: parts using it cast no shadow
   std::string error;  // why the file cannot be used (empty when it can)
 };
 
@@ -37,7 +37,7 @@ struct CustomShaderCode {
 //   void surface(inout Surface s) { }     // after base color and textures, before lighting
 //   void vertex(inout VertexData v) { }   // moves the vertex (world space) before projection
 //   #pragma blend                         // draw with alpha blending (the transparent pass)
-//   #pragma noshadow                      // the model casts no shadow (shadows are drawn from the original geometry)
+//   #pragma noshadow                      // the part casts no shadow (otherwise vertex() and discard show in it)
 // `time` (seconds) is provided by the engine; do not declare it.
 CustomShaderCode parseCustomShader(const std::string &text);
 

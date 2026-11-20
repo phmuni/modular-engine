@@ -423,8 +423,11 @@ SceneSerializer::json SceneSerializer::entitiesToJson(const std::vector<Entity> 
   return list;
 }
 
-bool SceneSerializer::writeFile(const std::string &path, json entities) const {
-  json scene = {{"format", kFormat}, {"version", kVersion}, {"entities", std::move(entities)}};
+bool SceneSerializer::writeFile(const std::string &path, json entities, bool withLayers) const {
+  json scene = {{"format", kFormat}, {"version", kVersion}};
+  if (withLayers && m_layers && !m_layers->isDefault())
+    scene["layers"] = m_layers->toJson();
+  scene["entities"] = std::move(entities);
   roundFloats(scene);
 
   std::string resolved = EngineConfig::resolveAsset(path);
@@ -446,7 +449,7 @@ bool SceneSerializer::save(const std::string &path) const {
   m_writeOverrides = true; // linked prefab instances record what they changed from their file
   json list = entitiesToJson(entities, -1);
   m_writeOverrides = false;
-  return writeFile(path, std::move(list));
+  return writeFile(path, std::move(list), true);
 }
 
 std::string SceneSerializer::fingerprint() const {
@@ -463,6 +466,7 @@ bool SceneSerializer::savePrefab(Entity root, const std::string &path) const {
   std::vector<Entity> entities{root};
   const auto descendants = m_systemManager.getSystem<TransformSystem>().getDescendants(m_componentManager, root);
   entities.insert(entities.end(), descendants.begin(), descendants.end());
+  noteFileBefore(EngineConfig::resolveAsset(path));
   return writeFile(path, entitiesToJson(entities, root));
 }
 
@@ -596,10 +600,27 @@ std::vector<Entity> SceneSerializer::createEntities(const json &entries) {
   return created;
 }
 
+void SceneSerializer::mergeSceneLayers(const json &scene) {
+  if (!m_layers)
+    return;
+  // Back to the base first, so the previous scene's layers do not stay; if code changed them since, that is the base
+  if (m_sceneLayersMerged && m_layers->version() == m_sceneLayersVersion)
+    m_layers->fromJson(m_baseLayers);
+  m_baseLayers = m_layers->toJson();
+  m_sceneLayersMerged = false;
+  const auto layers = scene.find("layers");
+  if (layers == scene.end() || !layers->is_object())
+    return;
+  m_layers->merge(*layers);
+  m_sceneLayersMerged = true;
+  m_sceneLayersVersion = m_layers->version();
+}
+
 bool SceneSerializer::load(const std::string &path) {
   const std::optional<json> scene = readFile(path);
   if (!scene)
     return false;
+  mergeSceneLayers(*scene);
   clear();
   createEntities((*scene)["entities"]);
   syncLoadedInstances();

@@ -78,7 +78,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Navigation**             | A walkable grid built from the physics world and A* paths around obstacles, smoothed (`engine.navigation().findPath`, `nav.path` in Lua), drawn by the editor's "Show navigation" |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
 | **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`), saved in scenes and edited in the editor |
-| **Linked Prefabs**         | Instances remember their prefab file and follow it when it changes (in the editor or on disk), keeping what they changed themselves; Apply, Revert and Unpack in the Properties panel |
+| **Linked Prefabs**         | Instances remember their prefab file and follow it when it changes (in the editor or on disk), keeping what they changed themselves; Apply, Revert and Unpack in the Properties panel (undoing an Apply puts the prefab file back too) |
 | **Asset Browser**          | The editor's Assets panel lists `assets/` by kind with a search box: drag models and prefabs into the view, scripts and sounds onto entities, double-click to open |
 | **Multi-select**           | Ctrl/Cmd+click, Shift+click ranges and a box in the view select several entities; the gizmo, Properties, duplicate, copy, paste and delete work on all of them |
 | **Collisions**             | Axis-aligned boxes (`withCollision`, or fitted to the model with `withModelCollision`), queried by component pair (`forEachCollision<Bullet, Enemy>`) and by ray (`raycast<Enemy>`) |
@@ -743,8 +743,12 @@ local hit = physics.raycast(origin, direction, 50, { layers = { "enemy", "static
 
 A layer is saved in scenes by its name (`"layer": "enemy"` in `RigidBody`, `CharacterController` and `Collision`), so
 defining layers in another order never breaks a scene; a name nothing defines counts as "default". The layers
-themselves and the matrix are not part of a scene: they belong to the project (`project.json`, or `engine.layers()` in
-`setup`). The Settings panel's "Collision layers" has the matrix, with a button that writes it to `project.json`, and
+themselves and the matrix are also in a scene file when they are not the default (`"layers"`, in the format of
+`project.json`), written as they stand when saving. The project (`project.json`, or `engine.layers()` in `setup`) is the
+base and a scene is merged into it on load: it can add layers and switch pairs off, but not remove a layer or switch a
+pair back on that the base turned off. The next scene load starts from the base again (unless code changed the layers
+in between, which then become the base), so layers do not pile up; scenes without the key load as before. The
+Settings panel's "Collision layers" has the matrix, with a button that writes it to `project.json`, and
 the Rigid Body, Character Controller and Collision panels have a layer dropdown.
 
 Physics keeps Jolt's static/moving broadphase split (an object layer is the collision layer times two, plus whether it
@@ -758,7 +762,9 @@ a ray down each cell (0.5 units by default) finds the ground, and a cell is walk
 `maxSlope` and an agent (a capsule of `agentRadius` and `agentHeight`, stepping over ledges up to `stepHeight`) fits
 there without touching a static or kinematic body. Dynamic bodies (crates) are not obstacles, since they move.
 `findPath` runs A* over the cells (8 neighbors, no corner cutting) and removes the points a straight walk makes
-needless. The map has one ground height per cell (the topmost surface inside the bounds, so no bridges or ceilings),
+needless. A cell must also be reachable: starting from ground level (within a step of the lowest walkable ground) the
+walkable area grows over neighbors a `stepHeight` apart, so the top of a tall wall or box is not walkable, while a ramp
+or low steps up to a platform keep it. The map has one ground height per cell (the topmost surface inside the bounds, so no bridges or ceilings),
 and it is built when asked: call `build` once the level exists, and `markDirty()` after moving obstacles.
 
 ```cpp
@@ -1081,7 +1087,7 @@ The file is GLSL 330 with a few additions, all optional (but it needs at least o
 
 ```glsl
 #pragma blend                          // draw with alpha blending (the transparent pass)
-#pragma noshadow                       // the model casts no shadow (see below)
+#pragma noshadow                       // the part casts no shadow (see below)
 
 uniform vec3 tintColor = vec3(1.0);    // parameters: float, vec2, vec3, vec4 and sampler2D, one per line, with a default
 uniform float speed = 1.0;
@@ -1114,7 +1120,8 @@ Paths are relative to `assets/` like any asset path. Files shipped with the engi
 - **Reloading.** With the editor open, a file edited on disk is compiled again within half a second and the parts follow; if the edit has an error, the last working version keeps running.
 - **Caching.** One program is compiled per file and variant (normal, and alpha mask when a cut-out part uses it); every part using the file shares it, with its own parameter values, and parts are grouped by program for drawing.
 - **Editor.** Each part's Material section has a Shader field (type a path, or drop a `.glsl` from the asset browser), a Reset button, and a widget per parameter read from the `uniform` lines (a drag field per float or vector, a color picker for names with "color", a path field and drop target for textures). "Apply to All Submeshes" has one for the whole model. Changes are one undo step each. Scenes and prefabs save the shader and its values with the part, and a linked prefab instance's change of them counts as an override.
-- **Limits.** The shadow pass draws the original geometry with its own shader, so `vertex()` movement and `discard` or alpha in `surface()` are not in shadows (waves cast the flat plane's shadow; a dissolved model still casts its whole shadow). A model whose parts all use files with `#pragma noshadow` casts no shadow at all, which suits water. Frustum culling uses the original mesh bounds, so a large `vertex()` offset can make a model vanish at the screen's edge. Parts with `#pragma blend` are sorted per entity like other transparent draws, not per triangle. Texture parameters use texture units 9 to 15 (7 per material); `int` and `bool` uniforms are not parameters (they keep the shader's own value).
+- **Shadows.** Parts with a custom shader are drawn into the shadow maps (the sun's cascades and the point lights' cube maps) through a variant of the depth shaders with your file injected: `vertex()` moves the vertices as in the lit pass, so waves show in the shadow, and `surface()` runs only for its alpha, so a `discard` leaves a hole in it (a dissolve casts a dissolving shadow). A low `alpha` cuts the shadow below 0.5 too, except in files with `#pragma blend`, whose see-through surfaces keep their shadow. In the shadow pass the surface starts with a white albedo and an alpha of 1 (the material's textures are not read), `viewDir` points at the camera and `time` and your parameters are the same. `#pragma noshadow` takes the part out of the shadow maps, which suits water (the example has it); the other parts of a model still cast theirs, and parts without a custom shader cast exactly as before. A file that only the lit shader can compile (it uses something from it, such as `numLights`) keeps working, and its parts cast the shadow of their original geometry, with a warning in the log. A point light's cube map is drawn again every frame while such a part is in its range (the shader's clock moves).
+- **Limits.** Frustum culling uses the original mesh bounds, so a large `vertex()` offset can make a model vanish at the screen's edge. Parts with `#pragma blend` are sorted per entity like other transparent draws, not per triangle. Texture parameters use texture units 9 to 15 (7 per material); `int` and `bool` uniforms are not parameters (they keep the shader's own value).
 
 ### Skybox
 

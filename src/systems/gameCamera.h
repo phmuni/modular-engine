@@ -4,6 +4,7 @@
 
 #include "components/cameraRig.h"
 #include <glm/glm.hpp>
+#include <optional>
 
 class Engine;
 class GameEntity;
@@ -21,7 +22,11 @@ public:
   // CameraSystem moves the camera each frame after physics and the game's update, so there is no jitter.
   // Who wins: the free camera (Settings) switches it off, like it does lookAt, and a lookAt in the same frame wins
   // over the rig for that frame; the rig takes over again, from where it should be, when lookAt stops.
-  // A scene load replaces the camera entity: call follow again in onSceneLoaded (a rig saved in the scene file stays).
+  // A scene load replaces the camera entity, so the request (target name and options) is remembered and put on the
+  // new scene's active camera after loadScene, before onSceneLoaded. A scene whose camera has a CameraRig of its own
+  // keeps it: the code request only applies to a camera without one (the file is the more specific, and it was
+  // authored for that level). The request stays remembered, so a later scene without a rig is followed again. The
+  // target is found by name, so it follows once the new scene has an entity of that name. stopFollow forgets it.
   void follow(const GameEntity &target, const CameraRig &options = CameraRig());
   void stopFollow();
   bool isFollowing() const;
@@ -32,5 +37,10 @@ public:
   void setFov(float degrees);
 
 private:
+  friend class Engine; // applyRememberedFollow, after a scene load
+  // Puts the remembered follow request on the active camera when it has no rig
+  void applyRememberedFollow();
+
   Engine &m_engine;
+  std::optional<CameraRig> m_followRequest;
 };

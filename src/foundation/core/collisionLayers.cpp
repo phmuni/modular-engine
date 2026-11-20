@@ -96,6 +96,10 @@ uint32_t CollisionLayers::maskOf(const std::vector<std::string> &layers, std::ve
 
 void CollisionLayers::fromJson(const nlohmann::json &json) {
   reset();
+  merge(json);
+}
+
+void CollisionLayers::merge(const nlohmann::json &json) {
   if (!json.is_object())
     return;
   if (auto names = json.find("names"); names != json.end() && names->is_array())

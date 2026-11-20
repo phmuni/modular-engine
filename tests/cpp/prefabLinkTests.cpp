@@ -149,6 +149,60 @@ TEST_CASE(prefab_scene_keeps_overrides_and_survives_a_missing_file) {
   });
 }
 
+namespace {
+float fileOpacity(const std::string &path) {
+  std::ifstream in(path);
+  const auto file = nlohmann::json::parse(in);
+  return file["entities"][0]["components"]["Model"].value("opacity", 1.0f);
+}
+} // namespace
+
+TEST_CASE(prefab_apply_is_undone_with_the_file) {
+  const std::string file = testing::tempDir("prefab_undo") + "/lamp.json";
+  auto state = std::make_shared<Fixture>();
+  state->file = file;
+
+  GameEntity lamp = engine.create("Lamp", Desc("box"));
+  CHECK(engine.getSceneSerializer().applyInstance(lamp.id(), file));
+  lamp.destroy();
+  steps.step(1, [&engine, state]() {
+    auto &serializer = engine.getSceneSerializer();
+    state->a = serializer.instantiate(state->file)[0];
+    state->b = serializer.instantiate(state->file)[0];
+    CHECK_NEAR(fileOpacity(state->file), 1.0f, 1e-5f);
+
+    // One edit: change a, then Apply it (what the editor's Apply button does inside its undo step)
+    engine.beginCheckpoint();
+    engine.get<Model>(state->a).opacity = 0.3f;
+    CHECK(serializer.applyInstance(state->a));
+    engine.endCheckpoint();
+    CHECK_NEAR(fileOpacity(state->file), 0.3f, 1e-5f);
+    CHECK_NEAR(engine.get<Model>(state->b).opacity, 0.3f, 1e-5f); // the other instance followed
+    CHECK(engine.canUndo());
+    engine.undo();
+  });
+  steps.step(2, [&engine, state]() {
+    // The file is as it was, and so is the other instance and the one that was edited
+    CHECK_NEAR(fileOpacity(state->file), 1.0f, 1e-5f);
+    CHECK_NEAR(engine.get<Model>(state->a).opacity, 1.0f, 1e-5f);
+    CHECK_NEAR(engine.get<Model>(state->b).opacity, 1.0f, 1e-5f);
+    // Nothing is left to refresh: the cache matches the file
+    CHECK_EQ(engine.getSceneSerializer().refreshPrefabs(), size_t(0));
+    CHECK(engine.canRedo());
+    engine.redo();
+  });
+  steps.step(2, [&engine, state]() {
+    CHECK_NEAR(fileOpacity(state->file), 0.3f, 1e-5f);
+    CHECK_NEAR(engine.get<Model>(state->a).opacity, 0.3f, 1e-5f);
+    CHECK_NEAR(engine.get<Model>(state->b).opacity, 0.3f, 1e-5f);
+    CHECK_EQ(engine.getSceneSerializer().refreshPrefabs(), size_t(0));
+    // The file can be edited again after that: the instances follow it
+    editFile(state->file, [](nlohmann::json &file) { file["entities"][0]["components"]["Model"]["opacity"] = 0.8; });
+    CHECK_EQ(engine.getSceneSerializer().refreshPrefabs(), size_t(2));
+    CHECK_NEAR(engine.get<Model>(state->b).opacity, 0.8f, 1e-5f);
+  });
+}
+
 TEST_CASE(copy_several_roots_at_once) {
   GameEntity a = engine.create("A", Desc("box").at(0, 0, 0));
   GameEntity aChild = engine.create("AChild", Desc("box").at(0, 1, 0));

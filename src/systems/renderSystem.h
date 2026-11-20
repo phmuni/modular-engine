@@ -120,6 +120,27 @@ private:
   class AnimationSystem *m_animation = nullptr;
   bool applySkinning(Shader &shader, Entity entity, const class Mesh &mesh) const;
   std::vector<ShadowCaster> m_shadowCasters;
+  // Models with parts whose custom shader reshapes or cuts them (see CustomShader::shadowHandle). Those are drawn by
+  // index range: `plain` with the depth shader like any caster, `custom` with the shadow variant of the part's
+  // shader and the part's values. Models without such parts stay in m_shadowCasters, drawn as they always were.
+  struct ShadowRange {
+    uint32_t indexStart;
+    uint32_t indexCount;
+    uint32_t material;
+    const struct CustomShader *shader; // null in `plain`
+  };
+  struct CustomShadowCaster {
+    uint32_t meshHandle;
+    glm::mat4 model;
+    glm::vec3 center;
+    float radius;
+    const std::vector<glm::mat4> *joints = nullptr;
+    std::vector<ShadowRange> plain;
+    std::vector<ShadowRange> custom;
+  };
+  std::vector<CustomShadowCaster> m_customShadowCasters;
+  ResourceSystem *m_resourceSystemForSignature = nullptr; // for the materials' values in pointShadowSignature
+  glm::vec3 m_shadowViewPos{0.0f}; // the camera, for `viewDir` in a custom shader's surface() during the shadow passes
   bool m_shadowCastersGathered = false; // reset every frame; gathered by the first shadow pass that needs them
 
   // What each point shadow slot's cube map shows (see pointShadowSignature); 0 when it shows nothing yet.
@@ -132,6 +153,7 @@ private:
                            TransformSystem &transformSystem);
   // Draws the gathered casters inside `viewProjection` into the bound depth target with the shadow shader
   void drawShadowCasters(Shader &depthShader, const glm::mat4 &viewProjection, ResourceSystem &resourceSystem);
+  void drawCustomShadowCasters(Shader &depthShader, const glm::mat4 &viewProjection, ResourceSystem &resourceSystem);
 
   // Sorts m_instanceItems into runs of identical keys and calls drawRun(firstItem, instanceCount) for each,
   // with the run's instances already uploaded.
