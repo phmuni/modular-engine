@@ -1,6 +1,7 @@
 #pragma once
 // Model component referencing a mesh and its materials.
 
+#include <cstdint>
 #include <vector>
 
 struct Model {
