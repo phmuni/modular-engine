@@ -1,0 +1,11 @@
+<rml>
+<head>
+	<title>Loading screen test document</title>
+	<style>
+		body, div { display: block; font-family: LatoLatin; font-size: 12dp; }
+	</style>
+</head>
+<body data-model="loading">
+	<div id="loading_percent">{{ percent }}</div>
+</body>
+</rml>

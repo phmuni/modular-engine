@@ -119,3 +119,26 @@ void GameUI::onPauseMenuClosed(std::function<void()> callback) {
 void GameUI::onPauseMenuAction(std::function<void(const std::string &)> callback) {
   m_impl->engine.pauseMenu().onAction(std::move(callback));
 }
+
+Menu &GameUI::menu(const std::string &path, const MenuOptions &options) {
+  Menu &menu = m_impl->engine.menus().menu(path, options);
+  menu.open();
+  return menu;
+}
+void GameUI::onMenuOpened(std::function<void(const std::string &)> callback) {
+  m_impl->engine.menus().onOpened(std::move(callback));
+}
+void GameUI::onMenuClosed(std::function<void(const std::string &)> callback) {
+  m_impl->engine.menus().onClosed(std::move(callback));
+}
+void GameUI::onMenuAction(std::function<void(const std::string &, const std::string &)> callback) {
+  m_impl->engine.menus().onAction(std::move(callback));
+}
+
+void GameUI::loadingScreen(const LoadingScreenOptions &options) { m_impl->engine.loadingScreen().configure(options); }
+void GameUI::loadingScreen(bool enabled) {
+  if (enabled)
+    m_impl->engine.loadingScreen().configure({});
+  else
+    m_impl->engine.loadingScreen().disable();
+}

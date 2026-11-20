@@ -1,0 +1,18 @@
+<rml>
+<head>
+	<title>Loading</title>
+	<link type="text/rcss" href="pauseMenu.rcss"/>
+	<link type="text/rcss" href="screens.rcss"/>
+</head>
+<!-- Shown while a scene loads (engine.loadScene), once the game turned it on with ui.loadingScreen() and the load takes
+     more than a moment. The data model "loading" has progress (0 to 1) and percent (0 to 100): the share of the scene's
+     models that are read. That is coarse (a scene with few models jumps from 0 to 100), so the title also pulses on
+     its own: an animation in screens.rcss that needs nothing from the game. -->
+<body data-model="loading" class="opaque">
+	<div class="card hero loading">
+		<div class="title pulse">Loading</div>
+		<div class="bar"><div class="fill" data-style-width="percent + '%'"></div></div>
+		<div class="best">{{ percent }}%</div>
+	</div>
+</body>
+</rml>

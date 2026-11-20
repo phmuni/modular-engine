@@ -1,0 +1,22 @@
+<rml>
+<head>
+	<title>Menu test document</title>
+	<style>
+		body, div { display: block; font-family: LatoLatin; font-size: 12dp; }
+		button { display: block; font-family: LatoLatin; width: 100dp; height: 20dp; }
+	</style>
+</head>
+<!-- A menu of the generic mechanism (see src/systems/menu.h): actions, another document on top, two screens -->
+<body data-model="menu_main">
+	<div id="main_first" data-if="screen == 'main'">
+		<button id="main_play" data-event-click="action('play')">Play</button>
+		<button id="main_options" data-event-click="open('../tests/fixtures/ui/menu_options.rml')">Options</button>
+		<button id="main_second" data-event-click="show('second')">Second</button>
+		<button id="main_close" data-event-click="close()">Close</button>
+		<div id="main_sound">{{ labels.masterVolume }}</div>
+	</div>
+	<div id="main_second_screen" data-if="screen == 'second'">
+		<button id="main_back" data-event-click="back()">Back</button>
+	</div>
+</body>
+</rml>

@@ -48,6 +48,10 @@ public:
   void pauseMenuOpened();
   void pauseMenuClosed();
   void pauseMenuAction(const std::string &name);
+  // The same for every menu (onMenuOpened(menu), onMenuClosed(menu), onMenuAction(menu, name)), the pause menu's too
+  void menuOpened(const std::string &menu);
+  void menuClosed(const std::string &menu);
+  void menuAction(const std::string &menu, const std::string &name);
 
   // Tells the entity's script (onStateChanged) that its animation state machine moved from one state to another
   void animationStateChanged(Entity entity, const std::string &from, const std::string &to);

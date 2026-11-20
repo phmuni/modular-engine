@@ -26,9 +26,18 @@ cmake -B build && cmake --build build -j     # Release; add -DCMAKE_BUILD_TYPE=D
 - `assets/ui/hud.rml` is the score on screen (RmlUi: HTML-like markup and CSS), changed from code with
   `engine.ui().text("score", n)`. The best score is kept between runs with `engine.saveData()`, in a folder named by
   `engine.setGameName`.
-- `Escape` opens the pause menu (`engine.ui().pauseMenu(true)` in `setup`): Resume, Options and Quit. It is the file
-  `assets/ui/pauseMenu.rml` (with `pauseMenu.rcss`), yours to edit; a button with `action('name')` calls the function
-  given to `engine.ui().onPauseMenuAction(...)`, and `engine.settings()` has the player's options.
+- The game starts on a main menu (Play, Options, Quit), a round lasts thirty seconds, and a game over screen (Try
+  again, Main menu) ends it: all eight coins is a win, the clock running out is not. The screens are documents in
+  `assets/ui` with a `.rcss` for their style: `mainMenu.rml`, `gameOver.rml`, `options.rml` and `loading.rml`, yours
+  to edit (the title is in `mainMenu.rml`). `main.cpp` shows them with `engine.ui().menu("ui/mainMenu.rml", options)`,
+  and a button with `action('play')` calls the function given to `engine.ui().onMenuAction(...)` (`onMenuAction` in
+  `MyGame`). Opening a menu pauses the game under it; `open('ui/options.rml')` in a document shows another one over it
+  (the Options screen is shared by the main menu and the pause menu). `engine.ui().loadingScreen()` turns on
+  `loading.rml`, which shows when a `engine.loadScene` takes more than a moment (the README of the engine, under Menu
+  documents and screens, has the options and the data models).
+- `Escape` opens the pause menu while playing (`engine.ui().pauseMenu(true)` in `setup`): Resume, Options and Quit. It
+  is the file `assets/ui/pauseMenu.rml` (with `pauseMenu.rcss`), yours to edit; a button with `action('name')` calls
+  `engine.ui().onMenuAction(...)` too, with the menu `"pause"`, and `engine.settings()` has the player's options.
 - `assets/input.json` maps keys, mouse buttons and gamepad buttons and sticks to the game's actions and axes
   ("jump", "moveX"...): change it to rebind without a rebuild.
 - `bin/` is where it builds, with `bin/engine-assets` (the engine's shaders, fonts and basic models). To ship the

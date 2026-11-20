@@ -1,0 +1,22 @@
+<rml>
+<head>
+	<title>Main menu</title>
+	<link type="text/rcss" href="pauseMenu.rcss"/>
+	<link type="text/rcss" href="screens.rcss"/>
+</head>
+<!-- The main menu, shown by the game with ui.menu("ui/mainMenu.rml") (game.lua, or main.cpp in C++). It is a menu like
+     the pause menu: the same data model (named after this file, mainMenu) and the same events (see the README, under
+     Menus). action('play') reaches the game's onMenuAction(menu, name); open('ui/options.rml') shows the Options
+     screen over this one (Back or Escape returns); quit() ends the game. This file is yours: change the texts, the
+     buttons and screens.rcss (the style, with pauseMenu.rcss) as you like. -->
+<body data-model="mainMenu">
+	<div class="card hero">
+		<div class="title big">MyGame</div>
+		<div class="subtitle">Pick up every coin before the time runs out</div>
+		<button data-event-click="action('play')">Play</button>
+		<button data-event-click="open('ui/options.rml')">Options</button>
+		<button class="quit" data-event-click="quit()">Quit</button>
+		<div class="best">Best <span id="menu-best">0</span></div>
+	</div>
+</body>
+</rml>

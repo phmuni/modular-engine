@@ -1,0 +1,63 @@
+/* The main menu, game over and loading screens. They use pauseMenu.rcss for the cards, buttons and titles, so this
+   file only adds what is particular to them. */
+
+.card.hero { width: 420dp; padding: 34dp 40dp 30dp; }
+.title.big { font-size: 52dp; letter-spacing: 8dp; margin-bottom: 8dp; }
+.subtitle {
+	margin-bottom: 26dp;
+	font-size: 14dp;
+	letter-spacing: 1dp;
+	color: #8fb4c8;
+}
+
+/* The score on the game over screen */
+.score {
+	margin-bottom: 6dp;
+	font-size: 64dp;
+	font-weight: bold;
+	color: #ffc840;
+	font-effect: glow(0dp 8dp 0dp 0dp #ffc84099);
+}
+.unit {
+	margin-left: 12dp;
+	font-size: 16dp;
+	letter-spacing: 3dp;
+	text-transform: uppercase;
+	color: #8fb4c8;
+}
+.best {
+	margin: 4dp 0 22dp;
+	font-size: 13dp;
+	font-weight: bold;
+	letter-spacing: 3dp;
+	text-transform: uppercase;
+	color: #8fb4c8;
+}
+.best span { color: #ffffff; }
+/* At the bottom of a card (the main menu), under the buttons */
+.hero > .best:last-child { margin: 16dp 0 0; }
+
+/* --- Loading ------------------------------------------------------------------------------------------------- */
+
+/* Covers the game: the scene behind it is about to be replaced */
+body.opaque { background-color: #02040c; }
+
+.bar {
+	height: 8dp;
+	margin: 6dp 0 14dp;
+	border-radius: 4dp;
+	background-color: #ffffff22;
+}
+.fill {
+	height: 8dp;
+	border-radius: 4dp;
+	decorator: horizontal-gradient(#3ee8ff #8f7bff);
+	box-shadow: #3ee8ff88 0 0 10dp 0;
+}
+
+/* Goes on by itself, whatever the progress is */
+.pulse { animation: 1.1s sine-in-out infinite alternate pulse; }
+@keyframes pulse {
+	from { opacity: 0.45; }
+	to { opacity: 1; }
+}

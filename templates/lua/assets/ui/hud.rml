@@ -7,11 +7,11 @@
       display: block; position: absolute; top: 20px; left: 20px; padding: 10px 18px;
       background-color: rgba(0, 0, 0, 140); border-radius: 8px; color: #ffffff; font-size: 22px;
     }
-    #score, #best { color: #ffc840; font-weight: bold; }
-    #best-label { margin-left: 14px; color: #c8d4e0; }
+    #score, #best, #time { color: #ffc840; font-weight: bold; }
+    #best-label, #time-label { margin-left: 14px; color: #c8d4e0; }
   </style>
 </head>
 <body>
-  <div id="panel">Coins <span id="score">0</span><span id="best-label">Best <span id="best">0</span></span></div>
+  <div id="panel">Coins <span id="score">0</span><span id="best-label">Best <span id="best">0</span></span><span id="time-label">Time <span id="time">30</span></span></div>
 </body>
 </rml>

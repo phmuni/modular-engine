@@ -1,0 +1,95 @@
+<rml>
+<head>
+	<title>Options</title>
+	<link type="text/rcss" href="pauseMenu.rcss"/>
+</head>
+<!-- The Options screen, a menu of its own: the main menu and the pause menu open it with open('ui/options.rml'), and
+     Back (or Escape) closes it, which shows the one below again. It is written against the same data model as the
+     pause menu, named after this file (options):
+       settings.<name>   the value of an option (a slider can be data-value="settings.masterVolume")
+       labels.<name>     its text: "MSAA 4x", "75%", "On"
+       enabled.<name>    whether it matters now (the FSR sharpness only while FSR is on)
+     and the events set('name', value), step('name', 1) and toggle('name'). The options are listed in the README
+     (settings.names() in Lua); what the player chooses is saved. This file is yours: remove what your game has no use
+     for, and change pauseMenu.rcss for the style. -->
+<body data-model="options">
+	<div class="card wide">
+		<div class="title">Options</div>
+
+		<div class="columns">
+			<div class="column">
+				<div class="heading">Sound and window</div>
+				<div class="row">
+					<div class="name">Master</div>
+					<input type="range" min="0" max="1" step="0.01" data-value="settings.masterVolume"/>
+					<div class="value">{{ labels.masterVolume }}</div>
+				</div>
+				<div class="row">
+					<div class="name">Music</div>
+					<input type="range" min="0" max="1" step="0.01" data-value="settings.musicVolume"/>
+					<div class="value">{{ labels.musicVolume }}</div>
+				</div>
+				<div class="row">
+					<div class="name">Effects</div>
+					<input type="range" min="0" max="1" step="0.01" data-value="settings.effectsVolume"/>
+					<div class="value">{{ labels.effectsVolume }}</div>
+				</div>
+				<!-- The window's size: stepped through the sizes that fit the display; kept as it is in fullscreen -->
+				<div class="row" data-class-disabled="!enabled.resolution">
+					<div class="name">Window</div>
+					<button class="step" data-event-click="step('resolution', -1)">&lt;</button>
+					<div class="choice">{{ labels.resolution }}</div>
+					<button class="step" data-event-click="step('resolution', 1)">&gt;</button>
+				</div>
+				<button class="toggle" data-class-on="settings.fullscreen" data-event-click="toggle('fullscreen')">
+					Fullscreen <span class="state">{{ labels.fullscreen }}</span>
+				</button>
+				<button class="toggle" data-class-on="settings.vsync" data-event-click="toggle('vsync')">
+					VSync <span class="state">{{ labels.vsync }}</span>
+				</button>
+			</div>
+
+			<div class="column">
+				<div class="heading">Graphics</div>
+				<!-- What the 3D scene is drawn at, as a share of the screen's pixels; the menu itself always is at full size -->
+				<div class="row">
+					<div class="name">Render</div>
+					<input type="range" min="0.5" max="2" step="0.05" data-value="settings.renderScale"/>
+					<div class="value">{{ labels.renderScale }}</div>
+				</div>
+				<!-- Antialiasing: MSAA off, 2x, 4x, 8x (the GPU's maximum caps it), then the FXAA filter -->
+				<div class="row">
+					<div class="name">AA</div>
+					<button class="step" data-event-click="step('msaa', -1)">&lt;</button>
+					<div class="choice">{{ labels.msaa }}</div>
+					<button class="step" data-event-click="step('msaa', 1)">&gt;</button>
+				</div>
+				<button class="toggle" data-class-on="settings.fxaa" data-event-click="toggle('fxaa')">
+					FXAA <span class="state">{{ labels.fxaa }}</span>
+				</button>
+				<!-- FSR 1 upscaling and its sharpening, in effect when the scene renders below 100% -->
+				<button class="toggle" data-class-on="settings.fsr" data-event-click="toggle('fsr')">
+					FSR <span class="state">{{ labels.fsr }}</span>
+				</button>
+				<div class="row" data-class-disabled="!enabled.fsrSharpness">
+					<div class="name">Sharp</div>
+					<input type="range" min="0" max="2" step="0.05" data-value="settings.fsrSharpness"/>
+					<div class="value">{{ labels.fsrSharpness }}</div>
+				</div>
+				<!-- Ambient occlusion: contact shadows in the ambient light -->
+				<button class="toggle" data-class-on="settings.ssao" data-event-click="toggle('ssao')">
+					Occlusion <span class="state">{{ labels.ssao }}</span>
+				</button>
+				<div class="row" data-class-disabled="!enabled.ssaoQuality">
+					<div class="name">Quality</div>
+					<button class="step" data-event-click="step('ssaoQuality', -1)">&lt;</button>
+					<div class="choice">{{ labels.ssaoQuality }}</div>
+					<button class="step" data-event-click="step('ssaoQuality', 1)">&gt;</button>
+				</div>
+			</div>
+		</div>
+
+		<button class="back" data-event-click="back()">Back</button>
+	</div>
+</body>
+</rml>

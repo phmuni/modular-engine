@@ -5,6 +5,8 @@
 //
 // Every call that names an element does nothing when there is none (a document not loaded yet, a typo).
 
+#include "systems/loadingScreen.h"
+#include "systems/menu.h"
 #include "systems/pauseMenu.h"
 #include <functional>
 #include <memory>
@@ -58,6 +60,23 @@ public:
   void onPauseMenuOpened(std::function<void()> callback);
   void onPauseMenuClosed(std::function<void()> callback);
   void onPauseMenuAction(std::function<void(const std::string &)> callback);
+
+  // Menus (see systems/menu.h): any document of the project shown over the game, with options for pausing, the cursor,
+  // the game's input and Escape. Makes the menu for that document (calling it again with other options changes them),
+  // opens it, and returns it: close(), isOpen(), show("screen"), open() again later. A button of the document with
+  // action('name') reaches the game's callback below, or onMenuAction(menu, name) in a Lua game script. The menu's
+  // name is the file's without its extension unless options.name says otherwise.
+  Menu &menu(const std::string &path, const MenuOptions &options = {});
+  // The game's callbacks for every menu, with the menu's name (Lua scripts define onMenuOpened(menu),
+  // onMenuClosed(menu) and onMenuAction(menu, name) instead)
+  void onMenuOpened(std::function<void(const std::string &)> callback);
+  void onMenuClosed(std::function<void(const std::string &)> callback);
+  void onMenuAction(std::function<void(const std::string &, const std::string &)> callback);
+
+  // The loading screen (see systems/loadingScreen.h): a document shown when loadScene takes more than a moment, with
+  // the load's progress in its data model. loadingScreen(false) turns it off again.
+  void loadingScreen(const LoadingScreenOptions &options);
+  void loadingScreen(bool enabled = true);
 
 private:
   struct Impl;

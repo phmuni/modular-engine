@@ -980,6 +980,7 @@ struct ScriptSystem::Impl {
     // The file last loaded, "" before one was; engine.isLoadingScene() is true while a loadScene waits for its models
     api.set_function("scenePath", [this]() { return engine.getScenePath(); });
     api.set_function("isLoadingScene", [this]() { return engine.isLoadingScene(); });
+    api.set_function("sceneLoadProgress", [this]() { return engine.sceneLoadProgress(); });
     // Reads a model on a worker thread so creating it later does not stall a frame
     api.set_function("preload", [this](const std::string &path) { engine.preloadModel(path); });
     // engine.screenshot("shot.bmp", 0, false) saves a BMP of the next frame (after `delay` seconds; quitAfter closes the game)
@@ -1469,6 +1470,55 @@ struct ScriptSystem::Impl {
     ui.set_function("closePauseMenu", &GameUI::closePauseMenu, &engine.ui());
     ui.set_function("isPaused", &GameUI::isPaused, &engine.ui());
     ui.set_function("isPauseMenuOpen", &GameUI::isPauseMenuOpen, &engine.ui());
+    // Menus (see systems/menu.h): ui.menu("ui/mainMenu.rml", { pause = true, escape = "none" }) makes the menu for that
+    // document, opens it and returns it; the game script's onMenuOpened(menu), onMenuClosed(menu) and
+    // onMenuAction(menu, name) are called from C++. `escape` is "none", "back", "close" or "quit" (true is "close",
+    // false is "none").
+    lua.new_usertype<Menu>(
+        "Menu", sol::no_constructor, "open",
+        [](Menu &menu, sol::optional<std::string> screen) { menu.open(screen.value_or("")); }, "close", &Menu::close,
+        "isOpen", &Menu::isOpen, "show", &Menu::show, "name", [](Menu &menu) { return menu.name(); });
+    ui.set_function("menu", [this](const std::string &path, sol::optional<sol::table> table) -> Menu & {
+      MenuOptions options;
+      if (table) {
+        options.name = table->get_or("name", options.name);
+        options.pause = table->get_or("pause", options.pause);
+        options.freeCursor = table->get_or("freeCursor", options.freeCursor);
+        options.blockInput = table->get_or("blockInput", options.blockInput);
+        const sol::object escape = table->get<sol::object>("escape");
+        if (escape.is<bool>())
+          options.escape = escape.as<bool>() ? MenuEscape::Close : MenuEscape::None;
+        else if (escape.is<std::string>()) {
+          const std::string mode = escape.as<std::string>();
+          if (mode == "none")
+            options.escape = MenuEscape::None;
+          else if (mode == "back")
+            options.escape = MenuEscape::Back;
+          else if (mode == "close")
+            options.escape = MenuEscape::Close;
+          else if (mode == "quit")
+            options.escape = MenuEscape::Quit;
+          else
+            report("ui.menu", "ui.menu: escape is \"none\", \"back\", \"close\" or \"quit\", not \"" + mode + "\"");
+        }
+      }
+      return engine.ui().menu(path, options);
+    });
+    // The loading screen: ui.loadingScreen{ document = "ui/loading.rml", delay = 0.2, minimumTime = 0.5 } shows that
+    // document when a loadScene takes more than a moment (ui.loadingScreen(true) takes the defaults, false turns it
+    // off). Its data model "loading" has progress (0 to 1) and percent (0 to 100).
+    ui.set_function("loadingScreen", [this](sol::optional<sol::object> arg) {
+      if (arg && arg->is<sol::table>()) {
+        const sol::table table = arg->as<sol::table>();
+        LoadingScreenOptions options;
+        options.document = table.get_or("document", options.document);
+        options.delay = table.get_or("delay", options.delay);
+        options.minimumTime = table.get_or("minimumTime", options.minimumTime);
+        engine.ui().loadingScreen(options);
+      } else {
+        engine.ui().loadingScreen(!arg || !arg->is<bool>() || arg->as<bool>());
+      }
+    });
     // Any value, written as Lua's tostring does (12, 1.5, true)
     ui.set_function("text", [this](const std::string &id, sol::object value) {
       engine.ui().text(id, lua["tostring"](value).get<std::string>());
@@ -1532,6 +1582,21 @@ void ScriptSystem::pauseMenuAction(const std::string &name) {
   Impl &impl = *m_impl;
   if (impl.hasGameScript)
     impl.call(impl.gameScript, "onPauseMenuAction", name);
+}
+void ScriptSystem::menuOpened(const std::string &menu) {
+  Impl &impl = *m_impl;
+  if (impl.hasGameScript)
+    impl.call(impl.gameScript, "onMenuOpened", menu);
+}
+void ScriptSystem::menuClosed(const std::string &menu) {
+  Impl &impl = *m_impl;
+  if (impl.hasGameScript)
+    impl.call(impl.gameScript, "onMenuClosed", menu);
+}
+void ScriptSystem::menuAction(const std::string &menu, const std::string &name) {
+  Impl &impl = *m_impl;
+  if (impl.hasGameScript)
+    impl.call(impl.gameScript, "onMenuAction", menu, name);
 }
 void ScriptSystem::animationStateChanged(Entity entity, const std::string &from, const std::string &to) {
   m_impl->animationStateChanged(entity, from, to);

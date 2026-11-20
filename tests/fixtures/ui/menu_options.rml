@@ -1,0 +1,15 @@
+<rml>
+<head>
+	<title>Menu test document, opened over another</title>
+	<style>
+		body, div { display: block; font-family: LatoLatin; font-size: 12dp; }
+		button { display: block; font-family: LatoLatin; width: 100dp; height: 20dp; }
+	</style>
+</head>
+<body data-model="menu_options">
+	<div id="options_screen">
+		<button id="options_action" data-event-click="action('chosen')">Choose</button>
+		<button id="options_back" data-event-click="back()">Back</button>
+	</div>
+</body>
+</rml>
