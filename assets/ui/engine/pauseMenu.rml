@@ -67,6 +67,13 @@
 			<div class="value">{{ fsrSharpnessText }}</div>
 		</div>
 		<div class="note">FSR: upscales when Render &lt; 100%</div>
+		<!-- Ambient occlusion: contact shadows in the ambient light, stepped through Off, Low, Medium and High -->
+		<div class="row">
+			<div class="name">Ambient occlusion</div>
+			<button class="step" data-event-click="ssao_prev">&lt;</button>
+			<div class="choice">{{ ssaoText }}</div>
+			<button class="step" data-event-click="ssao_next">&gt;</button>
+		</div>
 
 		<button class="toggle" data-class-on="fullscreen" data-event-click="toggle_fullscreen">
 			Fullscreen <span class="state">{{ fullscreen ? 'On' : 'Off' }}</span>

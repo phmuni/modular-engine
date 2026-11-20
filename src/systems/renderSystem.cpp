@@ -138,9 +138,11 @@ constexpr const char *kPointShadowSamplers[] = {"pointShadowMaps0", "pointShadow
                                                 "pointShadowMaps3"};
 static_assert(std::size(kPointShadowSamplers) == EngineConfig::MAX_POINT_SHADOWS,
               "one sampler name (and one sampler in fragmentShader.frag) per point shadow slot");
-// Custom shaders' texture parameters take the units after those (16 units are guaranteed)
+// The ambient occlusion texture takes the last of the 16 units a fragment shader is guaranteed
+constexpr int kAmbientOcclusionUnit = 15;
+// Custom shaders' texture parameters take the units after those, up to the AO's
 constexpr int kFirstCustomTextureUnit = kFirstPointShadowUnit + EngineConfig::MAX_POINT_SHADOWS;
-constexpr int kMaxCustomTextures = 16 - kFirstCustomTextureUnit;
+constexpr int kMaxCustomTextures = kAmbientOcclusionUnit - kFirstCustomTextureUnit;
 
 // The values a material gives its custom shader's uniforms; the ones it did not set get the file's defaults, since
 // the program keeps whatever the last material put there
@@ -596,6 +598,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   // The first Skybox's color is the sky behind everything (shown as written: the scene target is linear). The
   // panorama, if it has one, draws over it.
   glm::vec3 skyColor(0.0f);
+  SsaoSettings ssao = m_ssaoSettings; // the scene's Skybox, if it has one, sets radius and intensity below
   m_environment = SceneEnvironment();
   bool skyFound = false;
   componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
@@ -614,12 +617,11 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       m_environment.fogDensity = std::max(fog.density, 0.0f);
     }
     m_environment.ambient = toScene(skybox.ambientColor) * std::max(skybox.ambientIntensity, 0.0f);
+    ssao.radius = skybox.ssaoRadius;
+    ssao.intensity = skybox.ssaoIntensity;
   });
   if (gammaCorrect)
     skyColor = glm::pow(skyColor, glm::vec3(2.2f));
-
-  // Everything from here draws into the HDR scene target
-  renderer.beginScene(skyColor);
 
   // Main pass - grouped by shader
   // A part given another shader (or a shader that was fixed) belongs to another batch
@@ -631,7 +633,19 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     rebuildRenderBatches(componentManager, resourceSystem);
   }
 
-  auto configureShader = [&](Shader &shader) {
+  // Whether this frame's lit passes get ambient occlusion (the prepass and AO are made just before them)
+  bool aoActive = false;
+  const float renderWidth = static_cast<float>(renderer.getRenderWidth());
+  const float renderHeight = static_cast<float>(renderer.getRenderHeight());
+
+  auto configureShader = [&](Shader &shader, bool receiveAo = false) {
+    shader.setInt("depthOnly", 0);
+    shader.setInt("aoTexture", kAmbientOcclusionUnit);
+    shader.setInt("useAmbientOcclusion", receiveAo ? 1 : 0);
+    if (receiveAo) {
+      shader.setTex("aoTexture", m_ssao.texture(), kAmbientOcclusionUnit);
+      shader.setVec2("aoTexel", glm::vec2(1.0f / renderWidth, 1.0f / renderHeight));
+    }
     shader.setMat4("view", view);
     shader.setMat4("projection", projection);
     shader.setVec3("viewPos", viewPos);
@@ -706,6 +720,27 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     return resourceSystem.getMaterial(material).getAlphaMode() == AlphaMode::Blend;
   };
 
+  // The depth prepass draws the opaque parts with the same programs, stopping after what decides coverage
+  // (depthOnly), so displacement from vertex(), skinning, instancing, alpha mask and discards match the lit pass
+  bool depthPass = false;
+  // The lit pass's whole setup, then depthOnly: the programs' samplers (2D, the shadow array, the point-light cubes)
+  // must be on their own units even when nothing is sampled, or a draw before the first lit pass of a program finds
+  // them all on unit 0 with different types, which the driver refuses (GL_INVALID_OPERATION)
+  auto configureDepth = [&](Shader &shader) {
+    configureShader(shader);
+    shader.setInt("depthOnly", 1);
+    shader.setFloat("time", m_shaderTime);
+  };
+  // Only parts that can discard need their material in the prepass; the others just their face culling
+  auto bindMaterial = [&](Shader &shader, const Material &material, float opacity) {
+    if (depthPass && material.getAlphaMode() != AlphaMode::Mask &&
+        !(resourceSystem.hasCustomShaders() && resourceSystem.customShaderForHandle(material.getShaderHandle()))) {
+      renderer.setFaceCulling(!material.isDoubleSided());
+      return;
+    }
+    applyMaterial(shader, material, opacity);
+  };
+
   // Per-draw path: shaders without instancing support and transparent models
   auto drawRange = [&](Shader &shader, Entity entity, uint32_t indexStart, uint32_t indexCount,
                        uint32_t materialHandle, float opacity) {
@@ -717,7 +752,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
     glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(*transform);
     if (!isMeshVisible(frustum, mesh, modelMatrix)) {
-      ++m_culledCount;
+      if (!depthPass)
+        ++m_culledCount;
       return;
     }
 
@@ -725,7 +761,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setMat4("MVP", projection * view * modelMatrix);
     shader.setMat4("model", modelMatrix);
     shader.setMat3("normalMatrix", calculateNormalMatrix(modelMatrix));
-    applyMaterial(shader, resourceSystem.getMaterial(materialHandle), opacity);
+    bindMaterial(shader, resourceSystem.getMaterial(materialHandle), opacity);
     const bool skinned = applySkinning(shader, entity, mesh);
 
     renderer.drawIndexRange(mesh, indexStart, indexCount);
@@ -733,80 +769,105 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       shader.setInt("useSkinning", 0);
   };
 
-  for (auto &[shaderHandle, batch] : m_renderBatches) {
-    Shader &shader = resourceSystem.getShader(shaderHandle);
-    shader.use();
-    configureShader(shader);
+  // The opaque parts, grouped by shader: once into the depth prepass, once lit
+  auto drawOpaque = [&] {
+    for (auto &[shaderHandle, batch] : m_renderBatches) {
+      Shader &shader = resourceSystem.getShader(shaderHandle);
+      shader.use();
+      if (depthPass)
+        configureDepth(shader);
+      else
+        configureShader(shader, aoActive);
 
-    // Parts drawn by this batch: same shader, not blending. A single-part entity is only in its shader's batch,
-    // so it needs no check unless some material blends.
-    const uint32_t batchShader = shaderHandle;
-    auto includeOpaque = [&](uint32_t material) {
-      const Material &m = resourceSystem.getMaterial(material);
-      return m.getShaderHandle() == batchShader && m.getAlphaMode() != AlphaMode::Blend;
-    };
+      // Parts drawn by this batch: same shader, not blending. A single-part entity is only in its shader's batch,
+      // so it needs no check unless some material blends.
+      const uint32_t batchShader = shaderHandle;
+      auto includeOpaque = [&](uint32_t material) {
+        const Material &m = resourceSystem.getMaterial(material);
+        return m.getShaderHandle() == batchShader && m.getAlphaMode() != AlphaMode::Blend;
+      };
 
-    if (!shader.supportsInstancing()) {
+      if (!shader.supportsInstancing()) {
+        for (Entity entity : batch) {
+          const auto *model = componentManager.tryGet<Model>(entity);
+          if (!model)
+            continue;
+          forEachDrawRange(resourceSystem.getMesh(model->meshHandle), *model, !anyBlend, includeOpaque,
+                           [&](uint32_t start, uint32_t count, uint32_t material) {
+                             drawRange(shader, entity, start, count, material, 1.0f);
+                           });
+        }
+        continue;
+      }
+
+      // Opaque draws of the same mesh range with the same material go out as one instanced call; skinned models,
+      // each in its own pose, go one at a time after them
+      m_instanceItems.clear();
+      std::vector<Entity> skinnedEntities;
       for (Entity entity : batch) {
-        const auto *model = componentManager.tryGet<Model>(entity);
-        if (!model)
+        auto *transform = componentManager.tryGet<Transform>(entity);
+        auto *model = componentManager.tryGet<Model>(entity);
+        if (!transform || !model)
           continue;
-        forEachDrawRange(resourceSystem.getMesh(model->meshHandle), *model, !anyBlend, includeOpaque,
+
+        const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
+        if (mesh.isSkinned()) {
+          skinnedEntities.push_back(entity);
+          continue;
+        }
+        glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(*transform);
+        if (!isMeshVisible(frustum, mesh, modelMatrix)) {
+          if (!depthPass)
+            ++m_culledCount;
+          continue;
+        }
+
+        const InstanceData instance{modelMatrix, calculateNormalMatrix(modelMatrix)};
+        forEachDrawRange(mesh, *model, !anyBlend, includeOpaque,
+                         [&](uint32_t start, uint32_t count, uint32_t material) {
+                           m_instanceItems.push_back({model->meshHandle, start, count, material, instance});
+                         });
+      }
+
+      shader.setInt("useInstancing", 1);
+      drawInstanceRuns(
+          [](const InstanceItem &a, const InstanceItem &b) {
+            return a.meshHandle == b.meshHandle && a.indexStart == b.indexStart && a.indexCount == b.indexCount &&
+                   a.materialHandle == b.materialHandle;
+          },
+          [&](const InstanceItem &first, int count) {
+            bindMaterial(shader, resourceSystem.getMaterial(first.materialHandle), 1.0f);
+            renderer.drawIndexRangeInstanced(resourceSystem.getMesh(first.meshHandle), first.indexStart,
+                                             first.indexCount, count);
+          });
+      for (Entity entity : skinnedEntities) {
+        const Model &model = componentManager.get<Model>(entity);
+        forEachDrawRange(resourceSystem.getMesh(model.meshHandle), model, !anyBlend, includeOpaque,
                          [&](uint32_t start, uint32_t count, uint32_t material) {
                            drawRange(shader, entity, start, count, material, 1.0f);
                          });
       }
-      continue;
     }
+  };
 
-    // Opaque draws of the same mesh range with the same material go out as one instanced call; skinned models,
-    // each in its own pose, go one at a time after them
-    m_instanceItems.clear();
-    std::vector<Entity> skinnedEntities;
-    for (Entity entity : batch) {
-      auto *transform = componentManager.tryGet<Transform>(entity);
-      auto *model = componentManager.tryGet<Model>(entity);
-      if (!transform || !model)
-        continue;
-
-      const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
-      if (mesh.isSkinned()) {
-        skinnedEntities.push_back(entity);
-        continue;
-      }
-      glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(*transform);
-      if (!isMeshVisible(frustum, mesh, modelMatrix)) {
-        ++m_culledCount;
-        continue;
-      }
-
-      const InstanceData instance{modelMatrix, calculateNormalMatrix(modelMatrix)};
-      forEachDrawRange(mesh, *model, !anyBlend, includeOpaque,
-                       [&](uint32_t start, uint32_t count, uint32_t material) {
-                         m_instanceItems.push_back({model->meshHandle, start, count, material, instance});
-                       });
-    }
-
-    shader.setInt("useInstancing", 1);
-    drawInstanceRuns(
-        [](const InstanceItem &a, const InstanceItem &b) {
-          return a.meshHandle == b.meshHandle && a.indexStart == b.indexStart && a.indexCount == b.indexCount &&
-                 a.materialHandle == b.materialHandle;
-        },
-        [&](const InstanceItem &first, int count) {
-          applyMaterial(shader, resourceSystem.getMaterial(first.materialHandle), 1.0f);
-          renderer.drawIndexRangeInstanced(resourceSystem.getMesh(first.meshHandle), first.indexStart,
-                                           first.indexCount, count);
-        });
-    for (Entity entity : skinnedEntities) {
-      const Model &model = componentManager.get<Model>(entity);
-      forEachDrawRange(resourceSystem.getMesh(model.meshHandle), model, !anyBlend, includeOpaque,
-                       [&](uint32_t start, uint32_t count, uint32_t material) {
-                         drawRange(shader, entity, start, count, material, 1.0f);
-                       });
-    }
+  // Ambient occlusion: the opaque geometry's depth into the AO's own target, then the AO from it. The lit pass then
+  // reads the AO for its ambient light. Skipped (and the lit pass unchanged) when off.
+  ssao = ssao.clamped();
+  if (m_ssaoEnabled && ssao.intensity > 0.0f) {
+    m_ssao.beginDepthPrepass(renderer.getRenderWidth(), renderer.getRenderHeight());
+    depthPass = true;
+    // The prepass's depth is single-sample: cut-out edges are cut hard there, not smoothed by alpha-to-coverage
+    opaquePass = false;
+    drawOpaque();
+    opaquePass = true;
+    depthPass = false;
+    m_ssao.compute(projection, ssao);
+    aoActive = true;
   }
 
+  // Everything from here draws into the HDR scene target
+  renderer.beginScene(skyColor);
+  drawOpaque();
   opaquePass = false;
   if (coverageOn) {
     coverageOn = false;
@@ -867,9 +928,16 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   post.bloomThreshold = EngineConfig::BLOOM_THRESHOLD;
   post.gammaCorrect = gammaCorrect;
   renderer.applyAntialiasing(post);
+  const bool showAo = aoActive && m_ssaoDebugView;
+  if (showAo)
+    post.bloom = false;
   renderer.resolveScene(resourceSystem.getShader(m_tonemapShader), post);
+  if (showAo) {
+    renderer.bindDisplayTarget();
+    m_ssao.drawDebug();
+  }
 
-  if (systemManager.hasSystem<ParticleSystem>()) {
+  if (!showAo && systemManager.hasSystem<ParticleSystem>()) {
     systemManager.getSystem<ParticleSystem>().render(systemManager);
   }
 

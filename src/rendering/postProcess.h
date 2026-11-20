@@ -60,6 +60,11 @@ public:
   GLuint sceneDepthTexture() const { return m_sceneDepth; }
   // Bloom of the HDR scene and the display image's filters (FXAA, FSR), composed onto the screen (framebuffer 0)
   void finish(const Shaders &shaders, const Settings &settings);
+  // Binds the display target (render size), where the tone mapped image is: for passes that draw over it
+  void bindDisplay() {
+    glBindFramebuffer(GL_FRAMEBUFFER, m_displayFBO);
+    glViewport(0, 0, m_width, m_height);
+  }
   void shutdown();
 
 private:

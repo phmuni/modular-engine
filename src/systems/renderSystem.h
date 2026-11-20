@@ -5,6 +5,7 @@
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "rendering/renderer.h"
+#include "rendering/ssao.h"
 #include <glm/glm.hpp>
 #include <string>
 #include <unordered_map>
@@ -56,6 +57,17 @@ public:
   }
   // The fog and ambient light of the frame being drawn (the particle pass reads it after the lit pass)
   const SceneEnvironment &getEnvironment() const { return m_environment; }
+  // Ambient occlusion (see ssao.h). On by default. The scene's Skybox, when it has one, decides radius and intensity
+  // (the level's look); the settings given here are what a scene without a Skybox gets, and setSsaoSettings also
+  // writes radius and intensity into the scene's Skybox when it has one.
+  void setSsaoEnabled(bool enabled) { m_ssaoEnabled = enabled; }
+  bool ssaoEnabled() const { return m_ssaoEnabled; }
+  void setSsaoSettings(const SsaoSettings &settings) { m_ssaoSettings = settings.clamped(); }
+  const SsaoSettings &ssaoSettings() const { return m_ssaoSettings; }
+  // Shows the AO alone instead of the image (an editor tuning aid)
+  void setSsaoDebugView(bool enabled) { m_ssaoDebugView = enabled; }
+  bool ssaoDebugView() const { return m_ssaoDebugView; }
+  void shutdownSsao() { m_ssao.shutdown(); }
   // Models skipped by frustum culling in the last rendered frame
   int getCulledCount() const { return m_culledCount; }
   // Point lights with a cube shadow map, and how many of them had to render it again in the last frame
@@ -75,6 +87,12 @@ private:
     uint32_t materialHandle;
     InstanceData instance;
   };
+
+  // Ambient occlusion state: the depth prepass and AO textures, and what drives them
+  Ssao m_ssao;
+  SsaoSettings m_ssaoSettings;
+  bool m_ssaoEnabled = true;
+  bool m_ssaoDebugView = false;
 
   std::unordered_map<uint32_t, RenderBatch> m_renderBatches;
   std::vector<InstanceItem> m_instanceItems;

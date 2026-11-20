@@ -79,6 +79,15 @@ uniform float fogStart;
 uniform float fogFinish;
 uniform float fogDensity;
 
+// Ambient occlusion (see ssao.h): darkens the ambient light only, never a direct light or emission. Off (useAmbientOcclusion
+// 0) for the transparent pass and when SSAO is off, which leaves the ambient exactly as it was.
+uniform sampler2D aoTexture;
+uniform int useAmbientOcclusion;
+uniform vec2 aoTexel; // 1 / the render size
+// The depth prepass (RenderSystem) runs this same program with only what decides coverage: the vertex shader's
+// position, then the mask and custom discards, and nothing else
+uniform int depthOnly;
+
 vec3 toLinear(vec3 c) { return gammaCorrect == 1 ? pow(c, vec3(2.2)) : c; }
 
 // Alpha-to-coverage (MSAA on): cut-out edges get a partial coverage instead of a hard discard. Set for the opaque
@@ -246,6 +255,11 @@ void main()
     else if (diffuseSample.a < alphaCutoff)
         discard;
 #endif
+    if (depthOnly == 1) {
+        FragColor = vec4(0.0);
+        return;
+    }
+    float occlusion = useAmbientOcclusion == 1 ? texture(aoTexture, gl_FragCoord.xy * aoTexel).r : 1.0;
     vec3 diffuseTex  = toLinear(diffuseSample.rgb);
     vec3 specularTex = texture(material.specular, TexCoords).rgb;
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
@@ -262,9 +276,9 @@ void main()
     if (unlit == 1) {
         result += diffuseTex;
     } else if (numLights == 0) {
-        result += diffuseTex * 0.7;
+        result += diffuseTex * 0.7 * occlusion;
     } else {
-        result += sceneAmbient * diffuseTex;
+        result += sceneAmbient * diffuseTex * occlusion;
         for (int i = 0; i < numLights; ++i) {
 
             Light light = lights[i];
@@ -276,7 +290,7 @@ void main()
             else
                 lightDir = normalize(light.position - FragPos);
 
-            vec3 ambient = light.color * light.ambient * diffuseTex;
+            vec3 ambient = light.color * light.ambient * diffuseTex * occlusion;
 
             float diff = max(dot(normal, lightDir), 0.0);
             vec3 diffuse = light.color * light.intensity * diff * diffuseTex;

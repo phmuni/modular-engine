@@ -6,7 +6,9 @@
 // (paths relative to assets/). An optional "layers" sets the collision layers (see CollisionLayers::fromJson), and an
 // optional "window" the window: { "width": 1280, "height": 720, "fullscreen": false, "renderScale": 1.0 }, every field
 // optional (see Engine::configureWindow), and an optional "graphics": { "msaa": 2, "fxaa": false, "fsr": false,
-// "fsrSharpness": 0.2 } the antialiasing and upscaling (see Engine::configureGraphics). The scene loads first, then the game script runs (onStart, then onUpdate every frame),
+// "fsrSharpness": 0.2, "ssao": true, "ssaoQuality": "medium" } the antialiasing, upscaling (see
+// Engine::configureGraphics) and ambient occlusion ("low", "medium" or "high"); what the player picks in the pause
+// menu wins. The scene loads first, then the game script runs (onStart, then onUpdate every frame),
 // and the entities' own scripts come with the scene. The editor (F2), Play and Stop work as in any game.
 
 #include "foundation/core/config.h"
@@ -18,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 
 namespace {
@@ -29,6 +32,9 @@ struct Project {
   nlohmann::json layers; // null when the project does not set any
   Engine::WindowConfig window;
   AntialiasingSettings graphics; // project.json's "graphics" over the defaults
+  // Ambient occlusion (the "graphics" object); other keys in it belong to other settings
+  std::optional<bool> ssao;
+  std::optional<SsaoQuality> ssaoQuality;
 };
 
 std::string inAssets(const std::string &path) { return path.empty() ? path : "../assets/" + path; }
@@ -62,6 +68,13 @@ bool readProject(Project &project, std::string &error) {
       project.graphics.fxaa = graphics.value("fxaa", project.graphics.fxaa);
       project.graphics.fsr = graphics.value("fsr", project.graphics.fsr);
       project.graphics.fsrSharpness = graphics.value("fsrSharpness", project.graphics.fsrSharpness);
+      if (graphics.contains("ssao") && graphics["ssao"].is_boolean())
+        project.ssao = graphics["ssao"].get<bool>();
+      if (graphics.contains("ssaoQuality") && graphics["ssaoQuality"].is_string()) {
+        project.ssaoQuality = ssaoQualityFromName(graphics["ssaoQuality"].get<std::string>());
+        if (!project.ssaoQuality)
+          LOG_W("[Runner] project.json: graphics.ssaoQuality is \"low\", \"medium\" or \"high\"");
+      }
     }
   } catch (const std::exception &exception) {
     error = path + " is not valid JSON: " + exception.what();
@@ -77,6 +90,13 @@ public:
   void setup(Engine &engine) override {
     engine.setWindowTitle(m_project.name);
     engine.setGameName(m_project.name); // where the save data is kept
+    if (m_project.ssao)
+      engine.setSsao(*m_project.ssao); // the pause menu's saved choice comes after, and wins
+    if (m_project.ssaoQuality) {
+      SsaoSettings settings = engine.ssaoSettings();
+      settings.quality = *m_project.ssaoQuality;
+      engine.setSsaoSettings(settings);
+    }
     if (!m_project.layers.is_null())
       engine.layers().fromJson(m_project.layers); // before the scene: its bodies are made on these layers
     engine.setState(Toggle::FreeCamera, false); // the game's scripts drive the camera

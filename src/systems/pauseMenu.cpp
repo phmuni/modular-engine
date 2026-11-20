@@ -31,6 +31,8 @@ constexpr const char *KEY_MSAA = "engine.msaa";
 constexpr const char *KEY_FXAA = "engine.fxaa";
 constexpr const char *KEY_FSR = "engine.fsr";
 constexpr const char *KEY_FSR_SHARPNESS = "engine.fsrSharpness";
+constexpr const char *KEY_SSAO = "engine.ssao";
+constexpr const char *KEY_SSAO_QUALITY = "engine.ssaoQuality";
 
 int toPercent(float volume) { return std::clamp(static_cast<int>(std::lround(volume * 100.0f)), 0, 100); }
 // 0.49 in the file, not the 0.49000000953674316 a float widens to
@@ -47,6 +49,12 @@ Rml::String sharpnessText(int slider) {
   return text;
 }
 Rml::String msaaName(int samples) { return samples >= 2 ? "MSAA " + std::to_string(samples) + "x" : "Off"; }
+// The ambient occlusion selector: 0 Off, then the qualities Low, Medium, High
+int ssaoToLevel(bool enabled, SsaoQuality quality) { return enabled ? static_cast<int>(quality) + 1 : 0; }
+const char *ssaoLevelName(int level) {
+  static const char *const names[] = {"Off", "Low", "Medium", "High"};
+  return names[std::clamp(level, 0, 3)];
+}
 
 std::string sizeText(const glm::ivec2 &size) { return std::to_string(size.x) + " x " + std::to_string(size.y); }
 } // namespace
@@ -80,6 +88,8 @@ struct PauseMenu::Impl {
   int stepMsaa = 0; // -1 or 1: the previous or next MSAA level
   bool toggleFxaa = false;
   bool toggleFsr = false;
+  Rml::String ssaoText = "Medium"; // the ambient occlusion selector, as shown
+  int ssaoLevel = 2;               // 0 Off, 1 Low, 2 Medium, 3 High
   bool options = false;         // the Options screen instead of the main one
 
   // What buttons asked for: handled in update(), outside RmlUi's event dispatch
@@ -89,6 +99,7 @@ struct PauseMenu::Impl {
   bool toggleFullscreen = false;
   bool toggleVSync = false;
   int stepResolution = 0; // -1 or 1: the previous or next window size
+  int stepSsao = 0;       // -1 or 1: the previous or next ambient occlusion level
 
   bool wasCursorLocked = false;
 
@@ -123,6 +134,15 @@ struct PauseMenu::Impl {
       engine.setFsr(data.getBool(KEY_FSR, false));
     if (data.has(KEY_FSR_SHARPNESS))
       engine.setFsrSharpness(static_cast<float>(data.getNumber(KEY_FSR_SHARPNESS, engine.fsrSharpness())));
+    // Ambient occlusion: the saved quality and on/off beat the project's
+    if (data.has(KEY_SSAO_QUALITY))
+      if (const auto quality = ssaoQualityFromName(data.getString(KEY_SSAO_QUALITY))) {
+        SsaoSettings settings = engine.ssaoSettings();
+        settings.quality = *quality;
+        engine.setSsaoSettings(settings);
+      }
+    if (data.has(KEY_SSAO))
+      engine.setSsao(data.getBool(KEY_SSAO, true));
   }
 
   // The model's view of the engine, as it is now (F6 or the game may have changed it since)
@@ -134,6 +154,8 @@ struct PauseMenu::Impl {
     vsync = engine.getState(Toggle::VSync);
     renderScale = scaleToSlider(engine.renderScale());
     readAntialiasing();
+    ssaoLevel = ssaoToLevel(engine.ssao(), engine.ssaoSettings().quality);
+    ssaoText = ssaoLevelName(ssaoLevel);
     refreshResolutions();
     model.DirtyAllVariables();
   }
@@ -235,6 +257,27 @@ struct PauseMenu::Impl {
     }
   }
 
+  // Moves the ambient occlusion selector one level (Off, Low, Medium, High), applies it and keeps it in the save data
+  void applySsaoStep() {
+    if (stepSsao == 0)
+      return;
+    ssaoLevel = std::clamp(ssaoToLevel(engine.ssao(), engine.ssaoSettings().quality) + stepSsao, 0, 3);
+    stepSsao = 0;
+    ssaoText = ssaoLevelName(ssaoLevel);
+    model.DirtyVariable("ssaoText");
+    model.DirtyVariable("ssaoLevel");
+    if (ssaoLevel == 0) {
+      engine.setSsao(false);
+    } else {
+      SsaoSettings settings = engine.ssaoSettings();
+      settings.quality = static_cast<SsaoQuality>(ssaoLevel - 1);
+      engine.setSsaoSettings(settings);
+      engine.setSsao(true);
+      save().set(KEY_SSAO_QUALITY, ssaoQualityName(settings.quality));
+    }
+    save().set(KEY_SSAO, ssaoLevel != 0);
+  }
+
   // Applies what the sliders show, and keeps it in the save data
   void applyVolumes() {
     const auto volume = [](int percent) { return static_cast<float>(percent) / 100.0f; };
@@ -269,6 +312,8 @@ struct PauseMenu::Impl {
     constructor.Bind("fullscreen", &fullscreen);
     constructor.Bind("vsync", &vsync);
     constructor.Bind("renderScale", &renderScale);
+    constructor.Bind("ssaoText", &ssaoText);
+    constructor.Bind("ssaoLevel", &ssaoLevel);
     constructor.Bind("resolution", &resolution);
     constructor.Bind("renderResolution", &renderResolution);
     constructor.Bind("options", &options);
@@ -302,6 +347,11 @@ struct PauseMenu::Impl {
         stepResolution = direction;
       };
     };
+    const auto onSsaoStep = [this](int direction) {
+      return [this, direction](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) { stepSsao = direction; };
+    };
+    constructor.BindEventCallback("ssao_prev", onSsaoStep(-1));
+    constructor.BindEventCallback("ssao_next", onSsaoStep(1));
     constructor.BindEventCallback("resolution_prev", onStep(-1));
     constructor.BindEventCallback("resolution_next", onStep(1));
     constructor.BindEventCallback("show_options", [this](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
@@ -333,6 +383,7 @@ struct PauseMenu::Impl {
     stepResolution = 0;
     stepMsaa = 0;
     toggleFxaa = toggleFsr = false;
+    stepSsao = 0;
     readOptions();
     document->Show(Rml::ModalFlag::Modal, Rml::FocusFlag::Document);
     document->PullToFront(); // over the game's own documents, whenever they were loaded
@@ -387,6 +438,7 @@ struct PauseMenu::Impl {
     applyResolutionStep();
     applyRenderScale();
     applyAntialiasing();
+    applySsaoStep();
     // The sizes can change without a click: the window was dragged, or the menu's own request just landed
     const Rml::String windowText = sizeText(engine.windowSize());
     const Rml::String sceneText = sizeText(engine.renderResolution());
