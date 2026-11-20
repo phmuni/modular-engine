@@ -12,6 +12,7 @@ A method counts as bound when scriptSystem.cpp takes its address (`&GameUI::load
 the same name, or `setX` / `isX` for the property or function `x`. Engine's methods live in several Lua tables (engine,
 sound, input, physics...) or on Entity, so ENGINE_ALIASES says where a method went when its name differs.
 """
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -328,4 +329,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # No options: only --help, which says what the tool does
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
     main()

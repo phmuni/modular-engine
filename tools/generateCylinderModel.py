@@ -5,6 +5,7 @@
     python3 tools/generateCylinderModel.py
 """
 
+import argparse
 import math
 from pathlib import Path
 
@@ -67,4 +68,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # No options: only --help, which says what the tool does
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
     main()

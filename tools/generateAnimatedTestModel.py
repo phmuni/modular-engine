@@ -9,6 +9,7 @@ attached beyond the engine's.
     python3 tools/generateAnimatedTestModel.py
 """
 
+import argparse
 import json
 import math
 import struct
@@ -223,4 +224,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # No options: only --help, which says what the tool does
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
     main()
