@@ -47,10 +47,25 @@ inline const std::string &getBasePath() {
 constexpr std::string_view ASSETS_PREFIX = "../assets/";
 constexpr std::string_view ENGINE_ASSETS_FOLDER = "engine-assets/";
 
+// A folder searched before the game's assets/ for "../assets/..." paths: what is in it hides the game's own file.
+// For tests, which need a project file (a pause menu document) without writing into the repository's assets/.
+inline std::string &assetsOverlay() {
+  static std::string folder;
+  return folder;
+}
+
 inline std::string resolvePath(std::string_view relativePath) {
   std::filesystem::path path(relativePath);
   if (path.is_absolute())
     return PathUtils::normalizeSeparators(path.string());
+
+  if (!assetsOverlay().empty() && relativePath.substr(0, ASSETS_PREFIX.size()) == ASSETS_PREFIX) {
+    std::string overlaid = assetsOverlay();
+    overlaid.append("/").append(relativePath.substr(ASSETS_PREFIX.size()));
+    std::error_code error;
+    if (std::filesystem::exists(overlaid, error))
+      return PathUtils::normalizeSeparators(std::move(overlaid));
+  }
 
   std::string result = getBasePath();
   result.append(relativePath);

@@ -124,7 +124,8 @@ TEST_CASE(pause_menu_events) {
     click(*game, "set_quality");
   });
   steps.step(2, [game] {
-    CHECK_EQ(std::get<std::string>(game->settings().get("ssaoQuality")), std::string("high")); // a text value
+    const auto quality = game->settings().get("ssaoQuality");
+    CHECK_EQ(std::get<std::string>(quality), std::string("high")); // a text value
     // The slider: the document writes its value as text, like RmlUi's range input does
     Rml::Element *slider = element(*game, "master");
     CHECK(slider != nullptr);
@@ -309,29 +310,16 @@ TEST_CASE(pause_menu_game_time) {
 }
 
 namespace {
-// A project's own pause menu document, as a new project has in assets/ui. Written for the test that needs it, removed
-// when the process ends.
-struct ProjectDocument {
-  std::string path = EngineConfig::resolveAsset("ui/pauseMenu.rml");
-  bool created = false;
-  void create() {
-    if (std::filesystem::exists(path))
-      return;
-    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
-    std::ofstream(path) << "<rml><head><title>Project</title></head>"
-                           "<body data-model=\"pause_menu\"><div id=\"project_copy\">mine</div></body></rml>";
-    created = true;
-  }
-  ~ProjectDocument() {
-    if (created) {
-      std::error_code error;
-      std::filesystem::remove(path, error);
-    }
-  }
-};
-ProjectDocument &projectDocument() {
-  static ProjectDocument document;
-  return document;
+// A project's own pause menu document, as a new project has in assets/ui. It is written to a temporary folder that
+// stands in front of the game's assets/ (EngineConfig::assetsOverlay): nothing is written into the repository, so
+// tests running at the same time never see it.
+void createProjectDocument() {
+  const std::string folder = testing::tempDir("project_assets");
+  std::filesystem::create_directories(folder + "/ui");
+  std::ofstream(folder + "/ui/pauseMenu.rml")
+      << "<rml><head><title>Project</title></head>"
+         "<body data-model=\"pause_menu\"><div id=\"project_copy\">mine</div></body></rml>";
+  EngineConfig::assetsOverlay() = folder;
 }
 } // namespace
 
@@ -340,7 +328,7 @@ TEST_CASE(pause_menu_document_lookup) {
   PauseMenu &menu = engine.pauseMenu();
   const std::string engineCopy = "../assets/ui/engine/pauseMenu.rml";
   // Nothing configured and no project file: the engine's
-  CHECK(!std::filesystem::exists(projectDocument().path));
+  CHECK(!std::filesystem::exists(EngineConfig::resolveAsset("ui/pauseMenu.rml")));
   menu.configure(PauseMenuOptions{});
   CHECK_EQ(menu.documentPath(), engineCopy);
   // A missing custom document: a warning, and the same lookup
@@ -350,7 +338,7 @@ TEST_CASE(pause_menu_document_lookup) {
   menu.configure(withDocument(kDocument));
   CHECK_EQ(menu.documentPath(), std::string(kDocument));
   // The project's file beats the engine's copy (and the option still beats the project's)
-  projectDocument().create();
+  createProjectDocument();
   menu.configure(withDocument("ui/no_such_pause_menu.rml"));
   CHECK_EQ(menu.documentPath(), std::string("ui/pauseMenu.rml"));
   menu.configure(withDocument(kDocument));
@@ -389,7 +377,8 @@ TEST_CASE(settings_at_startup) {
   CHECK_NEAR(static_cast<float>(engine.renderScale()), 0.75f, 1e-6f);
   CHECK_NEAR(engine.fsrSharpness(), 0.5f, 1e-6f);
   CHECK(!engine.ssao());
-  CHECK_EQ(std::get<std::string>(engine.settings().get("ssaoQuality")), std::string("high"));
+  const auto quality = engine.settings().get("ssaoQuality");
+  CHECK_EQ(std::get<std::string>(quality), std::string("high"));
   CHECK_NEAR(static_cast<float>(std::get<double>(engine.settings().get("masterVolume"))), 0.3f, 1e-6f);
   CHECK_NEAR(static_cast<float>(std::get<double>(engine.settings().get("musicVolume"))), 0.2f, 1e-6f);
   // ...and the game's default stays where nothing was saved
