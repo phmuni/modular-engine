@@ -169,9 +169,10 @@ constexpr const char *SCENES_DIR = "../assets/scenes";
 constexpr SDL_Scancode SCREENSHOT_KEY = SDL_SCANCODE_F12;
 constexpr const char *SCREENSHOT_PATH = "screenshot.bmp";
 
-// Default toggle states
+// Default toggle states. The free camera is off: a game drives its camera, and the editor's right-drag flight needs
+// no toggle; examples that want the free camera (the scene browser) turn it on.
 inline const std::pair<Toggle, bool> DEFAULT_TOGGLES[] = {
-    {Toggle::CameraMovement, true}, {Toggle::CameraFly, true}, {Toggle::CursorLock, true},
+    {Toggle::CameraMovement, false}, {Toggle::CameraFly, true}, {Toggle::CursorLock, true},
     {Toggle::Wireframe, false},     {Toggle::ShowUI, false},   {Toggle::Shadows, true},
     {Toggle::ShowStats, false},     {Toggle::VSync, true},     {Toggle::Paused, false},
     {Toggle::GammaCorrect, true},   {Toggle::UIDebugger, false},

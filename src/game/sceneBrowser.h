@@ -32,6 +32,7 @@ public:
   explicit SceneBrowser(std::string first = {}) : m_first(std::move(first)) {}
 
   void setup(Engine &engine) override {
+    engine.setState(Toggle::CameraMovement, true); // a viewer: the free camera (Settings) is how scenes are looked at
     refresh(engine);
     if (m_first.empty() && !m_scenes.empty())
       m_first = m_scenes.front();

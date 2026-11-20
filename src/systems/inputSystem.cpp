@@ -76,6 +76,9 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
   m_mouseXOffset = 0.0f;
   m_mouseYOffset = 0.0f;
   m_mouseWheel = 0.0f;
+  m_flyWheel = 0.0f;
+  if (!m_editorFlyAllowed)
+    m_editorFlying = false; // the editor lost the camera (Play, F2) with the button still down
   std::fill(std::begin(m_pressed), std::end(m_pressed), false);
   std::fill(std::begin(m_released), std::end(m_released), false);
   std::fill(std::begin(m_mousePressed), std::end(m_mousePressed), false);
@@ -113,6 +116,9 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
       m_escapePressed = true;
     // A menu takes everything: the game gets no key presses or clicks (releases still count, so nothing sticks down)
     usedByUI = usedByUI || m_gameInputBlocked;
+    // The right button for the editor's camera: taken when it goes down over the view, kept until it comes up
+    const bool takesFlyButton = m_editorFlyAllowed && !usedByUI && !io.WantCaptureMouse && !m_editorFlying &&
+                                !state.isToggled(Toggle::CursorLock);
     // The game gets clicks whether the cursor is locked or not (a locked cursor is how a shooter aims and fires),
     // except those the game UI or the editor's panels took
     const bool mouseForGame = !usedByUI && !io.WantCaptureMouse;
@@ -137,9 +143,9 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
         if (state.isToggled(Toggle::ShowUI) &&
             ((io.KeyCtrl && (key == SDL_SCANCODE_Z || key == SDL_SCANCODE_Y || key == SDL_SCANCODE_D ||
                              key == SDL_SCANCODE_C || key == SDL_SCANCODE_V)) ||
-             key == SDL_SCANCODE_DELETE || key == SDL_SCANCODE_BACKSPACE))
+             key == SDL_SCANCODE_DELETE || key == SDL_SCANCODE_BACKSPACE || key == SDL_SCANCODE_TAB)) // Tab hides panels
           break;
-        m_pressed[key] = m_pressed[key] || (!event.key.repeat && !m_keys[key]);
+        m_pressed[key] = m_pressed[key] || (!event.key.repeat && !m_keys[key] && !m_editorFlying);
         m_keys[key] = true;
       }
       break;
@@ -161,13 +167,21 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
       break;
 
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
-      if (mouseForGame && event.button.button < kMouseButtons) {
+      if (event.button.button == SDL_BUTTON_RIGHT && takesFlyButton) {
+        m_editorFlying = true;
+        break;
+      }
+      if (mouseForGame && !m_editorFlying && event.button.button < kMouseButtons) {
         m_mousePressed[event.button.button] = true;
         m_mouseDown[event.button.button] = true;
       }
       break;
 
     case SDL_EVENT_MOUSE_BUTTON_UP:
+      if (event.button.button == SDL_BUTTON_RIGHT && m_editorFlying) {
+        m_editorFlying = false;
+        break;
+      }
       if (event.button.button < kMouseButtons) {
         m_mouseReleased[event.button.button] = m_mouseReleased[event.button.button] || m_mouseDown[event.button.button];
         m_mouseDown[event.button.button] = false;
@@ -175,7 +189,9 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
       break;
 
     case SDL_EVENT_MOUSE_WHEEL:
-      if (mouseForGame)
+      if (m_editorFlying)
+        m_flyWheel += event.wheel.y;
+      else if (mouseForGame)
         m_mouseWheel += event.wheel.y;
       break;
 
@@ -214,9 +230,9 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
       break;
     }
 
-    case SDL_EVENT_WINDOW_RESIZED:
+    // In pixels: the window's size in units is not the framebuffer's on a high density display
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
       windowSystem.onResize(event.window.data1, event.window.data2, renderer);
-      renderer.setViewportSize(event.window.data1, event.window.data2);
       break;
 
     default:
@@ -339,7 +355,7 @@ void InputSystem::bindAxis(const std::string &name, std::vector<InputBinding> bi
 }
 
 float InputSystem::readBinding(const InputBinding &binding) const {
-  if (m_gameInputBlocked)
+  if (gameBlocked())
     return 0.0f;
   auto valid = [](SDL_Scancode key) { return key > SDL_SCANCODE_UNKNOWN && key < SDL_SCANCODE_COUNT; };
   switch (binding.kind) {
@@ -396,7 +412,7 @@ float InputSystem::getAxis(std::string_view name) const {
 }
 
 bool InputSystem::isGamepadButtonDown(SDL_GamepadButton button) const {
-  if (m_gameInputBlocked || button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT)
+  if (gameBlocked() || button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT)
     return false;
   for (const auto &[id, state] : m_gamepads)
     if (state.buttons[button])
@@ -409,7 +425,7 @@ bool InputSystem::wasGamepadButtonPressed(SDL_GamepadButton button) const {
 }
 
 float InputSystem::getGamepadAxis(SDL_GamepadAxis axis) const {
-  if (m_gameInputBlocked || axis < 0 || axis >= SDL_GAMEPAD_AXIS_COUNT)
+  if (gameBlocked() || axis < 0 || axis >= SDL_GAMEPAD_AXIS_COUNT)
     return 0.0f;
   float strongest = 0.0f;
   for (const auto &[id, state] : m_gamepads)
@@ -536,7 +552,7 @@ void InputSystem::bindToggleKey(SDL_Scancode key, Toggle toggle) {
   m_prevKeyState[key] = false;
 }
 
-bool InputSystem::isKeyDown(SDL_Scancode key) const { return !m_gameInputBlocked && m_keys[key]; }
+bool InputSystem::isKeyDown(SDL_Scancode key) const { return !gameBlocked() && m_keys[key]; }
 bool InputSystem::wasKeyPressed(SDL_Scancode key) const { return m_pressed[key]; }
 bool InputSystem::wasKeyReleased(SDL_Scancode key) const { return m_released[key]; }
 
@@ -551,7 +567,7 @@ bool InputSystem::wasKeyPressed(const std::string &keyName) const {
 }
 
 bool InputSystem::isMouseButtonDown(MouseButton button) const {
-  return !m_gameInputBlocked && m_mouseDown[static_cast<int>(button)];
+  return !gameBlocked() && m_mouseDown[static_cast<int>(button)];
 }
 bool InputSystem::wasMouseButtonPressed(MouseButton button) const { return m_mousePressed[static_cast<int>(button)]; }
 bool InputSystem::wasMouseButtonReleased(MouseButton button) const {
@@ -560,7 +576,7 @@ bool InputSystem::wasMouseButtonReleased(MouseButton button) const {
 
 bool InputSystem::isActionPressed(Action action) const {
   auto it = m_keyBinds.find(action);
-  return !m_gameInputBlocked && it != m_keyBinds.end() && m_keys[it->second];
+  return !gameBlocked() && it != m_keyBinds.end() && m_keys[it->second];
 }
 
 void InputSystem::setKeyBind(Action action, SDL_Scancode keyCode) { m_keyBinds[action] = keyCode; }
@@ -569,5 +585,5 @@ float InputSystem::getMouseXOffset() const { return m_mouseXOffset; }
 float InputSystem::getMouseYOffset() const { return m_mouseYOffset; }
 
 glm::vec2 InputSystem::getMouseDelta() const {
-  return m_gameInputBlocked ? glm::vec2(0.0f) : glm::vec2(m_mouseXOffset, m_mouseYOffset);
+  return gameBlocked() ? glm::vec2(0.0f) : glm::vec2(m_mouseXOffset, m_mouseYOffset);
 }

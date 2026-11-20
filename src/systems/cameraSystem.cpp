@@ -13,6 +13,7 @@
 
 void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
 
+  m_navigating = false;
   Entity entity = getActiveCamera();
   if (entity == -1 || !m_componentManager.has<Camera>(entity)) {
     return;
@@ -22,15 +23,32 @@ void CameraSystem::update(float deltaTime, SystemManager &systemManager) {
   auto &state = systemManager.getSystem<StateSystem>();
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
 
-  bool cursorLocked = state.isToggled(Toggle::CursorLock);
-  windowSystem.setCursor(cursorLocked);
+  const bool cursorLocked = state.isToggled(Toggle::CursorLock);
+  const bool flying = m_input.isEditorFlying(); // the right button: the mouse is the camera's while it is down
+  windowSystem.setCursor(cursorLocked || flying);
 
-  if (state.isToggled(Toggle::CameraMovement) && cursorLocked) {
+  m_navigating = canNavigate(state) && (cursorLocked || flying);
+  if (m_navigating) {
     updateOrientation(cam);
-    updatePositionFromInput(cam, deltaTime, state);
+    if (flying)
+      updateEditorFlight(cam, deltaTime);
+    else
+      updatePositionFromInput(cam, deltaTime, state);
+    m_editorOverridesRig = m_editorOverridesRig || (m_editing && m_editorShown);
   }
 
   updateFrontVector(cam);
+}
+
+void CameraSystem::setEditorNavigation(bool editing, bool editorShown) {
+  m_editing = editing;
+  m_editorShown = editorShown;
+  if (!editing)
+    m_editorOverridesRig = false;
+}
+
+bool CameraSystem::canNavigate(const StateSystem &state) const {
+  return (m_editing && m_editorShown) || state.isToggled(Toggle::CameraMovement);
 }
 
 bool CameraSystem::resolveRigTarget(CameraRig &rig, float deltaTime) {
@@ -66,7 +84,7 @@ void CameraSystem::updateRigs(float deltaTime, SystemManager &systemManager) {
   if (!rig || !cam)
     return;
   const auto &state = systemManager.getSystem<StateSystem>();
-  if (state.isToggled(Toggle::CameraMovement) || placedByGame) {
+  if (state.isToggled(Toggle::CameraMovement) || placedByGame || m_editorOverridesRig) {
     rig->primed = false; // whoever moved the camera, the rig starts from where it should be when it takes over again
     return;
   }
@@ -178,6 +196,24 @@ void CameraSystem::updatePositionFromInput(Camera &cam, float deltaTime, const S
     if (m_input.isActionPressed(Action::MoveDown))
       cam.position.y -= velocity;
   }
+}
+
+void CameraSystem::updateEditorFlight(Camera &cam, float deltaTime) {
+  const float wheel = m_input.getFlyWheel();
+  if (wheel != 0.0f)
+    m_flySpeedScale = glm::clamp(m_flySpeedScale * std::pow(1.25f, wheel), 0.05f, 50.0f);
+
+  cam.updateFront(); // the mouse turned it this frame
+  const glm::vec3 right = glm::normalize(glm::cross(cam.front, cam.worldUp));
+  auto down = [&](SDL_Scancode key) { return m_input.isRawKeyDown(key) ? 1.0f : 0.0f; };
+  glm::vec3 move = cam.front * (down(SDL_SCANCODE_W) - down(SDL_SCANCODE_S)) +
+                   right * (down(SDL_SCANCODE_D) - down(SDL_SCANCODE_A)) +
+                   cam.worldUp * (std::max(down(SDL_SCANCODE_E), down(SDL_SCANCODE_SPACE)) -
+                                  std::max(down(SDL_SCANCODE_Q), down(SDL_SCANCODE_LCTRL)));
+  if (glm::dot(move, move) < 1e-6f)
+    return;
+  const bool fast = m_input.isRawKeyDown(SDL_SCANCODE_LSHIFT) || m_input.isRawKeyDown(SDL_SCANCODE_RSHIFT);
+  cam.position += glm::normalize(move) * (cam.moveSpeed * m_flySpeedScale * (fast ? 4.0f : 1.0f) * deltaTime);
 }
 
 Entity CameraSystem::getActiveCamera() const { return m_activeCamera; }

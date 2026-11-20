@@ -47,7 +47,15 @@ public:
   // While blocked (a menu is open), the game sees no keys, clicks, actions or gamepad input: everything reads as
   // idle, and presses that arrive meanwhile are dropped. The engine's toggle keys (F-keys) are blocked too.
   void setGameInputBlocked(bool blocked) { m_gameInputBlocked = blocked; }
-  bool isGameInputBlocked() const { return m_gameInputBlocked; }
+  bool isGameInputBlocked() const { return gameBlocked(); }
+  // Editor camera: while the right mouse button is held in the view (not over a panel or the game UI), where the
+  // editor has the camera, the mouse looks and W A S D Q E fly it. The game sees none of it: no keys, clicks or wheel,
+  // as under a menu. `allowed` says whether the editor has the camera now (set each frame, before update).
+  void setEditorFlyAllowed(bool allowed) { m_editorFlyAllowed = allowed; }
+  bool isEditorFlying() const { return m_editorFlying; }
+  // Keys and wheel as they are, for the editor's camera, whatever the game is allowed to see
+  bool isRawKeyDown(SDL_Scancode key) const { return key > SDL_SCANCODE_UNKNOWN && key < SDL_SCANCODE_COUNT && m_keys[key]; }
+  float getFlyWheel() const { return m_flyWheel; }
   // Escape went down this frame and nothing else wanted it: not the game UI (a focused field), nor the editor's
   // panels (a text field, or a focused window). The pause menu's key.
   bool wasEscapePressed() const { return m_escapePressed; }
@@ -138,6 +146,11 @@ private:
   void eraseLastCharacter();
 
   bool m_gameInputBlocked = false;
+  bool m_editorFlyAllowed = false;
+  bool m_editorFlying = false; // the right button is held for the editor camera
+  float m_flyWheel = 0.0f;     // this frame
+  // What the game may not read: a menu has the input, or the editor's camera does
+  bool gameBlocked() const { return m_gameInputBlocked || m_editorFlying; }
   bool m_escapePressed = false; // this frame
   bool m_keys[SDL_SCANCODE_COUNT]{false};
   bool m_pressed[SDL_SCANCODE_COUNT]{false};  // this frame

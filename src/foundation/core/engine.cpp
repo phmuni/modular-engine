@@ -235,10 +235,19 @@ void Engine::recordBenchmarkFrame() {
   m_quitRequested = true;
 }
 
+
 void Engine::update(bool &isRunning) {
   m_frameStartNs = SDL_GetTicksNS();
 
   auto &inputSystem = m_systemManager.getSystem<InputSystem>();
+  // The editor has the camera while the game is frozen for editing: the right button flies it (or, with the free
+  // camera on in Settings, in any mode)
+  auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
+  {
+    const auto &toggles = m_systemManager.getSystem<StateSystem>();
+    cameraSystem.setEditorNavigation(m_playMode == PlayMode::Editing, toggles.isToggled(Toggle::ShowUI));
+    inputSystem.setEditorFlyAllowed(cameraSystem.canNavigate(toggles));
+  }
   inputSystem.update(&isRunning, m_systemManager);
 
   // Play, Stop and freezing, from the editor's last frame
@@ -262,7 +271,6 @@ void Engine::update(bool &isRunning) {
   timeSystem.update();
 
   // The camera runs on real time, so it can still fly around a paused scene
-  auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
   cameraSystem.update(timeSystem.getUnscaledDeltaTime(), m_systemManager);
 
   // Apply wireframe and vsync toggles
@@ -661,6 +669,7 @@ Engine::CommandLine Engine::parseCommandLine(int argc, char **argv) {
       number(i, result.saveSceneDelay);
     } else if (arg == "--deterministic") {
       result.deterministic = true;
+      WindowSystem::setHighDensity(false); // the same pixels on any screen: the window is created after this
     } else {
       result.arguments.push_back(arg);
     }
