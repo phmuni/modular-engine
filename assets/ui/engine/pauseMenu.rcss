@@ -81,7 +81,7 @@ button.toggle.on { decorator: horizontal-gradient(#3ee8ff #8f7bff); color: #0b16
 	color: #8fb4c8;
 }
 .value {
-	width: 44dp;
+	width: 56dp;
 	text-align: right;
 	font-weight: bold;
 	color: #ffffff;
@@ -108,3 +108,29 @@ input.range sliderbar {
 }
 input.range sliderbar:hover { box-shadow: #3ee8ffcc 0 0 14dp 0; }
 input.range sliderarrowdec, input.range sliderarrowinc { display: none; }
+
+/* --- Window size selector and the render resolution note ------------------------------------------------------ */
+
+button.step {
+	flex: 0 0 auto;
+	width: 36dp;
+	margin: 0;
+	padding: 6dp 0;
+	letter-spacing: 0;
+}
+.choice {
+	flex: 1 1 auto;
+	text-align: center;
+	font-weight: bold;
+	color: #ffffff;
+}
+/* Not available (the window's size cannot be chosen in fullscreen) */
+.row.disabled { opacity: 0.4; }
+.row.disabled button.step { pointer-events: none; }
+
+.note {
+	margin: -4dp 0 16dp;
+	text-align: right;
+	font-size: 12dp;
+	color: #8fb4c8;
+}

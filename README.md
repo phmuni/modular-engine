@@ -368,7 +368,7 @@ python3 tools/new_game.py ~/Games/Asteroids --type lua     # the same, in Python
 Each kind starts as the same small game (walk, jump, push the crates, collect coins: [`templates/`](templates/)),
 whose level is a scene file you edit in the game with `F2`.
 
-A Lua project is `project.json` (its name, start scene, game script and input file, and optionally its collision `layers`), `assets/`, and `bin/` with the
+A Lua project is `project.json` (its name, start scene, game script and input file, and optionally its collision `layers` and `window`), `assets/`, and `bin/` with the
 runner named after the game. A C++ project's `CMakeLists.txt` points at this checkout (`MODULAR_ENGINE_DIR`; left
 empty, the engine is downloaded from GitHub) and builds `src/*.cpp` with `modular_engine_add_game(...)`. Either way
 `bin/` holds `bin/engine-assets` (the engine's shaders, fonts and basic models) and SDL's library, asset paths are
@@ -1208,6 +1208,39 @@ void update(Engine& engine, float dt) override {
 ```
 
 RCSS has no default style sheet, so give `div` a `display: block`. Lato is loaded as `font-family: LatoLatin`; `engine.loadUIFont` adds others. Clicks and key presses the UI uses don't reach the game, and `pointer-events: none` lets clicks pass through HUD areas. `F9` opens RmlUi's debugger to inspect elements and see style errors. The Space Aliens HUD ([`assets/ui/aliens/`](assets/ui/aliens/)) is a complete example.
+
+### Window and render resolution
+
+The window starts at 1280x720 (grown on a display with a content scale above 1, such as Windows at 150 %, to at most 90 %
+of the screen). A Lua project sets it in `project.json`, every field optional:
+
+```json
+"window": { "width": 1600, "height": 900, "fullscreen": false, "renderScale": 1.0 }
+```
+
+A C++ game calls `engine.configureWindow({1600, 900, false, 1.0f})` before `initialize()` and the window is created at
+that size; called in `setup` it resizes the window instead (visible for a moment). Sizes are in window units (points on
+a Retina screen, pixels elsewhere), not framebuffer pixels.
+
+The **render scale** (0.5 to 2, 1 by default) is the share of the framebuffer's pixels the 3D scene is drawn at before it
+is stretched onto the window with linear filtering. The framebuffer is already at the display's real pixels on Retina and
+other high-density screens, so 0.5 to 0.75 buys frame rate on a 4K display, and above 1 supersamples. The editor panels
+and the game UI keep drawing at the framebuffer's own size, and mouse picking is unaffected. In code and in Lua:
+
+```cpp
+engine.setWindowSize(1600, 900);          // engine.windowSize()
+auto sizes = engine.resolutions();         // sizes that fit the display, smallest first (never empty)
+engine.setRenderScale(0.75f);              // engine.renderScale(), engine.renderResolution()
+engine.setFullscreen(true);                // engine.isFullscreen()
+```
+
+`engine.setWindowSize(w, h)`, `engine.windowSize()`, `engine.resolutions()`, `engine.setRenderScale(s)`,
+`engine.renderScale()`, `engine.renderResolution()`, `engine.setFullscreen(on)` and `engine.isFullscreen()` are the Lua
+names. The pause menu's Options has a Window size selector and a Render scale slider, kept in the save data
+(`engine.window.width`, `engine.window.height`, `engine.renderScale`). When a game closes, its window's size and place
+are saved too (`engine.window.x`, `y`, `width`, `height`) and restored at the next start if they still fit on a
+connected display, otherwise the window opens centered; a player's saved options win over the game's `window` defaults.
+`--deterministic` runs ignore all of this: a fixed window, density 1 and render scale 1.
 
 ### Saved data
 

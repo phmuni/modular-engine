@@ -394,6 +394,17 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Size of the panels and text. Starts from the display's scale (%.0f%% here); kept between runs",
                         systemManager.getSystem<WindowSystem>().getAutoUiScale() * 100.0f);
+    // The 3D scene only: these panels stay at the screen's own resolution
+    int renderPercent = static_cast<int>(std::lround(engine.renderScale() * 100.0f));
+    if (ImGui::SliderInt("Render scale", &renderPercent, static_cast<int>(Renderer::kMinRenderScale * 100.0f),
+                         static_cast<int>(Renderer::kMaxRenderScale * 100.0f), "%d%%"))
+      engine.setRenderScale(static_cast<float>(renderPercent) / 100.0f);
+    if (ImGui::IsItemHovered()) {
+      const glm::ivec2 scene = engine.renderResolution();
+      ImGui::SetTooltip("Resolution the scene is drawn at, as a share of the screen's pixels (now %d x %d): below "
+                        "100%% is faster, above sharper. The panels are not affected.",
+                        scene.x, scene.y);
+    }
     if (ImGui::SmallButton("Reset scale")) {
       m_uiScaleUser = 0.0f;
       ImGui::MarkIniSettingsDirty();

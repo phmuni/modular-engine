@@ -18,8 +18,10 @@ public:
     bool gammaCorrect = true; // tone map and encode for display; off for the old, non-linear look
   };
 
-  // (Re)creates the targets for this screen size; cheap when the size has not changed
-  void resize(int width, int height);
+  // (Re)creates the targets: the scene, depth and bloom at width x height (the render size), and the final pass onto
+  // the screen at displayWidth x displayHeight, which is only different when the render scale is not 1. Cheap when
+  // neither size has changed.
+  void resize(int width, int height, int displayWidth, int displayHeight);
   // Binds the HDR target and clears it to `clearColor` (linear); the lit passes draw into it
   void beginScene(const glm::vec3 &clearColor);
   // Tone maps the HDR scene into the display target and binds it, depth included, for the passes that follow
@@ -39,6 +41,8 @@ private:
 
   int m_width = 0;
   int m_height = 0;
+  int m_displayWidth = 0; // the screen's pixels, which the final pass fills
+  int m_displayHeight = 0;
   GLuint m_sceneFBO = 0;
   GLuint m_sceneColor = 0;
   GLuint m_sceneDepth = 0;

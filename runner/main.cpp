@@ -3,7 +3,9 @@
 // A Lua project is a folder with project.json, assets/ and bin/, where this executable sits (renamed after the
 // game, see tools/new_game.py). project.json says where the game starts:
 //   { "name": "MyGame", "scene": "scenes/level.json", "script": "scripts/game.lua", "input": "input.json" }
-// (paths relative to assets/). An optional "layers" sets the collision layers (see CollisionLayers::fromJson). The scene loads first, then the game script runs (onStart, then onUpdate every frame),
+// (paths relative to assets/). An optional "layers" sets the collision layers (see CollisionLayers::fromJson), and an
+// optional "window" the window: { "width": 1280, "height": 720, "fullscreen": false, "renderScale": 1.0 }, every field
+// optional (see Engine::configureWindow). The scene loads first, then the game script runs (onStart, then onUpdate every frame),
 // and the entities' own scripts come with the scene. The editor (F2), Play and Stop work as in any game.
 
 #include "foundation/core/config.h"
@@ -24,6 +26,7 @@ struct Project {
   std::string script;
   std::string input;
   nlohmann::json layers; // null when the project does not set any
+  Engine::WindowConfig window;
 };
 
 std::string inAssets(const std::string &path) { return path.empty() ? path : "../assets/" + path; }
@@ -44,6 +47,13 @@ bool readProject(Project &project, std::string &error) {
     project.input = json.value("input", "");
     if (json.contains("layers"))
       project.layers = json["layers"];
+    if (json.contains("window") && json["window"].is_object()) {
+      const nlohmann::json &window = json["window"];
+      project.window.width = window.value("width", project.window.width);
+      project.window.height = window.value("height", project.window.height);
+      project.window.fullscreen = window.value("fullscreen", project.window.fullscreen);
+      project.window.renderScale = window.value("renderScale", project.window.renderScale);
+    }
   } catch (const std::exception &exception) {
     error = path + " is not valid JSON: " + exception.what();
     return false;
@@ -99,6 +109,7 @@ int main(int argc, char **argv) {
   }
 
   Engine engine;
+  engine.configureWindow(project.window); // before initialize(): the window is created at its size
   if (!engine.initialize())
     return 1;
   engine.applyCommandLine(commandLine);

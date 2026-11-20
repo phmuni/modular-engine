@@ -133,13 +133,18 @@ bool Engine::initialize() {
 
   registerSystems();
 
-  return loadResources();
+  m_initialized = loadResources();
+  return m_initialized;
 }
 
 void Engine::run(App &app) {
   m_app = &app;
   try {
+    // The game's defaults first, so what a player saved (applied in setup, or in startWindow) comes after them
+    if (m_windowConfig.fullscreen)
+      m_systemManager.getSystem<WindowSystem>().setFullscreen(true);
     m_app->setup(*this);
+    startWindow();
     bool running = true;
     loop(running);
   } catch (const std::exception &ex) {
@@ -169,6 +174,7 @@ void Engine::shutdown() {
     return;
   m_shutdown = true;
 
+  rememberWindow(); // before the save data is written
   m_systemManager.getSystem<SaveData>().writeIfChanged();
   // Attempt to clean up renderer and SDL; the game UI frees its GPU resources first, while the context is alive
   m_systemManager.getSystem<GameUISystem>().shutdown();
@@ -228,6 +234,7 @@ void Engine::runFrameInEventPump() {
 
 void Engine::setDeterministic() {
   m_deterministic = true;
+  s_deterministicRun = true;
   // The player's save file stays out of it, both ways
   m_systemManager.getSystem<SaveData>().setInMemory(true);
   Random::seed(1);
@@ -724,6 +731,7 @@ Engine::CommandLine Engine::parseCommandLine(int argc, char **argv) {
       number(i, result.saveSceneDelay);
     } else if (arg == "--deterministic") {
       result.deterministic = true;
+      s_deterministicRun = true;
       WindowSystem::setHighDensity(false); // the same pixels on any screen: the window is created after this
     } else {
       result.arguments.push_back(arg);
@@ -1142,6 +1150,93 @@ void Engine::setWindowTitle(std::string_view title) {
   SDL_SetWindowTitle(m_systemManager.getSystem<WindowSystem>().getWindow(), std::string(title).c_str());
 }
 
+namespace {
+// Where the window's size and place are kept in the save data
+constexpr const char *KEY_WINDOW_X = "engine.window.x";
+constexpr const char *KEY_WINDOW_Y = "engine.window.y";
+constexpr const char *KEY_WINDOW_WIDTH = "engine.window.width";
+constexpr const char *KEY_WINDOW_HEIGHT = "engine.window.height";
+} // namespace
+
+void Engine::configureWindow(const WindowConfig &requested) {
+  if (m_deterministic || s_deterministicRun)
+    return;
+  WindowConfig config = requested;
+  config.renderScale = std::clamp(config.renderScale, Renderer::kMinRenderScale, Renderer::kMaxRenderScale);
+  const bool sized = config.width > 0 && config.height > 0;
+  if (m_initialized) {
+    if (sized)
+      setWindowSize(config.width, config.height);
+    setFullscreen(config.fullscreen);
+    setRenderScale(config.renderScale);
+    return;
+  }
+  m_windowConfig = config;
+  if (sized) {
+    m_screenWidth = static_cast<float>(config.width);
+    m_screenHeight = static_cast<float>(config.height);
+    WindowSystem::setSizeRequested(true);
+  }
+}
+
+void Engine::setWindowSize(int width, int height) {
+  auto &window = m_systemManager.getSystem<WindowSystem>();
+  if (!window.setWindowSize(width, height))
+    return;
+  // The framebuffer follows from the event the system sends, which is read at the next frame: the scene's size is
+  // right from here instead
+  int pixelWidth = 0, pixelHeight = 0;
+  SDL_GetWindowSizeInPixels(window.getWindow(), &pixelWidth, &pixelHeight);
+  m_systemManager.getSystem<RenderSystem>().getRenderer().setViewportSize(pixelWidth, pixelHeight);
+}
+
+glm::ivec2 Engine::windowSize() { return m_systemManager.getSystem<WindowSystem>().getWindowSize(); }
+std::vector<glm::ivec2> Engine::resolutions() { return m_systemManager.getSystem<WindowSystem>().getResolutions(); }
+void Engine::setRenderScale(float scale) {
+  m_systemManager.getSystem<RenderSystem>().getRenderer().setRenderScale(scale);
+}
+float Engine::renderScale() { return m_systemManager.getSystem<RenderSystem>().getRenderer().getRenderScale(); }
+glm::ivec2 Engine::renderResolution() {
+  const Renderer &renderer = m_systemManager.getSystem<RenderSystem>().getRenderer();
+  return {renderer.getRenderWidth(), renderer.getRenderHeight()};
+}
+void Engine::setFullscreen(bool enabled) { m_systemManager.getSystem<WindowSystem>().setFullscreen(enabled); }
+bool Engine::isFullscreen() { return m_systemManager.getSystem<WindowSystem>().isFullscreen(); }
+
+void Engine::startWindow() {
+  auto &window = m_systemManager.getSystem<WindowSystem>();
+  // A player's own size and place beat the game's. Not in deterministic runs, whose window is the same every time.
+  if (!m_deterministic) {
+    SaveData &save = saveData();
+    if (save.has(KEY_WINDOW_WIDTH) && save.has(KEY_WINDOW_HEIGHT)) {
+      WindowSystem::Placement placement;
+      placement.width = static_cast<int>(save.getNumber(KEY_WINDOW_WIDTH));
+      placement.height = static_cast<int>(save.getNumber(KEY_WINDOW_HEIGHT));
+      placement.x = static_cast<int>(save.getNumber(KEY_WINDOW_X));
+      placement.y = static_cast<int>(save.getNumber(KEY_WINDOW_Y));
+      window.restorePlacement(placement);
+    }
+  }
+  window.show();
+  int pixelWidth = 0, pixelHeight = 0;
+  SDL_GetWindowSizeInPixels(window.getWindow(), &pixelWidth, &pixelHeight);
+  m_systemManager.getSystem<RenderSystem>().getRenderer().setViewportSize(pixelWidth, pixelHeight);
+  m_windowShown = true;
+}
+
+void Engine::rememberWindow() {
+  if (!m_windowShown || m_deterministic)
+    return;
+  const auto placement = m_systemManager.getSystem<WindowSystem>().getPlacement();
+  if (!placement) // fullscreen: what was kept from the last time in a window stays
+    return;
+  SaveData &save = saveData();
+  save.set(KEY_WINDOW_X, placement->x);
+  save.set(KEY_WINDOW_Y, placement->y);
+  save.set(KEY_WINDOW_WIDTH, placement->width);
+  save.set(KEY_WINDOW_HEIGHT, placement->height);
+}
+
 void Engine::captureScreenshot(std::string path, float delaySeconds, bool quitAfter) {
   m_screenshot = ScreenshotRequest{std::move(path), delaySeconds, quitAfter};
 }
@@ -1221,6 +1316,7 @@ bool Engine::loadResources() {
   auto &renderer = m_systemManager.getSystem<RenderSystem>().getRenderer();
   auto &windowSystem = m_systemManager.getSystem<WindowSystem>();
   auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
+  renderer.setRenderScale(m_windowConfig.renderScale); // before init: it makes the targets at that size
   renderer.init(windowSystem.getWindow());
   TextureProcessing::detectSupport();
 

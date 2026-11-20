@@ -6,6 +6,7 @@ layout(location = 2) in float aSize;
 
 uniform mat4 view;
 uniform mat4 projection;
+uniform float pointScale; // the render scale: point sizes are in pixels of the scene's target
 
 // Point-mass gravitational lens (see GravityLens). Particles are drawn twice when it is active:
 // instance 0 is the primary image, instance 1 the secondary image on the opposite side of the lens.
@@ -68,5 +69,5 @@ void main() {
     ParticleColor = vec4(aColor.rgb, aColor.a * min(magnification, 1.0) * fade);
     gl_Position = projection * eyePos;
     // Scale point size by distance to camera
-    gl_PointSize = max(aSize * sqrt(max(magnification, 1.0)) * (300.0 / -eyePos.z), 1.0);
+    gl_PointSize = max(aSize * sqrt(max(magnification, 1.0)) * (300.0 / -eyePos.z) * pointScale, 1.0);
 }

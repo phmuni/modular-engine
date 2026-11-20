@@ -263,6 +263,8 @@ void ParticleSystem::render(SystemManager &systemManager) {
   shader.setMat4("projection", projection);
   const SceneEnvironment &environment = systemManager.getSystem<RenderSystem>().getEnvironment();
   shader.setInt("fogMode", environment.fogMode);
+  // Sizes are in pixels of the scene's target: at another render scale they grow with it, so a particle looks the same
+  shader.setFloat("pointScale", renderer.getRenderScale());
   if (environment.fogMode != 0) {
     shader.setFloat("fogStart", environment.fogStart);
     shader.setFloat("fogFinish", environment.fogFinish);

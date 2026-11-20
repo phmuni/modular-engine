@@ -353,6 +353,46 @@ function engine.loadScene(path) end
 ---@param title string
 function engine.setTitle(title) end
 
+---Resizes the window, in window units (points on a Retina screen, pixels elsewhere; not framebuffer pixels). Does
+---nothing for a size that is not positive. In fullscreen it is the size the window takes when it leaves it.
+---@param width integer
+---@param height integer
+function engine.setWindowSize(width, height) end
+
+---The window's size in window units, after the system applied the last setWindowSize.
+---@return integer width
+---@return integer height
+function engine.windowSize() end
+
+---Window sizes that fit the display the window is on (usable area, without taskbar or menu bar), smallest first: the
+---common 16:9 sizes and the display's own. Never empty.
+---@return { width: integer, height: integer }[]
+function engine.resolutions() end
+
+---The 3D scene is drawn at the framebuffer's pixels times this scale and stretched onto the window with linear
+---filtering: below 1 is faster, above 1 sharper (supersampling). Clamped to 0.5 to 2; 1 by default. The editor and the
+---game UI keep drawing at the framebuffer's own size.
+---@param scale number
+function engine.setRenderScale(scale) end
+
+---The render scale (0.5 to 2).
+---@return number
+function engine.renderScale() end
+
+---The scene's size in pixels now: the framebuffer's size (the window's, times its pixel density) times the render
+---scale.
+---@return integer width
+---@return integer height
+function engine.renderResolution() end
+
+---Borderless fullscreen at the desktop's size; the window comes back at its old size when it is turned off.
+---@param enabled boolean
+function engine.setFullscreen(enabled) end
+
+---Whether the window is fullscreen.
+---@return boolean
+function engine.isFullscreen() end
+
 ---Closes the game at the end of this frame.
 function engine.quit() end
 

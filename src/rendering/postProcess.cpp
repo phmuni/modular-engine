@@ -25,12 +25,22 @@ GLuint createColorTarget(int width, int height, GLenum format) {
 }
 } // namespace
 
-void PostProcess::resize(int width, int height) {
-  if (width == m_width && height == m_height && m_sceneFBO)
+void PostProcess::resize(int width, int height, int displayWidth, int displayHeight) {
+  width = std::max(width, 1);
+  height = std::max(height, 1);
+  displayWidth = std::max(displayWidth, 1);
+  displayHeight = std::max(displayHeight, 1);
+  if (width == m_width && height == m_height && m_sceneFBO) {
+    // Only the screen changed (never the targets, which follow the render size)
+    m_displayWidth = displayWidth;
+    m_displayHeight = displayHeight;
     return;
+  }
   release();
-  m_width = std::max(width, 1);
-  m_height = std::max(height, 1);
+  m_width = width;
+  m_height = height;
+  m_displayWidth = displayWidth;
+  m_displayHeight = displayHeight;
 
   // Scene: 16-bit float color (alpha too, for blending) and depth
   m_sceneColor = createColorTarget(m_width, m_height, GL_RGBA16F);
@@ -48,8 +58,10 @@ void PostProcess::resize(int width, int height) {
   glGenTextures(1, &m_displayColor);
   glBindTexture(GL_TEXTURE_2D, m_displayColor);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_width, m_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  // Linear, since the final pass stretches it onto the screen when the render scale is not 1 (at 1 every sample lands
+  // on a texel's center, so the image is untouched)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glGenFramebuffers(1, &m_displayFBO);
@@ -164,9 +176,9 @@ void PostProcess::finish(Shader &downsample, Shader &upsample, Shader &composite
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   }
 
-  // Onto the screen
+  // Onto the screen, at its own size: this is where the render scale is undone
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  glViewport(0, 0, m_width, m_height);
+  glViewport(0, 0, m_displayWidth, m_displayHeight);
   composite.use();
   composite.setTex("displayTexture", m_displayColor, 0);
   composite.setTex("bloomTexture", bloom ? m_bloom[0].texture : m_displayColor, 1);
@@ -195,6 +207,7 @@ void PostProcess::release() {
   m_bloom.clear();
   m_sceneFBO = m_sceneColor = m_sceneDepth = m_displayFBO = m_displayColor = m_bloomFBO = 0;
   m_width = m_height = 0;
+  m_displayWidth = m_displayHeight = 0;
 }
 
 void PostProcess::shutdown() {
