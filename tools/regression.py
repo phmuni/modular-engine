@@ -50,6 +50,7 @@ CASES = {
     "scene-normal-maps": ["scene", "../assets/scenes/normal_maps.json"],
     "scene-physics": ["scene", "../assets/scenes/physics.json"],  # Jolt is deterministic, threads and all
     "scene-animation": ["scene", "../assets/scenes/animation.json"],
+    "scene-navigation": ["scene", "../assets/scenes/navigation.json"],  # a character walking a computed path
 }
 
 SCREENSHOT_SECONDS = 2.0     # 120 fixed frames
