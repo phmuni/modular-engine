@@ -200,6 +200,8 @@ target_link_libraries(modular_engine PUBLIC
 )
 if(MSVC)
   target_compile_definitions(modular_engine PUBLIC _CRT_SECURE_NO_WARNINGS)
+  # sol2's templates make object files with more sections than MSVC allows by default
+  target_compile_options(modular_engine PUBLIC /bigobj)
 endif()
 
 # --- OpenGL per platform ---

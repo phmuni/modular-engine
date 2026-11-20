@@ -1,0 +1,58 @@
+# Builds the engine, its tools and a game of each kind on macOS, Linux and Windows. Nothing here draws a frame (the
+# runners have no GPU), so it checks that everything compiles and that the launcher creates projects that build.
+name: Build
+
+on:
+  push:
+    branches: [main, ci]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Dependency downloads (SDL, RmlUi, Jolt...) shared by the engine and the test game, and kept between runs
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Linux packages (what SDL needs for windows, input and sound)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl-dev libegl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxinerama-dev libxfixes-dev libxtst-dev libwayland-dev libxkbcommon-dev \
+            libdecor-0-dev libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build the engine, the examples, the runner and the launcher
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Create a project of each kind with the launcher
+        shell: bash
+        run: |
+          launcher=bin/launcher/launcher
+          [ -f "$launcher.exe" ] && launcher="$launcher.exe"
+          "$launcher" --create "$RUNNER_TEMP/LuaGame" lua
+          "$launcher" --create "$RUNNER_TEMP/CppGame" cpp
+          "$launcher" --create "$RUNNER_TEMP/MixedGame" mixed
+          ls "$RUNNER_TEMP/LuaGame/bin"
+
+      - name: Build the C++ + Lua game against this checkout
+        shell: bash
+        run: |
+          cmake -S "$RUNNER_TEMP/MixedGame" -B "$RUNNER_TEMP/MixedGame/build" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/MixedGame/build" --config Release --parallel 4
+          ls "$RUNNER_TEMP/MixedGame/bin"
