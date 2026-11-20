@@ -12,8 +12,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-24.04, windows-latest]
+        # Listed one by one: an include that only adds a key to an existing os extends that entry instead of adding one
         include:
+          - os: macos-latest
+          - os: ubuntu-24.04
+          - os: windows-latest # MSVC
           # Clang on Windows with Microsoft's library (clang-cl): it says it is Clang, but has MSVC's headers
           - os: windows-latest
             toolset: ClangCL
