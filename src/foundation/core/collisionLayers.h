@@ -60,6 +60,9 @@ public:
   // project.json's "layers": { "names": ["water"], "ignore": [["enemy", "enemy"]] } (the layers a game defines, and the
   // pairs that do not collide). Reading starts from the built-in layers.
   void fromJson(const nlohmann::json &json);
+  // The same format, added to what there is instead of replacing it: new names are defined, listed pairs stop
+  // colliding, and nothing is removed or switched back on (a scene's layers on top of the project's)
+  void merge(const nlohmann::json &json);
   nlohmann::json toJson() const;
   // Whether there is nothing to write: a game that never touched the layers has no "layers" in its project.json
   bool isDefault() const;

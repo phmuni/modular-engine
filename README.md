@@ -743,8 +743,12 @@ local hit = physics.raycast(origin, direction, 50, { layers = { "enemy", "static
 
 A layer is saved in scenes by its name (`"layer": "enemy"` in `RigidBody`, `CharacterController` and `Collision`), so
 defining layers in another order never breaks a scene; a name nothing defines counts as "default". The layers
-themselves and the matrix are not part of a scene: they belong to the project (`project.json`, or `engine.layers()` in
-`setup`). The Settings panel's "Collision layers" has the matrix, with a button that writes it to `project.json`, and
+themselves and the matrix are also in a scene file when they are not the default (`"layers"`, in the format of
+`project.json`), written as they stand when saving. The project (`project.json`, or `engine.layers()` in `setup`) is the
+base and a scene is merged into it on load: it can add layers and switch pairs off, but not remove a layer or switch a
+pair back on that the base turned off. The next scene load starts from the base again (unless code changed the layers
+in between, which then become the base), so layers do not pile up; scenes without the key load as before. The
+Settings panel's "Collision layers" has the matrix, with a button that writes it to `project.json`, and
 the Rigid Body, Character Controller and Collision panels have a layer dropdown.
 
 Physics keeps Jolt's static/moving broadphase split (an object layer is the collision layer times two, plus whether it

@@ -1307,6 +1307,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<LightSystem>();
   m_systemManager.insert<SceneSystem>(m_entityManager, m_componentManager, m_systemManager);
   m_systemManager.insert<SceneSerializer>(m_entityManager, m_componentManager, m_systemManager);
+  m_systemManager.getSystem<SceneSerializer>().setCollisionLayers(m_layers);
   m_systemManager.insert<ParticleSystem>(m_componentManager);
   m_systemManager.insert<CollisionSystem>(m_layers);
   m_systemManager.insert<PhysicsSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>(),
