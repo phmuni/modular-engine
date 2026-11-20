@@ -7,6 +7,7 @@
 #include "components/animator.h"
 #include "components/audioSource.h"
 #include "components/camera.h"
+#include "components/cameraRig.h"
 #include "components/collision.h"
 #include "components/gravityLens.h"
 #include "components/light.h"
@@ -51,6 +52,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Light, type, position, direction
 // front/up follow from yaw and pitch; aspectRatio from the window
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Camera, position, yaw, pitch, fov, moveSpeed, mouseSensitivity,
                                                 smoothFactor, isRelative)
+
+// What it follows is the target's Name; the smoothed state and the orbit angles start over
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(CameraRig, target, offset, lookAhead, positionSmoothing,
+                                                rotationSmoothing, followRotation, orbit, orbitSensitivity, orbitSpeed)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Collision, min, max, isStatic)
 

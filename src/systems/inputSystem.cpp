@@ -467,3 +467,7 @@ void InputSystem::setKeyBind(Action action, SDL_Scancode keyCode) { m_keyBinds[a
 
 float InputSystem::getMouseXOffset() const { return m_mouseXOffset; }
 float InputSystem::getMouseYOffset() const { return m_mouseYOffset; }
+
+glm::vec2 InputSystem::getMouseDelta() const {
+  return m_gameInputBlocked ? glm::vec2(0.0f) : glm::vec2(m_mouseXOffset, m_mouseYOffset);
+}

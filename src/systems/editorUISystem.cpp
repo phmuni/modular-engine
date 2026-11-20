@@ -4,6 +4,7 @@
 #include "systems/editorUISystem.h"
 #include "components/animator.h"
 #include "components/audioSource.h"
+#include "components/cameraRig.h"
 #include "components/collision.h"
 #include "components/hidden.h"
 #include "components/light.h"
@@ -1495,6 +1496,37 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
     earlyOut = renderCameraInspector(selectedEntity, systemManager, componentManager, resourceSystem, window);
   }
 
+  // Camera rig: follows another entity (only while the free camera is off, which the panel says)
+  if (!earlyOut && componentManager.has<CameraRig>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Camera Rig", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##rig")) {
+        componentManager.removeComponent<CameraRig>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        auto &rig = componentManager.get<CameraRig>(selectedEntity);
+        editString("Target (name)##rig", rig.target);
+        ImGui::DragFloat3("Offset##rig", &rig.offset.x, 0.05f);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("x: to the target's right, y: up, z: behind it");
+        ImGui::DragFloat("Look ahead##rig", &rig.lookAhead, 0.05f, -20.0f, 20.0f, "%.2f");
+        ImGui::DragFloat("Position smoothing##rig", &rig.positionSmoothing, 0.01f, 0.0f, 5.0f, "%.2f s");
+        ImGui::DragFloat("Rotation smoothing##rig", &rig.rotationSmoothing, 0.01f, 0.0f, 5.0f, "%.2f s");
+        ImGui::Checkbox("Turns with the target##rig", &rig.followRotation);
+        ImGui::Checkbox("Orbit (mouse, right stick)##rig", &rig.orbit);
+        if (rig.orbit) {
+          ImGui::DragFloat("Mouse sensitivity##rig", &rig.orbitSensitivity, 0.005f, 0.01f, 2.0f, "%.3f");
+          ImGui::DragFloat("Stick speed##rig", &rig.orbitSpeed, 1.0f, 10.0f, 720.0f, "%.0f deg/s");
+        }
+        if (!rig.target.empty() && rig.targetEntity == -1)
+          ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "No entity named \"%s\"", rig.target.c_str());
+        if (systemManager.getSystem<StateSystem>().isToggled(Toggle::CameraMovement))
+          ImGui::TextDisabled("Off while Free camera is on (Settings)");
+      }
+    }
+  }
+
   // Light
   if (!earlyOut && componentManager.has<Light>(selectedEntity)) {
     bool open = ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen);
@@ -1880,6 +1912,10 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         if (ImGui::Button("+ Camera", ImVec2(-1, 0))) {
           componentManager.addInPlace<Camera>(selectedEntity);
         }
+      }
+      if (componentManager.has<Camera>(selectedEntity) && !componentManager.has<CameraRig>(selectedEntity)) {
+        if (ImGui::Button("+ Camera Rig", ImVec2(-1, 0)))
+          componentManager.addInPlace<CameraRig>(selectedEntity);
       }
       for (const ReflectedComponent &reflected : engine.getReflectedComponents()) {
         if (reflected.add && !reflected.get(componentManager, selectedEntity) &&

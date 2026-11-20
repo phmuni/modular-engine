@@ -293,10 +293,38 @@ game = {}
 ---@class camera
 camera = {}
 
----Points the camera from a position at a target (does nothing while the free camera in Settings is on).
+---Points the camera from a position at a target (does nothing while the free camera in Settings is on). A lookAt
+---made in a frame wins over camera.follow for that frame.
 ---@param from vec3
 ---@param target vec3
 function camera.lookAt(from, target) end
+
+---Options for camera.follow. Everything is optional.
+---@class CameraFollowOptions
+---@field offset? vec3 Where the camera sits from the target: x to its right, y up, z behind it. Defaults to vec3(0, 4, 7)
+---@field lookAhead? number How far in front of the target (along its facing) the camera looks. Defaults to 0
+---@field smoothing? number Seconds the camera takes to catch up, for position and rotation together. 0 (the default) is rigid
+---@field positionSmoothing? number Same, for the position only (wins over smoothing)
+---@field rotationSmoothing? number Same, for the target's facing and the point looked at (wins over smoothing)
+---@field followRotation? boolean The offset turns with the target, staying behind it. Defaults to true; false keeps the offset in world axes
+---@field orbit? boolean Turns around the target with the mouse (while the cursor is captured, or the right button is held) and the gamepad's right stick
+---@field orbitSensitivity? number Degrees per pixel of mouse movement. Defaults to 0.15
+---@field orbitSpeed? number Degrees per second at full stick. Defaults to 120
+
+---Makes the active camera trail an entity, from behind, after physics and scripts have moved it (so it does not
+---jitter). Replaces the camera's follow settings. It stands aside while the free camera in Settings is on, and
+---camera.lookAt in the same frame wins. A scene load replaces the camera: call it again in onSceneLoaded.
+---Also a CameraRig component in the scene file, edited in the Properties panel.
+---@param target Entity
+---@param options? CameraFollowOptions
+function camera.follow(target, options) end
+
+---Stops following (removes the camera's rig); the camera stays where it is.
+function camera.stopFollow() end
+
+---Whether the active camera has a follow rig.
+---@return boolean
+function camera.following() end
 
 ---Where the camera is.
 ---@return vec3

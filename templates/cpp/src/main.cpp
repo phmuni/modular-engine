@@ -59,6 +59,15 @@ class MyGame : public App {
                                .withModelCollision()       // and a box for picking up coins (forEachCollision below)
                                .withComponent<Player>()
                                .build());
+
+    // The camera trails it from behind and above, looking a little ahead. The engine moves it after the physics and
+    // the game's update, so it does not jitter; a bit of smoothing keeps it calm when the player turns. (Lua:
+    // camera.follow(self, { offset = vec3(0, 4, 7), lookAhead = 2, smoothing = 0.1 }) in player.lua.)
+    CameraRig rig;
+    rig.offset = glm::vec3(0.0f, 4.0f, 7.0f);
+    rig.lookAhead = 2.0f;
+    rig.positionSmoothing = rig.rotationSmoothing = 0.1f;
+    engine.camera().follow(player, rig);
   }
 
   // Every coin is a copy of prefabs/coin.json, so changing that file changes them all
@@ -108,10 +117,6 @@ class MyGame : public App {
     // Fell off the level: back to the start
     if (player.position().y < -10.0f)
       player.setPosition(START);
-
-    // Behind and above it, looking ahead
-    engine.camera().lookAt(player.position() - player.forward() * 7.0f + glm::vec3(0.0f, 4.0f, 0.0f),
-                           player.position() + player.forward() * 2.0f);
   }
 
   void updateCoins(Engine &engine, float deltaTime) {

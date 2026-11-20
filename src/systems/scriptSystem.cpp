@@ -583,6 +583,24 @@ struct ScriptSystem::Impl {
     return desc;
   }
 
+  // camera.follow's options table as the CameraRig the C++ side takes (see components/cameraRig.h for the fields)
+  static CameraRig cameraRigOptions(const sol::optional<sol::table> &options) {
+    CameraRig rig;
+    if (!options)
+      return rig;
+    const sol::table &o = *options;
+    rig.offset = vectorField(o, "offset").value_or(rig.offset);
+    rig.lookAhead = o.get_or("lookAhead", rig.lookAhead);
+    const float smoothing = o.get_or("smoothing", 0.0f); // both at once; the specific ones win
+    rig.positionSmoothing = o.get_or("positionSmoothing", smoothing);
+    rig.rotationSmoothing = o.get_or("rotationSmoothing", smoothing);
+    rig.followRotation = o.get_or("followRotation", rig.followRotation);
+    rig.orbit = o.get_or("orbit", rig.orbit);
+    rig.orbitSensitivity = o.get_or("orbitSensitivity", rig.orbitSensitivity);
+    rig.orbitSpeed = o.get_or("orbitSpeed", rig.orbitSpeed);
+    return rig;
+  }
+
   void bindGlobals() {
     // print goes to the engine's log
     lua.set_function("print", [](sol::variadic_args args, sol::this_state state) {
@@ -630,6 +648,14 @@ struct ScriptSystem::Impl {
     camera.set_function("lookAt", &GameCamera::lookAt, &engine.camera());
     camera.set_function("position", &GameCamera::position, &engine.camera());
     camera.set_function("forward", &GameCamera::forward, &engine.camera());
+    // camera.follow(player, { offset = vec3(0, 4, 7), lookAhead = 2, smoothing = 0.15, orbit = true }): trails the
+    // entity from behind (offset: x right, y up, z behind it), after physics and scripts; see GameCamera::follow
+    camera.set_function("follow", [this](sol::optional<GameEntity> target, sol::optional<sol::table> options) {
+      if (target)
+        engine.camera().follow(*target, cameraRigOptions(options));
+    });
+    camera.set_function("stopFollow", &GameCamera::stopFollow, &engine.camera());
+    camera.set_function("following", &GameCamera::isFollowing, &engine.camera());
     // camera.fov() reads the field of view, camera.fov(70) sets it (degrees)
     camera.set_function("fov", [this](sol::optional<float> degrees) {
       if (degrees)

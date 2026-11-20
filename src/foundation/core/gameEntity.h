@@ -44,7 +44,7 @@ public:
   // Whether it has a Script component
   bool hasScript() const;
   // Whether it has the component: an engine one ("Model", "RigidBody", "CharacterController", "Light", "Camera",
-  // "Animator", "Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter", "Hidden") or a game
+  // "Animator", "Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter", "Hidden", "CameraRig") or a game
   // component registered with Engine::registerComponent, by its name
   bool has(const std::string &component) const;
 

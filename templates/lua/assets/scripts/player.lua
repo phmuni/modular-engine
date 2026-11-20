@@ -1,5 +1,5 @@
 -- The player: turns and walks with the "moveX" / "moveY" axes, jumps with "jump" (assets/input.json maps them to
--- keys and a gamepad), and the camera follows it.
+-- keys and a gamepad), and the camera follows it (camera.follow).
 
 local START = vec3(0, 0.6, 3)
 
@@ -10,6 +10,12 @@ properties = {
   turnSpeed = 160, -- degrees per second
   jumpSpeed = 6,   -- units per second, upward
 }
+
+function onStart(self)
+  -- The camera trails it from behind and above, looking a little ahead. The engine moves it after the physics and the
+  -- scripts, so it does not jitter; a bit of smoothing keeps it calm when the player turns.
+  camera.follow(self, { offset = vec3(0, 4, 7), lookAhead = 2, smoothing = 0.1 })
+end
 
 function onUpdate(self, dt)
   -- Turning is ours; walking goes through the character controller, which keeps it on the ground and out of walls
@@ -25,7 +31,4 @@ function onUpdate(self, dt)
   if self.position.y < -10 then
     self.position = START
   end
-
-  -- Behind and above it, looking ahead
-  camera.lookAt(self.position - self.forward * 7 + vec3(0, 4, 0), self.position + self.forward * 2)
 end

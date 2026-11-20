@@ -71,6 +71,9 @@ public:
 
   float getMouseXOffset() const;
   float getMouseYOffset() const;
+  // How far the mouse moved this frame, in pixels (x right, y down): for mouse-look, with the mouse captured
+  // (Engine::setMouseCaptured) so it never reaches the window's edge. Zero while a menu has the input.
+  glm::vec2 getMouseDelta() const;
 
   // Named actions (pressed or not) and axes (-1 to 1), each read from any of its bindings, so the game asks for
   // "jump" rather than a key, and a gamepad works next to the keyboard:

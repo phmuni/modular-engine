@@ -185,6 +185,7 @@ void SceneSerializer::registerBuiltIns() {
           cameraSystem.setActiveCamera(entity);
       });
 
+  registerComponent<CameraRig>("CameraRig");
   registerComponent<Collision>("Collision");
   registerComponent<ParticleEmitter>("ParticleEmitter");
   registerComponent<GravityLens>("GravityLens");

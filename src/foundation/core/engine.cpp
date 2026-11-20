@@ -5,6 +5,7 @@
 #include "components/collision.h"
 #include "components/hidden.h"
 #include "components/camera.h"
+#include "components/cameraRig.h"
 #include "components/model.h"
 #include "components/name.h"
 #include "components/parent.h"
@@ -291,6 +292,8 @@ void Engine::update(bool &isRunning) {
   m_systemManager.getSystem<TransformSystem>().updateHierarchy(m_componentManager);
   // Skeletons posed from their clips (time stands still while paused or editing)
   m_systemManager.getSystem<AnimationSystem>().update(timeSystem.getDeltaTime());
+  // The camera rig last of the movement: it trails where the target ended up this frame
+  cameraSystem.updateRigs(timeSystem.getDeltaTime(), m_systemManager);
 
   if (m_sceneSave) {
     m_sceneSave->delay -= timeSystem.getUnscaledDeltaTime();
@@ -904,6 +907,7 @@ bool Engine::hasComponent(Entity entity, std::string_view component) {
   if (component == "Collision") return has<Collision>(entity);
   if (component == "ParticleEmitter") return has<ParticleEmitter>(entity);
   if (component == "Hidden") return has<Hidden>(entity);
+  if (component == "CameraRig") return has<CameraRig>(entity);
   for (const ReflectedComponent &reflected : m_reflectedComponents)
     if (reflected.name == component)
       return reflected.get && reflected.get(m_componentManager, entity) != nullptr;
