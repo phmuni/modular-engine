@@ -1,5 +1,5 @@
 #pragma once
-// The engine's ready-made pause menu: Resume, Options (volumes, window size, render scale, fullscreen, vsync) and Quit, an RmlUi document
+// The engine's ready-made pause menu: Resume, Options (volumes, window size, render scale, ambient occlusion, fullscreen, vsync) and Quit, an RmlUi document
 // shipped with the engine (assets/ui/engine/pauseMenu.rml).
 //
 // Once enabled, Escape opens it (unless the editor's panels or the game's own UI want the key). Opening pauses the

@@ -1121,7 +1121,7 @@ Paths are relative to `assets/` like any asset path. Files shipped with the engi
 - **Caching.** One program is compiled per file and variant (normal, and alpha mask when a cut-out part uses it); every part using the file shares it, with its own parameter values, and parts are grouped by program for drawing.
 - **Editor.** Each part's Material section has a Shader field (type a path, or drop a `.glsl` from the asset browser), a Reset button, and a widget per parameter read from the `uniform` lines (a drag field per float or vector, a color picker for names with "color", a path field and drop target for textures). "Apply to All Submeshes" has one for the whole model. Changes are one undo step each. Scenes and prefabs save the shader and its values with the part, and a linked prefab instance's change of them counts as an override.
 - **Shadows.** Parts with a custom shader are drawn into the shadow maps (the sun's cascades and the point lights' cube maps) through a variant of the depth shaders with your file injected: `vertex()` moves the vertices as in the lit pass, so waves show in the shadow, and `surface()` runs only for its alpha, so a `discard` leaves a hole in it (a dissolve casts a dissolving shadow). A low `alpha` cuts the shadow below 0.5 too, except in files with `#pragma blend`, whose see-through surfaces keep their shadow. In the shadow pass the surface starts with a white albedo and an alpha of 1 (the material's textures are not read), `viewDir` points at the camera and `time` and your parameters are the same. `#pragma noshadow` takes the part out of the shadow maps, which suits water (the example has it); the other parts of a model still cast theirs, and parts without a custom shader cast exactly as before. A file that only the lit shader can compile (it uses something from it, such as `numLights`) keeps working, and its parts cast the shadow of their original geometry, with a warning in the log. A point light's cube map is drawn again every frame while such a part is in its range (the shader's clock moves).
-- **Limits.** Frustum culling uses the original mesh bounds, so a large `vertex()` offset can make a model vanish at the screen's edge. Parts with `#pragma blend` are sorted per entity like other transparent draws, not per triangle. Texture parameters use texture units 9 to 15 (7 per material); `int` and `bool` uniforms are not parameters (they keep the shader's own value).
+- **Limits.** Frustum culling uses the original mesh bounds, so a large `vertex()` offset can make a model vanish at the screen's edge. Parts with `#pragma blend` are sorted per entity like other transparent draws, not per triangle. Texture parameters use texture units 9 to 14 (6 per material; unit 15 holds the ambient occlusion); `int` and `bool` uniforms are not parameters (they keep the shader's own value).
 
 ### Skybox
 
@@ -1335,6 +1335,47 @@ void update(Engine& engine, float dt) override {
 
 RCSS has no default style sheet, so give `div` a `display: block`. Lato is loaded as `font-family: LatoLatin`; `engine.loadUIFont` adds others. Clicks and key presses the UI uses don't reach the game, and `pointer-events: none` lets clicks pass through HUD areas. `F9` opens RmlUi's debugger to inspect elements and see style errors. The Space Aliens HUD ([`assets/ui/aliens/`](assets/ui/aliens/)) is a complete example.
 
+### Ambient occlusion
+
+Screen-space ambient occlusion (SSAO) is **on by default**: it darkens the *ambient and indirect* light (the Skybox's
+ambient and each Light's `ambient`) where geometry shuts a point in, so objects get contact shadows where they meet the
+floor and creases get dark. Direct lights, emission, unlit materials, transparent surfaces and particles are not
+affected, and with it off the image is exactly what it was.
+
+Each frame the opaque geometry is drawn once into a depth texture of its own at the render size (a prepass with the
+lit shaders cut short, so `vertex()` displacement, skinning, instancing, alpha mask and custom-shader `discard` all match
+what is lit). The AO is computed from it with a hemisphere kernel (normals rebuilt from the depth, a 4x4 rotation noise,
+a range check), at half the render size by default, and a depth-aware blur brings it to the render size. Because the
+prepass is single-sample and separate, SSAO does not depend on how the scene target is antialiased.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `radius` | 0.5 | how far (world units, 0.05 to 10) geometry can shade a point |
+| `intensity` | 1 | the AO's power (0 to 4); 0 turns it off |
+| `quality` | `"medium"` | `"low"`, `"medium"` or `"high"`: 8, 16 or 32 samples |
+| `halfResolution` | `true` | compute at half the render size (about 4x cheaper) |
+
+```cpp
+engine.setSsao(false);                       // engine.ssao()
+SsaoSettings ssao = engine.ssaoSettings();
+ssao.radius = 1.0f;
+ssao.quality = SsaoQuality::High;
+engine.setSsaoSettings(ssao);                // clamped to the limits above
+```
+
+```lua
+engine.setSsao(false)                        -- engine.ssao()
+engine.setSsaoSettings { radius = 1, quality = "high" }  -- only the fields given change; engine.ssaoSettings()
+```
+
+`radius` and `intensity` belong to the level: they are the `ssaoRadius` and `ssaoIntensity` of the scene's `Skybox`
+component, saved in the scene file (and edited in its inspector), and `setSsaoSettings` writes them there. Whether AO is
+on, and its quality, are the player's: `project.json` sets the game's defaults, `"graphics": { "ssao": true,
+"ssaoQuality": "medium" }` (both optional), and the pause menu's Options has an **Ambient occlusion** Off / Low /
+Medium / High selector, kept in the save data (`engine.ssao`, `engine.ssaoQuality`), which wins over the project's. In
+the editor, Settings > Interface has the same controls plus **Show AO only**, to tune the radius and intensity.
+Custom surface shaders keep texture units 9 to 14 for their texture parameters (6 per material); unit 15 holds the AO.
+
 ### Window and render resolution
 
 The window starts at 1280x720 (grown on a display with a content scale above 1, such as Windows at 150 %, to at most 90 %
@@ -1415,7 +1456,7 @@ menu's options) under keys that start with `engine.`: avoid that prefix.
 
 The engine ships a pause menu, an RmlUi document in [`assets/ui/engine/`](assets/ui/engine/) that is copied into every
 game's `bin/engine-assets`. Turn it on and `Escape` opens it: Resume, Options (Master, Music and Effects volume,
-Fullscreen, VSync, Back) and Quit. Opening it pauses the game like `F7` does, frees the cursor and keeps keys, clicks
+Ambient occlusion, Fullscreen, VSync, Back) and Quit. Opening it pauses the game like `F7` does, frees the cursor and keeps keys, clicks
 and gamepad input away from the game until it closes (`Escape` again, or Resume; in Options it goes back first). The
 options are saved in the saved data and applied the next time the game starts.
 

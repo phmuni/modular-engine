@@ -408,6 +408,31 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
                         "100%% is faster, above sharper. The panels are not affected.",
                         scene.x, scene.y);
     }
+    // Ambient occlusion (the scene's radius and intensity are the Skybox's: this edits those when there is one)
+    bool ssaoOn = engine.ssao();
+    if (ImGui::Checkbox("Ambient occlusion", &ssaoOn))
+      engine.setSsao(ssaoOn);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Contact shadows in the ambient light, where objects meet and in creases. Direct lights and "
+                        "emission are not affected.");
+    if (ssaoOn) {
+      SsaoSettings ssao = engine.ssaoSettings();
+      bool changed = false;
+      int quality = static_cast<int>(ssao.quality);
+      if (ImGui::Combo("Quality##ssao", &quality, "Low\0Medium\0High\0")) {
+        ssao.quality = static_cast<SsaoQuality>(quality);
+        changed = true;
+      }
+      changed |= ImGui::Checkbox("Half resolution##ssao", &ssao.halfResolution);
+      changed |= ImGui::DragFloat("Radius##ssao", &ssao.radius, 0.01f, SsaoSettings::kMinRadius,
+                                  SsaoSettings::kMaxRadius, "%.2f");
+      changed |= ImGui::DragFloat("Intensity##ssao", &ssao.intensity, 0.01f, 0.0f, SsaoSettings::kMaxIntensity, "%.2f");
+      if (changed)
+        engine.setSsaoSettings(ssao);
+      bool debugView = engine.ssaoDebugView();
+      if (ImGui::Checkbox("Show AO only##ssao", &debugView))
+        engine.setSsaoDebugView(debugView);
+    }
     if (ImGui::SmallButton("Reset scale")) {
       m_uiScaleUser = 0.0f;
       ImGui::MarkIniSettingsDirty();
@@ -2664,6 +2689,13 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
             ImGui::DragFloat("Density##fog", &sky.fog.density, 0.0005f, 0.0f, 1.0f, "%.4f");
           }
         }
+        ImGui::Text("Ambient occlusion");
+        ImGui::DragFloat("Radius##ssao", &sky.ssaoRadius, 0.01f, SsaoSettings::kMinRadius, SsaoSettings::kMaxRadius,
+                         "%.2f");
+        ImGui::DragFloat("Intensity##ssao", &sky.ssaoIntensity, 0.01f, 0.0f, SsaoSettings::kMaxIntensity, "%.2f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("How far geometry shades a point (world units) and how dark; saved with the scene. "
+                            "Whether it is on is the player's setting.");
         ImGui::Text("Ambient light");
         ImGui::ColorEdit3("Color##ambient", &sky.ambientColor.x);
         ImGui::DragFloat("Intensity##ambient", &sky.ambientIntensity, 0.01f, 0.0f, 5.0f, "%.2f");

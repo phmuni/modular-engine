@@ -26,7 +26,7 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
   edit it in the Properties panel (color, size, its script's `spin` and `bob`...) and press **Save as prefab**
   (set the path to `../assets/prefabs/coin.json` first: it suggests the entity's name). The next coins use it.
 - `assets/input.json` maps keys and gamepad buttons to the actions and axes the scripts read.
-- `project.json` says where the game starts: its scene, its game script and its input file. An optional `"window": { "width": 1280, "height": 720, "fullscreen": false, "renderScale": 1.0 }` sets the window and the 3D render scale.
+- `project.json` says where the game starts: its scene, its game script and its input file. An optional `"window": { "width": 1280, "height": 720, "fullscreen": false, "renderScale": 1.0 }` sets the window and the 3D render scale. An optional `"graphics": { "ssao": true, "ssaoQuality": "medium" }` sets the ambient occlusion (`"low"`, `"medium"` or `"high"`).
 - `bin/` is the engine's Lua runner, named after the game. To ship the game, copy the whole folder.
 
 Script errors show on screen with their file and line, and the game keeps running.
