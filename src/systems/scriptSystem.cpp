@@ -494,6 +494,13 @@ struct ScriptSystem::Impl {
     }
   }
 
+  // An animation state machine moved to another state: the entity's script hears of it
+  void animationStateChanged(Entity entity, const std::string &from, const std::string &to) {
+    auto it = instances.find(entity);
+    if (it != instances.end() && it->second.started && engine.isAlive(entity))
+      call(it->second, "onStateChanged", engine.entity(entity), from, to);
+  }
+
   // --- Coroutines -----------------------------------------------------------------------------------------------
 
   void finishRoutine(const std::shared_ptr<Routine> &routine) {
@@ -723,6 +730,20 @@ struct ScriptSystem::Impl {
           e.play(clip, fade.value_or(GameEntity::kDefaultFade), loop.value_or(true));
         },
         "clips", [](GameEntity &e) { return sol::as_table(e.clips()); },
+        // Animation state machines (see the README): the JSON file, parameters (a number or a boolean), triggers and
+        // the state it is in
+        "setAnimator", &GameEntity::setAnimator,
+        "setParam", [](GameEntity &e, const std::string &name, const sol::object &value) {
+          if (value.is<bool>())
+            e.setParam(name, value.as<bool>());
+          else if (value.is<float>())
+            e.setParam(name, value.as<float>());
+          else
+            throw sol::error("setParam: the value must be a number or a boolean");
+        },
+        "param", &GameEntity::param,
+        "trigger", &GameEntity::trigger,
+        "animationState", sol::readonly_property(&GameEntity::animationState),
         // The entity's AudioSource: audioPlaying is read-only, the others read and write
         "playAudio", &GameEntity::playAudio,
         "stopAudio", &GameEntity::stopAudio,
@@ -1363,4 +1384,7 @@ std::vector<ScriptProperty> ScriptSystem::getProperties(Entity entity) { return 
 
 sol::state &ScriptSystem::lua() { return m_impl->lua; }
 const std::string &ScriptSystem::getLastError() const { return m_impl->lastError; }
+void ScriptSystem::animationStateChanged(Entity entity, const std::string &from, const std::string &to) {
+  m_impl->animationStateChanged(entity, from, to);
+}
 size_t ScriptSystem::getInstanceCount() const { return m_impl->instances.size(); }

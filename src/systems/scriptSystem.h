@@ -43,6 +43,9 @@ public:
   // top level once; a changed file is read again.
   std::vector<ScriptProperty> getProperties(Entity entity);
 
+  // Tells the entity's script (onStateChanged) that its animation state machine moved from one state to another
+  void animationStateChanged(Entity entity, const std::string &from, const std::string &to);
+
   // The Lua state, to give scripts more functions or types from C++ (with sol2)
   sol::state &lua();
 

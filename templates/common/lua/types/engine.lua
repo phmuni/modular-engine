@@ -20,6 +20,10 @@
 ---Entity script: every frame two collision shapes overlap (called on both entities' scripts).
 ---@alias OnOverlap fun(self: Entity, other: Entity)
 
+---Entity script: its animation state machine (see Entity:setAnimator) moved from the state `old` to `new`. Not called
+---for the default state it starts in.
+---@alias OnStateChanged fun(self: Entity, old: string, new: string)
+
 ---Entity script: after its file was saved and loaded again while the game runs (only if the script had started).
 ---@alias OnReload fun(self: Entity)
 
@@ -42,6 +46,8 @@ onContact = nil
 onOverlap = nil
 ---@type fun(self: Entity)
 onReload = nil
+---@type fun(self: Entity, old: string, new: string)
+onStateChanged = nil
 
 -- vec3 ---------------------------------------------------------------------------------------------------------------
 
@@ -129,6 +135,7 @@ function vec3.lerp(a, b, t) end
 ---@field visible boolean (read-only) false after setVisible(false)
 ---@field velocity vec3 Linear velocity of its physics body
 ---@field onGround boolean (read-only) whether its character controller stands on the ground
+---@field animationState string (read-only) the state its animation state machine is in, "" without one
 ---@field layer string Its collision layer (see physics.addLayer), for its body, character and collision box; "default" without any. Takes effect at once, also on a body that is already simulating; a name that is no layer is a warning and changes nothing
 ---@field audioPlaying boolean (read-only) its AudioSource is playing (not paused; false once a sound that does not loop ended)
 ---@field audioVolume number Its AudioSource's volume, 1 is normal (0 without an AudioSource)
@@ -281,6 +288,28 @@ function Entity:play(clip, fade, loop) end
 ---The names of its animation clips.
 ---@return string[]
 function Entity:clips() end
+
+---Gives it the animation state machine in a JSON file (relative to assets/, e.g. "animators/tentacle.json"; the format
+---is in the README) and starts it in its default state. States play clips, parameters and transitions between states
+---cross-fade. A missing or invalid file is logged and the machine does nothing; "" removes the machine. Calling
+---Entity:play on an entity with a machine takes over until the machine changes state.
+---@param path string
+function Entity:setAnimator(path) end
+
+---Sets a parameter of its animation state machine: a number for a float, a boolean for a bool. A name the machine's
+---file does not declare is a warning.
+---@param name string
+---@param value number|boolean
+function Entity:setParam(name, value) end
+
+---A parameter's value (booleans are 0 or 1; 0 for an unknown name).
+---@param name string
+---@return number
+function Entity:param(name) end
+
+---Raises a trigger parameter: the next transition that waits for it may fire, and uses it up.
+---@param name string
+function Entity:trigger(name) end
 
 ---Starts its AudioSource (the sound attached to the entity, added in the editor; it follows the entity as it moves)
 ---over from the start, or continues it after pauseAudio. Does nothing without an AudioSource.

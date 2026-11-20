@@ -162,6 +162,9 @@ bool EditorUISystem::assignAssetToEntity(Engine &engine, ComponentManager &compo
     else
       componentManager.addInPlace<AudioSource>(entity).path = asset;
     return true;
+  case AssetBrowser::Kind::Animator:
+    engine.setAnimator(entity, asset); // an animation state machine dropped on a character
+    return true;
   default:
     return false;
   }

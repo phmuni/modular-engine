@@ -1,0 +1,9 @@
+{
+  "params": { "speed": "float" },
+  "states": [
+    {
+      "name": "move",
+      "blend": { "param": "speed", "clips": [{ "clip": "Twist", "at": 4 }, { "clip": "Sway", "at": 0 }] }
+    }
+  ]
+}

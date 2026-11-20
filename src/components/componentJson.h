@@ -4,6 +4,7 @@
 // Reading fills missing fields with the component's defaults, so older scene files keep loading as components grow.
 // Runtime state (live particles, sound voices, derived camera vectors) is not saved.
 
+#include "components/animationStateMachine.h"
 #include "components/animator.h"
 #include "components/audioSource.h"
 #include "components/camera.h"
@@ -123,6 +124,23 @@ inline void from_json(const nlohmann::json &j, Tags &tags) {
 
 // The clip and how it plays; a crossfade in progress is not saved
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Animator, clip, time, speed, loop, playing)
+// The definition file and the parameters ("grounded": true reads as well as 1); where the machine is is not saved
+inline void to_json(nlohmann::json &j, const AnimationStateMachine &machine) {
+  j = nlohmann::json{{"path", machine.path}, {"params", machine.params}};
+}
+inline void from_json(const nlohmann::json &j, AnimationStateMachine &machine) {
+  machine = AnimationStateMachine();
+  machine.path = j.value("path", std::string());
+  if (!j.contains("params") || !j["params"].is_object())
+    return;
+  for (const auto &[name, value] : j["params"].items()) {
+    if (value.is_boolean())
+      machine.params[name] = value.get<bool>() ? 1.0f : 0.0f;
+    else if (value.is_number())
+      machine.params[name] = value.get<float>();
+  }
+}
+
 // move, jump, onGround and velocity are per frame, not part of the scene
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(CharacterController, radius, height, maxSlope, stepHeight,
                                                 gravityScale, layer)

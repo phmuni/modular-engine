@@ -11,6 +11,12 @@ struct Animator {
   bool loop = true;
   bool playing = true; // a clip that does not loop stops (playing = false) at its end
 
+  // A blend of two clips (set by the AnimationStateMachine for a state that blends by a parameter): `clip` and
+  // `blendClip` mixed by `blendWeight` (0: only `clip`, 1: only `blendClip`). While blendClip is set, `time` is how far
+  // along the cycle it is, 0 to 1, so the two clips stay in step whatever their lengths. Not saved.
+  std::string blendClip;
+  float blendWeight = 0.0f;
+
   // Crossfade (set by Engine::playAnimation): the clip it is fading out, where that one was, and how far along
   std::string fadeFrom;
   float fadeFromTime = 0.0f;

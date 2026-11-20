@@ -1,0 +1,21 @@
+{
+  "default": "calm",
+  "params": {
+    "energy": { "type": "float", "default": 0.0 },
+    "poke": "trigger"
+  },
+  "states": [
+    { "name": "calm", "clip": "Sway" },
+    {
+      "name": "writhe",
+      "blend": { "param": "energy", "clips": [{ "clip": "Sway", "at": 0.0 }, { "clip": "Twist", "at": 1.0 }] }
+    },
+    { "name": "startle", "clip": "Twist", "speed": 2.0, "loop": false }
+  ],
+  "transitions": [
+    { "from": "calm", "to": "writhe", "fade": 0.3, "when": [{ "param": "energy", "op": ">", "value": 0.05 }] },
+    { "from": "writhe", "to": "calm", "fade": 0.3, "when": [{ "param": "energy", "op": "<=", "value": 0.05 }] },
+    { "from": "any", "to": "startle", "fade": 0.1, "when": [{ "param": "poke" }] },
+    { "from": "startle", "to": "calm", "fade": 0.3 }
+  ]
+}
