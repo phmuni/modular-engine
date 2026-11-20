@@ -61,7 +61,10 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **HDR & Bloom**            | Lighting rendered in HDR, highlights rolled off instead of clipped, and bloom around emission and strong highlights (`F10`) |
 | **glTF Materials**         | Base color tint, alpha modes (opaque, mask, blend), double-sided and unlit (`KHR_materials_unlit`) materials |
 | **Camera System**          | Flexible camera control with quaternion-based rotations                        |
-| **Input System**           | Keyboard, mouse and gamepads (SDL3), named actions and axes with bindings in code or a JSON file |
+| **Camera Follow**          | A `CameraRig` component (or `camera.follow(entity, options)`) trails an entity from behind, with offset, look-ahead, smoothing and optional mouse / right-stick orbit; moved after physics so it does not jitter |
+| **Tags**                   | Labels on entities (`addTag`, `engine.findTagged`), saved in scenes and prefabs and edited in the Properties panel |
+| **Tweens & Coroutines**    | Animate position, rotation, scale or color (or a number) with easing curves in C++ and Lua; Lua also has `wait` inside coroutines (`engine.run`, `self:run`), all on game time |
+| **Input System**           | Keyboard, mouse and gamepads (SDL3), named actions and axes with bindings in code or a JSON file, gamepad rumble, text entry, mouse capture for mouse-look |
 | **Lighting System**        | Directional, point, and spotlight types with intensity and cutoff controls; gamma-correct by default |
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
@@ -389,14 +392,16 @@ What scripts can use:
 | | |
 | --- | --- |
 | `vec3(x, y, z)` | `+ - * /`, `:length()`, `:normalized()`, `:dot(v)`, `:cross(v)`, `:distance(v)`, `:lerp(v, t)` |
-| Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setShininess(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; any other field is the entity's own (`other.health`) |
-| `engine` | `find(name)`, `findAll(name)`, `findWithComponent(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)`, `quit()`, `setSkyColor(c)`, `getSkyColor()` |
-| `input` | `axis(name)`, `down(name)`, `pressed(name)`, `released(name)` (the actions and axes of `input.json`), `key("Space")`, `keyPressed("Space")`, `mouse()`, `mouseDown(button)`, `wheel()`, `click(button)`, `bindings(path)` |
-| `camera` | `lookAt(from, target)`, `position()`, `forward()`, `fov(degrees)` (reads the field of view, or sets it) |
+| Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setShininess(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; tags: `:addTag(t)`, `:removeTag(t)`, `:hasTag(t)`, `:tags()`; its `AudioSource`: `:playAudio()`, `:stopAudio()`, `:pauseAudio()`, `audioPlaying`, `audioVolume`, `audioPitch`, `audioLoop`; `:getColor()`; `:run(fn)` (a coroutine that ends with the entity); any other field is the entity's own (`other.health`) |
+| `engine` | `find(name)`, `findAll(name)`, `findTagged(tag)`, `findWithComponent(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script, tags, character, components })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)`, `quit()`, `setSkyColor(c)`, `getSkyColor()`, `run(fn)` and `stop(handle)` (coroutines) |
+| `wait(seconds)` | inside `engine.run` / `self:run`: suspends the coroutine for game time; `wait()` until the next frame |
+| `tween` | `to(entity, "position" \| "rotation" \| "scale" \| "color", value, seconds, easing, onComplete)`, `value(from, to, seconds, easing, fn, onComplete)`, `cancel(handle)`; easings `linear`, `easeInQuad`, `easeOutQuad`, `easeInOutQuad`, `easeInCubic`, `easeOutCubic`, `easeInOutCubic` |
+| `input` | `axis(name)`, `down(name)`, `pressed(name)`, `released(name)` (the actions and axes of `input.json`), `key("Space")`, `keyPressed("Space")`, `mouse()`, `mouseDown(button)`, `wheel()`, `click(button)`, `bindings(path)`; `mouseDelta()`, `captureMouse(b)`, `isMouseCaptured()`, `showCursor(b)`; text entry: `startText(initial, maxLength)`, `text()`, `typed()`, `stopText()`; `rumble(low, high, seconds)`, `stopRumble()` |
+| `camera` | `lookAt(from, target)`, `position()`, `forward()`, `fov(degrees)` (reads the field of view, or sets it), `follow(entity, { offset, lookAhead, smoothing, orbit... })`, `stopFollow()`, `following()` |
 | `time` | `scale(n)` (slow motion: reads the time scale, or sets it), `paused(b)`, `elapsed()`, `delta()`, `after(seconds, fn)` and `every(seconds, fn)` (timers on game time, return a handle), `cancel(handle)` |
 | `physics` | `raycast(origin, direction, distance)` (a table with `entity`, `point`, `normal`, `distance`), `gravity(v)` |
 | `nav` | `build({ min, max, cellSize, agentRadius, agentHeight, maxSlope, stepHeight })` (all optional; without `min` and `max` it covers the static bodies), `path(from, to)` (a table of `vec3` on the ground, or `nil` if there is no way), `walkable(point)` |
-| `sound` | `play(path, volume, pitch)` and `playAt(path, position, volume)` (return a handle for `stop(handle)`, `setVolume(handle, v)`, `isPlaying(handle)`), `preload(path)`, `music(path, volume)`, `musicVolume(v)`, `stopMusic()` |
+| `sound` | `play(path, volume, pitch)` and `playAt(path, position, volume)` (return a handle for `stop(handle)`, `setVolume(handle, v)`, `isPlaying(handle)`), `preload(path)`, `music(path, volume, loop)` (returns a handle), `musicVolume(v, handle)`, `stopMusic(handle)`, `isMusicPlaying(handle)` |
 | `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `style(id, property, value)`, `attribute(id, name, value)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled)`, `openPauseMenu()`, `closePauseMenu()`, `isPaused()` (whether it is open) |
 | `save` | `set(key, value)` (a number, string, boolean, or a table of those, nested), `get(key, default)`, `has(key)`, `remove(key)`, `write()` |
 
@@ -424,13 +429,18 @@ Everything above is implemented once, in C++, and Lua only adapts types and call
 | `ui.load("ui/hud.rml")`, `ui.text("score", 5)` | `engine.ui().load("ui/hud.rml");`, `engine.ui().text("score", 5);` |
 | `ui.onClick("play", function() ... end)` | `engine.ui().onClick("play", [] { ... });` |
 | `camera.lookAt(from, target)`, `camera.fov(70)` | `engine.camera().lookAt(from, target);`, `engine.camera().setFov(70);` |
+| `camera.follow(p, { offset = vec3(0, 4, 7), smoothing = 0.1 })` | `CameraRig rig; rig.offset = {0, 4, 7}; rig.positionSmoothing = rig.rotationSmoothing = 0.1f; engine.camera().follow(p, rig);` |
+| `p:addTag("enemy")`, `engine.findTagged("enemy")` | `p.addTag("enemy");`, `engine.findTagged("enemy");` |
+| `tween.to(p, "scale", vec3(2), 0.3, "easeOutQuad", fn)` | `engine.tween().to(p, TweenProperty::Scale, {2, 2, 2}, 0.3f, Ease::EaseOutQuad, [] { ... });` |
+| `p:playAudio()`, `p.audioVolume = 0.5` | `p.playAudio();`, `p.setAudioVolume(0.5f);` |
+| `input.rumble(0.5, 0.5, 0.2)`, `input.captureMouse(true)` | `engine.input().rumble(0.5f, 0.5f, 0.2f);`, `engine.setMouseCaptured(true);` |
 | `time.scale(0.5)`, `time.after(2, fn)` | `engine.time().setScale(0.5f);`, `engine.time().after(2.0f, [] { ... });` |
 | `engine.setSkyColor(vec3(0.5, 0.7, 1))` | `engine.setSkyColor({0.5f, 0.7f, 1.0f});` |
 | `sound.play("sounds/laser.wav")` | `engine.playSound("sounds/laser.wav");` |
 
 An entity handle ([`GameEntity`](src/foundation/core/gameEntity.h)) is a pointer and a number: cheap to copy and keep,
 and safe after the entity is gone (`valid()` says; getters then give defaults and setters do nothing). `engine.ui()`
-([`GameUI`](src/systems/gameUI.h)), `engine.camera()` and `engine.time()` are small facades over the systems; RmlUi
+([`GameUI`](src/systems/gameUI.h)), `engine.camera()`, `engine.time()` and `engine.tween()` are small facades over the systems; RmlUi
 itself (`engine.getUIContext()`, data models) and the components (`engine.get<Transform>(e)`, loops with
 `forEachComponent`) stay available for what the API does not cover. Paths are relative to `assets/` in both languages.
 
@@ -438,6 +448,66 @@ itself (`engine.getUIContext()`, data models) and the components (`engine.get<Tr
 added to one of those facade classes fails the build until Lua binds it, and a Lua binding fails it until
 [`types/engine.lua`](templates/common/lua/types/engine.lua) describes it. What a C++ method does not need in Lua goes in
 the script's explicit list, with the reason.
+
+Lua has one thing C++ cannot copy, coroutines: `wait` suspends a function that was started with `engine.run` or
+`self:run`. C++ has no equivalent of `wait`, because timers do the same job: `engine.time().after(seconds, fn)` runs
+`fn` later, and a tween's completion callback chains the next step.
+
+### Camera follow
+
+A `CameraRig` component on the active camera's entity makes the camera trail another entity, found by its name. The
+offset is in the target's frame (x to its right, y up, z behind it), `lookAhead` looks in front of it, the smoothing
+times (seconds to catch up, 0 for rigid) calm position and turning, and `orbit` turns around the target with the mouse
+(while it is captured, or with the right button) and the gamepad's right stick. The rig is saved in scene files and
+edited in the Properties panel, or set up from code (the same fields; it adds a rig to the active camera):
+
+```lua
+camera.follow(player, { offset = vec3(0, 4, 7), lookAhead = 2, smoothing = 0.1 })   -- camera.stopFollow() to end it
+```
+```cpp
+CameraRig rig;  rig.offset = {0.0f, 4.0f, 7.0f};  rig.lookAhead = 2.0f;  rig.positionSmoothing = 0.1f;
+engine.camera().follow(player, rig);
+```
+
+CameraSystem moves the camera after physics and the game's update, so it never trails a frame behind a character. Who
+wins: the free camera (Settings) switches the rig off, like it does `lookAt`, and a `lookAt` in a frame wins over the
+rig for that frame (the rig takes over again, from where it should be, when `lookAt` stops). A scene load replaces the
+camera entity: call `follow` again in `onSceneLoaded`, or keep the rig in the scene file.
+
+### Tags
+
+A `Tags` component holds a few labels per entity, for finding groups without a component of their own:
+`entity.addTag("enemy")`, `removeTag`, `hasTag`, `tags()`, `engine.findTagged("enemy")` (handles, by entity number),
+`EntityDesc::tags` / `engine.create(name, { tags = {"enemy"} })`. They are saved in scenes and prefabs, and edited in the
+Properties panel.
+
+### Tweens and coroutines
+
+`engine.tween()` ([`GameTween`](src/systems/gameTween.h)) animates an entity's position, rotation, scale or color, or any
+number, over some seconds with an easing curve (`Linear`, `EaseIn/Out/InOutQuad`, `EaseIn/Out/InOutCubic`), ending
+exactly on the value and then calling a completion callback. Tweens run on game time like timers: a pause or a slow
+motion holds them, a destroyed entity's tween stops, a new tween of the same property replaces the old one.
+
+```cpp
+engine.tween().to(coin, TweenProperty::Scale, glm::vec3(0.01f), 0.2f, Ease::EaseInCubic, [coin]() mutable { coin.destroy(); });
+engine.tween().value(0.0f, 1.0f, 2.0f, Ease::Linear, [&](float v) { fade = v; });
+```
+```lua
+tween.to(self, "scale", vec3(0.01), 0.2, "easeInCubic", function() self:destroy() end)
+```
+
+In Lua, `engine.run(function() ... end)` starts a coroutine in which `wait(seconds)` suspends for game time (so it follows
+the time scale and stands still while paused); `wait()` lasts until the next frame. `self:run(fn)` is the same for a
+coroutine that ends when the entity is destroyed (`engine.run`'s lasts across scene loads; `engine.stop(handle)` ends
+either). An error inside is reported on screen like any script error. Waits end on a frame boundary.
+
+```lua
+engine.run(function()
+  ui.text("message", "Get ready")
+  wait(2)
+  ui.text("message", "Go!")
+end)
+```
 
 ### Quick Start
 
@@ -822,6 +892,26 @@ Bindings can also come from a file, so they change without a build (`input.loadB
 The gamepad itself is readable too: `isGamepadButtonDown`, `wasGamepadButtonPressed`, `getGamepadAxis`,
 `getGamepadCount`.
 
+Also from game code:
+
+```cpp
+input.rumble(0.8f, 0.2f, 0.3f);        // low (big motor), high (small motor), seconds; false without a gamepad
+engine.setMouseCaptured(true);         // hidden and held for mouse-look...
+glm::vec2 look = input.getMouseDelta(); // ...pixels moved this frame, x right, y down
+engine.setCursorVisible(false);        // or just hide the free cursor (a crosshair of your own)
+
+input.startTextInput("", 12);          // a name: typed characters go to getText(); Backspace edits it
+// each frame: input.getText(), input.getTypedText(); wasKeyPressed(SDL_SCANCODE_RETURN) to finish
+input.stopTextInput();
+```
+
+While text entry is on, keys and actions read as idle (so `W` does not walk while a name is typed), except Backspace,
+Delete, Enter, Escape, Tab, the arrows, Home, End and the F keys. A menu or a game UI field that has the keyboard gets the
+typing instead. Mouse capture is the same switch as Settings' "Cursor lock" (`Right Alt`), so the editor and a player can
+still flip it; the pause menu frees the mouse while it is open and puts back what the game asked for. The engine starts
+with the mouse captured: a game with menus to click calls `setMouseCaptured(false)` in setup. A hidden cursor shows
+anyway over the pause menu and the editor's panels.
+
 ### Audio
 
 Sounds are WAV, MP3 or FLAC files, with paths relative to `bin/` like models. The listener is the active camera.
@@ -842,7 +932,9 @@ Entity fan = engine.entities()
                  .withModel("../assets/models/box/box.obj", pos, rot, scale)
                  .withSound("../assets/sounds/hum.wav", /*loop*/ true, /*volume*/ 0.6f)
                  .build();
-engine.get<AudioSource>(fan).playing = false; // stop it; true starts it again
+fan.stopAudio();  // an entity's AudioSource, from its handle: also playAudio, pauseAudio, isAudioPlaying,
+                  // setAudioVolume, setAudioPitch, setAudioLoop (Lua: self:stopAudio(), self.audioVolume = 0.5)
+uint32_t music = engine.playMusic("../assets/sounds/music.wav"); // a handle like the effects, for stopMusic(music)...
 ```
 
 `AudioSource` also sets pitch, whether it is spatial, and how it fades with distance (`minDistance`, `maxDistance`, `rolloff`). Effects (sources and one-shots) pause with `F7` and follow the time scale; music keeps playing. The Settings panel has master, effects and music volumes, and the Properties panel edits an entity's `AudioSource`. Without an audio device the engine runs silently. See [`src/systems/audioSystem.h`](src/systems/audioSystem.h).

@@ -11,6 +11,10 @@ cmake -B build && cmake --build build -j     # Release; add -DCMAKE_BUILD_TYPE=D
   scripts through `engine.scripts().lua()` (with sol2): `celebrate()` in `src/main.cpp`. Both sides use the same API:
   the entity handle in C++ (`player.move(...)`, `player.setEmission(...)`) is the `Entity` scripts get, and paths are
   relative to `assets/` in both.
+- The player is made in C++ with `engine.create("Player", desc)` (an `EntityDesc`: model, color, `character`, game
+  `components` by name...), and the camera trails it with `engine.camera().follow(player, rig)`, the same as Lua's
+  `camera.follow`: the engine moves it after the physics, so it does not jitter. `coin.lua` shrinks a picked-up coin
+  away with `tween.to(...)`, which C++ has too (`engine.tween()`).
 - `assets/scripts/` is the Lua side (the coins and the score). Scripts reload when saved, without a rebuild:
   `game.lua` for the whole game, and an entity's Script component for that entity (`onStart`, `onUpdate`,
   `onContact`, `onOverlap`).

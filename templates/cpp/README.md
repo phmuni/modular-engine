@@ -11,6 +11,11 @@ cmake -B build && cmake --build build -j     # Release; add -DCMAKE_BUILD_TYPE=D
 - `src/main.cpp` is the same game as the Lua project template, written against the same API (entity handles,
   `engine.ui()`, `engine.camera()`, `engine.spawn(...)`), so what you learn here carries over to Lua scripts and back.
   It says in comments where C++ does it its own way (components and loops instead of `self` and `onUpdate`).
+- The player is made with `engine.create("Player", desc)` (an `EntityDesc`: model, color, `character`, game
+  `components` by name, tags...), and the camera trails it with `engine.camera().follow(player, rig)`: the engine moves
+  it after the physics and `update`, so it does not jitter. A picked-up coin shrinks away with
+  `engine.tween().to(coin, TweenProperty::Scale, ...)`; C++ has no `wait`, so tweens' completion callbacks and
+  `engine.time().after(seconds, fn)` do the sequencing.
 - `assets/` holds its files, referenced relative to it: `"prefabs/coin.json"`, `"ui/hud.rml"`. The level is
   `assets/scenes/level.json`, and its sky color is the `Sky` entity in it (`engine.setSkyColor(...)` changes it from code).
 - `assets/prefabs/coin.json` is the coin: a prefab, an entity saved to a file, that `src/main.cpp` copies into the level

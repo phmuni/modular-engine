@@ -32,6 +32,7 @@ struct Coin {
   float bob = 0.15f;   // how far it moves up and down, in units
   float baseY = 0.0f;  // where it bobs around and how long it has: not registered, so not saved in the prefab
   float age = 0.0f;
+  bool collected = false; // picked up and shrinking away: it still overlaps the player for a few frames
 };
 
 class MyGame : public App {
@@ -137,14 +138,20 @@ class MyGame : public App {
       coin.setPosition(position);
     });
 
-    // A coin's collision box overlaps the player's (Lua: the coin's onOverlap). Collect first, then destroy: not
-    // while iterating.
+    // A coin's collision box overlaps the player's (Lua: the coin's onOverlap). Collect first, then change the
+    // coins: not while iterating.
     std::vector<GameEntity> collected;
-    engine.forEachCollision<Player, Coin>(
-        [&](Entity, Player &, Entity coin, Coin &) { collected.push_back(engine.entity(coin)); });
+    engine.forEachCollision<Player, Coin>([&](Entity, Player &, Entity coin, Coin &state) {
+      if (!state.collected) {
+        state.collected = true;
+        collected.push_back(engine.entity(coin));
+      }
+    });
     for (GameEntity coin : collected) {
-      coin.destroy();
       collect(engine);
+      // A quick shrink to nothing, then it goes (tweens run on game time, so a pause holds them)
+      engine.tween().to(coin, TweenProperty::Scale, glm::vec3(0.01f), 0.2f, Ease::EaseInCubic,
+                        [coin]() mutable { coin.destroy(); });
     }
   }
 

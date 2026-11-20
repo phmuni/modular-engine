@@ -1,5 +1,5 @@
 -- A coin: spins on its edge and bobs up and down, and when the player walks into it, counts (see game.lua) and
--- disappears. It is spawned from prefabs/coin.json, which gives it this script.
+-- shrinks away. It is spawned from prefabs/coin.json, which gives it this script.
 
 properties = {
   spin = 120, -- degrees per second
@@ -26,8 +26,10 @@ end
 
 -- Its Collision box overlaps another entity's
 function onOverlap(self, other)
-  if other.name == "Player" then
+  if other.name == "Player" and not self.collected then
+    self.collected = true -- it overlaps for a few more frames while it shrinks
     game.collect()
-    self:destroy()
+    -- A quick shrink to nothing, then it goes (tweens run on game time, so a pause holds them)
+    tween.to(self, "scale", vec3(0.01), 0.2, "easeInCubic", function() self:destroy() end)
   end
 end

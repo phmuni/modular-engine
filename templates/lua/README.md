@@ -10,6 +10,11 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
   component) runs for that entity: `onStart(self)`, `onUpdate(self, dt)`, `onContact(self, other, point, normal)`,
   `onOverlap(self, other)`. Save a script while the game runs and it reloads, keeping each entity's state. Its
   `properties` table (speed, jumpSpeed...) is what the Properties panel lets you tune, per entity.
+- The camera follows the player with one call, `camera.follow(self, { offset = vec3(0, 4, 7), lookAhead = 2, smoothing = 0.1 })`
+  in `player.lua`: the engine moves it after the physics and the scripts, so it does not jitter. `coin.lua` shrinks a
+  picked-up coin away with `tween.to(...)`; `engine.run(function() ... wait(1) ... end)` and `self:run(...)` give a
+  script waits. The player lives in `level.json` (select it in the editor to tune its script's properties); a game
+  that makes it from code can use `engine.create("Player", { model = "box", character = { radius = 0.4, height = 0.8 } })`.
 - `assets/scenes/level.json` is the level, its sky color too (the `Sky` entity; `engine.setSkyColor(vec3(...))` changes it
   from a script). In the game, `F2` opens the editor: click to select, `W` `E` `R` `T` to move,
   rotate, scale and resize, the Properties panel to edit (and to give an entity a script), Settings to save.
