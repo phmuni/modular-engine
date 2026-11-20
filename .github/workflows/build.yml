@@ -13,6 +13,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-24.04, windows-latest]
+        include:
+          # Clang on Windows with Microsoft's library (clang-cl): it says it is Clang, but has MSVC's headers
+          - os: windows-latest
+            toolset: ClangCL
+    name: build (${{ matrix.os }}${{ matrix.toolset && format(', {0}', matrix.toolset) || '' }})
     runs-on: ${{ matrix.os }}
     env:
       # Dependency downloads (SDL, RmlUi, Jolt...) shared by the engine and the test game, and kept between runs
@@ -35,7 +40,8 @@ jobs:
             libdecor-0-dev libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        shell: bash
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.toolset && format('-T {0}', matrix.toolset) || '' }}
 
       - name: Build the engine, the examples, the runner and the launcher
         run: cmake --build build --config Release --parallel 4
@@ -53,6 +59,7 @@ jobs:
       - name: Build the C++ + Lua game against this checkout
         shell: bash
         run: |
-          cmake -S "$RUNNER_TEMP/MixedGame" -B "$RUNNER_TEMP/MixedGame/build" -DCMAKE_BUILD_TYPE=Release
+          cmake -S "$RUNNER_TEMP/MixedGame" -B "$RUNNER_TEMP/MixedGame/build" -DCMAKE_BUILD_TYPE=Release \
+            ${{ matrix.toolset && format('-T {0}', matrix.toolset) || '' }}
           cmake --build "$RUNNER_TEMP/MixedGame/build" --config Release --parallel 4
           ls "$RUNNER_TEMP/MixedGame/bin"
