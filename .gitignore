@@ -17,6 +17,7 @@ assets/models/*
 !assets/models/spaceship/
 !assets/models/alien/
 !assets/models/sphere/
+!assets/models/cylinder/
 !assets/models/tentacle/
 
 # Temporary files
@@ -26,6 +27,7 @@ assets/models/*
 !assets/models/spaceship/*.obj
 !assets/models/alien/*.glb
 !assets/models/sphere/*.obj
+!assets/models/cylinder/*.obj
 !assets/models/tentacle/*.glb
 
 # IDEs

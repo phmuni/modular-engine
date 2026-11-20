@@ -15,6 +15,10 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
   `Ctrl+P` freezes the game, plays it from there and puts the level back on Stop.
 - `Escape` opens the pause menu (`ui.pauseMenu(true)` in `game.lua`): Resume, Options (volumes, fullscreen, vsync)
   and Quit. The best score is kept between runs with `save.set` / `save.get` (see `game.lua`).
+- `assets/prefabs/coin.json` is the coin: a prefab, an entity saved to a file, that `game.lua` copies into the level
+  with `engine.spawn("prefabs/coin.json", position)`. To change every coin, run the game, press `F2`, click a coin,
+  edit it in the Properties panel (color, size, its script's `spin` and `bob`...) and press **Save as prefab**
+  (set the path to `../assets/prefabs/coin.json` first: it suggests the entity's name). The next coins use it.
 - `assets/input.json` maps keys and gamepad buttons to the actions and axes the scripts read.
 - `project.json` says where the game starts: its scene, its game script and its input file.
 - `bin/` is the engine's Lua runner, named after the game. To ship the game, copy the whole folder.

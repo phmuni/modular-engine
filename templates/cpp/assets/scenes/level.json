@@ -36,6 +36,7 @@
             0.85
           ],
           "intensity": 1.0,
+          "ambient": 0.35,
           "castShadows": true
         }
       }

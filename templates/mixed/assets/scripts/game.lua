@@ -1,14 +1,17 @@
--- The whole game: the score on screen, the best score kept between runs, and new coins once they are all picked up.
--- Runs before the entities' scripts; its `game` table is shared with all of them.
+-- The whole game: the score on screen, the best score kept between runs, and the coins: a ring of them, and a new ring
+-- once they are all picked up. Runs before the entities' scripts; its `game` table is shared with all of them.
+
+local COINS = 8
+local RING_RADIUS = 7
 
 function onStart()
   ui.pauseMenu(true) -- Escape: Resume, Options (volumes, fullscreen, vsync) and Quit
   game.score = 0
-  game.coins = game.coins or 0
   game.best = save.get("bestScore", 0) -- saved data: still there the next time the game runs
   ui.load("ui/hud.rml")
   ui.text("score", game.score)
   ui.text("best", game.best)
+  spawnCoins()
 end
 
 function game.collect()
@@ -27,13 +30,12 @@ function game.collect()
   end
 end
 
+-- Every coin is a copy of prefabs/coin.json (edit it in the editor: F2, select a coin, change it, Save Prefab), so
+-- changing that file changes them all. engine.spawn puts the copy at a position.
 function spawnCoins()
-  for i = 0, 7 do
-    local angle = i / 8 * math.pi * 2
-    engine.create("Coin", {
-      model = "sphere", position = vec3(math.cos(angle) * 7, 0.6, math.sin(angle) * 7), scale = vec3(0.5),
-      color = vec3(1, 0.78, 0.25), emission = vec3(1, 0.78, 0.25),
-      collision = true, script = "scripts/coin.lua",
-    })
+  for i = 0, COINS - 1 do
+    local angle = i / COINS * math.pi * 2
+    engine.spawn("prefabs/coin.json", vec3(math.cos(angle) * RING_RADIUS, 0.8, math.sin(angle) * RING_RADIUS))
   end
+  game.coins = COINS
 end

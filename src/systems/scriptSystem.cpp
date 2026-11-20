@@ -646,7 +646,7 @@ struct ScriptSystem::Impl {
     });
     // engine.create("Coin", { model = "models/coin.glb", position = vec3(0, 1, 0), scale = vec3(0.5),
     //                         color = vec3(1, 0.8, 0.2), body = "dynamic", shape = "sphere", script = "scripts/coin.lua" })
-    // engine.create(name, { model = "box" | "sphere" | path, position, rotation, scale, color, emission, glow,
+    // engine.create(name, { model = "box" | "sphere" | "cylinder" | path, position, rotation, scale, color, emission, glow,
     //                       body = "static" | "dynamic" | "kinematic", shape, mass, collision = true, script })
     api.set_function("create", [this](const std::string &name, sol::optional<sol::table> options) {
       sol::table o = options ? *options : lua.create_table();
@@ -658,11 +658,12 @@ struct ScriptSystem::Impl {
       const glm::vec3 rotation = vectorOr("rotation", glm::vec3(0.0f));
       const glm::vec3 scale = vectorOr("scale", glm::vec3(1.0f));
       auto builder = engine.entities().create(name);
-      // "box" and "sphere" are the engine's own models
+      // "box", "sphere" and "cylinder" are the engine's own models
       if (sol::optional<std::string> model = o["model"])
-        builder.withModel(*model == "box"      ? std::string(EngineConfig::MODEL_BOX)
-                          : *model == "sphere" ? std::string(EngineConfig::MODEL_SPHERE)
-                                               : assetPath(*model),
+        builder.withModel(*model == "box"        ? std::string(EngineConfig::MODEL_BOX)
+                          : *model == "sphere"   ? std::string(EngineConfig::MODEL_SPHERE)
+                          : *model == "cylinder" ? std::string(EngineConfig::MODEL_CYLINDER)
+                                                 : assetPath(*model),
                           position, rotation, scale);
       else
         builder.withTransform(position, rotation, scale);

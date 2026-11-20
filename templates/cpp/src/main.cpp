@@ -1,9 +1,10 @@
 // MyGame: a starting point for a game on modular-engine. Walk with W A S D (or a gamepad's left stick), jump with
-// Space (or its bottom button), push the crates around and pick up the gold spheres.
+// Space (or its bottom button), push the crates around and pick up the gold coins.
 //
 // The level is a scene file, assets/scenes/level.json: press F2 for the editor, move things around (click to select,
-// W/E/R/T for the gizmos) and save it from the Settings panel. The code below builds what the level file does not
-// have (the player, the coins) once the level has loaded.
+// W/E/R/T for the gizmos) and save it from the Settings panel. The code below adds what the level file does not
+// have once the level has loaded: the player, and the coins, copies of the prefab assets/prefabs/coin.json (a prefab
+// is an entity saved to a file: in the editor, select a coin, change it and use Save as prefab).
 
 #include "components/camera.h"
 #include "foundation/core/config.h"
@@ -22,11 +23,16 @@ struct Player {
 };
 struct Coin {
   float spin = 120.0f; // degrees per second
+  float bob = 0.15f;   // how far it moves up and down, in units
+  float baseY = 0.0f;  // where it bobs around and how long it has: not registered, so not saved in the prefab
+  float age = 0.0f;
 };
 
 class MyGame : public App {
   static constexpr const char *LEVEL = "../assets/scenes/level.json";
-  static constexpr glm::vec3 GOLD{1.0f, 0.78f, 0.25f};
+  static constexpr const char *COIN = "../assets/prefabs/coin.json";
+  static constexpr int COINS = 8;
+  static constexpr float RING_RADIUS = 7.0f;
   static constexpr glm::vec3 START{0.0f, 0.6f, 3.0f};
 
   Entity player = -1;
@@ -45,17 +51,15 @@ class MyGame : public App {
 
   void spawnCoins(Engine &engine) {
     coinsLeft = 0;
-    for (int i = 0; i < 8; ++i) {
-      const float angle = glm::two_pi<float>() * static_cast<float>(i) / 8.0f;
-      const glm::vec3 position(std::cos(angle) * 7.0f, 0.6f, std::sin(angle) * 7.0f);
-      engine.entities()
-          .create("Coin")
-          .withModel(EngineConfig::MODEL_SPHERE, position, glm::vec3(0.0f), glm::vec3(0.5f))
-          .withSolidColor(GOLD)
-          .withEmission(GOLD, 1.5f)
-          .withModelCollision()
-          .withComponent<Coin>()
-          .build();
+    for (int i = 0; i < COINS; ++i) {
+      const float angle = glm::two_pi<float>() * static_cast<float>(i) / COINS;
+      const glm::vec3 position(std::cos(angle) * RING_RADIUS, 0.8f, std::sin(angle) * RING_RADIUS);
+      const Entity coin = engine.instantiate(COIN, position); // the prefab's Coin component comes with it
+      if (coin == -1)
+        return; // instantiate logged why
+      Coin &state = engine.get<Coin>(coin);
+      state.baseY = position.y;
+      state.age = position.x + position.z; // so the coins of the ring do not bob in step
       ++coinsLeft;
     }
   }
@@ -82,8 +86,12 @@ class MyGame : public App {
   }
 
   void updateCoins(Engine &engine, float deltaTime) {
+    // The prefab stands each disc on its edge (rotation.x = 90), so turning around Y spins it like a coin on a table
     engine.getComponentManager().forEachComponent<Coin>([&](Entity coin, Coin &settings) {
-      engine.get<Transform>(coin).rotation.y += settings.spin * deltaTime;
+      auto &transform = engine.get<Transform>(coin);
+      settings.age += deltaTime;
+      transform.rotation.y += settings.spin * deltaTime;
+      transform.position.y = settings.baseY + std::sin(settings.age * 3.0f) * settings.bob;
     });
 
     std::vector<Entity> collected;
@@ -164,6 +172,8 @@ int main(int argc, char **argv) {
       .field("speed", &Player::speed)
       .field("turnSpeed", &Player::turnSpeed)
       .field("jumpSpeed", &Player::jumpSpeed);
+  // The coin prefab keeps these two
+  engine.registerComponent<Coin>("Coin").field("spin", &Coin::spin).field("bob", &Coin::bob);
 
   MyGame game;
   engine.run(game);

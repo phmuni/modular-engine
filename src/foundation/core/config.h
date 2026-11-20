@@ -139,6 +139,7 @@ constexpr float BLOOM_STRENGTH = 0.08f;
 // Models
 constexpr const char *MODEL_BOX = "../assets/models/box/box.obj";
 constexpr const char *MODEL_SPHERE = "../assets/models/sphere/sphere.obj";
+constexpr const char *MODEL_CYLINDER = "../assets/models/cylinder/cylinder.obj"; // diameter 1, height 1, along Y
 
 // Textures: converted to BC1/BC3 (and cached in bin/cache/textures) when the GPU supports S3TC
 constexpr bool COMPRESS_TEXTURES = true;

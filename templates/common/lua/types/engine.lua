@@ -198,7 +198,7 @@ function Entity:sound(path, volume) end
 
 ---Options for engine.create. Everything is optional.
 ---@class EngineCreateOptions
----@field model? string "box", "sphere" or a model path relative to assets/
+---@field model? string "box", "sphere", "cylinder" or a model path relative to assets/
 ---@field position? vec3
 ---@field rotation? vec3 Degrees
 ---@field scale? vec3

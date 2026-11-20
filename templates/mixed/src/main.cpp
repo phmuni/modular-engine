@@ -1,8 +1,9 @@
 // MyGame: a starting point for a game on modular-engine in C++ and Lua. Walk with W A S D (or a gamepad's left
-// stick), jump with Space (or its bottom button), push the crates around and pick up the gold spheres.
+// stick), jump with Space (or its bottom button), push the crates around and pick up the gold coins.
 //
-// C++ does the player (below); Lua does the coins and the score (assets/scripts/coin.lua and game.lua), and calls back
-// into C++ through celebrate(), which setup() hands to the scripts. Scripts reload when saved, no rebuild needed.
+// C++ does the player (below); Lua does the coins, copies of the prefab assets/prefabs/coin.json, and the score
+// (assets/scripts/coin.lua and game.lua), and calls back into C++ through celebrate(), which setup() hands to the
+// scripts. Scripts reload when saved, no rebuild needed.
 //
 // The level is a scene file, assets/scenes/level.json: press F2 for the editor, move things around (click to select,
 // W/E/R/T for the gizmos) and save it from the Settings panel.
@@ -115,7 +116,7 @@ public:
 
   void onSceneLoaded(Engine &engine, const std::string &) override {
     spawnPlayer(engine);
-    // The game script, once the level is in: the score and the coins (the coins' own scripts come with the level)
+    // The game script, once the level is in: the score, and the coins it spawns from the prefab
     engine.scripts().runGameScript("scripts/game.lua");
   }
 
