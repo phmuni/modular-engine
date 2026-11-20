@@ -287,6 +287,12 @@ bool SceneSerializer::save(const std::string &path) const {
   return writeFile(path, entitiesToJson(entities, -1));
 }
 
+std::string SceneSerializer::fingerprint() const {
+  std::vector<Entity> entities(m_entityManager.entities().begin(), m_entityManager.entities().end());
+  std::sort(entities.begin(), entities.end());
+  return entitiesToJson(entities, -1).dump();
+}
+
 bool SceneSerializer::savePrefab(Entity root, const std::string &path) const {
   if (!m_entityManager.isAlive(root)) {
     LOG_E("[Scene] savePrefab: entity %d does not exist", root);

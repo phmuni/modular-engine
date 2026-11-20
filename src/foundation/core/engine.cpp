@@ -235,6 +235,7 @@ void Engine::update(bool &isRunning) {
 
   // Play, Stop and freezing, from the editor's last frame
   applyPlayModeRequest();
+  applyHistoryRequest();
 
   auto &state = m_systemManager.getSystem<StateSystem>();
   // Upload models whose background reads finished
@@ -555,6 +556,7 @@ void Engine::applyPendingScene() {
     return;
   m_scenePath = path;
   m_systemManager.getSystem<NavigationSystem>().clear(); // the map was of the old level
+  clearHistory();
   if (m_app)
     m_app->onSceneLoaded(*this, path);
 }
@@ -649,27 +651,67 @@ void Engine::setLocalTransform(Entity entity, const Transform &local) {
   m_systemManager.getSystem<TransformSystem>().setLocalTransform(m_componentManager, entity, local);
 }
 
+Engine::SceneSnapshot Engine::captureScene() {
+  SceneSnapshot snapshot;
+  snapshot.components = m_componentManager.snapshot();
+  snapshot.entities = m_entityManager;
+  snapshot.activeCamera = m_systemManager.getSystem<CameraSystem>().getActiveCamera();
+  m_componentManager.forEachComponent<Model>([&](Entity, Model &model) {
+    snapshot.materials.insert(snapshot.materials.end(), model.materialHandles.begin(), model.materialHandles.end());
+  });
+  return snapshot;
+}
+
+void Engine::restoreScene(SceneSnapshot snapshot) {
+  m_componentManager.restore(std::move(snapshot.components));
+  m_entityManager.restore(snapshot.entities);
+  auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
+  if (snapshot.activeCamera != -1 && m_entityManager.isAlive(snapshot.activeCamera))
+    cameraSystem.setActiveCamera(snapshot.activeCamera);
+  else
+    cameraSystem.removeActiveCamera();
+  m_systemManager.getSystem<LightSystem>().rebuild(m_componentManager);
+  m_systemManager.getSystem<RenderSystem>().resetCaches();
+  m_systemManager.getSystem<PhysicsSystem>().reset();
+  // The walls may be back or gone: the navigation map is built again (with its last settings) on the next update
+  m_systemManager.getSystem<NavigationSystem>().markDirty();
+  auto &editor = m_systemManager.getSystem<EditorUISystem>();
+  if (!m_entityManager.isAlive(editor.selectedEntity))
+    editor.selectedEntity = -1;
+}
+
+void Engine::refreshPinnedMaterials() {
+  std::vector<uint32_t> handles;
+  auto add = [&](const SceneSnapshot &snapshot) {
+    handles.insert(handles.end(), snapshot.materials.begin(), snapshot.materials.end());
+  };
+  if (m_playSnapshot)
+    add(*m_playSnapshot);
+  if (m_openCheckpoint)
+    add(m_openCheckpoint->snapshot);
+  for (const SceneSnapshot &snapshot : m_undoStack)
+    add(snapshot);
+  for (const SceneSnapshot &snapshot : m_redoStack)
+    add(snapshot);
+  auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
+  resourceSystem.setPinnedMaterials(std::move(handles));
+  resourceSystem.collectUnusedMaterials();
+}
+
 void Engine::applyPlayModeRequest() {
   if (!m_requestedPlayMode)
     return;
   const PlayMode requested = *m_requestedPlayMode;
   m_requestedPlayMode.reset();
-  auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
-  auto &resourceSystem = m_systemManager.getSystem<ResourceSystem>();
 
   if (requested == PlayMode::Testing && m_playMode != PlayMode::Testing) {
-    // Play: everything as it is now, to come back to
-    m_playSnapshot = std::make_unique<PlaySnapshot>();
-    m_playSnapshot->components = m_componentManager.snapshot();
-    m_playSnapshot->entities = m_entityManager;
-    m_playSnapshot->activeCamera = cameraSystem.getActiveCamera();
+    // Play: everything as it is now, to come back to. An edit still open is not recorded: the history is not used
+    // while testing, and Stop brings back the scene as it is now.
+    m_openCheckpoint.reset();
+    m_historyRequest.reset();
+    m_playSnapshot = std::make_unique<SceneSnapshot>(captureScene());
     // Its materials stay alive, and count as used: a game changing one during play changes a copy
-    std::vector<uint32_t> materials;
-    m_componentManager.forEachComponent<Model>([&](Entity, Model &model) {
-      materials.insert(materials.end(), model.materialHandles.begin(), model.materialHandles.end());
-    });
-    resourceSystem.setPinnedMaterials(std::move(materials));
-    resourceSystem.collectUnusedMaterials();
+    refreshPinnedMaterials();
     m_playMode = PlayMode::Testing;
     LOG_I("[Engine] Play: %zu entities saved", m_entityManager.count());
     return;
@@ -677,23 +719,11 @@ void Engine::applyPlayModeRequest() {
 
   if (m_playMode == PlayMode::Testing && requested != PlayMode::Testing && m_playSnapshot) {
     // Stop: every entity and component back as they were at Play
-    m_componentManager.restore(std::move(m_playSnapshot->components));
-    m_entityManager = m_playSnapshot->entities;
-    const Entity camera = m_playSnapshot->activeCamera;
+    SceneSnapshot snapshot = std::move(*m_playSnapshot);
     m_playSnapshot.reset();
-    if (camera != -1 && m_entityManager.isAlive(camera))
-      cameraSystem.setActiveCamera(camera);
-    else
-      cameraSystem.removeActiveCamera();
-    m_systemManager.getSystem<LightSystem>().rebuild(m_componentManager);
-    m_systemManager.getSystem<RenderSystem>().resetCaches();
-    m_systemManager.getSystem<PhysicsSystem>().reset();
-    m_systemManager.getSystem<NavigationSystem>().clear();
+    restoreScene(std::move(snapshot));
     m_systemManager.getSystem<ScriptSystem>().reset();
-    resourceSystem.setPinnedMaterials({});
-    auto &editor = m_systemManager.getSystem<EditorUISystem>();
-    if (!m_entityManager.isAlive(editor.selectedEntity))
-      editor.selectedEntity = -1;
+    refreshPinnedMaterials();
     LOG_I("[Engine] Stop: %zu entities restored", m_entityManager.count());
     m_playMode = PlayMode::Editing;
     if (m_app)
@@ -704,6 +734,78 @@ void Engine::applyPlayModeRequest() {
   // Freezing and unfreezing without a snapshot (Editing <-> Running)
   if (m_playMode != PlayMode::Testing)
     m_playMode = requested == PlayMode::Testing ? m_playMode : requested;
+}
+
+void Engine::beginCheckpoint() {
+  if (m_playMode == PlayMode::Testing || m_openCheckpoint)
+    return;
+  m_openCheckpoint = std::make_unique<Checkpoint>(Checkpoint{captureScene(), getSceneSerializer().fingerprint()});
+  refreshPinnedMaterials();
+}
+
+void Engine::endCheckpoint() {
+  if (!m_openCheckpoint)
+    return;
+  std::unique_ptr<Checkpoint> checkpoint = std::move(m_openCheckpoint);
+  if (checkpoint->fingerprint != getSceneSerializer().fingerprint()) {
+    m_redoStack.clear();
+    m_undoStack.push_back(std::move(checkpoint->snapshot));
+    if (m_undoStack.size() > kMaxUndoSteps)
+      m_undoStack.pop_front();
+  }
+  refreshPinnedMaterials();
+}
+
+void Engine::applyHistoryRequest() {
+  if (!m_historyRequest)
+    return;
+  const bool undoing = *m_historyRequest == HistoryRequest::Undo;
+  m_historyRequest.reset();
+  // Not in the middle of an edit (a drag would lose its footing), and not while testing
+  if (m_openCheckpoint || (undoing ? !canUndo() : !canRedo()))
+    return;
+
+  SceneSnapshot target;
+  if (undoing) {
+    target = std::move(m_undoStack.back());
+    m_undoStack.pop_back();
+    m_redoStack.push_back(captureScene()); // what is about to be replaced is the step the other way
+  } else {
+    target = std::move(m_redoStack.back());
+    m_redoStack.pop_back();
+    m_undoStack.push_back(captureScene());
+    if (m_undoStack.size() > kMaxUndoSteps)
+      m_undoStack.pop_front();
+  }
+
+  // The viewport camera stays where it is (flying around is not an edit), unless it is the camera being edited
+  auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  std::optional<Camera> view;
+  if (cameraEntity != -1 && cameraEntity != m_systemManager.getSystem<EditorUISystem>().selectedEntity)
+    if (const Camera *camera = m_componentManager.tryGet<Camera>(cameraEntity))
+      view = *camera;
+
+  restoreScene(std::move(target));
+  // Scripts are left alone: their Lua state stays, and ScriptSystem follows the restored Script components
+  if (view && cameraSystem.getActiveCamera() == cameraEntity)
+    if (Camera *camera = m_componentManager.tryGet<Camera>(cameraEntity)) {
+      camera->position = view->position;
+      camera->yaw = view->yaw;
+      camera->pitch = view->pitch;
+      camera->front = view->front;
+      camera->up = view->up;
+    }
+  refreshPinnedMaterials();
+  LOG_I("[Engine] %s: %zu entities", undoing ? "Undo" : "Redo", m_entityManager.count());
+}
+
+void Engine::clearHistory() {
+  m_openCheckpoint.reset();
+  m_historyRequest.reset();
+  m_undoStack.clear();
+  m_redoStack.clear();
+  refreshPinnedMaterials();
 }
 
 bool Engine::savePrefab(Entity root, std::string_view path) {

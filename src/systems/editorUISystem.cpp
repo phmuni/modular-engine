@@ -355,9 +355,13 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   if (m_showStats)
     renderStatsOverlay(m_renderUI && selectedEntity != -1 ? kPropertiesWidth : 0.0f);
 
-  if (!m_renderUI)
+  if (!m_renderUI) {
+    engine.endCheckpoint(); // hiding the panels (F2) mid-edit ends the edit
     return;
+  }
 
+  handleHistoryShortcuts(engine);
+  beginEditTracking(engine);
   renderSettingsPanel(engine, entityManager, systemManager, componentManager);
   if (m_showNavigation)
     drawNavigation(engine, systemManager, componentManager);
@@ -370,6 +374,40 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
     renderGizmo(systemManager, componentManager);
   }
   handleClickSelection(engine, systemManager);
+  endEditTracking(engine);
+}
+
+void EditorUISystem::handleHistoryShortcuts(Engine &engine) {
+  // Not while a text field has the keyboard: it undoes its own typing (and InputSystem keeps these keys from the game)
+  const ImGuiIO &io = ImGui::GetIO();
+  if (!io.KeyCtrl || io.KeyAlt || io.WantTextInput)
+    return;
+  if (ImGui::IsKeyPressed(ImGuiKey_Z))
+    io.KeyShift ? engine.redo() : engine.undo();
+  else if (ImGui::IsKeyPressed(ImGuiKey_Y))
+    engine.redo();
+}
+
+// An edit is whatever happens between a click on the editor (a panel, the gizmo or a resize handle) and the moment
+// the mouse is up and no widget is active. The scene is copied when the click lands, before the widget acts on it
+// (a slider moves on the very click), and the copy is kept as an undo step only if the scene differs when the edit
+// ends. A click on empty space (selecting) starts nothing.
+void EditorUISystem::beginEditTracking(Engine &engine) {
+  const ImGuiIO &io = ImGui::GetIO();
+  const bool onEditor = io.WantCaptureMouse || (m_gizmoShown && ImGuizmo::IsOver()) || m_resizeHovered;
+  if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left) || !onEditor)
+    return;
+  // A click while an edit is still open (a text field keeps it open until something else is clicked) closes it first,
+  // so what the click does is a step of its own
+  engine.endCheckpoint();
+  engine.beginCheckpoint();
+}
+
+void EditorUISystem::endEditTracking(Engine &engine) {
+  const bool busy = ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive() || ImGuizmo::IsUsing();
+  if (busy || m_resize.axis >= 0)
+    return;
+  engine.endCheckpoint();
 }
 
 void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemManager) {
@@ -1046,6 +1084,22 @@ void EditorUISystem::renderPlayToolbar(Engine &engine) {
   ImGui::Begin("##PlayToolbar", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing);
+  auto historyButton = [&](const char *label, bool enabled, const char *tooltip, const std::function<void()> &action) {
+    ImGui::BeginDisabled(!enabled);
+    if (ImGui::Button(label))
+      action();
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip("%s", tooltip);
+  };
+  historyButton("Undo", engine.canUndo(), "Undoes the last edit (Ctrl+Z); not available while testing",
+                [&] { engine.undo(); });
+  ImGui::SameLine();
+  historyButton("Redo", engine.canRedo(), "Does the undone edit again (Ctrl+Shift+Z or Ctrl+Y)",
+                [&] { engine.redo(); });
+  ImGui::SameLine();
+  ImGui::TextDisabled("|");
+  ImGui::SameLine();
   const ImVec4 green(0.25f, 0.65f, 0.3f, 1.0f), red(0.75f, 0.2f, 0.2f, 1.0f), blue(0.25f, 0.45f, 0.8f, 1.0f);
   auto coloredButton = [](const char *label, const ImVec4 &color) {
     ImGui::PushStyleColor(ImGuiCol_Button, color);

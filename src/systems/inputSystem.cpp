@@ -68,9 +68,12 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
       break;
 
     case SDL_EVENT_KEY_DOWN:
-      // A key the UI used (typing in a field, Enter on a button) is not a game key press. Releases always count.
+      // A key the UI used (typing in a field, Enter on a button) is not a game key press, nor is the editor's undo and
+      // redo (Ctrl+Z, Ctrl+Y). Releases always count.
       if (!usedByUI) {
         const SDL_Scancode key = event.key.scancode;
+        if (io.KeyCtrl && (key == SDL_SCANCODE_Z || key == SDL_SCANCODE_Y) && state.isToggled(Toggle::ShowUI))
+          break;
         m_pressed[key] = m_pressed[key] || (!event.key.repeat && !m_keys[key]);
         m_keys[key] = true;
       }
