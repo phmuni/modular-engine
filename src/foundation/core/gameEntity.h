@@ -8,6 +8,7 @@
 
 #include "components/rigidBody.h"
 #include "foundation/ecs/entityManager.h"
+#include <cstdint>
 #include <glm/glm.hpp>
 #include <optional>
 #include <string>
