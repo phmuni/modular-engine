@@ -37,8 +37,14 @@ void main() {
     // The normal from the neighbors on the nearer side of each axis, so it holds at silhouette edges
     vec3 left = viewPosAt(pixel + ivec2(-1, 0), depthSize), right = viewPosAt(pixel + ivec2(1, 0), depthSize);
     vec3 down = viewPosAt(pixel + ivec2(0, -1), depthSize), up = viewPosAt(pixel + ivec2(0, 1), depthSize);
-    vec3 dx = abs(right.z - position.z) < abs(position.z - left.z) ? right - position : position - left;
-    vec3 dy = abs(up.z - position.z) < abs(position.z - down.z) ? up - position : position - down;
+    bool useRight = abs(right.z - position.z) < abs(position.z - left.z);
+    bool useUp = abs(up.z - position.z) < abs(position.z - down.z);
+    if (pixel.x == 0) useRight = true; // at the screen's edges only one neighbor exists
+    if (pixel.x >= depthSize.x - 1) useRight = false;
+    if (pixel.y == 0) useUp = true;
+    if (pixel.y >= depthSize.y - 1) useUp = false;
+    vec3 dx = useRight ? right - position : position - left;
+    vec3 dy = useUp ? up - position : position - down;
     vec3 normal = normalize(cross(dx, dy));
 
     vec3 random = vec3(texelFetch(noiseTexture, ivec2(gl_FragCoord.xy) & 3, 0).xy, 0.0);
@@ -46,7 +52,7 @@ void main() {
     vec3 bitangent = cross(normal, tangent);
     mat3 basis = mat3(tangent, bitangent, normal);
 
-    const float bias = 0.03;
+    float bias = 0.025 + 0.002 * abs(position.z); // depth gets coarser with distance
     float occlusion = 0.0;
     for (int i = 0; i < kernelSize; ++i) {
         vec3 sampleView = position + basis * kernel[i] * radius;
