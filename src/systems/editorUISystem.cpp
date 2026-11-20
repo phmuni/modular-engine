@@ -64,28 +64,15 @@
 #include <cstdlib>
 #include <cstring>
 
-namespace {
 // Opens a file with the program the system uses for its type. A native path is not a URL (C:\x\y.lua on
-// Windows), so it becomes file:///C:/x/y.lua first. When no program handles .lua files (common on Windows), it tries
-// VS Code's `code` command, then shows the folder.
+// Windows), so it becomes file:///C:/x/y.lua first (AssetBrowser::fileUrl). When no program handles .lua files
+// (common on Windows), it tries VS Code's `code` command, then shows the folder.
 void openInEditor(const std::string &path) {
   std::error_code error;
   std::filesystem::path absolute = std::filesystem::absolute(path, error);
   if (error)
     absolute = path;
-  const std::string generic = absolute.generic_string();
-  std::string url = generic.rfind('/', 0) == 0 ? "file://" : "file:///";
-  for (unsigned char c : generic) {
-    if (std::isalnum(c) || std::strchr("/-._~:", c))
-      url += static_cast<char>(c);
-    else {
-      static const char *hex = "0123456789ABCDEF";
-      url += '%';
-      url += hex[c >> 4];
-      url += hex[c & 15];
-    }
-  }
-  if (SDL_OpenURL(url.c_str()))
+  if (SDL_OpenURL(AssetBrowser::fileUrl(absolute.generic_string()).c_str()))
     return;
   LOG_W("[Editor] No program opens %s (%s); trying VS Code", absolute.string().c_str(), SDL_GetError());
 #ifdef _WIN32
@@ -93,12 +80,9 @@ void openInEditor(const std::string &path) {
 #else
   const std::string command = "code \"" + absolute.string() + "\" &";
 #endif
-  if (std::system(command.c_str()) != 0) {
-    std::string folder = absolute.parent_path().generic_string();
-    SDL_OpenURL(((folder.rfind('/', 0) == 0 ? "file://" : "file:///") + folder).c_str());
-  }
+  if (std::system(command.c_str()) != 0)
+    SDL_OpenURL(AssetBrowser::fileUrl(absolute.parent_path().generic_string()).c_str());
 }
-} // namespace
 
 namespace {
 // The style before any scaling: each scale starts from it, so scales do not compound
@@ -266,7 +250,7 @@ void EditorUISystem::renderViewportHint(SystemManager &systemManager) {
     return;
   const ImGuiViewport *viewport = ImGui::GetMainViewport();
   const float left = m_explorerWidth, right = viewport->WorkSize.x - m_propertiesWidth;
-  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + (left + right) * 0.5f, viewport->WorkPos.y + viewport->WorkSize.y - ui(10.0f)),
+  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + (left + right) * 0.5f, viewport->WorkPos.y + viewport->WorkSize.y - ui(10.0f) - m_assetsHeight),
                           ImGuiCond_Always, ImVec2(0.5f, 1.0f));
   ImGui::SetNextWindowBgAlpha(0.45f);
   constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
@@ -534,6 +518,7 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   const bool panels = m_renderUI && !m_panelsHidden;
   m_explorerWidth = panels ? panelWidth(kExplorerWidth) : 0.0f;
   m_propertiesWidth = panels && selectedEntity != -1 ? panelWidth(kPropertiesWidth) : 0.0f;
+  m_assetsHeight = 0.0f;
   if (m_showStats)
     renderStatsOverlay(m_propertiesWidth);
 
@@ -557,6 +542,8 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
     drawNavigation(engine, systemManager, componentManager);
   if (panels)
     renderSceneExplorer(engine, systemManager, componentManager);
+  if (panels)
+    renderAssetPanel(engine, systemManager, componentManager);
   renderPlayToolbar(engine, systemManager);
   m_gizmoShown = false;
   if (selectedEntity != -1) {
@@ -566,6 +553,8 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
     renderGizmo(systemManager, componentManager);
   }
   renderViewportHint(systemManager);
+  handleAssetDrop(engine, systemManager, componentManager);
+  renderSceneLoadDialog(engine);
   handleClickSelection(engine, systemManager, componentManager);
   endEditTracking(engine);
 }
@@ -1506,8 +1495,8 @@ std::string displayName(ComponentManager &componentManager, Entity entity) {
 }
 } // namespace
 
-void EditorUISystem::dragToParent(SystemManager &systemManager, ComponentManager &componentManager, Entity entity,
-                                  const std::string &label) {
+void EditorUISystem::dragToParent(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
+                                  Entity entity, const std::string &label) {
   // Drag an entity onto another to make it a child of it
   if (ImGui::BeginDragDropSource()) {
     ImGui::SetDragDropPayload("ENTITY", &entity, sizeof(Entity));
@@ -1519,6 +1508,18 @@ void EditorUISystem::dragToParent(SystemManager &systemManager, ComponentManager
       const Entity dragged = *static_cast<const Entity *>(payload->Data);
       if (dragged != entity)
         systemManager.getSystem<TransformSystem>().setParent(componentManager, dragged, entity);
+    }
+    // A script or a sound from the asset browser goes onto the entity (other assets do not belong on an entity)
+    const ImGuiPayload *asset = ImGui::GetDragDropPayload();
+    if (asset && asset->IsDataType(AssetBrowser::kPayload) && asset->Data) {
+      const std::string path = static_cast<const char *>(asset->Data);
+      const AssetBrowser::Kind kind = AssetBrowser::classify(path);
+      if ((kind == AssetBrowser::Kind::Script || kind == AssetBrowser::Kind::Sound) &&
+          ImGui::AcceptDragDropPayload(AssetBrowser::kPayload)) {
+        engine.beginCheckpoint();
+        assignAssetToEntity(engine, componentManager, entity, path);
+        selectOnly(entity);
+      }
     }
     ImGui::EndDragDropTarget();
   }
@@ -1562,7 +1563,7 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
       else
         clickInList(entity, visible, false);
     }
-    dragToParent(systemManager, componentManager, entity, label);
+    dragToParent(engine, systemManager, componentManager, entity, label);
     entityContextMenu(engine, systemManager, componentManager, entity);
     if (open) {
       if (depth < 64)
@@ -1759,7 +1760,7 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
       std::string label = entityLabel(entity, icon);
       if (ImGui::Selectable(label.c_str(), isSelected(entity)))
         clickInList(entity, entities, true);
-      dragToParent(systemManager, componentManager, entity, label);
+      dragToParent(engine, systemManager, componentManager, entity, label);
       entityContextMenu(engine, systemManager, componentManager, entity);
       if (m_scrollToSelection && selectedEntity == entity) {
         ImGui::SetScrollHereY();

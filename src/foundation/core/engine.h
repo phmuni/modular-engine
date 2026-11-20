@@ -406,6 +406,9 @@ public:
   void beginCheckpoint();
   void endCheckpoint();
   bool hasOpenCheckpoint() const { return m_openCheckpoint != nullptr; }
+  // Whether the editor changed the scene since it was last saved or loaded (what an undo step covers; changes the
+  // game makes while running do not count)
+  bool isSceneDirty() const { return m_editRevision != m_savedRevision; }
   void undo() { m_historyRequest = HistoryRequest::Undo; }
   void redo() { m_historyRequest = HistoryRequest::Redo; }
   bool canUndo() const { return m_playMode != PlayMode::Testing && !m_undoStack.empty(); }
@@ -551,6 +554,8 @@ private:
   std::deque<SceneSnapshot> m_undoStack; // oldest first; each is the scene before an edit
   std::vector<SceneSnapshot> m_redoStack;
   std::optional<HistoryRequest> m_historyRequest;
+  uint64_t m_editRevision = 0; // counts undo steps made, undone and redone
+  uint64_t m_savedRevision = 0;
   void applyHistoryRequest();
   void clearHistory();
   std::optional<std::string> m_pendingScene;

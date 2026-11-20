@@ -563,6 +563,7 @@ bool Engine::saveScene(std::string_view path) {
   if (!m_systemManager.getSystem<SceneSerializer>().save(std::string(path)))
     return false;
   m_scenePath = path;
+  m_savedRevision = m_editRevision;
   return true;
 }
 
@@ -603,6 +604,7 @@ void Engine::applyPendingScene() {
   m_scenePath = path;
   m_systemManager.getSystem<NavigationSystem>().clear(); // the map was of the old level
   clearHistory();
+  m_savedRevision = m_editRevision;
   if (m_app)
     m_app->onSceneLoaded(*this, path);
 }
@@ -814,6 +816,7 @@ void Engine::endCheckpoint() {
     m_undoStack.push_back(std::move(checkpoint->snapshot));
     if (m_undoStack.size() > kMaxUndoSteps)
       m_undoStack.pop_front();
+    ++m_editRevision;
   }
   refreshPinnedMaterials();
 }
@@ -849,6 +852,7 @@ void Engine::applyHistoryRequest() {
       view = *camera;
 
   restoreScene(std::move(target));
+  ++m_editRevision;
   // Scripts are left alone: their Lua state stays, and ScriptSystem follows the restored Script components
   if (view && cameraSystem.getActiveCamera() == cameraEntity)
     if (Camera *camera = m_componentManager.tryGet<Camera>(cameraEntity)) {

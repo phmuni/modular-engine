@@ -2,6 +2,7 @@
 // ImGui-based editor UI: scene explorer, properties panel, and entity creation.
 
 #include "foundation/ecs/systemManager.h"
+#include "systems/editor/assetBrowser.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <string>
@@ -16,6 +17,9 @@ class SceneSystem;
 class ResourceSystem;
 class RenderSystem;
 using Entity = int;
+
+// Opens a file with the program the system uses for its type (scripts: the editor for .lua files)
+void openInEditor(const std::string &path);
 
 class EditorUISystem : public BaseSystem {
 public:
@@ -181,11 +185,32 @@ private:
   // Hierarchy: the families (entities with a parent or children) as trees; drag an entity onto another to attach it,
   // onto the empty space below to detach it
   void renderHierarchy(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
-  void dragToParent(SystemManager &systemManager, ComponentManager &componentManager, Entity entity,
+  void dragToParent(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager, Entity entity,
                     const std::string &label);
   // In the Properties panel: the entity's parent, and saving it with its children as a prefab
   void renderParentAndPrefab(SystemManager &systemManager, ComponentManager &componentManager);
   void renderPropertiesPanel(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+
+  // --- Assets and linked prefabs (editor/editorAssets.cpp)
+  AssetBrowser m_assets;
+  bool m_assetsCollapsed = true;     // the strip at the bottom starts as its title bar
+  bool m_assetsOpenRequest = false;  // open it at the next frame (Select prefab file)
+  float m_assetsHeight = 0.0f;       // this frame's strip, 0 when not shown
+  std::string m_pendingScene;        // a scene asked for while the current one has unsaved changes
+  void renderAssetPanel(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  void handleAssetEvent(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
+                        const AssetBrowser::Event &event);
+  // An asset being dragged over the view: shows where it would go, and on release places it or hands it to the
+  // entity under the cursor
+  void handleAssetDrop(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  // A script or a sound dropped on an entity gives it (or replaces) its Script or AudioSource; false if the asset is
+  // not one of those
+  bool assignAssetToEntity(Engine &engine, ComponentManager &componentManager, Entity entity, const std::string &asset);
+  // A model or a prefab placed at `point` (on a surface: with its lowest point on it), selected
+  Entity placeAsset(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
+                    const std::string &asset, const glm::vec3 &point, bool onSurface);
+  void requestSceneLoad(Engine &engine, const std::string &asset);
+  void renderSceneLoadDialog(Engine &engine);
 
   static void fileDialogCallback(void *userdata, const char *const *filelist, int filter);
   void pickFileButton(const char *id, char *buf, int bufSize, SDL_Window *window,
