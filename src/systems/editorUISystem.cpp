@@ -53,6 +53,44 @@
 #include <ImGuizmo.h> // after imgui.h, which it does not include itself
 #include <string>
 #include <vector>
+#include <cstdlib>
+#include <cstring>
+
+namespace {
+// Opens a file with the program the system uses for its type. A native path is not a URL (C:\x\y.lua on
+// Windows), so it becomes file:///C:/x/y.lua first. When no program handles .lua files (common on Windows), it tries
+// VS Code's `code` command, then shows the folder.
+void openInEditor(const std::string &path) {
+  std::error_code error;
+  std::filesystem::path absolute = std::filesystem::absolute(path, error);
+  if (error)
+    absolute = path;
+  const std::string generic = absolute.generic_string();
+  std::string url = generic.rfind('/', 0) == 0 ? "file://" : "file:///";
+  for (unsigned char c : generic) {
+    if (std::isalnum(c) || std::strchr("/-._~:", c))
+      url += static_cast<char>(c);
+    else {
+      static const char *hex = "0123456789ABCDEF";
+      url += '%';
+      url += hex[c >> 4];
+      url += hex[c & 15];
+    }
+  }
+  if (SDL_OpenURL(url.c_str()))
+    return;
+  LOG_W("[Editor] No program opens %s (%s); trying VS Code", absolute.string().c_str(), SDL_GetError());
+#ifdef _WIN32
+  const std::string command = "start \"\" code \"" + absolute.string() + "\"";
+#else
+  const std::string command = "code \"" + absolute.string() + "\" &";
+#endif
+  if (std::system(command.c_str()) != 0) {
+    std::string folder = absolute.parent_path().generic_string();
+    SDL_OpenURL(((folder.rfind('/', 0) == 0 ? "file://" : "file:///") + folder).c_str());
+  }
+}
+} // namespace
 
 EditorUISystem::EditorUISystem(SDL_Window *window, SDL_GLContext glContext) {
   IMGUI_CHECKVERSION();
@@ -1530,7 +1568,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         ImGui::SameLine();
         if (std::filesystem::exists(file)) {
           if (ImGui::Button("Open##script"))
-            SDL_OpenURL(("file://" + file).c_str());
+            openInEditor(file);
         } else if (!script.path.empty() && ImGui::Button("Create##script")) {
           std::filesystem::create_directories(std::filesystem::path(file).parent_path());
           std::ofstream out(file);
@@ -1538,7 +1576,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
               << "function onStart(self)\nend\n\n"
               << "function onUpdate(self, dt)\nend\n";
           out.close();
-          SDL_OpenURL(("file://" + file).c_str());
+          openInEditor(file);
         }
         ImGui::TextDisabled("Saved changes to the file reload while the game runs");
         drawScriptProperties(script, engine.scripts().getProperties(selectedEntity));
