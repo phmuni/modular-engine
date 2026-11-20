@@ -6,7 +6,9 @@
 #include <SDL3/SDL.h>
 #include <filesystem>
 #include <fstream>
+#include <chrono>
 #include <nlohmann/json.hpp>
+#include <thread>
 
 struct SaveData::Impl {
   std::string gameName = "Game";
@@ -163,8 +165,15 @@ bool SaveData::write() {
       return false;
     }
   }
+  // Replaces the old file in one step. On Windows the rename can be refused for a moment while a virus scanner or the
+  // indexer holds the file just written, so it is tried a few times.
   std::error_code error;
-  std::filesystem::rename(temporary, file, error); // replaces the old file in one step
+  for (int attempt = 0; attempt < 10; ++attempt) {
+    std::filesystem::rename(temporary, file, error);
+    if (!error)
+      break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(5 * (attempt + 1)));
+  }
   if (error) {
     LOG_W("[Save] Could not replace %s: %s", file.c_str(), error.message().c_str());
     return false;
