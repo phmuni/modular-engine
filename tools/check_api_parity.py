@@ -107,6 +107,9 @@ C_PLUS_PLUS_ONLY = {
     ("GameUI", "onPauseMenuOpened"): "C++ callback; Lua scripts define onPauseMenuOpened() in the game script",
     ("GameUI", "onPauseMenuClosed"): "C++ callback; Lua scripts define onPauseMenuClosed() in the game script",
     ("GameUI", "onPauseMenuAction"): "C++ callback; Lua scripts define onPauseMenuAction(name) in the game script",
+    ("GameUI", "onMenuOpened"): "C++ callback; Lua scripts define onMenuOpened(menu) in the game script",
+    ("GameUI", "onMenuClosed"): "C++ callback; Lua scripts define onMenuClosed(menu) in the game script",
+    ("GameUI", "onMenuAction"): "C++ callback; Lua scripts define onMenuAction(menu, name) in the game script",
     ("PlayerSettings", "captureDefaults"): "the engine calls it once at start-up (Engine::run)",
     ("PlayerSettings", "applySaved"): "the engine calls it at start-up and when the game names itself",
 }
@@ -144,6 +147,8 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "saveData": "accessor; the Lua save table",
     "settings": "accessor; the Lua settings table",
     "pauseMenu": "accessor of the pause menu system; the Lua ui.pauseMenu, ui.openPauseMenu... and the script callbacks",
+    "menus": "accessor of the menu system; the Lua ui.menu and the Menu handle it returns",
+    "loadingScreen": "accessor of the loading screen; the Lua ui.loadingScreen",
     "getUIContext": "raw RmlUi, for C++ data models",
     "getActiveCamera": "raw Camera; the Lua camera table",
     "getSceneSerializer": "C++ game components in scene files",

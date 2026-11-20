@@ -50,6 +50,8 @@ class ElementDocument;
 class SaveData;
 class PlayerSettings;
 class PauseMenu;
+class MenuSystem;
+class LoadingScreen;
 class SceneSerializer;
 class InputSystem;
 struct Camera;
@@ -411,6 +413,10 @@ public:
   void loadScene(std::string_view path);
   // Whether a loadScene is waiting for its models
   bool isLoadingScene() const { return m_pendingScene.has_value(); }
+  // How far a loadScene is, from 0 to 1: the share of the scene's models that are read (1 when none is loading). The
+  // scene's own entities are made in the last frame, in one step, and textures upload as they are first drawn:
+  // neither is counted.
+  float sceneLoadProgress();
   // The file last loaded or saved, empty before that
   const std::string &getScenePath() const { return m_scenePath; }
   // Lets scene files hold game components: include "systems/sceneSerializer.h" and call registerComponent<T>(key)
@@ -484,6 +490,10 @@ public:
   void closePauseMenu();
   bool isPauseMenuOpen();
   PauseMenu &pauseMenu();
+  // Menus (systems/menu.h): any document the game shows as a menu; ui().menu(path, options) is the game API
+  MenuSystem &menus();
+  // The screen shown while a scene loads (systems/loadingScreen.h); ui().loadingScreen(...) is the game API
+  LoadingScreen &loadingScreen();
 
   // The player's options (volumes, window size, graphics...): see systems/playerSettings.h. Saved choices are applied
   // when the game starts, before setup.

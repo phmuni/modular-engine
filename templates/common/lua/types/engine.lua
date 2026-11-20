@@ -58,6 +58,15 @@ onPauseMenuClosed = nil
 ---Game script only: a button of the pause menu's document asked for `action('name')`.
 ---@type fun(name: string)
 onPauseMenuAction = nil
+---Game script only: a menu (ui.menu, the pause menu too, named "pause") opened.
+---@type fun(menu: string)
+onMenuOpened = nil
+---Game script only: a menu closed.
+---@type fun(menu: string)
+onMenuClosed = nil
+---Game script only: a button of a menu's document asked for `action('name')`. `menu` is the menu's name.
+---@type fun(menu: string, name: string)
+onMenuAction = nil
 
 -- vec3 ---------------------------------------------------------------------------------------------------------------
 
@@ -440,6 +449,11 @@ function engine.scenePath() end
 ---Whether a loadScene is still waiting for its models (the old scene keeps running until they are ready).
 ---@return boolean
 function engine.isLoadingScene() end
+
+---How far a loadScene is, from 0 to 1: the share of the scene's models that are read (1 when none is loading). The
+---scene's entities are made in the last frame, in one step, and textures upload as they are first drawn: neither is counted.
+---@return number
+function engine.sceneLoadProgress() end
 
 ---Reads a model on a worker thread, so creating it later (engine.create, engine.spawn) does not stall a frame.
 ---@param path string Relative to assets/
@@ -1193,7 +1207,8 @@ function ui.loadFont(path, fallback) end
 ---The document (assets/ui/pauseMenu.rml in a new project) is written against the data model "pause_menu":
 ---`settings.<name>`, `labels.<name>`, `enabled.<name>`, `screen`, and the events `set('name', value)`,
 ---`step('name', 1)`, `toggle('name')`, `show('screen')`, `back()`, `resume()`, `quit()` and `action('name')`.
----`action` calls the game script's `onPauseMenuAction(name)`.
+---`action` calls the game script's `onPauseMenuAction(name)` (and `onMenuAction("pause", name)`). It is a menu like
+---those of ui.menu, and `open('ui/options.rml')` works in it too.
 ---@param options? boolean|PauseMenuOptions Defaults to true
 function ui.pauseMenu(options) end
 
@@ -1211,6 +1226,58 @@ function ui.isPauseMenuOpen() end
 ---The same as ui.isPauseMenuOpen (the menu pauses the game by default).
 ---@return boolean
 function ui.isPaused() end
+
+---A menu: a document shown over the game (see ui.menu).
+---@class Menu
+local Menu = {}
+
+---Opens it, on top of the menus that are open.
+---@param screen? string The screen to start on, "main" by default
+function Menu:open(screen) end
+
+---Closes it, and everything opened over it; the menu below shows again.
+function Menu:close() end
+
+---@return boolean
+function Menu:isOpen() end
+
+---Goes to a screen of the document while it is open (the document's `show('screen')`; `back()` returns).
+---@param screen string
+function Menu:show(screen) end
+
+---The menu's name: the document's file name without its extension, or the `name` option (what onMenuAction gets).
+---@return string
+function Menu:name() end
+
+---@class MenuOptions
+---@field name? string What onMenuAction(menu, name) calls it. Default: the file's name without .rml
+---@field pause? boolean Opening pauses the game like F7 (default true); closing gives the pause back as it was
+---@field freeCursor? boolean Opening frees the mouse and shows the cursor (default true)
+---@field blockInput? boolean Keys and clicks do not reach the game while it is open (default true)
+---@field escape? "none"|"back"|"close"|"quit"|boolean What Escape does on top: "close" (default, true) steps back from a
+---screen and closes on the first; "back" only steps back; "quit" quits the game on the first screen; "none" (false) nothing
+
+---Makes the menu for a document of the project, opens it and returns it. The document starts with
+---`<body data-model="mainMenu">`, the file's name without .rml (two menus cannot share a document), and has `settings.<name>`, `labels.<name>`,
+---`enabled.<name>`, `screen` and the events `set('name', value)`, `step('name', 1)`, `toggle('name')`,
+---`show('screen')`, `back()`, `close()`, `quit()`, `open('ui/other.rml')` (another menu on top; `back()` returns) and
+---`action('name')`, which calls `onMenuAction(menu, name)` in the game script. Only the menu opened last takes input.
+---Calling it again with other options changes them. Elements are changed by id with ui.text and the rest, once it is opened.
+---@param path string Relative to assets/
+---@param options? MenuOptions
+---@return Menu
+function ui.menu(path, options) end
+
+---@class LoadingScreenOptions
+---@field document? string Relative to assets/. Default "ui/loading.rml"
+---@field delay? number Seconds a load takes before the screen appears (default 0.2); a load over by then never shows it
+---@field minimumTime? number Seconds it stays once shown (default 0.5)
+
+---Shows a document while a scene loads (engine.loadScene) when that takes more than a moment. `true` takes the defaults,
+---`false` turns it off. The document's data model "loading" has `progress` (0 to 1: the share of the scene's models read,
+---so coarse for a scene with few) and `percent` (0 to 100).
+---@param options? boolean|LoadingScreenOptions Defaults to true
+function ui.loadingScreen(options) end
 
 ---Sets an element's content (the value goes through tostring).
 ---@param id string

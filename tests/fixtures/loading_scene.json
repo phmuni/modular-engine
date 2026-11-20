@@ -1,0 +1,13 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Alien",
+      "components": {
+        "Transform": {},
+        "Model": { "path": "models/alien/alien.glb" }
+      }
+    }
+  ]
+}

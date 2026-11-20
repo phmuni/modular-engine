@@ -30,6 +30,8 @@
 #include "systems/modelQueries.h"
 #include "systems/navigationSystem.h"
 #include "systems/particleSystem.h"
+#include "systems/loadingScreen.h"
+#include "systems/menu.h"
 #include "systems/pauseMenu.h"
 #include "systems/playerSettings.h"
 #include "systems/renderSystem.h"
@@ -312,13 +314,13 @@ void Engine::update(bool &isRunning, bool pollInput) {
   applyHistoryRequest();
 
   // Before the pause state is read below; while it is open the game sees no input
-  auto &pauseMenu = m_systemManager.getSystem<PauseMenu>();
-  pauseMenu.update(inputSystem.wasEscapePressed());
-  inputSystem.setGameInputBlocked(pauseMenu.blocksInput());
+  auto &menus = m_systemManager.getSystem<MenuSystem>();
+  menus.update(inputSystem.wasEscapePressed());
+  inputSystem.setGameInputBlocked(menus.blocksInput());
 
   auto &state = m_systemManager.getSystem<StateSystem>();
   // A cursor the game hid comes back where it has to be clicked
-  m_systemManager.getSystem<WindowSystem>().setCursorVisible(m_cursorVisible || pauseMenu.showsCursor() ||
+  m_systemManager.getSystem<WindowSystem>().setCursorVisible(m_cursorVisible || menus.showsCursor() ||
                                                               state.isToggled(Toggle::ShowUI));
   // Upload models whose background reads finished
   m_systemManager.getSystem<ResourceSystem>().update();
@@ -373,6 +375,9 @@ void Engine::update(bool &isRunning, bool pollInput) {
 
   // Scene switches wait until the app is done with this frame's entities
   applyPendingScene();
+  // The loading screen follows what that left pending
+  m_systemManager.getSystem<LoadingScreen>().update(timeSystem.getUnscaledDeltaTime(), isLoadingScene(),
+                                                     sceneLoadProgress());
 
   // Bodies fall, collide and push; then children follow where their parents went this frame
   m_systemManager.getSystem<PhysicsSystem>().update(timeSystem.getDeltaTime());
@@ -654,9 +659,9 @@ bool Engine::isColliding(Entity a, Entity b) {
 }
 
 void Engine::setMouseCaptured(bool captured) {
-  auto &pauseMenu = m_systemManager.getSystem<PauseMenu>();
-  if (pauseMenu.showsCursor())
-    pauseMenu.setCursorLockOnClose(captured); // the menu has the mouse now; the game gets what it asked for after
+  auto &menus = m_systemManager.getSystem<MenuSystem>();
+  if (menus.showsCursor())
+    menus.setCursorLockOnClose(captured); // a menu has the mouse now; the game gets what it asked for after
   else
     setState(Toggle::CursorLock, captured);
 }
@@ -715,6 +720,19 @@ void Engine::loadScene(std::string_view path) {
   m_pendingSceneModels = m_systemManager.getSystem<SceneSerializer>().modelPaths(*m_pendingScene);
   for (const std::string &model : m_pendingSceneModels)
     resources.preloadModel(model); // returns at once for models already loaded or being read
+}
+
+float Engine::sceneLoadProgress() {
+  if (!m_pendingScene)
+    return 1.0f;
+  if (m_pendingSceneModels.empty())
+    return 0.0f; // nothing to wait for: the switch is this frame's
+  auto &resources = m_systemManager.getSystem<ResourceSystem>();
+  size_t ready = 0;
+  for (const std::string &model : m_pendingSceneModels)
+    if (!resources.isModelPending(model))
+      ++ready;
+  return static_cast<float>(ready) / static_cast<float>(m_pendingSceneModels.size());
 }
 
 void Engine::saveSceneAfter(std::string path, float delaySeconds, bool quitAfter) {
@@ -921,6 +939,8 @@ void Engine::applyPlayModeRequest() {
     m_playSnapshot.reset();
     restoreScene(std::move(snapshot));
     m_systemManager.getSystem<ScriptSystem>().reset();
+    m_systemManager.getSystem<MenuSystem>().closeAll();
+    m_systemManager.getSystem<LoadingScreen>().stop();
     m_time.clear();
     m_tween.clear();
     refreshPinnedMaterials();
@@ -1224,11 +1244,13 @@ float Engine::getAmbientIntensity() {
   return sky ? sky->ambientIntensity : 0.0f;
 }
 
-void Engine::enablePauseMenu(bool enabled) { m_systemManager.getSystem<PauseMenu>().setEnabled(enabled); }
-void Engine::openPauseMenu() { m_systemManager.getSystem<PauseMenu>().open(); }
-void Engine::closePauseMenu() { m_systemManager.getSystem<PauseMenu>().close(); }
-bool Engine::isPauseMenuOpen() { return m_systemManager.getSystem<PauseMenu>().isOpen(); }
-PauseMenu &Engine::pauseMenu() { return m_systemManager.getSystem<PauseMenu>(); }
+void Engine::enablePauseMenu(bool enabled) { pauseMenu().setEnabled(enabled); }
+void Engine::openPauseMenu() { pauseMenu().open(); }
+void Engine::closePauseMenu() { pauseMenu().close(); }
+bool Engine::isPauseMenuOpen() { return pauseMenu().isOpen(); }
+PauseMenu &Engine::pauseMenu() { return m_systemManager.getSystem<MenuSystem>().pauseMenu(); }
+MenuSystem &Engine::menus() { return m_systemManager.getSystem<MenuSystem>(); }
+LoadingScreen &Engine::loadingScreen() { return m_systemManager.getSystem<LoadingScreen>(); }
 PlayerSettings &Engine::settings() { return m_systemManager.getSystem<PlayerSettings>(); }
 
 void Engine::setGameName(std::string_view name) {
@@ -1446,7 +1468,8 @@ void Engine::registerSystems() {
   m_systemManager.insert<GameUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow());
   m_systemManager.insert<SaveData>();
   m_systemManager.insert<PlayerSettings>(*this);
-  m_systemManager.insert<PauseMenu>(*this);
+  m_systemManager.insert<MenuSystem>(*this);
+  m_systemManager.insert<LoadingScreen>(*this);
   m_systemManager.insert<EditorUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),
                                          m_systemManager.getSystem<WindowSystem>().getContext());
 }
