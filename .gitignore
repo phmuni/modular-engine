@@ -30,6 +30,8 @@ assets/models/*
 
 # IDEs
 .vscode/
+# ...except the one Lua projects are created with
+!/templates/common/lua/.vscode/
 
 # macOS
 .DS_Store
