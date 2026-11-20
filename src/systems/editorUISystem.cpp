@@ -28,6 +28,7 @@
 #include "systems/audioSystem.h"
 #include "systems/sceneSerializer.h"
 #include "systems/cameraSystem.h"
+#include "systems/inputSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/renderSystem.h"
 #include "systems/resourceSystem.h"
@@ -51,12 +52,14 @@
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <imgui/imgui.h>
+#include <imgui/imgui_internal.h> // the settings handler that keeps the interface scale in imgui.ini
 #include <imgui/imgui_impl_opengl3.h>
 #include <imgui/imgui_impl_sdl3.h>
 #include <ImGuizmo.h> // after imgui.h, which it does not include itself
 #include <string>
 #include <vector>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -96,13 +99,75 @@ void openInEditor(const std::string &path) {
 }
 } // namespace
 
-EditorUISystem::EditorUISystem(SDL_Window *window, SDL_GLContext glContext) {
+namespace {
+// The style before any scaling: each scale starts from it, so scales do not compound
+ImGuiStyle g_baseStyle;
+constexpr float kBaseFontSize = 13.0f; // ImGui's built-in font
+} // namespace
+
+EditorUISystem::EditorUISystem(SDL_Window *window, SDL_GLContext glContext) : m_window(window) {
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGui::StyleColorsDark();
+  g_baseStyle = ImGui::GetStyle();
 
   ImGui_ImplSDL3_InitForOpenGL(window, glContext);
   ImGui_ImplOpenGL3_Init("#version 330");
+  registerSettings();
+  applyUiScale();
+}
+
+// This ImGui has no FontScaleMain: the font atlas is rebuilt at the scale (and at the framebuffer's density, drawn
+// back at 1/density), and the style's sizes scaled with it. Before NewFrame, never inside a frame.
+void EditorUISystem::applyUiScale() {
+  const float density = std::max(SDL_GetWindowPixelDensity(m_window), 1.0f);
+  const float displayScale = SDL_GetWindowDisplayScale(m_window);
+  const float automatic = displayScale > 0.0f ? displayScale / density : 1.0f;
+  m_uiScale = std::clamp(m_uiScaleUser > 0.0f ? m_uiScaleUser : automatic, kMinUiScale, kMaxUiScale);
+  if (m_uiScale == m_appliedScale && density == m_appliedDensity)
+    return;
+  m_appliedScale = m_uiScale;
+  m_appliedDensity = density;
+
+  ImGuiIO &io = ImGui::GetIO();
+  io.Fonts->Clear();
+  ImFontConfig font;
+  font.SizePixels = kBaseFontSize * m_uiScale * density;
+  io.Fonts->AddFontDefault(&font);
+  io.FontGlobalScale = 1.0f / density;
+  ImGui_ImplOpenGL3_DestroyFontsTexture(); // NewFrame builds it again
+  ImGuiStyle &style = ImGui::GetStyle();
+  style = g_baseStyle;
+  style.ScaleAllSizes(m_uiScale);
+}
+
+// "[ModularEditor][UI]" with the scale the user chose, next to the panels' places in imgui.ini
+void EditorUISystem::registerSettings() {
+  ImGuiSettingsHandler handler;
+  handler.TypeName = "ModularEditor";
+  handler.TypeHash = ImHashStr("ModularEditor");
+  handler.UserData = this;
+  handler.ReadOpenFn = [](ImGuiContext *, ImGuiSettingsHandler *, const char *name) -> void * {
+    static int entry;
+    return std::strcmp(name, "UI") == 0 ? &entry : nullptr;
+  };
+  handler.ReadLineFn = [](ImGuiContext *, ImGuiSettingsHandler *handler, void *, const char *line) {
+    float scale = 0.0f;
+    if (std::sscanf(line, "Scale=%f", &scale) == 1) {
+      auto *editor = static_cast<EditorUISystem *>(handler->UserData);
+      editor->m_uiScaleUser = scale > 0.0f ? std::clamp(scale, kMinUiScale, kMaxUiScale) : 0.0f;
+    }
+  };
+  handler.WriteAllFn = [](ImGuiContext *, ImGuiSettingsHandler *handler, ImGuiTextBuffer *out) {
+    const auto *editor = static_cast<EditorUISystem *>(handler->UserData);
+    out->appendf("[%s][UI]\nScale=%.3f\n\n", handler->TypeName, editor->m_uiScaleUser);
+  };
+  ImGui::AddSettingsHandler(&handler);
+}
+
+float EditorUISystem::panelWidth(float base) const {
+  // Never more than a bit over a quarter of the window, so the view keeps its middle
+  return std::min(ui(base), ImGui::GetIO().DisplaySize.x * 0.27f);
 }
 
 void EditorUISystem::fileDialogCallback(void *userdata, const char *const *filelist, int /*filter*/) {
@@ -130,6 +195,7 @@ void EditorUISystem::pickFileButton(const char *id, char *buf, int /*bufSize*/, 
 }
 
 void EditorUISystem::beginFrame() {
+  applyUiScale();
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
@@ -145,15 +211,26 @@ void EditorUISystem::update(SystemManager &systemManager) {
   auto &state = systemManager.getSystem<StateSystem>();
   auto &windowSystem = systemManager.getSystem<WindowSystem>();
 
-  bool cursorLocked = state.isToggled(Toggle::CursorLock);
-  windowSystem.setCursor(cursorLocked);
-
   m_renderUI = state.isToggled(Toggle::ShowUI);
   m_showStats = state.isToggled(Toggle::ShowStats);
+
+  // Opening the editor gives the cursor back (a game that locks it for aiming would leave the panels unreachable),
+  // and closing it gives the game the lock it had
+  if (m_renderUI && !m_wasShown) {
+    m_lockBeforeShown = state.isToggled(Toggle::CursorLock);
+    state.setToggle(Toggle::CursorLock, false);
+  } else if (!m_renderUI && m_wasShown && !state.isToggled(Toggle::CursorLock)) {
+    state.setToggle(Toggle::CursorLock, m_lockBeforeShown);
+  }
+  m_wasShown = m_renderUI;
+
+  // Looking around with the right button holds the mouse like the lock does
+  windowSystem.setCursor(state.isToggled(Toggle::CursorLock) ||
+                         systemManager.getSystem<InputSystem>().isEditorFlying());
 }
 
 namespace {
-constexpr float kPropertiesWidth = 380.0f;
+constexpr float kExplorerWidth = 260.0f, kPropertiesWidth = 340.0f; // at scale 1
 
 // Name of the key bound to a toggle in the default keybinds, or nullptr
 const char *toggleKeyName(Toggle toggle) {
@@ -180,6 +257,28 @@ void EditorUISystem::recordFrame(float frameSeconds, float workSeconds) {
 
   m_statsElapsed = m_statsWork = m_statsMaxFrame = 0.0f;
   m_statsFrames = 0;
+}
+
+void EditorUISystem::renderViewportHint(SystemManager &systemManager) {
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  if (!cameraSystem.canNavigate(systemManager.getSystem<StateSystem>()))
+    return;
+  const ImGuiViewport *viewport = ImGui::GetMainViewport();
+  const float left = m_explorerWidth, right = viewport->WorkSize.x - m_propertiesWidth;
+  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + (left + right) * 0.5f, viewport->WorkPos.y + viewport->WorkSize.y - ui(10.0f)),
+                          ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+  ImGui::SetNextWindowBgAlpha(0.45f);
+  constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
+  if (ImGui::Begin("##viewportHint", nullptr, kFlags)) {
+    if (cameraSystem.isNavigating()) {
+      ImGui::Text("Flying   speed x%.2f   Shift: faster   Q/E: down/up", cameraSystem.getFlySpeedScale());
+    } else {
+      ImGui::TextDisabled("Right-drag: look  |  WASD: fly  |  Wheel: speed");
+    }
+  }
+  ImGui::End();
 }
 
 void EditorUISystem::renderStatsOverlay(float rightInset) {
@@ -209,15 +308,19 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
 
-  // Starts next to the Scene Explorer; movable and collapsible
-  ImGui::SetNextWindowPos(ImVec2(290.0f, 10.0f), ImGuiCond_FirstUseEver);
-  ImGui::SetNextWindowSize(ImVec2(340.0f, 0.0f), ImGuiCond_FirstUseEver);
+  // Starts under the Scene Explorer, in the left column, so the view stays free; movable and collapsible
+  const ImGuiIO &windowIO = ImGui::GetIO();
+  const float explorerHeight = windowIO.DisplaySize.y * 0.55f;
+  const ImGuiCond placement = m_resetLayout ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+  m_resetLayout = false;
+  ImGui::SetNextWindowPos(ImVec2(0.0f, explorerHeight), placement);
+  ImGui::SetNextWindowSize(ImVec2(panelWidth(kExplorerWidth), windowIO.DisplaySize.y - explorerHeight), placement);
   if (!ImGui::Begin("Settings")) {
     ImGui::End();
     return;
   }
   // Leave room for slider labels
-  ImGui::PushItemWidth(-ImGui::GetFontSize() * 7.0f);
+  ImGui::PushItemWidth(-ImGui::GetFontSize() * 6.0f);
 
   auto toggleCheckbox = [&](const char *label, Toggle toggle, const char *tooltip = nullptr) {
     bool value = state.isToggled(toggle);
@@ -231,7 +334,7 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     }
   };
 
-  if (ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::CollapsingHeader("Performance")) {
     const RenderStats &stats = renderSystem.getRenderer().getStats();
     ImGui::Text("%.0f FPS  |  %.2f ms frame", m_shownFps, m_shownFrameMs);
     ImGui::Text("Work before swap: %.2f ms", m_shownWorkMs);
@@ -253,7 +356,7 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     toggleCheckbox("VSync", Toggle::VSync, "Off shows how fast the engine can actually run");
   }
 
-  if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::CollapsingHeader("Rendering")) {
     toggleCheckbox("Wireframe", Toggle::Wireframe);
     toggleCheckbox("Shadows", Toggle::Shadows);
     toggleCheckbox("Gamma-correct lighting", Toggle::GammaCorrect, "Lights in linear space; off is the old look");
@@ -264,7 +367,7 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
       ImGui::SetTooltip("The walkable cells of the navigation map (nav.build) and the last path found");
   }
 
-  if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::CollapsingHeader("Simulation")) {
     toggleCheckbox("Paused", Toggle::Paused, "Freezes particles and game logic; the camera keeps moving");
     float timeScale = timeSystem.getTimeScale();
     if (ImGui::SliderFloat("Time scale", &timeScale, 0.0f, 4.0f, "%.2fx"))
@@ -273,15 +376,47 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
       timeSystem.setTimeScale(1.0f);
   }
 
+  if (ImGui::CollapsingHeader("Interface", ImGuiTreeNodeFlags_DefaultOpen)) {
+    int percent = static_cast<int>(std::lround(m_uiScale * 100.0f));
+    if (ImGui::SliderInt("UI scale", &percent, static_cast<int>(kMinUiScale * 100.0f),
+                         static_cast<int>(kMaxUiScale * 100.0f), "%d%%")) {
+      m_uiScaleUser = static_cast<float>(percent) / 100.0f;
+      ImGui::MarkIniSettingsDirty();
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Size of the panels and text. Starts from the display's scale (%.0f%% here); kept between runs",
+                        systemManager.getSystem<WindowSystem>().getAutoUiScale() * 100.0f);
+    if (ImGui::SmallButton("Reset scale")) {
+      m_uiScaleUser = 0.0f;
+      ImGui::MarkIniSettingsDirty();
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Reset layout"))
+      m_resetLayout = true;
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Puts this panel back under the Scene Explorer");
+    if (ImGui::Button(m_panelsHidden ? "Show panels" : "Hide panels"))
+      m_panelsHidden = !m_panelsHidden;
+    ImGui::SameLine();
+    ImGui::TextDisabled("[Tab]");
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Hides every panel and keeps the editor going: click to select, the gizmo, flying the camera");
+  }
+
   if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
     toggleCheckbox("Free camera", Toggle::CameraMovement,
-                   "WASD + mouse while the cursor is locked; examples that drive the camera let go of it meanwhile");
-    if (state.isToggled(Toggle::CameraMovement) && !state.isToggled(Toggle::CursorLock)) {
-      const char *lockKey = toggleKeyName(Toggle::CursorLock);
-      ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "  Lock the cursor (%s) to look around", lockKey ? lockKey : "Cursor lock");
-    }
-    toggleCheckbox("Fly mode", Toggle::CameraFly, "Space and Shift move up and down");
-    toggleCheckbox("Cursor lock", Toggle::CursorLock);
+                   "Fly the camera yourself in any mode, instead of the game or its CameraRig: hold the right mouse\n"
+                   "button in the view and use W A S D, or lock the cursor. Off by default; a game drives its camera.\n"
+                   "While editing (Edit), the right button flies the camera without this.");
+    if (engine.getPlayMode() == Engine::PlayMode::Editing)
+      ImGui::TextDisabled("  Editing: right-drag in the view to fly");
+    else if (!state.isToggled(Toggle::CameraMovement))
+      ImGui::TextDisabled("  The game drives the camera");
+    else if (!state.isToggled(Toggle::CursorLock))
+      ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "  Right-drag in the view to fly (or lock: %s)",
+                         toggleKeyName(Toggle::CursorLock) ? toggleKeyName(Toggle::CursorLock) : "Cursor lock");
+    toggleCheckbox("Fly mode", Toggle::CameraFly, "Space and Shift move up and down while the cursor is locked");
+    toggleCheckbox("Cursor lock", Toggle::CursorLock, "Holds the mouse for looking around (with the free camera on or while editing)");
 
     Entity cameraEntity = cameraSystem.getActiveCamera();
     if (auto *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr) {
@@ -293,7 +428,7 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     }
   }
 
-  if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::CollapsingHeader("Scene")) {
     // Follows the engine's current scene, so Save writes back to the file that was loaded
     static char scenePath[256] = "../assets/scenes/untitled.json";
     static std::string followedPath;
@@ -331,7 +466,7 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     }
   }
 
-  if (ImGui::CollapsingHeader("Audio", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::CollapsingHeader("Audio")) {
     auto &audio = systemManager.getSystem<AudioSystem>();
     if (!audio.isAvailable()) {
       ImGui::TextDisabled("No audio device");
@@ -349,7 +484,7 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     }
   }
 
-  if (ImGui::CollapsingHeader("Capture", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::CollapsingHeader("Capture")) {
     if (ImGui::Button("Take screenshot"))
       engine.captureScreenshot(EngineConfig::resolvePath(EngineConfig::SCREENSHOT_PATH));
     ImGui::SameLine();
@@ -394,36 +529,51 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
     ImGui::PopStyleColor();
   }
 
+  // The panels' widths this frame (what the toolbar and the overlays keep clear of)
+  const bool panels = m_renderUI && !m_panelsHidden;
+  m_explorerWidth = panels ? panelWidth(kExplorerWidth) : 0.0f;
+  m_propertiesWidth = panels && selectedEntity != -1 ? panelWidth(kPropertiesWidth) : 0.0f;
   if (m_showStats)
-    renderStatsOverlay(m_renderUI && selectedEntity != -1 ? kPropertiesWidth : 0.0f);
+    renderStatsOverlay(m_propertiesWidth);
 
   if (!m_renderUI) {
     engine.endCheckpoint(); // hiding the panels (F2) mid-edit ends the edit
     return;
   }
 
-  handleHistoryShortcuts(engine);
+  // Tab hides the panels and brings them back (not while typing)
+  const ImGuiIO &io = ImGui::GetIO();
+  if (ImGui::IsKeyPressed(ImGuiKey_Tab, false) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt &&
+      !systemManager.getSystem<CameraSystem>().isNavigating())
+    m_panelsHidden = !m_panelsHidden;
+
+  handleHistoryShortcuts(engine, systemManager);
   handleEditShortcuts(engine, systemManager, componentManager);
   beginEditTracking(engine);
-  renderSettingsPanel(engine, entityManager, systemManager, componentManager);
+  if (panels)
+    renderSettingsPanel(engine, entityManager, systemManager, componentManager);
   if (m_showNavigation)
     drawNavigation(engine, systemManager, componentManager);
-  renderSceneExplorer(engine, systemManager, componentManager);
-  renderPlayToolbar(engine);
+  if (panels)
+    renderSceneExplorer(engine, systemManager, componentManager);
+  renderPlayToolbar(engine, systemManager);
   m_gizmoShown = false;
   if (selectedEntity != -1) {
-    renderPropertiesPanel(engine, systemManager, componentManager);
+    if (panels)
+      renderPropertiesPanel(engine, systemManager, componentManager);
     drawSelectionBox(systemManager, componentManager);
     renderGizmo(systemManager, componentManager);
   }
+  renderViewportHint(systemManager);
   handleClickSelection(engine, systemManager);
   endEditTracking(engine);
 }
 
-void EditorUISystem::handleHistoryShortcuts(Engine &engine) {
-  // Not while a text field has the keyboard: it undoes its own typing (and InputSystem keeps these keys from the game)
+void EditorUISystem::handleHistoryShortcuts(Engine &engine, SystemManager &systemManager) {
+  // Not while a text field has the keyboard: it undoes its own typing (and InputSystem keeps these keys from the game).
+  // Nor while flying the camera: Ctrl is a key for going down there.
   const ImGuiIO &io = ImGui::GetIO();
-  if (!io.KeyCtrl || io.KeyAlt || io.WantTextInput)
+  if (!io.KeyCtrl || io.KeyAlt || io.WantTextInput || systemManager.getSystem<CameraSystem>().isNavigating())
     return;
   if (ImGui::IsKeyPressed(ImGuiKey_Z))
     io.KeyShift ? engine.redo() : engine.undo();
@@ -438,7 +588,7 @@ void EditorUISystem::handleEditShortcuts(Engine &engine, SystemManager &systemMa
     m_deleteRequested = false;
     deleteSelected(engine, systemManager);
   }
-  if (io.WantTextInput || io.KeyAlt)
+  if (io.WantTextInput || io.KeyAlt || systemManager.getSystem<CameraSystem>().isNavigating())
     return;
   if (io.KeyCtrl && !io.KeyShift) {
     if (ImGui::IsKeyPressed(ImGuiKey_D, false))
@@ -665,7 +815,7 @@ void EditorUISystem::renderGizmoControls() {
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("A handle on each face: dragging one moves that face alone, the opposite face stays put");
   ImGui::SameLine();
-  ImGui::TextDisabled("[W/E/R/T]");
+  ImGui::TextDisabled("[WERT]");
   ImGui::Checkbox("Local axes##gizmo", &m_gizmoLocal);
   ImGui::SameLine();
   ImGui::Checkbox("Snap##gizmo", &m_gizmoSnap);
@@ -728,8 +878,9 @@ void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager 
     return;
 
   ImGuiIO &io = ImGui::GetIO();
-  // Shortcuts, unless a text field has the keyboard (the free camera only reads WASD with the cursor locked)
-  if (!io.WantTextInput && !ImGuizmo::IsUsing() && m_resize.axis < 0) {
+  // Shortcuts, unless a text field has the keyboard, or the camera is being flown: W is forward there, not Move
+  if (!io.WantTextInput && !ImGuizmo::IsUsing() && m_resize.axis < 0 &&
+      !systemManager.getSystem<CameraSystem>().isNavigating()) {
     if (ImGui::IsKeyPressed(ImGuiKey_W, false))
       m_gizmoOperation = GizmoOperation::Move;
     if (ImGui::IsKeyPressed(ImGuiKey_E, false))
@@ -1151,7 +1302,7 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
   if (!ImGui::CollapsingHeader("Hierarchy", ImGuiTreeNodeFlags_DefaultOpen))
     return;
   auto &transformSystem = systemManager.getSystem<TransformSystem>();
-  ImGui::BeginChild("Hierarchy", ImVec2(0, 120.0f), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
+  ImGui::BeginChild("Hierarchy", ImVec2(0, ui(90.0f)), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
 
   // Families only: the entities that have a parent or children, from their roots down
   std::vector<Entity> roots;
@@ -1249,12 +1400,13 @@ void EditorUISystem::renderParentAndPrefab(SystemManager &systemManager, Compone
     ImGui::SetTooltip("Saves this entity and its children; Add Entity > Prefab places copies of it");
 }
 
-void EditorUISystem::renderPlayToolbar(Engine &engine) {
+void EditorUISystem::renderPlayToolbar(Engine &engine, SystemManager &systemManager) {
   const ImGuiIO &io = ImGui::GetIO();
   const Engine::PlayMode mode = engine.getPlayMode();
 
   // Ctrl+P: Play from Editing, Stop while testing, and freeze a running game
-  if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_P, false) && !io.WantTextInput) {
+  if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_P, false) && !io.WantTextInput &&
+      !systemManager.getSystem<CameraSystem>().isNavigating()) {
     if (mode == Engine::PlayMode::Editing)
       engine.play();
     else if (mode == Engine::PlayMode::Testing)
@@ -1264,8 +1416,8 @@ void EditorUISystem::renderPlayToolbar(Engine &engine) {
   }
 
   // A small bar at the top right of the view, left of the Properties panel when it is open
-  const float right = io.DisplaySize.x - (selectedEntity != -1 ? kPropertiesWidth : 0.0f) - 8.0f;
-  ImGui::SetNextWindowPos(ImVec2(right, 6.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+  const float right = io.DisplaySize.x - m_propertiesWidth - ui(8.0f);
+  ImGui::SetNextWindowPos(ImVec2(right, ui(6.0f)), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
   ImGui::SetNextWindowBgAlpha(0.85f);
   ImGui::Begin("##PlayToolbar", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
@@ -1284,13 +1436,19 @@ void EditorUISystem::renderPlayToolbar(Engine &engine) {
   historyButton("Redo", engine.canRedo(), "Does the undone edit again (Ctrl+Shift+Z or Ctrl+Y)",
                 [&] { engine.redo(); });
   ImGui::SameLine();
+  if (ImGui::Button(m_panelsHidden ? "Panels" : "Hide"))
+    m_panelsHidden = !m_panelsHidden;
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("%s the panels, keeping the editor going: click to select, the gizmo, the camera (Tab)",
+                      m_panelsHidden ? "Shows" : "Hides");
+  ImGui::SameLine();
   ImGui::TextDisabled("|");
   ImGui::SameLine();
   const ImVec4 green(0.25f, 0.65f, 0.3f, 1.0f), red(0.75f, 0.2f, 0.2f, 1.0f), blue(0.25f, 0.45f, 0.8f, 1.0f);
-  auto coloredButton = [](const char *label, const ImVec4 &color) {
+  auto coloredButton = [this](const char *label, const ImVec4 &color) {
     ImGui::PushStyleColor(ImGuiCol_Button, color);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(color.x + 0.1f, color.y + 0.1f, color.z + 0.1f, 1.0f));
-    const bool pressed = ImGui::Button(label, ImVec2(70.0f, 0.0f));
+    const bool pressed = ImGui::Button(label, ImVec2(ui(70.0f), 0.0f));
     ImGui::PopStyleColor(2);
     return pressed;
   };
@@ -1308,7 +1466,7 @@ void EditorUISystem::renderPlayToolbar(Engine &engine) {
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Runs the game from the scene as it is now (Ctrl+P); Stop puts everything back");
     ImGui::SameLine();
-    if (ImGui::Button("Resume", ImVec2(70.0f, 0.0f)))
+    if (ImGui::Button("Resume", ImVec2(ui(70.0f), 0.0f)))
       engine.resume();
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Unfreezes the game and keeps whatever happens (nothing to go back to)");
@@ -1334,10 +1492,10 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
+  // Docked at the left, the top part of the column (Settings is below it); collapsible to its title bar
   ImGui::SetNextWindowPos(ImVec2(0, 0));
-  ImGui::SetNextWindowSize(ImVec2(280, io.DisplaySize.y));
-  ImGui::Begin("Scene Explorer", nullptr,
-               ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+  ImGui::SetNextWindowSize(ImVec2(m_explorerWidth, io.DisplaySize.y * 0.55f));
+  ImGui::Begin("Scene Explorer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
   ImVec2 avail = ImGui::GetContentRegionAvail();
   float buttonHeight = ImGui::GetFrameHeightWithSpacing();
@@ -1354,7 +1512,7 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
     return std::string(icon) + " " + name + "##" + std::to_string(e);
   };
 
-  constexpr float kSectionHeight = 120.0f; // initial height
+  const float kSectionHeight = ui(90.0f); // initial height
   auto section = [&](const char *header, const char *icon, const std::vector<Entity> &entities) {
     if (!ImGui::CollapsingHeader(header, ImGuiTreeNodeFlags_DefaultOpen))
       return;
@@ -1479,12 +1637,12 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
-  float propW = kPropertiesWidth;
+  // Docked at the right, the whole height; collapsible to its title bar
+  const float propW = m_propertiesWidth;
   ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - propW, 0));
   ImGui::SetNextWindowSize(ImVec2(propW, io.DisplaySize.y));
   bool propOpen = true;
-  ImGui::Begin("Properties", &propOpen,
-               ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+  ImGui::Begin("Properties", &propOpen, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
   if (!propOpen) {
     selectedEntity = -1;

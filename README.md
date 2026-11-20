@@ -216,9 +216,9 @@ In the black hole example and the model viewer the camera orbits on its own: `â†
 | Key | Action |
 | --- | --- |
 | `F1` | Wireframe |
-| `F2` | Debug UI (scene explorer, properties, settings) |
+| `F2` | Debug UI (scene explorer, properties, settings), docked at the sides so the middle of the view stays free; it gives the cursor back, and the cursor lock returns when it closes |
 | `F3` | Shadows |
-| `F4` | Camera fly mode |
+| `F4` | Camera fly mode (up and down with the locked cursor) |
 | `F5` | Performance overlay |
 | `F6` | VSync |
 | `F7` | Pause the simulation |
@@ -228,7 +228,9 @@ In the black hole example and the model viewer the camera orbits on its own: `â†
 | `F12` | Screenshot (`bin/screenshot.bmp`) |
 | `Escape` | The pause menu, in games that enable it |
 | `Right Alt` / `Right Option` | Cursor lock |
-| `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera, when enabled (with the cursor locked) |
+| Hold the right mouse button in the view | Editor camera, while editing (**Edit**): the mouse looks, `W` `A` `S` `D` fly (`E` or `Space` up, `Q` or `Ctrl` down, `Shift` faster, the wheel changes the speed). The game gets none of it, and `W` `E` `R` `T` keep their gizmo meaning off the button. With the free camera on (Settings) it works in any mode |
+| `W` `A` `S` `D`, `Space`, `Shift` + mouse | Free camera with the cursor locked (`Right Alt`), when it is on in Settings or while editing |
+| `Tab` | Editor: hide or show every panel; the editor stays on (selecting, the gizmo, the camera). Settings > Interface has the UI scale (75 % to 200 %, automatic from the display by default, kept in `imgui.ini`) |
 | Left click in the scene | Editor: select the model under the cursor (empty space clears the selection; debug UI shown, cursor unlocked) |
 | `Ctrl` + `P` | Editor: freeze the game to edit the scene, Play from there, Stop to put the scene back (also the bar at the top) |
 | `Ctrl` + `Z` / `Ctrl` + `Shift` + `Z` or `Ctrl` + `Y` | Editor: undo / redo the last scene edit (also the Undo and Redo buttons in the bar at the top) |
@@ -470,7 +472,7 @@ engine.camera().follow(player, rig);
 ```
 
 CameraSystem moves the camera after physics and the game's update, so it never trails a frame behind a character. Who
-wins: the free camera (Settings) switches the rig off, like it does `lookAt`, and a `lookAt` in a frame wins over the
+wins: the free camera (Settings, off by default) switches the rig off, like it does `lookAt` (so does flying the camera by hand while editing, until the game runs again), and a `lookAt` in a frame wins over the
 rig for that frame (the rig takes over again, from where it should be, when `lookAt` stops). A scene load replaces the
 camera entity: call `follow` again in `onSceneLoaded`, or keep the rig in the scene file.
 

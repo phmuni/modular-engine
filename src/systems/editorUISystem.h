@@ -35,6 +35,29 @@ public:
 private:
   bool m_showStats = false;
 
+  // Interface scale. Automatic (from the display: 1 on macOS, the content scale on Windows) until the user picks
+  // one in Settings (0 = automatic); kept in imgui.ini. Panels and fonts are drawn at it, and the fonts at the
+  // framebuffer's pixel density too, so they stay sharp on high density screens.
+  static constexpr float kMinUiScale = 0.75f, kMaxUiScale = 2.0f;
+  SDL_Window *m_window = nullptr;
+  float m_uiScaleUser = 0.0f;
+  float m_uiScale = 1.0f; // the one in effect, in window units
+  float m_appliedScale = 0.0f;
+  float m_appliedDensity = 0.0f;
+  void applyUiScale();
+  void registerSettings();
+  // Layout, all from the window's size and the scale
+  float m_explorerWidth = 0.0f;   // this frame's left and right panels, 0 when not shown
+  float m_propertiesWidth = 0.0f;
+  float panelWidth(float base) const;
+  float ui(float size) const { return size * m_uiScale; }
+  bool m_panelsHidden = false;    // only the view, the toolbar and the gizmo: the editor stays on (Tab)
+  bool m_resetLayout = false;     // put the Settings panel back where it starts, at the next frame
+  bool m_wasShown = false;        // the debug UI was on last frame
+  bool m_lockBeforeShown = false; // the cursor lock the game had when the debug UI came up
+  // The hint over the view about flying the camera
+  void renderViewportHint(SystemManager &systemManager);
+
   // Gizmo on the selected entity: move (W), rotate (E) or scale (R), in world or local axes, optionally snapped
   enum class GizmoOperation { Move, Rotate, Scale, Resize };
   GizmoOperation m_gizmoOperation = GizmoOperation::Move;
@@ -102,9 +125,9 @@ private:
                            ComponentManager &componentManager);
   void renderSceneExplorer(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   // Undo, Redo, Edit (freeze), Play and Stop, at the top of the screen
-  void renderPlayToolbar(Engine &engine);
+  void renderPlayToolbar(Engine &engine, SystemManager &systemManager);
   // Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y redo (Cmd on macOS, as for ImGui's Ctrl)
-  void handleHistoryShortcuts(Engine &engine);
+  void handleHistoryShortcuts(Engine &engine, SystemManager &systemManager);
   // Ctrl+D duplicates the selected entity and its children, Ctrl+C / Ctrl+V copy and paste them through the system
   // clipboard, Delete (Backspace too) deletes them; each is one undo step
   void handleEditShortcuts(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
