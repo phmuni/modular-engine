@@ -1,13 +1,13 @@
-// Main entry point for the application. Sets up the engine and runs the main loop with the provided application logic.
+// Entry point of bin/engine, the built-in examples. Sets up the engine and runs the chosen example.
 //
 // Usage: engine [aliens|blackhole|stress|view <model.obj|.glb>|scene [file.json]] [options]; engine --help lists them
 
 #include "foundation/core/engine.h"
-#include "game/blackHole.h"
-#include "game/sceneBrowser.h"
-#include "game/spaceAliens.h"
-#include "game/stress.h"
-#include "game/viewer.h"
+#include "blackHole.h"
+#include "sceneBrowser.h"
+#include "spaceAliens.h"
+#include "stress.h"
+#include "viewer.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdio>

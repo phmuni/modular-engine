@@ -339,7 +339,7 @@ The optimizations are instanced drawing for opaque models and shadows, sparse-se
 
 ## Usage
 
-The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`src/game/`](src/game/) contains four examples, a complete game (Space Aliens), a black hole scene, a stress scene for benchmarking and a model viewer, all launched from [`src/main.cpp`](src/main.cpp) (`./bin/engine --help` lists them).
+The engine exposes an `App` base class — override `setup()` and `update()` to implement your game logic. [`examples/`](examples/) contains four examples, a complete game (Space Aliens), a black hole scene, a stress scene for benchmarking and a model viewer, all launched from [`examples/main.cpp`](examples/main.cpp) (`./bin/engine --help` lists them).
 
 ### Creating a game
 

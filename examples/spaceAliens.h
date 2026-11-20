@@ -12,7 +12,7 @@
 #include "foundation/core/engine.h"
 #include "foundation/core/logger.h"
 #include "foundation/core/random.h"
-#include "game/components.h"
+#include "components.h"
 #include "systems/inputSystem.h"
 #include "systems/stateSystem.h"
 #include <RmlUi/Core.h>

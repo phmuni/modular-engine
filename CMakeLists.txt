@@ -136,10 +136,8 @@ CPMAddPackage(
 set(EXTERNAL_DIR "${ENGINE_DIR}/external")
 
 # --- Source files ---
-# The engine is everything in src/ but the examples (src/game) and their entry point (src/main.cpp)
+# The engine library is everything in src/; the examples (examples/) are built on top of it, like any game
 file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "${ENGINE_DIR}/src/*.cpp")
-list(FILTER SOURCE_FILES EXCLUDE REGEX "/src/main\\.cpp$")
-list(FILTER SOURCE_FILES EXCLUDE REGEX "/src/game/")
 file(GLOB GLAD_SOURCE "${EXTERNAL_DIR}/glad/*.cpp")
 file(GLOB IMGUI_SOURCE "${EXTERNAL_DIR}/imgui/*.cpp")
 list(FILTER IMGUI_SOURCE EXCLUDE REGEX "imgui_demo\\.cpp$")
@@ -266,7 +264,7 @@ endfunction()
 
 # --- Examples ---
 if(MODULAR_ENGINE_BUILD_EXAMPLES)
-  modular_engine_add_game(engine OUTPUT_DIR "${MODULAR_ENGINE_BIN_DIR}" SOURCES "${ENGINE_DIR}/src/main.cpp"
+  modular_engine_add_game(engine OUTPUT_DIR "${MODULAR_ENGINE_BIN_DIR}" SOURCES "${ENGINE_DIR}/examples/main.cpp"
                           ENGINE_ASSETS_IN_PLACE)
 endif()
 
