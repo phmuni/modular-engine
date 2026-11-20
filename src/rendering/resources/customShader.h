@@ -34,10 +34,13 @@ struct CustomShaderCode {
 
 // The file's text is GLSL 330 with these additions, all optional but at least one of the two functions:
 //   uniform float speed = 1.0;            // parameters: float, vec2, vec3, vec4 and sampler2D, one per declaration
+//                                         // (up to 6 textures per material: unit 15 is the ambient occlusion's)
 //   void surface(inout Surface s) { }     // after base color and textures, before lighting
 //   void vertex(inout VertexData v) { }   // moves the vertex (world space) before projection
 //   #pragma blend                         // draw with alpha blending (the transparent pass)
 //   #pragma noshadow                      // the part casts no shadow (otherwise vertex() and discard show in it)
+// At most 6 sampler2D parameters per material: the texture units after the engine's own run out at 14 (15 is the
+// ambient occlusion's).
 // `time` (seconds) is provided by the engine; do not declare it.
 CustomShaderCode parseCustomShader(const std::string &text);
 
