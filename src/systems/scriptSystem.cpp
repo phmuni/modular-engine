@@ -853,6 +853,21 @@ struct ScriptSystem::Impl {
     });
     api.set_function("setFullscreen", [this](bool enabled) { engine.setFullscreen(enabled); });
     api.set_function("isFullscreen", [this]() { return engine.isFullscreen(); });
+    // The engine's switches by name (see TOGGLE_NAMES): engine.setToggle("freeCamera", true)
+    const auto toggleNamed = [](const std::string &name) {
+      if (const auto toggle = toggleFromName(name))
+        return *toggle;
+      std::string known;
+      for (const auto &entry : TOGGLE_NAMES)
+        known += (known.empty() ? "" : ", ") + std::string(entry.first);
+      throw std::runtime_error("engine.setToggle: \"" + name + "\" is not a toggle (" + known + ")");
+    };
+    api.set_function("setToggle", [this, toggleNamed](const std::string &name, bool on) {
+      engine.setState(toggleNamed(name), on);
+    });
+    api.set_function("isToggled", [this, toggleNamed](const std::string &name) {
+      return engine.getState(toggleNamed(name));
+    });
     // The color the image is cleared to, behind the skybox panorama; kept in the scene (see Engine::setSkyColor)
     api.set_function("setSkyColor", [this](const glm::vec3 &color) { engine.setSkyColor(color); });
     api.set_function("getSkyColor", [this]() { return engine.getSkyColor(); });

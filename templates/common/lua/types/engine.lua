@@ -393,6 +393,31 @@ function engine.setFullscreen(enabled) end
 ---@return boolean
 function engine.isFullscreen() end
 
+---@alias engine.Toggle
+---| "freeCamera"          # the player flies the camera (WASD + mouse) instead of the game; off by default
+---| "freeCameraVertical"  # the free camera also moves up and down (Space / Shift); on by default
+---| "cursorLock"          # the mouse is held by the window, for looking around
+---| "wireframe"
+---| "showUI"              # the editor (F2)
+---| "shadows"
+---| "showStats"           # the performance overlay (F5)
+---| "vsync"
+---| "paused"              # the simulation stops; the camera and UI keep going
+---| "gammaCorrect"
+---| "uiDebugger"          # the game UI debugger (F9)
+---| "bloom"
+
+---Turns one of the engine's switches on or off, the same ones the F keys and the editor's Settings change. An unknown
+---name is an error that lists the known ones.
+---@param name engine.Toggle
+---@param on boolean
+function engine.setToggle(name, on) end
+
+---Whether one of the engine's switches is on.
+---@param name engine.Toggle
+---@return boolean
+function engine.isToggled(name) end
+
 ---Closes the game at the end of this frame.
 function engine.quit() end
 
