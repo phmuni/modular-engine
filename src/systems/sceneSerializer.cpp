@@ -133,6 +133,7 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent<RigidBody>("RigidBody");
   registerComponent<CharacterController>("CharacterController");
   registerComponent<Animator>("Animator");
+  registerComponent<Script>("Script");
 
   registerComponent(
       "Hidden",

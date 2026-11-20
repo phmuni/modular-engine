@@ -66,6 +66,8 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
+| **Lua Scripting**          | Entity and game scripts with hot reload, the engine's API, and C++ functions handed to them (Lua 5.4, sol2) |
+| **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds and plays them, opens them in VS Code |
 | **Skeletal Animation**     | glTF skins and clips (linear, step, cubic spline), crossfades, rigid parts following their nodes, animated shadows |
 | **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
@@ -281,26 +283,88 @@ The engine exposes an `App` base class — override `setup()` and `update()` to 
 
 ### Creating a game
 
-A game is its own project that builds against the engine as a library (`modular_engine`). Create one from
-[`templates/game`](templates/game):
+A game is its own project, in one of three kinds:
+
+| Kind | The game's code | Build |
+| --- | --- | --- |
+| **Lua** | Scripts in `assets/scripts/` | None: the engine's prebuilt runner plays it, and scripts reload when saved |
+| **C++** | `src/*.cpp`, against the engine as a library | CMake |
+| **C++ + Lua** | Both: C++ hands functions to the scripts | CMake for the C++; scripts reload when saved |
+
+The **launcher** creates, builds and plays them. Build the engine once, then open it:
 
 ```bash
-python3 tools/new_game.py ~/Games/Asteroids    # copies the template, named after the folder
-cd ~/Games/Asteroids
 cmake -B build && cmake --build build -j
-./bin/Asteroids
+./bin/launcher/launcher
 ```
 
-The template is a small working game (drive a box, collect coins) whose level is a scene file you edit with `F2`.
-Its `CMakeLists.txt` points at this checkout (`MODULAR_ENGINE_DIR`; left empty, the engine is downloaded from GitHub)
-and builds `src/*.cpp` with `modular_engine_add_game(...)`, which puts the executable in the game's `bin/` along with
-`bin/engine-assets`: the engine's shaders, fonts and basic models. Asset paths stay `"../assets/..."`, relative to the
-executable, and the ones the game does not have are found in `bin/engine-assets`, so `bin/` plus `assets/` is the
-whole game, runnable from any folder. Every game gets `--screenshot`, `--benchmark`, `--deterministic` and
-`--save-scene` through `Engine::parseCommandLine` and `applyCommandLine`.
+**New project** asks for a name, a folder and the kind; each project in the list then has **Play** (a C++ project
+builds what changed first), **Build**, **VS Code** and **Folder**. From a terminal, the same:
+
+```bash
+./bin/launcher/launcher --create ~/Games/Asteroids lua     # or cpp, mixed
+python3 tools/new_game.py ~/Games/Asteroids --type lua     # the same, in Python (asks the kind when left out)
+```
+
+Each kind starts as the same small game (walk, jump, push the crates, collect coins: [`templates/`](templates/)),
+whose level is a scene file you edit in the game with `F2`.
+
+A Lua project is `project.json` (its name, start scene, game script and input file), `assets/`, and `bin/` with the
+runner named after the game. A C++ project's `CMakeLists.txt` points at this checkout (`MODULAR_ENGINE_DIR`; left
+empty, the engine is downloaded from GitHub) and builds `src/*.cpp` with `modular_engine_add_game(...)`. Either way
+`bin/` holds `bin/engine-assets` (the engine's shaders, fonts and basic models) and SDL's library, asset paths stay
+`"../assets/..."` relative to the executable, and the folder is the whole game, runnable from anywhere. Every game
+gets `--screenshot`, `--benchmark`, `--deterministic` and `--save-scene` on its command line.
 
 Setting the `CPM_SOURCE_CACHE` environment variable to a folder shares the dependency downloads (SDL, RmlUi...)
-between projects.
+between C++ projects.
+
+### Lua scripts
+
+An entity's `Script` component names a Lua file (`scripts/coin.lua`, relative to `assets/`) that gives it its behavior.
+A game script (`scripts().runGameScript(...)`, or `project.json`'s `script`) runs for the whole game; the shared `game`
+table is seen by every script. Saved scripts reload while the game runs, keeping each entity's state, and errors show
+on screen with their file and line without stopping the game.
+
+```lua
+-- scripts/coin.lua
+function onStart(self)                       -- once; fields on self are this entity's own state
+  self.spin = 120
+end
+function onUpdate(self, dt)                  -- every frame
+  local rotation = self.rotation
+  rotation.y = rotation.y + self.spin * dt
+  self.rotation = rotation
+end
+function onOverlap(self, other)              -- its Collision box overlaps another; also onContact(self, other, point,
+  if other.name == "Player" then             --   normal) for physics bodies, and onReload(self) after an edit
+    game.score = game.score + 1
+    sound.play("sounds/coin.wav")
+    self:destroy()
+  end
+end
+```
+
+What scripts can use:
+
+| | |
+| --- | --- |
+| `vec3(x, y, z)` | `+ - * /`, `:length()`, `:normalized()`, `:dot(v)`, `:cross(v)`, `:distance(v)`, `:lerp(v, t)` |
+| Entities (`self`, `other`) | `name`, `position`, `rotation`, `forward`, `transform`, `light`, `valid`, `:destroy()`, `:has("RigidBody")`, `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; any other field is the entity's own (`other.health`) |
+| `engine` | `find(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)` |
+| `input` | `axis(name)`, `down(name)`, `pressed(name)`, `released(name)` (the actions and axes of `input.json`), `key("Space")`, `keyPressed("Space")`, `mouse()`, `click(button)`, `bindings(path)` |
+| `camera` | `lookAt(from, target)`, `position()`, `forward()` |
+| `physics` | `raycast(origin, direction, distance)` (a table with `entity`, `point`, `normal`, `distance`), `gravity(v)` |
+| `sound` | `play(path, volume, pitch)`, `playAt(path, position, volume)`, `music(path, volume)`, `stopMusic()` |
+| `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `onClick(id, function)` |
+
+`require("name")` loads `assets/scripts/name.lua`, and `print` writes to the engine's log. C++ hands its own functions
+to scripts with sol2:
+
+```cpp
+#include <sol/sol.hpp>
+engine.scripts().lua()["celebrate"] = [&] { /* ... */ };   // in Lua: celebrate()
+```
 
 ### Quick Start
 

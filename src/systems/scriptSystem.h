@@ -1,0 +1,42 @@
+#pragma once
+// Lua scripting: entity scripts (the Script component), a game script, and the engine's API for both.
+//
+// Scripts run every frame after the app's update (not while the editor is editing), are reloaded when their file
+// changes (keeping the state on `self`), and report errors with their file and line without stopping the game. C++
+// can add its own functions and types for scripts through lua() (include <sol/sol.hpp> for that), e.g.
+//   engine.scripts().lua()["pathfind"] = [](glm::vec3 from, glm::vec3 to) { return findPath(from, to); };
+
+#include "foundation/ecs/systemManager.h"
+#include <memory>
+#include <string>
+
+class Engine;
+namespace sol {
+class state;
+}
+
+class ScriptSystem : public BaseSystem {
+public:
+  explicit ScriptSystem(Engine &engine);
+  ~ScriptSystem();
+
+  void update(float deltaTime);
+  // Forgets every script's state: entity scripts start again (onStart), and the game script runs again from the
+  // top (onStart). For when the entities were replaced wholesale (the editor's Stop).
+  void reset();
+
+  // A script for the whole game, not tied to an entity: onStart() once, onUpdate(dt) every frame. Its globals and
+  // the shared `game` table are seen by every script.
+  bool runGameScript(const std::string &path);
+
+  // The Lua state, to give scripts more functions or types from C++ (with sol2)
+  sol::state &lua();
+
+  // The last error (file:line: message), until that script loads and runs cleanly again; empty when all is well
+  const std::string &getLastError() const;
+  size_t getInstanceCount() const;
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> m_impl;
+};

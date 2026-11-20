@@ -9,6 +9,8 @@ else()
   set(MODULAR_ENGINE_TOP_LEVEL OFF)
 endif()
 option(MODULAR_ENGINE_BUILD_EXAMPLES "Build the example apps (bin/engine)" ${MODULAR_ENGINE_TOP_LEVEL})
+option(MODULAR_ENGINE_BUILD_TOOLS "Build the Lua runner (bin/runner) and the project launcher (bin/launcher)"
+       ${MODULAR_ENGINE_TOP_LEVEL})
 set(ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 # Also for modular_engine_add_game, which runs in the scope of the game that calls it
 set(MODULAR_ENGINE_ROOT "${ENGINE_DIR}" CACHE INTERNAL "modular-engine checkout")
@@ -105,6 +107,20 @@ CPMAddPackage(
 if(TARGET Jolt AND NOT MSVC)
   target_compile_options(Jolt PRIVATE "$<$<CONFIG:Debug>:-O2>")
 endif()
+# Scripting: Lua (compiled below from its sources, which have no CMake build of their own) and sol2, the header-only
+# bridge between C++ and Lua
+CPMAddPackage(
+  NAME lua
+  GITHUB_REPOSITORY lua/lua
+  GIT_TAG v5.4.8
+  DOWNLOAD_ONLY YES
+)
+CPMAddPackage(
+  NAME sol2
+  GITHUB_REPOSITORY ThePhD/sol2
+  GIT_TAG v3.5.0
+  DOWNLOAD_ONLY YES
+)
 # Audio: only the sources are used; miniaudio.c is compiled into the engine below
 CPMAddPackage(
   NAME miniaudio
@@ -142,6 +158,20 @@ set_source_files_properties(
   PROPERTIES
   COMPILE_OPTIONS "$<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-O2>")
 
+# --- Lua ---
+# The library's sources: all but the stand-alone interpreter (lua.c), the one-file build (onelua.c) and the test
+# hooks (ltests.c)
+file(GLOB LUA_SOURCES "${lua_SOURCE_DIR}/*.c")
+list(FILTER LUA_SOURCES EXCLUDE REGEX "/(lua|onelua|ltests|luac)\\.c$")
+add_library(lua_static STATIC ${LUA_SOURCES})
+target_include_directories(lua_static SYSTEM PUBLIC "${lua_SOURCE_DIR}")
+if(UNIX)
+  target_compile_definitions(lua_static PRIVATE LUA_USE_POSIX)
+endif()
+if(NOT MSVC)
+  target_compile_options(lua_static PRIVATE "$<$<CONFIG:Debug>:-O2>") # scripts run at full speed in Debug too
+endif()
+
 # --- Engine library ---
 add_library(modular_engine STATIC ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE}
             ${RMLUI_BACKEND_SOURCE} ${IMGUIZMO_SOURCE})
@@ -152,14 +182,18 @@ target_include_directories(modular_engine PUBLIC
   ${EXTERNAL_DIR}
 )
 target_include_directories(modular_engine SYSTEM PUBLIC ${miniaudio_SOURCE_DIR} ${RmlUi_SOURCE_DIR}/Backends
+                           ${sol2_SOURCE_DIR}/include
                            ${ImGuizmo_SOURCE_DIR}/src ${EXTERNAL_DIR}/imgui)
 target_compile_definitions(modular_engine PRIVATE RMLUI_SDL_VERSION_MAJOR=3 "RMLUI_GL3_CUSTOM_LOADER=<glad/glad.h>")
+# sol2's checks on what scripts pass in; public, since every file including sol2 must agree on them
+target_compile_definitions(modular_engine PUBLIC SOL_ALL_SAFETIES_ON=1)
 target_link_libraries(modular_engine PUBLIC
     SDL3::SDL3
     glm::glm
     nlohmann_json::nlohmann_json
     RmlUi::RmlUi
     Jolt
+    lua_static
 )
 if(MSVC)
   target_compile_definitions(modular_engine PUBLIC _CRT_SECURE_NO_WARNINGS)
@@ -192,6 +226,12 @@ function(modular_engine_add_game target)
   endif()
   add_executable(${target} ${GAME_SOURCES})
   target_link_libraries(${target} PRIVATE modular_engine)
+  # SDL's library is looked for next to the executable too, so a game folder works wherever it is copied
+  if(APPLE)
+    set_target_properties(${target} PROPERTIES BUILD_RPATH "@executable_path" INSTALL_RPATH "@executable_path")
+  elseif(UNIX)
+    set_target_properties(${target} PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+  endif()
   set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${GAME_OUTPUT_DIR}")
   foreach(config Debug Release RelWithDebInfo MinSizeRel)
     string(TOUPPER "${config}" config_upper)
@@ -214,5 +254,14 @@ endfunction()
 # --- Examples ---
 if(MODULAR_ENGINE_BUILD_EXAMPLES)
   modular_engine_add_game(engine OUTPUT_DIR "${ENGINE_DIR}/bin" SOURCES "${ENGINE_DIR}/src/main.cpp"
+                          ENGINE_ASSETS_IN_PLACE)
+endif()
+
+# --- Tools ---
+# bin/runner: the prebuilt player of Lua projects, copied (with its engine-assets and SDL) into each Lua project's bin/
+if(MODULAR_ENGINE_BUILD_TOOLS)
+  modular_engine_add_game(runner OUTPUT_DIR "${ENGINE_DIR}/bin/runner" SOURCES "${ENGINE_DIR}/runner/main.cpp")
+  # bin/launcher: creates, builds and plays projects; finds the templates two folders up (no engine assets needed)
+  modular_engine_add_game(launcher OUTPUT_DIR "${ENGINE_DIR}/bin/launcher" SOURCES "${ENGINE_DIR}/launcher/main.cpp"
                           ENGINE_ASSETS_IN_PLACE)
 endif()

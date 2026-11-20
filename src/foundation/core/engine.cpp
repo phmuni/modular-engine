@@ -16,6 +16,7 @@
 #include "rendering/resources/material.h"
 #include "rendering/resources/textureProcessing.h"
 #include "systems/animationSystem.h"
+#include "systems/scriptSystem.h"
 #include "systems/audioSystem.h"
 #include "systems/cameraSystem.h"
 #include "systems/collisionSystem.h"
@@ -262,6 +263,9 @@ void Engine::update(bool &isRunning) {
   if (m_app && m_playMode != PlayMode::Editing) {
     m_app->update(*this, timeSystem.getDeltaTime());
   }
+  // Lua scripts, after the app (frozen while editing, like it)
+  if (m_playMode != PlayMode::Editing)
+    m_systemManager.getSystem<ScriptSystem>().update(timeSystem.getDeltaTime());
 
   // Scene switches wait until the app is done with this frame's entities
   applyPendingScene();
@@ -359,6 +363,8 @@ Camera *Engine::getActiveCamera() {
 InputSystem &Engine::input() { return m_systemManager.getSystem<InputSystem>(); }
 
 PhysicsSystem &Engine::physics() { return m_systemManager.getSystem<PhysicsSystem>(); }
+
+ScriptSystem &Engine::scripts() { return m_systemManager.getSystem<ScriptSystem>(); }
 
 void Engine::playAnimation(Entity entity, std::string_view clip, float fadeSeconds, bool loop) {
   Animator *animator = tryGet<Animator>(entity);
@@ -677,6 +683,7 @@ void Engine::applyPlayModeRequest() {
     m_systemManager.getSystem<LightSystem>().rebuild(m_componentManager);
     m_systemManager.getSystem<RenderSystem>().resetCaches();
     m_systemManager.getSystem<PhysicsSystem>().reset();
+    m_systemManager.getSystem<ScriptSystem>().reset();
     resourceSystem.setPinnedMaterials({});
     auto &editor = m_systemManager.getSystem<EditorUISystem>();
     if (!m_entityManager.isAlive(editor.selectedEntity))
@@ -793,6 +800,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<PhysicsSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>(),
                                         m_systemManager.getSystem<TransformSystem>());
   m_systemManager.insert<AnimationSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>());
+  m_systemManager.insert<ScriptSystem>(*this);
   m_systemManager.insert<AudioSystem>(m_componentManager);
   m_systemManager.insert<GameUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow());
   m_systemManager.insert<EditorUISystem>(m_systemManager.getSystem<WindowSystem>().getWindow(),

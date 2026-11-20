@@ -5,6 +5,7 @@
 #include "components/audioSource.h"
 #include "components/characterController.h"
 #include "components/rigidBody.h"
+#include "components/script.h"
 #include "components/light.h"
 #include "components/skybox.h"
 #include "components/transform.h"
@@ -35,6 +36,7 @@ class ElementDocument;
 class SceneSerializer;
 class InputSystem;
 struct Camera;
+class ScriptSystem;
 
 class Engine {
 public:
@@ -81,6 +83,8 @@ public:
       body.mass = mass;
       return withComponent<RigidBody>(body);
     }
+    // A Lua script for its behavior (see Script), e.g. withScript("scripts/coin.lua")
+    EntityBuilder &withScript(std::string_view path) { return withComponent<Script>(std::string(path)); }
     // Plays a clip of its animated model (see Animator); empty: the first
     EntityBuilder &withAnimation(std::string_view clip = {}, bool loop = true) {
       Animator animator;
@@ -206,6 +210,8 @@ public:
   // Physics (Jolt): bodies come from RigidBody components and characters from CharacterController ones. physics()
   // gives velocities, impulses, gravity, raycasts against bodies and the contacts of the last update.
   PhysicsSystem &physics();
+  // Lua scripts: entity scripts are Script components; scripts().runGameScript(path) adds one for the whole game
+  ScriptSystem &scripts();
 
   // Skeletal animation (glTF): plays a clip of the entity's model, fading over from the one playing for
   // `fadeSeconds`; adds an Animator if it has none. Playing the clip already playing keeps it going.

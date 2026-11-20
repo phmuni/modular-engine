@@ -14,9 +14,11 @@
 #include "components/skybox.h"
 #include "components/characterController.h"
 #include "components/rigidBody.h"
+#include "components/script.h"
 #include "components/transform.h"
 #include "foundation/core/engine.h"
 #include "systems/modelQueries.h"
+#include "systems/scriptSystem.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
 #include "rendering/resources/textureUploader.h"
@@ -33,6 +35,9 @@
 #include "systems/windowSystem.h"
 
 #include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <filesystem>
 #include <functional>
 #include <limits>
 #include <array>
@@ -323,6 +328,26 @@ template <typename T> std::vector<Entity> entitiesWith(ComponentManager &compone
 
 void EditorUISystem::render(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
                             ComponentManager &componentManager) {
+  // Script errors show on screen, editor open or not, until the script loads and runs cleanly again
+  const std::string &scriptError = engine.scripts().getLastError();
+  if (!scriptError.empty()) {
+    const ImGuiIO &io = ImGui::GetIO();
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y - 12.0f), ImGuiCond_Always,
+                            ImVec2(0.5f, 1.0f));
+    ImGui::SetNextWindowBgAlpha(0.9f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.45f, 0.08f, 0.08f, 1.0f));
+    ImGui::Begin("##ScriptError", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                     ImGuiWindowFlags_NoInputs);
+    ImGui::TextUnformatted("Script error");
+    ImGui::PushTextWrapPos(io.DisplaySize.x * 0.7f);
+    ImGui::TextUnformatted(scriptError.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::End();
+    ImGui::PopStyleColor();
+  }
+
   if (m_showStats)
     renderStatsOverlay(m_renderUI && selectedEntity != -1 ? kPropertiesWidth : 0.0f);
 
@@ -1285,6 +1310,51 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
     }
   }
 
+  // Script
+  if (!earlyOut && componentManager.has<Script>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Script", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##script")) {
+        componentManager.removeComponent<Script>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        auto &script = componentManager.get<Script>(selectedEntity);
+        static char scriptPath[256] = "";
+        static Entity scriptPathEntity = -1;
+        if (scriptPathEntity != selectedEntity) {
+          scriptPathEntity = selectedEntity;
+          std::strncpy(scriptPath, script.path.c_str(), sizeof(scriptPath) - 1);
+          scriptPath[sizeof(scriptPath) - 1] = '\0';
+        }
+        ImGui::SetNextItemWidth(200.0f);
+        if (ImGui::InputText("##scriptPath", scriptPath, sizeof(scriptPath), ImGuiInputTextFlags_EnterReturnsTrue))
+          script.path = scriptPath;
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Relative to the assets folder, e.g. scripts/coin.lua (Enter applies)");
+        // The file on disk: open it in the system's editor for .lua files, or create it from a skeleton
+        std::string file = script.path;
+        if (!file.empty() && file.rfind("../", 0) != 0 && !std::filesystem::path(file).is_absolute())
+          file = "../assets/" + file;
+        file = EngineConfig::resolvePath(file);
+        ImGui::SameLine();
+        if (std::filesystem::exists(file)) {
+          if (ImGui::Button("Open##script"))
+            SDL_OpenURL(("file://" + file).c_str());
+        } else if (!script.path.empty() && ImGui::Button("Create##script")) {
+          std::filesystem::create_directories(std::filesystem::path(file).parent_path());
+          std::ofstream out(file);
+          out << "-- " << std::filesystem::path(file).filename().string() << "\n\n"
+              << "function onStart(self)\nend\n\n"
+              << "function onUpdate(self, dt)\nend\n";
+          out.close();
+          SDL_OpenURL(("file://" + file).c_str());
+        }
+        ImGui::TextDisabled("Saved changes to the file reload while the game runs");
+      }
+    }
+  }
+
   // Animator
   if (!earlyOut && componentManager.has<Animator>(selectedEntity)) {
     if (ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1411,6 +1481,16 @@ void EditorUISystem::renderPropertiesPanel(SystemManager &systemManager, Compone
           componentManager.addInPlace<RigidBody>(selectedEntity);
         if (ImGui::Button("+ Character Controller", ImVec2(-1, 0)))
           componentManager.addInPlace<CharacterController>(selectedEntity);
+      }
+      if (!componentManager.has<Script>(selectedEntity)) {
+        if (ImGui::Button("+ Script", ImVec2(-1, 0))) {
+          std::string name = "entity";
+          if (const Name *entityName = componentManager.tryGet<Name>(selectedEntity))
+            name = entityName->name;
+          std::transform(name.begin(), name.end(), name.begin(),
+                         [](unsigned char c) { return std::isalnum(c) ? static_cast<char>(std::tolower(c)) : '_'; });
+          componentManager.addInPlace<Script>(selectedEntity, "scripts/" + name + ".lua");
+        }
       }
       if (!componentManager.has<Animator>(selectedEntity)) {
         const Model *model = componentManager.tryGet<Model>(selectedEntity);

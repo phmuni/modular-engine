@@ -1,0 +1,6 @@
+{
+  "name": "MyGame",
+  "scene": "scenes/level.json",
+  "script": "scripts/game.lua",
+  "input": "input.json"
+}
