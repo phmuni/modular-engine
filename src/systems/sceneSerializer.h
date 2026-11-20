@@ -87,8 +87,19 @@ public:
   // Scene files hold every entity in full as before, plus the link on the root ("PrefabInstance": path and
   // overrides), so a missing prefab file leaves the content as saved, and older scenes load as they are. When the
   // file exists at load, the instance is brought up to date with it.
-  // Not covered: a prefab inside a prefab (a prefab file never holds links, so one saved from an instance with
-  // another instance inside holds that one flattened), and files with several roots (not linked).
+  //
+  // Nested prefabs: a prefab file can hold instances of other prefabs. Such an entry in the file has only the
+  // nested root's Transform, its Parent and a "PrefabInstance": {"path", "overrides"}: the inner file's path and the
+  // changes this prefab makes to it (a JSON patch, as in scenes); the inner file's own entities are not copied. An
+  // instance loads them from the inner file, so editing the inner file updates every outer instance (and every
+  // scene) that does not override what changed. The parts an instance is made of are addressed by a key: "3" for the
+  // 4th entity of its own file, "3.1" for the 2nd entity of the prefab nested at entry 3, "3.1.0" one level deeper.
+  // Overrides are patches over those keys, so layers stack: the inner file, then the outer prefab's overrides of it,
+  // then the scene instance's (its own diff against the outer file, with the nested keys), the last one winning.
+  // Prefabs that contain themselves, directly or through others, are refused (savePrefab/applyInstance fail,
+  // instantiate returns nothing). A nested file that cannot be read leaves its entities as they are.
+  // Not covered: entities added inside a nested instance are not kept by the outer prefab (a warning is logged when
+  // saving), and files with several roots (not linked).
 
   // The root of the linked instance `entity` belongs to (itself, if it is one), or -1
   Entity instanceRoot(Entity entity) const;
@@ -98,12 +109,22 @@ public:
   bool prefabFileExists(Entity root) const;
   // The instance's overrides as the paths they change ("Wheel/Model/opacity"), empty when it matches its file
   std::vector<std::string> instanceOverrides(Entity root);
+  // The instance a nested instance's `root` is part of (a house for its door), or -1 when it stands alone (also when
+  // the outer file is missing)
+  Entity enclosingInstance(Entity root) const;
   // Writes the instance (the root with all its descendants) to its file, so every instance follows it, and links
   // the entities to it. `path` is another file to write instead (Save as prefab): the instance is then linked to it.
+  // Apply always writes the file of the instance `root` is the root of: on a nested root that is the inner file
+  // (door.json), with the outer one untouched; on the outer root it is the outer file (house.json), where the
+  // nested instances are written as references and whatever differs from their files becomes the outer prefab's
+  // override of them. With `path` on a nested root the entities are only written (not linked), as savePrefab does.
   bool applyInstance(Entity root, const std::string &path = {});
-  // Drops the overrides: the instance matches the file again (the root keeps its place)
+  // Drops the overrides: the instance matches its file again (the root keeps its place). On a nested root that is
+  // the outer file's view of it (the inner file plus the outer prefab's overrides of it); on an outer root,
+  // everything below it too.
   void revertInstance(Entity root);
-  // Breaks the link: plain entities from now on
+  // Breaks the link of this level: plain entities from now on. Instances nested inside stay linked to their own
+  // files (on their own now); a nested instance unpacked stays in place and the outer instance counts it as removed.
   void unpackInstance(Entity root);
   // Rereads the prefab files in use that changed on disk and updates their instances; returns how many it updated.
   // Only a stat per file, but it is not free: the editor calls it a few times a second while it is open.
@@ -155,11 +176,22 @@ private:
   // Linked prefab instances (sceneSerializerPrefabs.cpp)
   struct PrefabFile {
     json entities;                          // the file's "entities" list, as read
-    json parts;                             // by index ("0", "1"...): what an instance is compared with
+    json parts;                             // by key ("0", "1", "2.0"...): what an instance is compared with, with the
+                                            // nested prefabs expanded (their overrides in it applied)
     int root = -1;                          // the one entity without a parent; -1 if there is not exactly one
     std::filesystem::file_time_type time{}; // when it was read
     bool exists = true;
+    std::vector<std::string> opaque;  // keys of nested instances that could not be expanded: left as they are
+    std::vector<std::string> deps;    // the files nested in it, however deep (keys as fileKey)
+    std::vector<std::string> missing; // the ones of those that do not exist
+    bool cyclic = false;              // it contains itself, directly or through others
   };
+  struct Baseline {
+    json parts;
+    std::vector<std::string> opaque;
+    bool ok = false;
+  };
+  using PartList = std::vector<std::pair<std::string, Entity>>; // key and entity, the root first
   // By resolved path. Mutable: saving a scene (const) may find a file not read yet.
   mutable std::unordered_map<std::string, PrefabFile> m_prefabFiles;
   // Set while save() writes a scene: PrefabInstance then holds the overrides too (not wanted in undo copies)
@@ -171,22 +203,45 @@ private:
   // The overrides read from a scene file, by entity, until load() has brought the instances up to date
   std::vector<std::pair<Entity, json>> m_loadedOverrides;
 
+  // Files whose parts are out of date (an inner file changed): filled again when next asked for
+  mutable std::unordered_set<std::string> m_stale;
+  mutable std::vector<std::string> m_resolving; // files being filled, to find a prefab that contains itself
+
   // The prefab file in the cache, read first if it is not there; with `checkChanged`, read again if it changed on
-  // disk (its instances are updated then). Null if it cannot be read.
+  // disk (its instances are updated then), the files nested in it too. Null if it cannot be read.
   const PrefabFile *prefabFile(const std::string &resolvedPath, bool checkChanged);
   const PrefabFile *cachedPrefabFile(const std::string &resolvedPath) const;
-  static void fillPrefabFile(PrefabFile &file);
-  // The entities of an instance with their place in the prefab file, the root first
-  std::vector<std::pair<int, Entity>> collectParts(Entity root) const;
-  json liveParts(Entity root, const std::vector<std::pair<int, Entity>> &parts) const;
-  json livePart(Entity entity, Entity root, const std::map<Entity, int> &indexOf) const;
+  void fillPrefabFile(PrefabFile &file, const std::string &key) const;
+  void expandNested(PrefabFile &file, size_t index, json &part, const json &link) const;
+  // Reads the changed ones of `keys` again (and those with a nested file that appeared) and updates their instances
+  size_t refreshKeys(const std::vector<std::string> &keys, bool log);
+  void refillDependents(const std::string &key);
+  // The instances of a file that nothing else holds (not nested in another instance whose file is there)
+  std::vector<Entity> topInstancesOf(const std::string &key) const;
+  // The entities of an instance with their key, the root first
+  PartList collectParts(Entity root) const;
+  json liveParts(Entity root, const PartList &parts, const std::vector<std::string> &opaque = {}) const;
+  json livePart(Entity entity, Entity root, const std::map<Entity, std::string> &keyOf) const;
+  // What `root` is compared with and reverted to: its file's parts, or for a nested root the outer file's view of it
+  Baseline baselineOf(Entity root) const;
   static json applyOverrides(const json &base, const json &patch);
-  // Makes the instance's entities match `target` (parts by index), in place
-  void syncInstance(Entity root, const json &target);
-  // Replaces a prefab's baseline and brings every instance but `skip` to it, keeping their overrides
-  size_t updateInstances(const std::string &resolvedPath, PrefabFile fresh, Entity skip);
+  // Makes the instance's entities match `target` (parts by key), in place; `refresh` tells the systems that read
+  // components (not needed for entities that are new anyway)
+  void syncInstance(Entity root, const json &target, const std::vector<std::string> &opaque, bool refresh = true);
+  // Replaces the baseline of the given files (key -> new content) and of the files that contain them, and brings
+  // every instance but `skip` to it, keeping their overrides
+  size_t updateInstances(std::map<std::string, PrefabFile> fresh, Entity skip);
   json instanceOverridesPatch(Entity root) const;
-  void linkEntities(Entity root, const std::string &path, const std::vector<Entity> &entities);
+  // Whether a nested instance can be written as a reference (its file is readable and does not contain itself), and
+  // that reference: its path and what it changed from that file
+  bool canReference(Entity entity) const;
+  std::optional<json> nestedLink(Entity entity) const;
+  // The entities a prefab written from `root` holds, root first: nested instances are one entity each
+  std::vector<Entity> prefabEntities(Entity root) const;
+  // The file that would make a prefab at `targetKey` contain itself, empty if none
+  std::string nestingCycle(const std::string &targetKey, Entity root, const std::vector<Entity> &entities) const;
+  void linkEntities(Entity root, const std::string &path, const std::vector<Entity> &entities,
+                    const std::unordered_set<Entity> &references);
   void syncLoadedInstances();
 
   void registerBuiltIns();

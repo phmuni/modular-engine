@@ -1835,8 +1835,13 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
       flags |= ImGuiTreeNodeFlags_Selected;
     // Linked prefab instances: blue, the root marked
     const bool linked = serializer.instanceRoot(entity) != -1;
-    const std::string label = (componentManager.has<PrefabInstance>(entity) ? "[P] " : "") +
-                              displayName(componentManager, entity) + "##tree" + std::to_string(entity);
+    // A nested instance's root names its own prefab: "[P door]"
+    std::string mark;
+    if (const PrefabInstance *instance = componentManager.tryGet<PrefabInstance>(entity))
+      mark = serializer.enclosingInstance(entity) != -1
+                 ? "[P " + std::filesystem::path(instance->path).stem().string() + "] "
+                 : "[P] ";
+    const std::string label = mark + displayName(componentManager, entity) + "##tree" + std::to_string(entity);
     visible.push_back(entity);
     if (linked)
       ImGui::PushStyleColor(ImGuiCol_Text, kPrefabLinkColor);
@@ -1922,7 +1927,7 @@ void EditorUISystem::renderParentAndPrefab(SystemManager &systemManager, Compone
     auto &serializer = systemManager.getSystem<SceneSerializer>();
     const std::string file = EngineConfig::resolvePath(prefabPath);
     const Entity owner = serializer.instanceRoot(selectedEntity);
-    if (owner != -1 && owner != selectedEntity)
+    if (owner != -1 && (owner != selectedEntity || serializer.enclosingInstance(selectedEntity) != -1))
       serializer.savePrefab(selectedEntity, file); // a part of another instance: written, not linked
     else
       serializer.applyInstance(selectedEntity, file); // written, and this entity becomes an instance of it

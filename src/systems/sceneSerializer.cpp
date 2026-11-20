@@ -254,7 +254,9 @@ void SceneSerializer::registerBuiltIns() {
         if (!instance)
           return std::nullopt;
         json data = {{"path", instance->path}};
-        if (m_writeOverrides) {
+        // A nested instance's changes belong to the instance that holds it (found through that one), unless that
+        // one's file is not there: then it stands alone
+        if (m_writeOverrides && enclosingInstance(entity) == -1) {
           json overrides = instanceOverridesPatch(entity);
           if (overrides.is_array()) // null: the file was not there to compare with, so the entities stay as they are
             data["overrides"] = std::move(overrides);
@@ -270,12 +272,18 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent(
       "PrefabPart",
       [this](Entity entity) -> std::optional<json> {
-        if (const PrefabPart *part = m_componentManager.tryGet<PrefabPart>(entity))
-          return json{{"index", part->index}};
+        if (const PrefabPart *part = m_componentManager.tryGet<PrefabPart>(entity)) {
+          json data = {{"index", part->index}};
+          if (part->outer >= 0)
+            data["outer"] = part->outer;
+          return data;
+        }
         return std::nullopt;
       },
       [this](Entity entity, const json &data) {
-        m_componentManager.addInPlace<PrefabPart>(entity).index = data.value("index", 0);
+        PrefabPart &part = m_componentManager.addInPlace<PrefabPart>(entity);
+        part.index = data.value("index", 0);
+        part.outer = data.value("outer", -1);
       },
       [this](Entity entity) { m_componentManager.removeComponent<PrefabPart>(entity); });
 }
@@ -383,7 +391,13 @@ SceneSerializer::json SceneSerializer::entitiesToJson(const std::vector<Entity> 
   std::vector<json> entries;
   for (Entity entity : entities) {
     json components = json::object();
+    // A prefab holds a nested instance as one entry: its place and the link, not the entities of the other prefab
+    std::optional<json> link;
+    if (root != -1 && entity != root && canReference(entity))
+      link = nestedLink(entity);
     for (const Serializer &serializer : m_serializers) {
+      if (link && serializer.key != "Transform")
+        continue;
       try {
         if (std::optional<json> data = serializer.save(entity))
           components[serializer.key] = std::move(*data);
@@ -391,17 +405,19 @@ SceneSerializer::json SceneSerializer::entitiesToJson(const std::vector<Entity> 
         LOG_W("[Scene] Could not save %s of entity %d: %s", serializer.key.c_str(), entity, error.what());
       }
     }
+    if (link)
+      components["PrefabInstance"] = *link;
     if (components.empty())
       continue; // nothing that can be saved, e.g. only game components without a serializer
     if (entity == root && components.contains("Transform"))
       components["Transform"]["position"] = {0.0f, 0.0f, 0.0f}; // a prefab's root sits where it is instantiated
-    if (root != -1) { // a prefab file never links to another one
+    if (!link && root != -1) { // the entities of a prefab file are not linked to it
       components.erase("PrefabInstance");
       components.erase("PrefabPart");
     }
 
     json entry;
-    if (const Name *name = m_componentManager.tryGet<Name>(entity))
+    if (const Name *name = m_componentManager.tryGet<Name>(entity); name && !link)
       entry["name"] = name->name;
     entry["components"] = std::move(components);
     saved.push_back(entity);
@@ -463,9 +479,14 @@ bool SceneSerializer::savePrefab(Entity root, const std::string &path) const {
     LOG_E("[Scene] savePrefab: entity %d does not exist", root);
     return false;
   }
-  std::vector<Entity> entities{root};
-  const auto descendants = m_systemManager.getSystem<TransformSystem>().getDescendants(m_componentManager, root);
-  entities.insert(entities.end(), descendants.begin(), descendants.end());
+  const std::vector<Entity> entities = prefabEntities(root);
+  const std::string cycle = nestingCycle(std::filesystem::path(EngineConfig::resolveAsset(path)).lexically_normal().generic_string(),
+                                         root, entities);
+  if (!cycle.empty()) {
+    LOG_E("[Scene] Not writing %s: it would contain itself (through %s)", EngineConfig::resolveAsset(path).c_str(),
+          cycle.c_str());
+    return false;
+  }
   noteFileBefore(EngineConfig::resolveAsset(path));
   return writeFile(path, entitiesToJson(entities, root));
 }
@@ -632,10 +653,30 @@ std::vector<Entity> SceneSerializer::instantiate(const std::string &path) {
   const PrefabFile *prefab = prefabFile(EngineConfig::resolveAsset(path), true);
   if (!prefab)
     return {};
-  const std::vector<Entity> created = createEntities(prefab->entities);
+  if (prefab->cyclic) {
+    LOG_E("[Scene] Prefab %s contains itself (directly or through another prefab); it is not placed",
+          EngineConfig::resolveAsset(path).c_str());
+    return {};
+  }
+  std::vector<Entity> created = createEntities(prefab->entities);
   m_loadedOverrides.clear();
-  if (prefab->root >= 0 && static_cast<size_t>(prefab->root) < created.size())
-    linkEntities(created[prefab->root], EngineConfig::relativePath(EngineConfig::resolveAsset(path)), created);
+  if (prefab->root >= 0 && static_cast<size_t>(prefab->root) < created.size()) {
+    const Entity root = created[prefab->root];
+    std::unordered_set<Entity> references;
+    for (Entity entity : created)
+      if (m_componentManager.has<PrefabInstance>(entity))
+        references.insert(entity); // the nested instances the file holds
+    linkEntities(root, EngineConfig::relativePath(EngineConfig::resolveAsset(path)), created, references);
+    if (!references.empty()) {
+      // The entities of the nested prefabs come in with the rest of the file's parts
+      const PrefabFile *file = cachedPrefabFile(EngineConfig::resolveAsset(path));
+      const std::unordered_set<Entity> own(created.begin(), created.end());
+      syncInstance(root, file->parts, file->opaque, false);
+      for (const auto &[key, entity] : collectParts(root))
+        if (!own.count(entity))
+          created.push_back(entity);
+    }
+  }
   return created;
 }
 
