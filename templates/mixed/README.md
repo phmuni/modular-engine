@@ -17,3 +17,6 @@ cmake -B build && cmake --build build -j     # Release; add -DCMAKE_BUILD_TYPE=D
 - `assets/scenes/level.json` is the level: `F2` in the game opens the editor, `Ctrl+P` plays and stops.
 - `assets/input.json` maps keys and gamepad buttons to the actions and axes.
 - `bin/` is where it builds. To ship the game, copy `bin/` and `assets/` together.
+
+Install the **Lua** extension (`sumneko.lua`; VS Code offers it when you open the folder) for autocomplete and type
+hints on the engine's API in your scripts: `.luarc.json` and `types/engine.lua` set it up.

@@ -298,11 +298,14 @@ struct ProjectFiles {
   }
 
   // The template's files into the project (a C++ + Lua project is the C++ template with the mixed one over it),
-  // named after the game, and for a Lua project the runner in bin/. Throws on failure.
+  // named after the game, and for a Lua project the runner in bin/. Projects with Lua also get the editor's Lua
+  // settings and API definitions (templates/common/lua). Throws on failure.
   void create(const Project &project) const {
     copyTemplate(project.type == ProjectType::Lua ? "lua" : "cpp", project.path);
     if (project.type == ProjectType::Mixed)
       copyTemplate("mixed", project.path);
+    if (project.type != ProjectType::Cpp)
+      copyTemplate("common/lua", project.path);
     fillPlaceholders(project.path, project.name);
     if (project.type == ProjectType::Lua)
       installRunner(project);

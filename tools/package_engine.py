@@ -57,6 +57,7 @@ def main():
     shutil.rmtree(package, ignore_errors=True)
     for program in ("launcher", "runner"):
         shutil.copytree(build / "bin" / program, package / "bin" / program, symlinks=True, ignore=RUN_LEFTOVERS)
+    # All of templates/, which includes templates/common (what every Lua or mixed project gets)
     shutil.copytree(ENGINE_DIR / "templates", package / "templates", ignore=shutil.ignore_patterns("build", "bin"))
     for name in ("README.md", "LICENSE"):
         shutil.copy2(ENGINE_DIR / name, package / name)

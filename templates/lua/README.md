@@ -20,3 +20,6 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
 - `bin/` is the engine's Lua runner, named after the game. To ship the game, copy the whole folder.
 
 Script errors show on screen with their file and line, and the game keeps running.
+
+Install the **Lua** extension (`sumneko.lua`; VS Code offers it when you open the folder) for autocomplete and type
+hints on the engine's API in your scripts: `.luarc.json` and `types/engine.lua` set it up.

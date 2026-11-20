@@ -96,12 +96,14 @@ def create(folder, name, kind):
         if not ensure_runner():
             sys.exit("Could not build the Lua runner; build the engine first (cmake -B build && cmake --build build)")
         copy_template("lua", folder)
+        copy_template("common/lua", folder)  # the editor's Lua settings and API definitions
         fill_placeholders(folder, name)
         install_runner(folder, name)
         return [f"./bin/{name}"]
     copy_template("cpp", folder)
     if kind == "mixed":
         copy_template("mixed", folder)  # over the C++ one: its main.cpp, level, scripts and HUD
+        copy_template("common/lua", folder)  # the editor's Lua settings and API definitions
     fill_placeholders(folder, name)
     return ["cmake -B build && cmake --build build -j", f"./bin/{name}"]
 
