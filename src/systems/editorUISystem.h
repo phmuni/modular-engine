@@ -80,6 +80,7 @@ private:
   // The navigation map's walkable cells and the last path found, over the scene (Settings: Show navigation)
   void drawNavigation(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   bool m_showNavigation = false;
+  bool m_deleteRequested = false;   // from a context menu: done at the next frame, not while the lists are drawn
   bool m_scrollToSelection = false; // the scene explorer brings the entity a click selected into view
   void renderGizmoControls();
 
@@ -102,12 +103,22 @@ private:
   void renderPlayToolbar(Engine &engine);
   // Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y redo (Cmd on macOS, as for ImGui's Ctrl)
   void handleHistoryShortcuts(Engine &engine);
+  // Ctrl+D duplicates the selected entity and its children, Ctrl+C / Ctrl+V copy and paste them through the system
+  // clipboard, Delete (Backspace too) deletes them; each is one undo step
+  void handleEditShortcuts(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  void duplicateSelected(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  void copySelected(SystemManager &systemManager);
+  void pasteClipboard(Engine &engine, SystemManager &systemManager);
+  void deleteSelected(Engine &engine, SystemManager &systemManager);
+  // The right-click menu of the entity just drawn (hierarchy and section lists)
+  void entityContextMenu(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
+                         Entity entity);
   // Opens an undo step when a click lands on the editor and closes it when the edit is over (Engine::beginCheckpoint)
   void beginEditTracking(Engine &engine);
   void endEditTracking(Engine &engine);
   // Hierarchy: the families (entities with a parent or children) as trees; drag an entity onto another to attach it,
   // onto the empty space below to detach it
-  void renderHierarchy(SystemManager &systemManager, ComponentManager &componentManager);
+  void renderHierarchy(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   void dragToParent(SystemManager &systemManager, ComponentManager &componentManager, Entity entity,
                     const std::string &label);
   // In the Properties panel: the entity's parent, and saving it with its children as a prefab

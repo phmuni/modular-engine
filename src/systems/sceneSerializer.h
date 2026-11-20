@@ -56,6 +56,12 @@ public:
   bool savePrefab(Entity root, const std::string &path) const;
   // Adds a file's entities to the scene, keeping what is there; returns them in file order (empty if unreadable)
   std::vector<Entity> instantiate(const std::string &path);
+  // The entity and its descendants as scene-file text (what the editor copies to the clipboard), the root keeping its
+  // place in the world but not its parent; empty if the entity does not exist
+  std::string copyToJson(Entity root) const;
+  // Adds the entities of such text to the scene; returns them in order, the root first (empty if the text is not
+  // a scene or prefab in this format)
+  std::vector<Entity> pasteFromJson(const std::string &text);
   // Destroys every entity
   void clear();
 
