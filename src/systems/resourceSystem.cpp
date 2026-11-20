@@ -374,7 +374,7 @@ void ResourceSystem::setTexture(Entity entity, int submesh, TextureSlot slot, st
   }
 
   auto &model = *modelPtr;
-  GLuint tex = loadTexture(EngineConfig::resolvePath(path),
+  GLuint tex = loadTexture(EngineConfig::resolveAsset(path),
                            slot == TextureSlot::Normal ? TextureKind::Normal : TextureKind::Color);
   if (submesh < 0) {
     for (auto &h : model.materialHandles)

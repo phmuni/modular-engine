@@ -163,7 +163,7 @@ void AudioSystem::update(SystemManager &systemManager, bool paused, float timeSc
       source.voice = 0;
       if (!source.playing || source.path.empty())
         return;
-      auto sound = impl.createEffect(EngineConfig::resolvePath(source.path));
+      auto sound = impl.createEffect(EngineConfig::resolveAsset(source.path));
       if (!sound) {
         source.playing = false;
         return;
@@ -218,12 +218,12 @@ void AudioSystem::update(SystemManager &systemManager, bool paused, float timeSc
 
 void AudioSystem::preload(const std::string &path) {
   if (m_impl->ready)
-    m_impl->ensureDecoded(EngineConfig::resolvePath(path));
+    m_impl->ensureDecoded(EngineConfig::resolveAsset(path));
 }
 
 void AudioSystem::playOneShot(const std::string &path, std::optional<glm::vec3> position, float volume, float pitch) {
   auto &impl = *m_impl;
-  auto sound = impl.ready ? impl.createEffect(EngineConfig::resolvePath(path)) : nullptr;
+  auto sound = impl.ready ? impl.createEffect(EngineConfig::resolveAsset(path)) : nullptr;
   if (!sound)
     return;
 
@@ -247,7 +247,7 @@ void AudioSystem::playMusic(const std::string &path, float volume, bool loop) {
   if (!impl.ready)
     return;
   Impl::destroySound(impl.currentMusic);
-  impl.currentMusic = impl.createSound(EngineConfig::resolvePath(path), kMusicFlags, &impl.music);
+  impl.currentMusic = impl.createSound(EngineConfig::resolveAsset(path), kMusicFlags, &impl.music);
   if (!impl.currentMusic)
     return;
   ma_sound_set_volume(impl.currentMusic.get(), volume);

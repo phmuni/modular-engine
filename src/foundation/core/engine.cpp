@@ -508,14 +508,14 @@ Entity Engine::createCameraEntity(std::string_view name, glm::vec3 position, flo
 }
 
 void Engine::preloadModel(std::string_view modelPath) {
-  m_systemManager.getSystem<ResourceSystem>().preloadModel(EngineConfig::resolvePath(std::string(modelPath)));
+  m_systemManager.getSystem<ResourceSystem>().preloadModel(EngineConfig::resolveAsset(std::string(modelPath)));
 }
 
 Entity Engine::createModelEntity(std::string_view name, std::string_view modelPath, glm::vec3 position,
                                  glm::vec3 rotation, glm::vec3 scale, uint32_t shaderHandle) {
   uint32_t effectiveShader = shaderHandle == 0 ? m_baseShaderHandle : shaderHandle;
   return m_systemManager.getSystem<SceneSystem>().createModelEntity(
-      std::string(name), EngineConfig::resolvePath(std::string(modelPath)), effectiveShader, position, rotation, scale);
+      std::string(name), EngineConfig::resolveAsset(std::string(modelPath)), effectiveShader, position, rotation, scale);
 }
 
 Entity Engine::createLightEntity(std::string_view name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,
@@ -825,11 +825,11 @@ void Engine::clearHistory() {
 }
 
 bool Engine::savePrefab(Entity root, std::string_view path) {
-  return getSceneSerializer().savePrefab(root, EngineConfig::resolvePath(std::string(path)));
+  return getSceneSerializer().savePrefab(root, EngineConfig::resolveAsset(std::string(path)));
 }
 
 Entity Engine::instantiate(std::string_view path, glm::vec3 position, glm::vec3 rotation) {
-  const std::vector<Entity> created = getSceneSerializer().instantiate(EngineConfig::resolvePath(std::string(path)));
+  const std::vector<Entity> created = getSceneSerializer().instantiate(EngineConfig::resolveAsset(std::string(path)));
   // The file's roots (a prefab has one) move to `position`; their children follow below
   Entity first = -1;
   for (Entity entity : created) {

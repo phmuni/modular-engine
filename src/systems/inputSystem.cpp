@@ -323,7 +323,7 @@ float InputSystem::getGamepadAxis(SDL_GamepadAxis axis) const {
 }
 
 bool InputSystem::loadBindings(const std::string &path) {
-  const std::string resolved = EngineConfig::resolvePath(path);
+  const std::string resolved = EngineConfig::resolveAsset(path);
   std::ifstream file(resolved);
   if (!file) {
     LOG_W("[Input] Could not open %s", resolved.c_str());

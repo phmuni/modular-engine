@@ -35,13 +35,6 @@
 #include <vector>
 
 namespace {
-// Paths in scripts are relative to the assets folder ("sounds/laser.wav"); "../..." and absolute ones are kept
-std::string assetPath(const std::string &path) {
-  if (path.empty() || path.rfind("../", 0) == 0 || std::filesystem::path(path).is_absolute())
-    return path;
-  return "../assets/" + path;
-}
-
 // "scripts/coin.lua" for ".../assets/scripts/coin.lua"
 std::string displayName(const std::string &path) {
   const size_t assets = path.rfind("/assets/");
@@ -319,7 +312,7 @@ struct ScriptSystem::Impl {
     auto running = instances.find(entity);
     if (running != instances.end() && running->second.written == script->path && !running->second.broken)
       return running->second.properties;
-    const std::string path = EngineConfig::resolvePath(assetPath(script->path));
+    const std::string path = EngineConfig::resolveAsset(script->path);
     if (!std::filesystem::exists(path))
       return {};
     Instance &instance = declared[path];
@@ -377,7 +370,7 @@ struct ScriptSystem::Impl {
         return;
       Instance &instance = instances[entity];
       instance.written = script.path;
-      instance.path = EngineConfig::resolvePath(assetPath(script.path));
+      instance.path = EngineConfig::resolveAsset(script.path);
       load(instance);
     });
   }
@@ -619,7 +612,7 @@ struct ScriptSystem::Impl {
         "clips", [this](ScriptEntity &e) { return sol::as_table(engine.getAnimationClips(e.id)); },
         "sound", [this](ScriptEntity &e, const std::string &path, sol::optional<float> volume) {
           const Transform *t = engine.tryGet<Transform>(e.id);
-          engine.playSoundAt(assetPath(path), t ? t->position : glm::vec3(0.0f), volume.value_or(1.0f));
+          engine.playSoundAt(path, t ? t->position : glm::vec3(0.0f), volume.value_or(1.0f));
         });
   }
 
@@ -641,7 +634,7 @@ struct ScriptSystem::Impl {
     api.set_function("find", [this](const std::string &name) { return entityObject(engine.findEntity(name)); });
     api.set_function("spawn", [this](const std::string &prefab, sol::optional<glm::vec3> position,
                                      sol::optional<glm::vec3> rotation) {
-      return entityObject(engine.instantiate(assetPath(prefab), position.value_or(glm::vec3(0.0f)),
+      return entityObject(engine.instantiate(prefab, position.value_or(glm::vec3(0.0f)),
                                              rotation.value_or(glm::vec3(0.0f))));
     });
     // engine.create("Coin", { model = "models/coin.glb", position = vec3(0, 1, 0), scale = vec3(0.5),
@@ -663,7 +656,7 @@ struct ScriptSystem::Impl {
         builder.withModel(*model == "box"        ? std::string(EngineConfig::MODEL_BOX)
                           : *model == "sphere"   ? std::string(EngineConfig::MODEL_SPHERE)
                           : *model == "cylinder" ? std::string(EngineConfig::MODEL_CYLINDER)
-                                                 : assetPath(*model),
+                                                 : *model,
                           position, rotation, scale);
       else
         builder.withTransform(position, rotation, scale);
@@ -693,7 +686,7 @@ struct ScriptSystem::Impl {
       if (e && engine.isAlive(e->id))
         engine.destroyEntity(e->id);
     });
-    api.set_function("loadScene", [this](const std::string &path) { engine.loadScene(assetPath(path)); });
+    api.set_function("loadScene", [this](const std::string &path) { engine.loadScene(path); });
     api.set_function("setTitle", [this](const std::string &title) { engine.setWindowTitle(title); });
 
     // camera: the active one
@@ -735,7 +728,7 @@ struct ScriptSystem::Impl {
     input.set_function("click", [this](sol::optional<int> button) {
       return engine.input().wasMouseButtonPressed(static_cast<MouseButton>(button.value_or(1)));
     });
-    input.set_function("bindings", [this](const std::string &path) { return engine.input().loadBindings(assetPath(path)); });
+    input.set_function("bindings", [this](const std::string &path) { return engine.input().loadBindings(path); });
 
     // physics
     sol::table physics = lua.create_named_table("physics");
@@ -790,13 +783,13 @@ struct ScriptSystem::Impl {
     // sound
     sol::table sound = lua.create_named_table("sound");
     sound.set_function("play", [this](const std::string &path, sol::optional<float> volume, sol::optional<float> pitch) {
-      engine.playSound(assetPath(path), volume.value_or(1.0f), pitch.value_or(1.0f));
+      engine.playSound(path, volume.value_or(1.0f), pitch.value_or(1.0f));
     });
     sound.set_function("playAt", [this](const std::string &path, const glm::vec3 &position, sol::optional<float> volume) {
-      engine.playSoundAt(assetPath(path), position, volume.value_or(1.0f));
+      engine.playSoundAt(path, position, volume.value_or(1.0f));
     });
     sound.set_function("music", [this](const std::string &path, sol::optional<float> volume) {
-      engine.playMusic(assetPath(path), volume.value_or(1.0f));
+      engine.playMusic(path, volume.value_or(1.0f));
     });
     sound.set_function("stopMusic", [this]() { engine.stopMusic(); });
 
@@ -828,7 +821,7 @@ struct ScriptSystem::Impl {
         it->second->Show();
         return true;
       }
-      Rml::ElementDocument *document = engine.loadUIDocument(assetPath(path));
+      Rml::ElementDocument *document = engine.loadUIDocument(path);
       if (document)
         documents[path] = document;
       return document != nullptr;
@@ -902,7 +895,7 @@ void ScriptSystem::reset() {
 
 bool ScriptSystem::runGameScript(const std::string &path) {
   Impl &impl = *m_impl;
-  impl.gameScriptPath = EngineConfig::resolvePath(assetPath(path));
+  impl.gameScriptPath = EngineConfig::resolveAsset(path);
   impl.gameScript = Impl::Instance{};
   impl.gameScript.path = impl.gameScriptPath;
   impl.hasGameScript = true;

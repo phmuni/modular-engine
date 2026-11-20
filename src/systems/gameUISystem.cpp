@@ -103,7 +103,7 @@ Rml::Context *GameUISystem::getContext() const { return m_impl->context; }
 bool GameUISystem::loadFont(const std::string &path, bool fallback) {
   if (!isAvailable())
     return false;
-  std::string resolved = EngineConfig::resolvePath(path);
+  std::string resolved = EngineConfig::resolveAsset(path);
   if (!Rml::LoadFontFace(resolved, fallback)) {
     LOG_W("[GameUI] Could not load font %s", resolved.c_str());
     return false;
@@ -114,7 +114,7 @@ bool GameUISystem::loadFont(const std::string &path, bool fallback) {
 Rml::ElementDocument *GameUISystem::loadDocument(const std::string &path, bool show) {
   if (!isAvailable())
     return nullptr;
-  std::string resolved = EngineConfig::resolvePath(path);
+  std::string resolved = EngineConfig::resolveAsset(path);
   Rml::ElementDocument *document = m_impl->context->LoadDocument(resolved);
   if (!document) {
     LOG_W("[GameUI] Could not load document %s", resolved.c_str());

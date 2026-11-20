@@ -263,7 +263,7 @@ std::optional<SceneSerializer::json> SceneSerializer::saveModel(Entity entity) c
 void SceneSerializer::loadModel(Entity entity, const json &data) {
   auto &resources = m_systemManager.getSystem<ResourceSystem>();
   const uint32_t shader = resources.getMaterial(0).getShaderHandle();
-  ModelLoadResult loaded = resources.loadModel(EngineConfig::resolvePath(data.at("path").get<std::string>()), shader);
+  ModelLoadResult loaded = resources.loadModel(EngineConfig::resolveAsset(data.at("path").get<std::string>()), shader);
   m_componentManager.addInPlace<Model>(entity, loaded.meshHandle, std::move(loaded.materialHandles),
                                        data.value("opacity", 1.0f));
   m_systemManager.getSystem<RenderSystem>().markBatchesDirty();
@@ -328,7 +328,7 @@ bool SceneSerializer::writeFile(const std::string &path, json entities) const {
   json scene = {{"format", kFormat}, {"version", kVersion}, {"entities", std::move(entities)}};
   roundFloats(scene);
 
-  std::string resolved = EngineConfig::resolvePath(path);
+  std::string resolved = EngineConfig::resolveAsset(path);
   std::error_code error;
   std::filesystem::create_directories(std::filesystem::path(resolved).parent_path(), error);
   std::ofstream file(resolved);
@@ -385,7 +385,7 @@ std::vector<Entity> SceneSerializer::pasteFromJson(const std::string &text) {
 }
 
 std::optional<SceneSerializer::json> SceneSerializer::readFile(const std::string &path) const {
-  std::string resolved = EngineConfig::resolvePath(path);
+  std::string resolved = EngineConfig::resolveAsset(path);
   std::ifstream file(resolved);
   if (!file) {
     LOG_E("[Scene] Could not open %s", resolved.c_str());
@@ -477,7 +477,7 @@ bool SceneSerializer::load(const std::string &path) {
     return false;
   clear();
   createEntities((*scene)["entities"]);
-  LOG_I("[Scene] Loaded %zu entities from %s", (*scene)["entities"].size(), EngineConfig::resolvePath(path).c_str());
+  LOG_I("[Scene] Loaded %zu entities from %s", (*scene)["entities"].size(), EngineConfig::resolveAsset(path).c_str());
   return true;
 }
 
@@ -490,7 +490,7 @@ std::vector<Entity> SceneSerializer::instantiate(const std::string &path) {
 
 std::vector<std::string> SceneSerializer::modelPaths(const std::string &path) const {
   std::vector<std::string> paths;
-  std::ifstream file(EngineConfig::resolvePath(path));
+  std::ifstream file(EngineConfig::resolveAsset(path));
   json scene = json::parse(file, nullptr, false);
   if (scene.is_discarded() || !scene.contains("entities") || !scene["entities"].is_array())
     return paths;
@@ -499,7 +499,7 @@ std::vector<std::string> SceneSerializer::modelPaths(const std::string &path) co
                             ? &entry["components"]["Model"]
                             : nullptr;
     if (model && model->contains("path") && (*model)["path"].is_string()) {
-      std::string resolved = EngineConfig::resolvePath((*model)["path"].get<std::string>());
+      std::string resolved = EngineConfig::resolveAsset((*model)["path"].get<std::string>());
       if (std::find(paths.begin(), paths.end(), resolved) == paths.end())
         paths.push_back(std::move(resolved));
     }

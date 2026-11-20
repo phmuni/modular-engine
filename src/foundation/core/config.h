@@ -70,6 +70,18 @@ inline std::string resolvePath(std::string_view relativePath) {
   return result;
 }
 
+// The one rule for paths a game writes: relative to assets/ ("prefabs/coin.json", "sounds/laser.wav"), the same in
+// C++ and Lua. A path that starts with "../" (relative to the executable, as scene files store them) or is absolute
+// is kept, so the older spelling "../assets/prefabs/coin.json" works too.
+inline std::string assetPath(std::string_view path) {
+  if (path.empty() || path.substr(0, 3) == "../" || std::filesystem::path(path).is_absolute())
+    return std::string(path);
+  return std::string(ASSETS_PREFIX).append(path);
+}
+
+// resolvePath for a path a game wrote: what the asset-loading calls (models, sounds, scenes, UI...) use
+inline std::string resolveAsset(std::string_view path) { return resolvePath(assetPath(path)); }
+
 // The inverse of resolvePath: a path relative to the executable's folder (e.g. "../assets/x.obj"), so files that
 // store paths keep working when the project moves. Paths on another drive stay absolute. The engine's copies in
 // bin/engine-assets map back to "../assets/...", the path they were asked for.

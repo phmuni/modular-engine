@@ -686,7 +686,7 @@ void RenderSystem::drawSkybox(ComponentManager &componentManager, ResourceSystem
   // Loaded (and cached) once per path; the texture streams in like any other, smallest mip first
   if (sky->path != m_skyboxPath) {
     m_skyboxPath = sky->path;
-    m_skyboxTexture = resourceSystem.loadTexture(sky->path);
+    m_skyboxTexture = resourceSystem.loadTexture(EngineConfig::resolveAsset(sky->path));
     // Wrapping around horizontally is right for a panorama, but not past the poles
     glBindTexture(GL_TEXTURE_2D, m_skyboxTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
