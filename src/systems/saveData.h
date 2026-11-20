@@ -22,6 +22,9 @@ public:
   void setGameName(std::string_view name);
   // Memory only: no file is read or written
   void setInMemory(bool inMemory);
+  // Keeps save.json in this folder (created if needed) instead of the preferences folder, for tests that must not touch
+  // the player's real saves. Call after setGameName and before reading anything; it also ends memory-only mode.
+  void setFolder(const std::string &folder);
   // The save file's path, empty while the data is in memory only
   std::string getPath();
 

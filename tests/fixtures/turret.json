@@ -1,0 +1,22 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Turret",
+      "components": {
+        "Transform": { "position": [0, 0, 0], "scale": [1, 1, 1] },
+        "Model": { "path": "../assets/models/box/box.obj" },
+        "Tags": ["enemy", "turret"]
+      }
+    },
+    {
+      "name": "Barrel",
+      "components": {
+        "Transform": { "position": [0, 1, 0], "scale": [0.2, 0.2, 1] },
+        "Model": { "path": "../assets/models/cylinder/cylinder.obj" },
+        "Parent": { "parent": 0, "local": { "position": [0, 1, 0], "scale": [0.2, 0.2, 1] } }
+      }
+    }
+  ]
+}

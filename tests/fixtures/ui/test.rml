@@ -1,0 +1,16 @@
+<rml>
+<head>
+  <title>Test</title>
+  <style>
+    body { font-family: LatoLatin; font-size: 16dp; color: white; }
+    #score { width: 120dp; height: 20dp; }
+    #banner { width: 200dp; height: 30dp; }
+    .hot { color: red; }
+  </style>
+</head>
+<body>
+  <div id="score">0</div>
+  <div id="banner">Hello</div>
+  <button id="button">Go</button>
+</body>
+</rml>

@@ -86,6 +86,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Scenes**                 | Save the running scene to JSON and load or switch scenes at runtime (`Engine::saveScene`/`loadScene`, Settings panel) |
 | **Screenshots**            | `F12` (or `--screenshot`) saves the current frame as a BMP                     |
 | **UI Integration**         | ImGui-based editor (`F2`) with click-to-select in the scene, move/rotate/scale gizmos (ImGuizmo), material inspector, light tweaks, entity hierarchy and a settings panel |
+| **Behavior Tests**         | `tools/run_tests.py` runs Lua and C++ tests of the game API (entities, tags, timers, coroutines, tweens, camera, physics, navigation, saves, UI, input) in CI, headless under xvfb |
 | **Regression Tests**       | `tools/regression.py` compares screenshots and frame times of every example and scene with references, on repeatable `--deterministic` runs |
 | **Settings Panel**         | Every toggle with its key (`F1`–`F10`), time scale, camera FOV/speed, audio volumes, screenshots and render stats (draw calls, culled meshes, particles) |
 | **Scene Management**       | Entity lifecycle management and component composition                          |
@@ -173,6 +174,8 @@ modular-engine/
 ├── cmake/                      # CPM package manager script
 ├── external/                   # Bundled third-party dependencies
 ├── assets/                     # Models, shaders, sounds, scenes (JSON) and game UI (RML/RCSS)
+├── tests/                      # Behavior tests: Lua scripts (lua/), C++ cases (cpp/), fixtures; tests/regression/ is local
+├── tools/                      # Python tools: regression.py, run_tests.py, packaging, API checks
 ├── bin/                        # Compiled binaries
 ├── build/                      # CMake build output
 └── CMakeLists.txt              # Build configuration
@@ -261,6 +264,49 @@ python3 tools/regression.py --only aliens --images-only
 ```
 
 References and baselines describe this machine's GPU, speed and build type, so they live in `tests/regression/` and are not committed; changed screenshots and diff images (changes in red) go to `tests/regression/out/`. Python's standard library is enough.
+
+### Behavior tests
+
+`tests/` holds tests of the game API itself (entity handles, `engine.create`, prefabs, tags, timers, `wait`, tweens, the camera rig, physics, navigation, saved data, UI helpers, text and mouse input). Each one is a start of `bin/engine_tests`, which opens a window, runs the test on fixed 1/60 s frames (`--deterministic`) and exits non-zero when a check fails or the test hangs. Lua tests are scripts in `tests/lua`; C++ tests are `TEST_CASE`s in `tests/cpp` that drive `Engine` through the same facades.
+
+```bash
+cmake -B build -DMODULAR_ENGINE_BUILD_TESTS=ON && cmake --build build --target engine_tests
+python3 tools/run_tests.py                 # all of them: exit code 1 if any fails, failures print their output
+python3 tools/run_tests.py tags camera     # only tests whose name contains one of these words
+python3 tools/run_tests.py -j 4 -v         # four at a time, with the output of passing tests too
+./bin/engine_tests ../tests/lua/tags.lua   # one Lua test; ./bin/engine_tests --list names the C++ ones
+```
+
+They need a window with OpenGL 4.1, but not a GPU: on Linux without a screen, install `xvfb` and Mesa's software driver (`libgl1-mesa-dri`) and run `xvfb-run -a -s "-screen 0 1280x720x24" python3 tools/run_tests.py`, as CI does. The engine's systems all start together with the window and the GL context, so there is no logic-only mode; a small window and software rendering keep the whole suite under a few minutes. Tests keep the save data in memory or in a temporary folder, never in the real save folder.
+
+To add a Lua test, create `tests/lua/<name>.lua`; the runner finds it. The global `test` helper reports failures with their line and lets the script go on:
+
+```lua
+-- tests/lua/pickups.lua
+test.run(function()                      -- engine.run, then test.done() when it returns; it may wait()
+  local coin = engine.create("Coin", { model = "sphere", tags = { "pickup" } })
+  test.eq(#engine.findTagged("pickup"), 1)
+  test.near(coin.position, vec3(0, 0, 0), 0.01)
+  tween.to(coin, "position", vec3(0, 3, 0), 1)
+  wait(1.1)                              -- game time: 66 fixed frames
+  test.near(coin.position.y, 3, 0.001)
+end)
+```
+
+`test.ok`, `test.eq` (also tables and vec3s), `test.near`, `test.expectError("part of a message")` (for a script error the test provokes on purpose; any other reported script error fails the test), `test.frame()` and `test.done()` are in `tests/lua/test.lua`. A test that never calls `test.done()` fails after 1200 frames. Files it needs go in `tests/fixtures` (paths like `../tests/fixtures/turret.json` work from the executable's folder).
+
+To add a C++ test, add a `TEST_CASE` to a file in `tests/cpp` (the build picks up new files after a CMake re-run). The body runs once at the start and queues later checks with `steps`, since the engine owns the loop:
+
+```cpp
+TEST_CASE(coin_spins) {
+  GameEntity coin = engine.create("Coin", Desc("sphere").at(0, 1, 0).tags({"pickup"}));
+  CHECK_EQ(engine.findTagged("pickup").size(), size_t(1));
+  steps.seconds(1.0f, [coin]() { CHECK_NEAR(coin.position(), glm::vec3(0, 1, 0), 0.01f); });
+  steps.until([&engine]() { return !engine.isLoadingScene(); }, "the scene to load", 300);
+}
+```
+
+`CHECK`, `CHECK_EQ` and `CHECK_NEAR` record a failure and go on; `testing::tempDir("name")` gives a temporary folder removed at exit; `Desc` (`tests/cpp/describe.h`) writes an `EntityDesc` in a line. Events can be pushed with `SDL_PushEvent` (see `uiInputTests.cpp`); the engine reads them at the start of the next frame.
 
 ### Benchmarking
 
