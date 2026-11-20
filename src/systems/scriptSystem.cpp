@@ -38,6 +38,7 @@
 #include <iterator>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <nlohmann/json.hpp>
 #include <unordered_map>
 #include <variant>

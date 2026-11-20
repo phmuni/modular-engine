@@ -5,6 +5,7 @@
 #include "foundation/ecs/systemManager.h"
 #include "systems/stateSystem.h"
 #include <SDL3/SDL.h>
+#include <cstddef>
 #include <glm/glm.hpp>
 #include <map>
 #include <string>
