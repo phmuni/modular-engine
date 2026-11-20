@@ -672,6 +672,7 @@ void Engine::applyPendingScene() {
     return;
   m_scenePath = path;
   m_systemManager.getSystem<NavigationSystem>().clear(); // the map was of the old level
+  m_camera.applyRememberedFollow();
   clearHistory();
   m_savedRevision = m_editRevision;
   if (m_app)

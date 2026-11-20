@@ -570,7 +570,9 @@ function camera.lookAt(from, target) end
 
 ---Makes the active camera trail an entity, from behind, after physics and scripts have moved it (so it does not
 ---jitter). Replaces the camera's follow settings. It stands aside while the free camera in Settings is on, and
----camera.lookAt in the same frame wins. A scene load replaces the camera: call it again in onSceneLoaded.
+---camera.lookAt in the same frame wins. It survives engine.loadScene: the request (target name and options) is put on the
+---new scene's camera, found by name, unless that camera has a CameraRig of its own in the scene file, which wins (the
+---request stays for later scenes). camera.stopFollow forgets it.
 ---Also a CameraRig component in the scene file, edited in the Properties panel.
 ---@param target Entity
 ---@param options? CameraFollowOptions

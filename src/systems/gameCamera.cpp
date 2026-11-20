@@ -19,7 +19,7 @@ void GameCamera::lookAt(const glm::vec3 &from, const glm::vec3 &target) {
 void GameCamera::follow(const GameEntity &target, const CameraRig &options) {
   const Entity camera = m_engine.getSystemManager().getSystem<CameraSystem>().getActiveCamera();
   if (camera == -1 || !m_engine.has<Camera>(camera)) {
-    LOG_W("[Camera] follow: there is no active camera (a scene load replaces it: follow again in onSceneLoaded)");
+    LOG_W("[Camera] follow: there is no active camera (a scene without a camera has none to follow with)");
     return;
   }
   if (!target.valid()) {
@@ -33,9 +33,24 @@ void GameCamera::follow(const GameEntity &target, const CameraRig &options) {
   rig.primed = false;
   rig.orbitYaw = rig.orbitPitch = 0.0f;
   m_engine.getComponentManager().addInPlace<CameraRig>(camera) = rig;
+  m_followRequest = rig; // for the next scene load
+}
+
+void GameCamera::applyRememberedFollow() {
+  if (!m_followRequest)
+    return;
+  const Entity camera = m_engine.getSystemManager().getSystem<CameraSystem>().getActiveCamera();
+  if (camera == -1 || !m_engine.has<Camera>(camera) || m_engine.has<CameraRig>(camera))
+    return;
+  CameraRig rig = *m_followRequest;
+  rig.targetEntity = -1; // entity numbers of the old scene mean nothing: CameraSystem looks the name up again
+  rig.primed = false;
+  rig.orbitYaw = rig.orbitPitch = 0.0f;
+  m_engine.getComponentManager().addInPlace<CameraRig>(camera) = rig;
 }
 
 void GameCamera::stopFollow() {
+  m_followRequest.reset();
   const Entity camera = m_engine.getSystemManager().getSystem<CameraSystem>().getActiveCamera();
   if (camera != -1)
     m_engine.removeComponent<CameraRig>(camera);
