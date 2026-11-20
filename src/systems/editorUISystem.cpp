@@ -1234,8 +1234,10 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
   m_gizmoShown = true;
   // The heading kept while aligning to surfaces is the one the entity had when the drag started
-  if (!ImGuizmo::IsUsing())
+  if (!ImGuizmo::IsUsing()) {
     m_alignHeading = headingAround(rotationOf(*transform));
+    m_alignGrabbed = false;
+  }
   const bool snapping = m_gizmoSnap || io.KeyCtrl;
   const bool gizmoMoved = ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode,
                                                glm::value_ptr(model), nullptr, snapping ? snap : nullptr);
@@ -1573,18 +1575,40 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   if (!hit)
     return false;
 
+  const float baseHeight = resourceSystem.getMesh(model->meshHandle).getBoundsMin().y * transform.scale.y;
+  // The first frame: how far the base is from where the cursor met the surface, along the surface (the base itself,
+  // under the entity's own up, is where it touches)
+  if (!m_alignGrabbed) {
+    const glm::vec3 base = transform.position + rotationOf(transform) * glm::vec3(0.0f, baseHeight, 0.0f);
+    const glm::vec3 offset = base - hit->point;
+    m_alignGrabOffset = offset - hit->normal * glm::dot(offset, hit->normal);
+    m_alignGrabbed = true;
+  }
+  // The cursor's point moved by that offset, then dropped back onto whatever surface is there (a step, a slope): from
+  // above it along the normal. Off any surface it stays on the cursor's surface plane.
+  ModelHit target = *hit;
+  if (glm::dot(m_alignGrabOffset, m_alignGrabOffset) > 1e-8f) {
+    const glm::vec3 moved = hit->point + m_alignGrabOffset;
+    const float reach = std::max(1.0f, glm::length(m_alignGrabOffset));
+    const auto below = queries.raycast(moved + hit->normal * reach, -hit->normal, reach * 2.0f,
+                                       [&](Entity entity) { return entity != m_gizmoEntity && !isSelected(entity); });
+    if (below) {
+      target = *below;
+    } else {
+      target.point = moved;
+    }
+  }
+
   // Its up (+Y) along the surface's normal, keeping the heading it had when the drag started (to 15 degrees when
   // snapping: the rotation around the normal)
   const glm::vec3 up(0.0f, 1.0f, 0.0f);
   const float headingDegrees = snapped ? std::round(m_alignHeading / kSnapAngle) * kSnapAngle : m_alignHeading;
-  const glm::quat tilt = glm::rotation(up, hit->normal);
+  const glm::quat tilt = glm::rotation(up, target.normal);
   const glm::quat heading = glm::angleAxis(glm::radians(headingDegrees), up);
   transform.rotation = eulerOf(tilt * heading);
   // Its lowest point (the bottom of its bounds) on the surface, which is on the grid when snapping
-  const glm::vec3 point = snapped ? snapToSurfaceGrid(hit->point, hit->normal, kSnapStep) : hit->point;
-  transform.position = point - hit->normal * (model ? resourceSystem.getMesh(model->meshHandle).getBoundsMin().y *
-                                                          transform.scale.y
-                                                    : 0.0f);
+  const glm::vec3 point = snapped ? snapToSurfaceGrid(target.point, target.normal, kSnapStep) : target.point;
+  transform.position = point - target.normal * baseHeight;
   return true;
 }
 
