@@ -1615,6 +1615,9 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   // meets the surface raised by that height: the ray's own hit is behind it, by the entity's thickness. The surface
   // under that spot may not be the one the ray hit (the edge of a step, a slope): found by looking down from it, and
   // the spot found again on that one, a few times.
+  // A spot is only taken once a surface is found under it: the raised surface is an infinite plane, and seen at a
+  // grazing angle (the side of a pillar) its spot is far off the real face, in the air towards the camera. Then the
+  // entity stays against the point the cursor is on, its origin off it along the normal.
   const float height = -baseHeight;
   ModelHit target = *hit;
   glm::vec3 placed = hit->point + hit->normal * height;
@@ -1625,8 +1628,8 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
     const float along = glm::dot(target.point + target.normal * height - origin, target.normal) / facing;
     if (along <= 0.0f)
       break;
-    placed = origin + direction * along;
-    const auto below = queries.raycast(placed, -target.normal, height * 2.0f + 0.5f, other);
+    const glm::vec3 spot = origin + direction * along;
+    const auto below = queries.raycast(spot, -target.normal, height * 2.0f + 0.5f, other);
     if (!below)
       break;
     const bool same = glm::dot(below->normal, target.normal) > 0.9999f &&
