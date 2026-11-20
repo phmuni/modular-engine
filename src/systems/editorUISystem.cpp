@@ -2,6 +2,7 @@
 // UI that games build with RmlUi (GameUISystem).
 
 #include "systems/editorUISystem.h"
+#include "components/animationStateMachine.h"
 #include "components/animator.h"
 #include "components/audioSource.h"
 #include "components/cameraRig.h"
@@ -21,6 +22,8 @@
 #include "components/transform.h"
 #include "foundation/core/engine.h"
 #include "foundation/core/logger.h"
+#include "systems/animationGraph.h"
+#include "systems/animationSystem.h"
 #include "systems/modelQueries.h"
 #include "systems/navigationSystem.h"
 #include "systems/scriptSystem.h"
@@ -2111,6 +2114,82 @@ void drawReflectedField(const ReflectedField &field, void *component) {
   case FieldKind::Vec4: editFloats(field.name, &static_cast<glm::vec4 *>(data)->x, 4); break;
   }
 }
+// The Animation State Machine section: the definition file (typed, or dropped from the asset browser), the state it
+// is in, and a widget per parameter, so a character can be driven from here while the game plays
+void drawAnimationStateMachine(Engine &engine, SystemManager &systemManager, Entity entity,
+                               AnimationStateMachine &machine) {
+  static char pathBuffer[256] = "";
+  static Entity pathEntity = -1;
+  static std::string shownPath;
+  if (pathEntity != entity || shownPath != machine.path) {
+    pathEntity = entity;
+    shownPath = machine.path;
+    std::strncpy(pathBuffer, machine.path.c_str(), sizeof(pathBuffer) - 1);
+    pathBuffer[sizeof(pathBuffer) - 1] = '\0';
+  }
+  ImGui::SetNextItemWidth(200.0f);
+  std::optional<std::string> path;
+  if (ImGui::InputText("File##statemachine", pathBuffer, sizeof(pathBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
+    path = pathBuffer;
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Relative to the assets folder, e.g. animators/character.json (Enter applies); drop a file from the Assets panel here");
+  if (ImGui::BeginDragDropTarget()) {
+    const ImGuiPayload *asset = ImGui::GetDragDropPayload();
+    if (asset && asset->IsDataType(AssetBrowser::kPayload) && asset->Data &&
+        AssetBrowser::classify(static_cast<const char *>(asset->Data)) == AssetBrowser::Kind::Animator &&
+        ImGui::AcceptDragDropPayload(AssetBrowser::kPayload))
+      path = static_cast<const char *>(asset->Data);
+    ImGui::EndDragDropTarget();
+  }
+  if (path) {
+    engine.setAnimator(entity, *path);
+    // setAnimator with "" removed the component
+    if (!engine.has<AnimationStateMachine>(entity))
+      return;
+  }
+
+  auto &animationSystem = systemManager.getSystem<AnimationSystem>();
+  const std::shared_ptr<const AnimationGraph> graph = animationSystem.graph(machine.path);
+  if (machine.path.empty()) {
+    ImGui::TextDisabled("No file yet");
+    return;
+  }
+  if (!graph) {
+    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "The file did not load (see the log)");
+    return;
+  }
+
+  ImGui::Text("State: %s", engine.getAnimationState(entity).c_str());
+  if (machine.manual) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("(a clip was played by hand)");
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Restart##statemachine"))
+    engine.setAnimator(entity, machine.path);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Back to the default state with the parameters at their initial values");
+
+  for (const auto &[name, param] : graph->params) {
+    float &value = machine.params[name];
+    const std::string label = name + "##param";
+    if (param.source != AnimationGraph::Source::None) {
+      ImGui::TextDisabled("%s: %.2f (from the character)", name.c_str(), value);
+    } else if (param.type == AnimationGraph::ParamType::Float) {
+      ImGui::DragFloat(label.c_str(), &value, 0.05f);
+    } else if (param.type == AnimationGraph::ParamType::Bool) {
+      bool flag = value != 0.0f;
+      if (ImGui::Checkbox(label.c_str(), &flag))
+        value = flag ? 1.0f : 0.0f;
+    } else {
+      if (ImGui::Button((name + "##trigger").c_str()))
+        value = 1.0f;
+      ImGui::SameLine();
+      ImGui::TextDisabled(value != 0.0f ? "trigger (raised)" : "trigger");
+    }
+  }
+}
+
 } // namespace
 
 void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &systemManager,
@@ -2502,6 +2581,21 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
     }
   }
 
+  // Animation State Machine
+  if (!earlyOut && componentManager.has<AnimationStateMachine>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Animation State Machine", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##statemachine")) {
+        componentManager.removeComponent<AnimationStateMachine>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        drawAnimationStateMachine(engine, systemManager, selectedEntity,
+                                  componentManager.get<AnimationStateMachine>(selectedEntity));
+      }
+    }
+  }
+
   // Character controller
   if (!earlyOut && componentManager.has<CharacterController>(selectedEntity)) {
     if (ImGui::CollapsingHeader("Character Controller", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -2651,6 +2745,12 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         if (model && systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle).getAnimation() &&
             ImGui::Button("+ Animator", ImVec2(-1, 0)))
           componentManager.addInPlace<Animator>(selectedEntity);
+      }
+      if (!componentManager.has<AnimationStateMachine>(selectedEntity)) {
+        const Model *model = componentManager.tryGet<Model>(selectedEntity);
+        if (model && systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle).getAnimation() &&
+            ImGui::Button("+ Animation State Machine", ImVec2(-1, 0)))
+          componentManager.addInPlace<AnimationStateMachine>(selectedEntity);
       }
       if (!componentManager.has<Skybox>(selectedEntity)) {
         if (ImGui::Button("+ Skybox / Environment", ImVec2(-1, 0))) {

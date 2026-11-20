@@ -2,6 +2,7 @@
 
 #include "foundation/core/engine.h"
 
+#include "components/animationStateMachine.h"
 #include "components/collision.h"
 #include "components/hidden.h"
 #include "components/camera.h"
@@ -17,6 +18,7 @@
 #include <cstdint>
 #include "rendering/resources/material.h"
 #include "rendering/resources/textureProcessing.h"
+#include "systems/animationGraph.h"
 #include "systems/animationSystem.h"
 #include "systems/scriptSystem.h"
 #include "systems/audioSystem.h"
@@ -372,7 +374,16 @@ void Engine::update(bool &isRunning, bool pollInput) {
   m_systemManager.getSystem<NavigationSystem>().update();
   m_systemManager.getSystem<TransformSystem>().updateHierarchy(m_componentManager);
   // Skeletons posed from their clips (time stands still while paused or editing)
-  m_systemManager.getSystem<AnimationSystem>().update(timeSystem.getDeltaTime());
+  auto &animationSystem = m_systemManager.getSystem<AnimationSystem>();
+  animationSystem.update(timeSystem.getDeltaTime());
+  // State machines that changed state: C++ listeners, then the entity's script
+  for (const AnimationSystem::StateChange &change : animationSystem.takeStateChanges()) {
+    if (!isAlive(change.entity))
+      continue;
+    for (const auto &listener : m_animationListeners)
+      listener(entity(change.entity), change.from, change.to);
+    m_systemManager.getSystem<ScriptSystem>().animationStateChanged(change.entity, change.from, change.to);
+  }
   // The camera rig last of the movement: it trails where the target ended up this frame
   cameraSystem.updateRigs(timeSystem.getDeltaTime(), m_systemManager);
 
@@ -479,25 +490,17 @@ void Engine::playAnimation(Entity entity, std::string_view clip, float fadeSecon
   const Model *model = tryGet<Model>(entity);
   const MeshAnimation *animation =
       model ? m_systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle).getAnimation() : nullptr;
+  if (AnimationStateMachine *machine = tryGet<AnimationStateMachine>(entity))
+    machine->manual = true; // the machine keeps its state but leaves the Animator alone until it changes state
   if (animation && !clip.empty() && animation->findClip(clip) < 0)
     LOG_W("[Engine] playAnimation: entity %d's model has no clip \"%.*s\"", entity, static_cast<int>(clip.size()),
           clip.data());
-  const bool same = animator->clip == clip && animator->playing;
+  const bool same = animator->clip == clip && animator->playing && animator->blendClip.empty();
   animator->loop = loop;
   animator->playing = true;
   if (same)
     return; // already playing it: keep going rather than restart
-  if (fadeSeconds > 0.0f) {
-    animator->fadeFrom = animator->clip.empty() && animation && !animation->clips.empty() ? animation->clips[0].name
-                                                                                         : animator->clip;
-    animator->fadeFromTime = animator->time;
-    animator->fadeElapsed = 0.0f;
-    animator->fadeDuration = fadeSeconds;
-  } else {
-    animator->fadeFrom.clear();
-  }
-  animator->clip = std::string(clip);
-  animator->time = 0.0f;
+  AnimationSystem::crossfade(*animator, animation, std::string(clip), fadeSeconds, loop);
 }
 
 std::vector<std::string> Engine::getAnimationClips(Entity entity) {
@@ -508,6 +511,63 @@ std::vector<std::string> Engine::getAnimationClips(Entity entity) {
     for (const AnimationClip &clip : animation->clips)
       names.push_back(clip.name);
   return names;
+}
+
+void Engine::setAnimator(Entity entity, std::string_view path) {
+  if (!isAlive(entity))
+    return;
+  if (path.empty()) {
+    removeComponent<AnimationStateMachine>(entity);
+    return;
+  }
+  AnimationStateMachine *machine = tryGet<AnimationStateMachine>(entity);
+  if (!machine)
+    machine = &addComponent<AnimationStateMachine>(entity);
+  machine->path = std::string(path);
+  auto &animationSystem = m_systemManager.getSystem<AnimationSystem>();
+  animationSystem.restartMachine(entity);
+}
+
+void Engine::setAnimationParam(Entity entity, std::string_view name, float value) {
+  AnimationStateMachine *machine = tryGet<AnimationStateMachine>(entity);
+  if (!machine) {
+    LOG_W("[Engine] setAnimationParam: entity %d has no animation state machine", entity);
+    return;
+  }
+  const auto graph = m_systemManager.getSystem<AnimationSystem>().graph(machine->path);
+  // With a file that did not load there is nothing to check the name against: the value is kept for when it does
+  if (graph && !graph->params.count(std::string(name))) {
+    LOG_W("[Engine] setAnimationParam: %s has no parameter \"%.*s\"", machine->path.c_str(), static_cast<int>(name.size()),
+          name.data());
+    return;
+  }
+  machine->params[std::string(name)] = value;
+}
+
+void Engine::setAnimationParam(Entity entity, std::string_view name, bool value) {
+  setAnimationParam(entity, name, value ? 1.0f : 0.0f);
+}
+
+void Engine::triggerAnimation(Entity entity, std::string_view name) { setAnimationParam(entity, name, 1.0f); }
+
+float Engine::getAnimationParam(Entity entity, std::string_view name) {
+  const AnimationStateMachine *machine = tryGet<AnimationStateMachine>(entity);
+  if (!machine)
+    return 0.0f;
+  auto value = machine->params.find(std::string(name));
+  return value != machine->params.end() ? value->second : 0.0f;
+}
+
+std::string Engine::getAnimationState(Entity entity) {
+  if (!tryGet<AnimationStateMachine>(entity))
+    return std::string();
+  m_systemManager.getSystem<AnimationSystem>().startMachine(entity); // a scene's machine starts with the next frame
+  return tryGet<AnimationStateMachine>(entity)->state;
+}
+
+void Engine::onAnimationStateChanged(
+    std::function<void(const GameEntity &, const std::string &, const std::string &)> listener) {
+  m_animationListeners.push_back(std::move(listener));
 }
 
 std::optional<RayHit> Engine::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
@@ -1003,6 +1063,7 @@ bool Engine::hasComponent(Entity entity, std::string_view component) {
   if (component == "Light") return has<Light>(entity);
   if (component == "Camera") return has<Camera>(entity);
   if (component == "Animator") return has<Animator>(entity);
+  if (component == "AnimationStateMachine") return has<AnimationStateMachine>(entity);
   if (component == "Script") return has<Script>(entity);
   if (component == "Transform") return has<Transform>(entity);
   if (component == "AudioSource") return has<AudioSource>(entity);

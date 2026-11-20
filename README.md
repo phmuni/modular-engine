@@ -73,7 +73,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Saved Data**             | A per-game key-value store for progress and settings in the user's preferences folder, written atomically: `engine.saveData()`, or `save.get` / `save.set` in Lua |
 | **Lua Scripting**          | Entity and game scripts with hot reload, the engine's API, and C++ functions handed to them (Lua 5.4, sol2) |
 | **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds, plays and exports them, opens them in VS Code |
-| **Skeletal Animation**     | glTF skins and clips (linear, step, cubic spline), crossfades, rigid parts following their nodes, animated shadows |
+| **Skeletal Animation**     | glTF skins and clips (linear, step, cubic spline), crossfades, rigid parts following their nodes, animated shadows; state machines (JSON: states, blends, parameters, transitions) |
 | **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events, collision layers with a matrix |
 | **Navigation**             | A walkable grid built from the physics world and A* paths around obstacles, smoothed (`engine.navigation().findPath`, `nav.path` in Lua), drawn by the editor's "Show navigation" |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
@@ -797,6 +797,68 @@ auto &animator = engine.get<Animator>(hero); // speed, time, loop, playing
 panel picks a clip and scrubs through it; `Animator` is saved in scenes ([`assets/scenes/animation.json`](assets/scenes/animation.json)).
 [`tools/generateAnimatedTestModel.py`](tools/generateAnimatedTestModel.py) writes the small test model it uses. Up to
 128 joints per model are animated (`EngineConfig::MAX_JOINTS`); morph targets are not supported.
+
+### Animation state machines
+
+An `AnimationStateMachine` component drives an entity's `Animator` from a JSON file: states that play a clip (or a blend
+of clips), parameters the game sets, and transitions that cross-fade between states. A character is then driven by
+parameters (`speed`, `grounded`, a `jump` trigger) instead of calling `play` at the right moments.
+[`assets/animators/tentacle.json`](assets/animators/tentacle.json) is a small example for the tentacle model.
+
+```json
+{
+  "default": "idle",
+  "params": {
+    "speed":    { "type": "float", "source": "speed" },
+    "grounded": { "type": "bool",  "source": "grounded" },
+    "jump":     "trigger"
+  },
+  "states": [
+    { "name": "idle", "clip": "Idle" },
+    { "name": "move", "blend": { "param": "speed", "clips": [{ "clip": "Walk", "at": 0.5 }, { "clip": "Run", "at": 4 }] } },
+    { "name": "air",  "clip": "Fall", "loop": false }
+  ],
+  "transitions": [
+    { "from": "idle", "to": "move", "fade": 0.2, "when": [{ "param": "speed", "op": ">", "value": 0.1 }] },
+    { "from": "move", "to": "idle", "fade": 0.2, "when": [{ "param": "speed", "op": "<=", "value": 0.1 }] },
+    { "from": "any",  "to": "air",  "fade": 0.1, "when": [{ "param": "grounded", "op": "false" }] },
+    { "from": "air",  "to": "idle", "fade": 0.1, "when": [{ "param": "grounded" }] }
+  ]
+}
+```
+
+- **`params`**: a name to `"float"`, `"bool"` or `"trigger"`, or to `{ "type", "default", "source" }`. A bool is 0 or 1; a
+  trigger stays raised until a transition that waits for it fires, which uses it up. `source` (`speed`: horizontal
+  speed, `verticalSpeed`, `grounded`) feeds the parameter every frame from the entity's `CharacterController`.
+- **`states`** (a list, the first is the default unless `"default"` names one): a `name` and either a `clip`, or a `blend` over a float
+  parameter: `clips` is a list of `{ "clip", "at" }`, and between two neighbours the two clips are mixed by where the value
+  falls (one clip alone beyond the ends). A blend's clips play in step, whatever their lengths. Also `speed` (1) and `loop` (true).
+- **`transitions`** (checked in order, at most one fires per frame): `from` a state name or `"any"` (default; it never
+  restarts the state it is in), `to`, `fade` seconds (0.2), `exitTime` (the share of the state's clip played before it may
+  fire, 1 is the end; a transition with neither `exitTime` nor `when` waits for 1), and `when`, a list of conditions that
+  must all hold: `{ "param", "op", "value" }` with `op` one of `>`, `<`, `>=`, `<=`, `==`, `!=` (floats), `"true"` or
+  `"false"` (bool; the default for a bool), `"trigger"` (the default for a trigger).
+
+The file is read once and again when it changes on disk. A missing or invalid file is logged with the reason and the
+machine does nothing. Scene and prefab files store the component as `"AnimationStateMachine": { "path": "animators/character.json",
+"params": { "speed": 0.0 } }`; the state is not saved, a loaded scene starts in the default state.
+
+```cpp
+hero.setAnimator("animators/character.json");  // adds the machine (and an Animator), starts it in the default state
+hero.setParam("speed", 3.5f);                  // or a bool: hero.setParam("grounded", true)
+hero.trigger("jump");
+hero.animationState();                         // "move"
+engine.onAnimationStateChanged([](const GameEntity &e, const std::string &from, const std::string &to) { /* ... */ });
+```
+
+In Lua: `hero:setAnimator(path)`, `hero:setParam(name, number|boolean)`, `hero:param(name)`, `hero:trigger(name)`,
+`hero.animationState`, and an entity script's `onStateChanged(self, old, new)` (not called for the default state it starts in).
+
+A manual `hero:play(clip)` (or `engine.playAnimation`) takes the Animator over: the machine keeps running, evaluating
+parameters and transitions, but stops driving the Animator until its next state change, which fades from the clip played
+by hand. `setAnimator(path)` again restarts the machine. The Properties panel shows the machine (drop a file from the Assets
+panel on its `File` field, or on an entity in the viewport), its current state, and a widget per parameter (a drag value, a
+checkbox, a button for a trigger) to drive a character while the game plays.
 
 ### Play and Stop
 

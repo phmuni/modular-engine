@@ -34,6 +34,7 @@ ImVec4 colorOf(AssetBrowser::Kind kind) {
   case AssetBrowser::Kind::Shader: return ImVec4(0.8f, 0.7f, 1.0f, 1.0f);
   case AssetBrowser::Kind::Texture: return ImVec4(1.0f, 0.7f, 0.5f, 1.0f);
   case AssetBrowser::Kind::UI: return ImVec4(0.85f, 0.85f, 0.6f, 1.0f);
+  case AssetBrowser::Kind::Animator: return ImVec4(0.95f, 0.75f, 0.55f, 1.0f);
   case AssetBrowser::Kind::Other: break;
   }
   return ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
@@ -50,6 +51,8 @@ AssetBrowser::Kind AssetBrowser::classify(const std::string &relativePath) {
       return Kind::Prefab;
     if (top == "scenes")
       return Kind::Scene;
+    if (top == "animators")
+      return Kind::Animator;
     return Kind::Other;
   }
   if (extension == ".wav" || extension == ".mp3" || extension == ".ogg" || extension == ".flac")
@@ -77,6 +80,7 @@ const char *AssetBrowser::kindName(Kind kind) {
   case Kind::Shader: return "Shader";
   case Kind::Texture: return "Texture";
   case Kind::UI: return "UI";
+  case Kind::Animator: return "Animator";
   case Kind::Other: break;
   }
   return "Other";
@@ -211,7 +215,8 @@ AssetBrowser::Event AssetBrowser::draw(bool appFocused) {
                                          {"Scripts", static_cast<int>(Kind::Script)},
                                          {"Shaders", static_cast<int>(Kind::Shader)},
                                          {"Textures", static_cast<int>(Kind::Texture)},
-                                         {"UI", static_cast<int>(Kind::UI)}};
+                                         {"UI", static_cast<int>(Kind::UI)},
+                                         {"Animators", static_cast<int>(Kind::Animator)}};
   for (const FilterChoice &filter : filters) {
     ImGui::SameLine();
     const bool active = m_filter == filter.kind;

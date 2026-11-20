@@ -1,0 +1,1 @@
+{ "states": [ { "name": "idle", "clip": "Sway" } ], "transitions": [ { "from": "idle", "to": "nowhere" }

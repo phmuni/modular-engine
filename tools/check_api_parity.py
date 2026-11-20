@@ -53,6 +53,11 @@ ENGINE_ALIASES = {
     "instantiate": "spawn",  # spawn is the same call for the game API, returning a handle
     "playAnimation": "Entity.play",
     "getAnimationClips": "Entity.clips",
+    "setAnimator": "Entity.setAnimator",
+    "setAnimationParam": "Entity.setParam",
+    "triggerAnimation": "Entity.trigger",
+    "getAnimationParam": "Entity.param",
+    "getAnimationState": "Entity.animationState",
     "raycast": "physics.raycastBoxes",
     "raycastModels": "physics.raycastModels",
     "pickModel": "pick",
@@ -142,6 +147,7 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "removeComponent": "template over C++ component types",
     "forEachCollision": "template over C++ component types; entity:isTouching",
     "forEachContact": "template over C++ component types; the onContact callback",
+    "onAnimationStateChanged": "C++ listener; Lua scripts define onStateChanged(self, old, new)",
     "findCollisions": "C++ iteration of Collision pairs; entity:isTouching asks about one pair",
     # Raw entity creation: Lua has engine.create, which does the same from a description
     "createEntity": "an empty entity; engine.create",

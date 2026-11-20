@@ -232,6 +232,7 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent<RigidBody>("RigidBody");
   registerComponent<CharacterController>("CharacterController");
   registerComponent<Animator>("Animator");
+  registerComponent<AnimationStateMachine>("AnimationStateMachine");
   registerComponent<Script>("Script");
   registerComponent<Tags>("Tags");
 

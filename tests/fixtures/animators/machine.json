@@ -1,0 +1,23 @@
+{
+  "default": "idle",
+  "params": {
+    "speed": "float",
+    "grounded": { "type": "bool", "default": true },
+    "poke": "trigger",
+    "hit": "trigger"
+  },
+  "states": [
+    { "name": "idle", "clip": "Sway" },
+    { "name": "walk", "clip": "Twist", "speed": 2.0 },
+    { "name": "poked", "clip": "Twist", "loop": false },
+    { "name": "hurt", "clip": "Sway", "loop": false }
+  ],
+  "transitions": [
+    { "from": "idle", "to": "walk", "fade": 0.5, "when": [{ "param": "speed", "op": ">", "value": 0.5 }] },
+    { "from": "walk", "to": "idle", "fade": 0.2, "when": [{ "param": "speed", "op": "<=", "value": 0.5 }] },
+    { "from": "idle", "to": "poked", "fade": 0.1, "when": [{ "param": "poke" }] },
+    { "from": "poked", "to": "idle", "fade": 0.1, "exitTime": 0.5 },
+    { "from": "any", "to": "hurt", "fade": 0.1, "when": [{ "param": "hit" }] },
+    { "from": "hurt", "to": "idle", "fade": 0.1 }
+  ]
+}

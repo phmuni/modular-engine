@@ -277,6 +277,25 @@ public:
   void playAnimation(Entity entity, std::string_view clip, float fadeSeconds = 0.2f, bool loop = true);
   // The clips of the entity's model, in file order (empty for a model without animations)
   std::vector<std::string> getAnimationClips(Entity entity);
+
+  // Animation state machines (see components/animationStateMachine.h and the README): setAnimator gives the entity the
+  // machine in a JSON file (relative to assets/; adds an AnimationStateMachine and an Animator if needed) and starts it
+  // in its default state. A file that is missing or invalid is logged and the machine does nothing. An empty path
+  // removes the machine and leaves the Animator where it was. playAnimation on an entity with a machine takes the
+  // Animator over until the machine's next state change.
+  void setAnimator(Entity entity, std::string_view path);
+  // A parameter's value: a float, or a bool (true is 1). One the file does not declare is a warning and is ignored.
+  void setAnimationParam(Entity entity, std::string_view name, float value);
+  void setAnimationParam(Entity entity, std::string_view name, bool value);
+  // Raises a trigger parameter: the next transition that waits for it may fire, and uses it up
+  void triggerAnimation(Entity entity, std::string_view name);
+  // A parameter's value (0 for an unknown one)
+  float getAnimationParam(Entity entity, std::string_view name);
+  // The state its machine is in ("" without a machine or with a file that does not load)
+  std::string getAnimationState(Entity entity);
+  // Calls `listener` whenever a state machine moves to another state (not for its first, default state): the entity
+  // and the names of the state it left and the one it entered. Lua scripts get onStateChanged(self, old, new).
+  void onAnimationStateChanged(std::function<void(const GameEntity &, const std::string &, const std::string &)> listener);
   // Bodies that started touching during the last update, one of them with component A and the other with B (each
   // pair once, A's first), e.g. forEachContact<Player, Coin>
   template <typename A, typename B, typename Fn> void forEachContact(Fn &&fn) {
@@ -621,6 +640,7 @@ private:
   uint64_t m_savedRevision = 0;
   static constexpr float kPrefabPollSeconds = 0.5f;
   float m_prefabPollTime = 0.0f;
+  std::vector<std::function<void(const GameEntity &, const std::string &, const std::string &)>> m_animationListeners;
   float m_previewTime = 0.0f; // seconds in the editor with the game frozen, what custom shaders' `time` shows there
   void applyHistoryRequest();
   void clearHistory();

@@ -12,7 +12,7 @@
 
 class AssetBrowser {
 public:
-  enum class Kind { Folder, Model, Prefab, Scene, Sound, Script, Shader, Texture, UI, Other };
+  enum class Kind { Folder, Model, Prefab, Scene, Sound, Script, Shader, Texture, UI, Animator, Other };
 
   // What the user did that the editor has to carry out
   struct Event {
@@ -24,7 +24,7 @@ public:
   // The drag and drop payload type; the data is the path, as above
   static constexpr const char *kPayload = "ASSET";
 
-  // From the path relative to the assets folder: the folder a file is in (prefabs/ and scenes/ hold JSON) and its
+  // From the path relative to the assets folder: the folder a file is in (prefabs/, scenes/ and animators/ hold JSON) and its
   // extension decide
   static Kind classify(const std::string &relativePath);
   static const char *kindName(Kind kind);

@@ -6,6 +6,6 @@
     "checkThirdParty": false
   },
   "diagnostics": {
-    "globals": ["onStart", "onUpdate", "onContact", "onOverlap", "onReload", "properties"]
+    "globals": ["onStart", "onUpdate", "onContact", "onOverlap", "onReload", "onStateChanged", "properties"]
   }
 }

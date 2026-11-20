@@ -1,0 +1,18 @@
+{
+  "default": "idle",
+  "params": {
+    "speed": { "type": "float", "source": "speed" },
+    "grounded": { "type": "bool", "source": "grounded" }
+  },
+  "states": [
+    { "name": "idle", "clip": "Sway" },
+    { "name": "walk", "clip": "Twist" },
+    { "name": "air", "clip": "Sway" }
+  ],
+  "transitions": [
+    { "from": "idle", "to": "walk", "fade": 0.1, "when": [{ "param": "speed", "op": ">", "value": 0.5 }] },
+    { "from": "walk", "to": "idle", "fade": 0.1, "when": [{ "param": "speed", "op": "<", "value": 0.5 }] },
+    { "from": "any", "to": "air", "fade": 0.1, "when": [{ "param": "grounded", "op": "==", "value": false }] },
+    { "from": "air", "to": "idle", "fade": 0.1, "when": [{ "param": "grounded" }] }
+  ]
+}

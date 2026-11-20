@@ -306,6 +306,34 @@ std::vector<std::string> GameEntity::clips() const {
   return m_engine ? m_engine->getAnimationClips(m_id) : std::vector<std::string>();
 }
 
+void GameEntity::setAnimator(const std::string &path) {
+  if (m_engine)
+    m_engine->setAnimator(m_id, path);
+}
+
+void GameEntity::setParam(const std::string &name, float value) {
+  if (m_engine)
+    m_engine->setAnimationParam(m_id, name, value);
+}
+
+void GameEntity::setParam(const std::string &name, bool value) {
+  if (m_engine)
+    m_engine->setAnimationParam(m_id, name, value);
+}
+
+float GameEntity::param(const std::string &name) const {
+  return m_engine ? m_engine->getAnimationParam(m_id, name) : 0.0f;
+}
+
+void GameEntity::trigger(const std::string &name) {
+  if (m_engine)
+    m_engine->triggerAnimation(m_id, name);
+}
+
+std::string GameEntity::animationState() const {
+  return m_engine ? m_engine->getAnimationState(m_id) : std::string();
+}
+
 void GameEntity::playAudio() {
   AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr;
   if (!source)

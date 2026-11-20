@@ -14,6 +14,7 @@
 #include <glm/glm.hpp>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 class Engine;
@@ -46,7 +47,7 @@ public:
   // Whether it has a Script component
   bool hasScript() const;
   // Whether it has the component: an engine one ("Model", "RigidBody", "CharacterController", "Light", "Camera",
-  // "Animator", "Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter", "Hidden", "CameraRig", "Tags") or a game
+  // "Animator", "AnimationStateMachine", "Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter", "Hidden", "CameraRig", "Tags") or a game
   // component registered with Engine::registerComponent, by its name
   bool has(const std::string &component) const;
 
@@ -133,6 +134,20 @@ public:
   // Animation clip of its model, blended in over `fadeSeconds`; the clips there are
   void play(const std::string &clip, float fadeSeconds = kDefaultFade, bool loop = true);
   std::vector<std::string> clips() const;
+  // Animation state machine: its definition file (relative to assets/; see the README), parameters, triggers and
+  // state. setAnimator("") removes it. A manual play() takes the Animator over until the machine's next state change.
+  void setAnimator(const std::string &path);
+  void setParam(const std::string &name, float value);
+  void setParam(const std::string &name, bool value);
+  // Any other number (an int, a double) is a float parameter; the exact bool and float overloads above win over this
+  template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T> && !std::is_same_v<T, bool>>>
+  void setParam(const std::string &name, T value) {
+    setParam(name, static_cast<float>(value));
+  }
+  float param(const std::string &name) const;
+  void trigger(const std::string &name);
+  // The state it is in, "" without a machine
+  std::string animationState() const;
   // Its AudioSource (see components/audioSource.h): the sound attached to it, heard from where the entity is as it
   // moves. All of these do nothing without one (add it in the editor, or with the builder's withSound). playAudio
   // starts it over (or continues it after pauseAudio), stopAudio stops and rewinds it. Volume is 1 for normal,
