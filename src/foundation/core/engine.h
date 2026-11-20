@@ -208,6 +208,15 @@ public:
   // it and the editor shows it.
   void setSkyColor(const glm::vec3 &color);
   glm::vec3 getSkyColor();
+  // Fog and ambient light of the scene, kept in the same Skybox component as the sky color (so a scene file keeps
+  // them, and the editor's Skybox panel edits them). setFog replaces all of the fog's settings; to change one,
+  // start from getFog(). With `matchSky` the fog takes the sky color, so distant things fade into the sky.
+  void setFog(const Fog &fog);
+  Fog getFog();
+  // Light added to everything lit: color times intensity, on top of each Light's own ambient (0 adds nothing)
+  void setAmbient(const glm::vec3 &color, float intensity);
+  glm::vec3 getAmbientColor();
+  float getAmbientIntensity();
 
   // Component access. get throws, with a message saying whether the entity lacks the component or no longer
   // exists; tryGet returns null instead.
@@ -495,6 +504,10 @@ public:
   void setSolidColor(Entity entity, glm::vec3 color, std::string_view part);
 
 private:
+  // The Skybox the scene uses (the first visible one, made if there is none), or null
+  Skybox &sceneSky();
+  const Skybox *findSceneSky();
+
   float m_screenWidth;
   float m_screenHeight;
   uint32_t m_baseShaderHandle = 0;

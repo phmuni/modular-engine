@@ -5,6 +5,7 @@
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "rendering/renderer.h"
+#include <glm/glm.hpp>
 #include <string>
 #include <unordered_map>
 
@@ -14,6 +15,17 @@ class LightSystem;
 class Shader;
 struct PointShadowCaster;
 struct Camera;
+
+// What the scene's Skybox says about fog and ambient light, as the shaders take it: colors already in the space the scene
+// target is in (linear with gamma-correct lighting)
+struct SceneEnvironment {
+  int fogMode = 0; // 0 off, 1 linear, 2 exponential
+  glm::vec3 fogColor{0.0f};
+  float fogStart = 0.0f;
+  float fogFinish = 1.0f;
+  float fogDensity = 0.0f;
+  glm::vec3 ambient{0.0f}; // added to every lit surface, times its color
+};
 
 class RenderSystem : public BaseSystem {
 public:
@@ -34,6 +46,8 @@ public:
     for (uint64_t &signature : m_pointShadowSignatures)
       signature = 0;
   }
+  // The fog and ambient light of the frame being drawn (the particle pass reads it after the lit pass)
+  const SceneEnvironment &getEnvironment() const { return m_environment; }
   // Models skipped by frustum culling in the last rendered frame
   int getCulledCount() const { return m_culledCount; }
   // Point lights with a cube shadow map, and how many of them had to render it again in the last frame
@@ -66,6 +80,7 @@ private:
   uint32_t m_compositeShader = 0;
   Renderer m_renderer;
   // The first Skybox component's panorama, behind the opaque geometry
+  SceneEnvironment m_environment;
   uint32_t m_skyboxShader = 0;
   std::string m_skyboxPath; // what m_skyboxTexture shows
   GLuint m_skyboxTexture = 0;

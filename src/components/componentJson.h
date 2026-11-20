@@ -61,7 +61,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(CameraRig, target, offset, lookA
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Collision, min, max, isStatic, layer)
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation, color)
+NLOHMANN_JSON_SERIALIZE_ENUM(FogMode, {{FogMode::Linear, "linear"}, {FogMode::Exponential, "exponential"}})
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Fog, enabled, mode, matchSky, color, start, finish, density)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation, color, fog, ambientColor,
+                                                ambientIntensity)
 
 NLOHMANN_JSON_SERIALIZE_ENUM(BodyType, {{BodyType::Static, "static"},
                                         {BodyType::Dynamic, "dynamic"},

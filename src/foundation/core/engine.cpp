@@ -1013,31 +1013,56 @@ GameEntity Engine::spawn(std::string_view prefabPath, glm::vec3 position, glm::v
   return spawned == -1 ? GameEntity() : GameEntity(*this, spawned);
 }
 
-void Engine::setSkyColor(const glm::vec3 &color) {
+Skybox &Engine::sceneSky() {
   Skybox *sky = nullptr;
   m_componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
     if (!sky && !has<Hidden>(entity))
       sky = &skybox;
   });
-  if (sky) {
-    sky->color = color;
-    return;
-  }
+  if (sky)
+    return *sky;
   const Entity entity = createEntity();
   addComponent<Name>(entity, "Sky");
-  addComponent<Skybox>(entity).color = color;
+  return addComponent<Skybox>(entity);
 }
 
-glm::vec3 Engine::getSkyColor() {
-  glm::vec3 color(0.0f);
-  bool found = false;
+const Skybox *Engine::findSceneSky() {
+  const Skybox *sky = nullptr;
   m_componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
-    if (!found && !has<Hidden>(entity)) {
-      color = skybox.color;
-      found = true;
-    }
+    if (!sky && !has<Hidden>(entity))
+      sky = &skybox;
   });
-  return color;
+  return sky;
+}
+
+void Engine::setSkyColor(const glm::vec3 &color) { sceneSky().color = color; }
+
+glm::vec3 Engine::getSkyColor() {
+  const Skybox *sky = findSceneSky();
+  return sky ? sky->color : glm::vec3(0.0f);
+}
+
+void Engine::setFog(const Fog &fog) { sceneSky().fog = fog; }
+
+Fog Engine::getFog() {
+  const Skybox *sky = findSceneSky();
+  return sky ? sky->fog : Fog();
+}
+
+void Engine::setAmbient(const glm::vec3 &color, float intensity) {
+  Skybox &sky = sceneSky();
+  sky.ambientColor = color;
+  sky.ambientIntensity = intensity;
+}
+
+glm::vec3 Engine::getAmbientColor() {
+  const Skybox *sky = findSceneSky();
+  return sky ? sky->ambientColor : glm::vec3(1.0f);
+}
+
+float Engine::getAmbientIntensity() {
+  const Skybox *sky = findSceneSky();
+  return sky ? sky->ambientIntensity : 0.0f;
 }
 
 void Engine::enablePauseMenu(bool enabled) { m_systemManager.getSystem<PauseMenu>().setEnabled(enabled); }

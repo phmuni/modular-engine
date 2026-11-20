@@ -1900,7 +1900,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
 
   // Skybox
   if (!earlyOut && componentManager.has<Skybox>(selectedEntity)) {
-    if (ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Skybox / Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
       if (ImGui::SmallButton("Remove##sky")) {
         componentManager.removeComponent<Skybox>(selectedEntity);
         earlyOut = true;
@@ -1925,6 +1925,32 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         ImGui::DragFloat("Intensity##sky", &sky.intensity, 0.02f, 0.0f, 20.0f, "%.2f");
         ImGui::SliderFloat("Rotation##sky", &sky.rotation, -180.0f, 180.0f, "%.0f deg");
         ImGui::ColorEdit3("Sky color##sky", &sky.color.x); // the background; the panorama draws over it
+
+        ImGui::Separator();
+        ImGui::Checkbox("Fog##sky", &sky.fog.enabled);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Lit things blend toward the fog color with distance from the camera");
+        if (sky.fog.enabled) {
+          int mode = static_cast<int>(sky.fog.mode);
+          ImGui::Combo("Mode##fog", &mode, "Linear\0Exponential\0");
+          sky.fog.mode = static_cast<FogMode>(mode);
+          ImGui::Checkbox("Match sky color##fog", &sky.fog.matchSky);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Distant things fade into the sky color; a panorama is not matched, pick its color");
+          if (!sky.fog.matchSky)
+            ImGui::ColorEdit3("Fog color##fog", &sky.fog.color.x);
+          if (sky.fog.mode == FogMode::Linear) {
+            ImGui::DragFloat("Start##fog", &sky.fog.start, 0.5f, 0.0f, 10000.0f, "%.1f");
+            ImGui::DragFloat("Finish##fog", &sky.fog.finish, 0.5f, 0.0f, 10000.0f, "%.1f");
+          } else {
+            ImGui::DragFloat("Density##fog", &sky.fog.density, 0.0005f, 0.0f, 1.0f, "%.4f");
+          }
+        }
+        ImGui::Text("Ambient light");
+        ImGui::ColorEdit3("Color##ambient", &sky.ambientColor.x);
+        ImGui::DragFloat("Intensity##ambient", &sky.ambientIntensity, 0.01f, 0.0f, 5.0f, "%.2f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Added to every Light's own ambient; 0 adds nothing");
       }
     }
   }
@@ -2003,7 +2029,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
           componentManager.addInPlace<Animator>(selectedEntity);
       }
       if (!componentManager.has<Skybox>(selectedEntity)) {
-        if (ImGui::Button("+ Skybox", ImVec2(-1, 0))) {
+        if (ImGui::Button("+ Skybox / Environment", ImVec2(-1, 0))) {
           componentManager.addInPlace<Skybox>(selectedEntity);
         }
       }

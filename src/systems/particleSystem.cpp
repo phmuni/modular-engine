@@ -261,6 +261,13 @@ void ParticleSystem::render(SystemManager &systemManager) {
   shader.use();
   shader.setMat4("view", view);
   shader.setMat4("projection", projection);
+  const SceneEnvironment &environment = systemManager.getSystem<RenderSystem>().getEnvironment();
+  shader.setInt("fogMode", environment.fogMode);
+  if (environment.fogMode != 0) {
+    shader.setFloat("fogStart", environment.fogStart);
+    shader.setFloat("fogFinish", environment.fogFinish);
+    shader.setFloat("fogDensity", environment.fogDensity);
+  }
 
   // The first visible GravityLens bends every particle behind it; each particle then has two images
   const GravityLens *lens = nullptr;

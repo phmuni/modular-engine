@@ -365,6 +365,36 @@ function engine.setSkyColor(color) end
 ---@return vec3
 function engine.getSkyColor() end
 
+---Settings for engine.setFog. Everything is optional.
+---@class FogOptions
+---@field enabled? boolean Defaults to true when a table is given
+---@field color? vec3 The fog color; without one the fog takes the sky color (engine.setSkyColor), so distant things fade into the sky
+---@field matchSky? boolean Take the sky color (the default until a `color` is given)
+---@field mode? "linear"|"exponential" "linear" is clear up to `start` and solid from `finish`; "exponential" thickens smoothly with `density`
+---@field start? number Linear: distance from the camera where it begins. Defaults to 10
+---@field finish? number Linear: distance where it is solid. Defaults to 100
+---@field density? number Exponential: per world unit, about 0.02 is gentle. Defaults to 0.02
+
+---Fog for the scene, kept in the scene file with the sky and shown in the editor's Skybox panel. Lit things blend toward
+---the fog color with distance; particles fade out. Only the fields given change; `false` turns it off.
+---@param settings FogOptions|false
+function engine.setFog(settings) end
+
+---The fog's settings. `color` is the sky color while `matchSky` is true.
+---@return FogOptions
+function engine.getFog() end
+
+---Light added to everything lit, from nowhere, on top of each Light's own `ambient`: color times intensity (an intensity of 0 adds
+---nothing, which is how scenes start). Kept in the scene file with the sky.
+---@param color vec3 0-1 per channel
+---@param intensity? number Defaults to 1
+function engine.setAmbient(color, intensity) end
+
+---The scene's ambient light.
+---@return vec3 color
+---@return number intensity
+function engine.getAmbient() end
+
 -- game ---------------------------------------------------------------------------------------------------------------
 
 ---State shared by every script; it starts empty again when the game stops and plays again.
