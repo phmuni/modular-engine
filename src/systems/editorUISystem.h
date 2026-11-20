@@ -64,8 +64,10 @@ private:
   // Align to surface: the move gizmo drags the entity over surfaces under the cursor, tilted to their slope
   bool m_gizmoAlign = false;
   float m_alignHeading = 0.0f; // degrees around +Y, from when the drag started
-  // Places the selected entity on the surface under the cursor; false if there is none
-  bool alignToSurface(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform);
+  // Places the selected entity on the surface under the cursor; false if there is none. With `snapped`, its place on
+  // the surface goes to the grid (0.5 units along the surface) and its heading to 15 degrees.
+  bool alignToSurface(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
+                      bool snapped);
   // Applies a gizmo change to the transform: as is, or kept out of other models when m_gizmoSolid is on
   // Returns false when Solid refused a rotation or scale
   bool applyGizmoChange(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,

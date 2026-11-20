@@ -56,6 +56,7 @@
 #include <ImGuizmo.h> // after imgui.h, which it does not include itself
 #include <string>
 #include <vector>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 
@@ -679,8 +680,41 @@ void EditorUISystem::renderGizmoControls() {
   ImGui::Checkbox("Align to surface##gizmo", &m_gizmoAlign);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Dragging the move gizmo places the entity on the surface under the cursor: its bottom on\n"
-                      "it and its up axis along the surface's slope, keeping its heading.");
+                      "it and its up axis along the surface's slope, keeping its heading. With Snap on, its place on the surface\n"
+                      "goes to the 0.5 grid and its heading to 15 degrees; the rotate gizmo then turns it around the surface's normal.");
 }
+
+namespace {
+constexpr float kSnapStep = 0.5f, kSnapAngle = 15.0f; // the Snap option: units and degrees
+
+// TransformSystem rotates by Y, then X, then Z (qy * qx * qz), which eulerAngleYXZ builds and extractEulerAngleYXZ
+// undoes
+glm::quat rotationOf(const Transform &transform) {
+  const glm::vec3 radians = glm::radians(transform.rotation);
+  return glm::quat_cast(glm::eulerAngleYXZ(radians.y, radians.x, radians.z));
+}
+glm::vec3 eulerOf(const glm::quat &rotation) {
+  float yaw = 0.0f, pitch = 0.0f, roll = 0.0f;
+  glm::extractEulerAngleYXZ(glm::mat4_cast(rotation), yaw, pitch, roll);
+  return glm::degrees(glm::vec3(pitch, yaw, roll));
+}
+// The turn around +Y left in a rotation once its tilt (the shortest turn taking +Y to where its up went) is taken
+// out: the heading it keeps on a slope, in degrees. The twist of a swing-twist split.
+float headingAround(const glm::quat &rotation) { return glm::degrees(2.0f * std::atan2(rotation.y, rotation.w)); }
+
+// A point on a surface (through `point`, facing `normal`) put on the world grid: the two axes the surface faces
+// least are rounded, and the third follows so the result stays on the surface
+glm::vec3 snapToSurfaceGrid(const glm::vec3 &point, const glm::vec3 &normal, float step) {
+  const glm::vec3 magnitude = glm::abs(normal);
+  const int k = magnitude.x >= magnitude.y && magnitude.x >= magnitude.z ? 0 : magnitude.y >= magnitude.z ? 1 : 2;
+  const int i = (k + 1) % 3, j = (k + 2) % 3;
+  glm::vec3 snapped = point;
+  snapped[i] = std::round(point[i] / step) * step;
+  snapped[j] = std::round(point[j] / step) * step;
+  snapped[k] = point[k] - (normal[i] * (snapped[i] - point[i]) + normal[j] * (snapped[j] - point[j])) / normal[k];
+  return snapped;
+}
+} // namespace
 
 void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager &componentManager) {
   // Cameras place themselves from their Camera component, not the Transform the gizmo would move
@@ -719,9 +753,12 @@ void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager 
   const ImGuizmo::OPERATION operation = m_gizmoOperation == GizmoOperation::Move     ? ImGuizmo::TRANSLATE
                                         : m_gizmoOperation == GizmoOperation::Rotate ? ImGuizmo::ROTATE
                                                                                      : ImGuizmo::SCALE;
-  // Scaling is always along the entity's own axes
-  const ImGuizmo::MODE mode = m_gizmoLocal || operation == ImGuizmo::SCALE ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
-  const float snapStep = operation == ImGuizmo::TRANSLATE ? 0.5f : operation == ImGuizmo::ROTATE ? 15.0f : 0.1f;
+  // Scaling is always along the entity's own axes; so is rotating while aligning to surfaces, where its up axis is
+  // the surface's normal and the ring around it turns the heading
+  const ImGuizmo::MODE mode = m_gizmoLocal || operation == ImGuizmo::SCALE || (operation == ImGuizmo::ROTATE && m_gizmoAlign)
+                                  ? ImGuizmo::LOCAL
+                                  : ImGuizmo::WORLD;
+  const float snapStep = operation == ImGuizmo::TRANSLATE ? kSnapStep : operation == ImGuizmo::ROTATE ? kSnapAngle : 0.1f;
   const float snap[3] = {snapStep, snapStep, snapStep};
 
   // Drawn over the whole screen, behind the editor's windows
@@ -731,13 +768,17 @@ void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager 
   m_gizmoShown = true;
   // The heading kept while aligning to surfaces is the one the entity had when the drag started
   if (!ImGuizmo::IsUsing())
-    m_alignHeading = transform->rotation.y;
-  if (!ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode,
-                            glm::value_ptr(model), nullptr, m_gizmoSnap || io.KeyCtrl ? snap : nullptr))
-    return;
+    m_alignHeading = headingAround(rotationOf(*transform));
+  const bool snapping = m_gizmoSnap || io.KeyCtrl;
+  const bool gizmoMoved = ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode,
+                                               glm::value_ptr(model), nullptr, snapping ? snap : nullptr);
   // Align to surface: moving follows the cursor over surfaces instead of the gizmo's axes (off any surface, the
-  // gizmo moves it as usual)
-  if (operation == ImGuizmo::TRANSLATE && m_gizmoAlign && alignToSurface(systemManager, componentManager, *transform))
+  // gizmo moves it as usual). Every frame of the drag, not only those the gizmo reports a change: a snapped gizmo
+  // moves in steps, and the entity would stand still between them while the cursor slid along the surface.
+  if (operation == ImGuizmo::TRANSLATE && m_gizmoAlign && ImGuizmo::IsUsing() &&
+      alignToSurface(systemManager, componentManager, *transform, snapping))
+    return;
+  if (!gizmoMoved)
     return;
 
   // Back to position, rotation and scale. TransformSystem rotates by Y, then X, then Z (qy * qx * qz), which is the
@@ -1042,7 +1083,7 @@ void EditorUISystem::renderResizeHandles(SystemManager &systemManager, Component
 }
 
 bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManager &componentManager,
-                                    Transform &transform) {
+                                    Transform &transform, bool snapped) {
   const auto *model = componentManager.tryGet<Model>(selectedEntity);
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();
@@ -1065,17 +1106,18 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   if (!hit)
     return false;
 
-  // Its up (+Y) along the surface's normal, keeping the heading it had when the drag started
+  // Its up (+Y) along the surface's normal, keeping the heading it had when the drag started (to 15 degrees when
+  // snapping: the rotation around the normal)
   const glm::vec3 up(0.0f, 1.0f, 0.0f);
+  const float headingDegrees = snapped ? std::round(m_alignHeading / kSnapAngle) * kSnapAngle : m_alignHeading;
   const glm::quat tilt = glm::rotation(up, hit->normal);
-  const glm::quat heading = glm::angleAxis(glm::radians(m_alignHeading), up);
-  float yaw = 0.0f, pitch = 0.0f, roll = 0.0f;
-  glm::extractEulerAngleYXZ(glm::mat4_cast(tilt * heading), yaw, pitch, roll);
-  transform.rotation = glm::degrees(glm::vec3(pitch, yaw, roll));
-  // Its lowest point (the bottom of its bounds) on the surface
-  transform.position = hit->point - hit->normal * (model ? resourceSystem.getMesh(model->meshHandle).getBoundsMin().y *
-                                                                transform.scale.y
-                                                          : 0.0f);
+  const glm::quat heading = glm::angleAxis(glm::radians(headingDegrees), up);
+  transform.rotation = eulerOf(tilt * heading);
+  // Its lowest point (the bottom of its bounds) on the surface, which is on the grid when snapping
+  const glm::vec3 point = snapped ? snapToSurfaceGrid(hit->point, hit->normal, kSnapStep) : hit->point;
+  transform.position = point - hit->normal * (model ? resourceSystem.getMesh(model->meshHandle).getBoundsMin().y *
+                                                          transform.scale.y
+                                                    : 0.0f);
   return true;
 }
 
