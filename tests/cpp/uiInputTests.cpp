@@ -4,46 +4,22 @@
 #include "foundation/core/engine.h"
 #include "systems/inputSystem.h"
 #include "testing.h"
+#include "uiHelpers.h"
 #include <RmlUi/Core.h>
 #include <SDL3/SDL.h>
+
+using namespace testing::ui;
 
 namespace {
 const char *kDocument = "../tests/fixtures/ui/test.rml";
 
-Rml::Element *element(Engine &engine, const char *id) {
-  Rml::Context *context = engine.getUIContext();
-  if (!context)
-    return nullptr;
-  for (int i = 0; i < context->GetNumDocuments(); ++i)
-    if (Rml::Element *found = context->GetDocument(i)->GetElementById(id))
-      return found;
-  return nullptr;
-}
-
 void push(const SDL_Event &event) { SDL_PushEvent(const_cast<SDL_Event *>(&event)); }
-
-SDL_WindowID windowId() {
-  int count = 0;
-  SDL_Window **windows = SDL_GetWindows(&count);
-  const SDL_WindowID id = windows && count > 0 ? SDL_GetWindowID(windows[0]) : 0;
-  SDL_free(windows);
-  return id;
-}
 
 void typeText(const char *text) {
   SDL_Event event{};
   event.type = SDL_EVENT_TEXT_INPUT;
   event.text.windowID = windowId();
   event.text.text = text; // SDL copies it when the event is pushed
-  push(event);
-}
-
-void pressKey(SDL_Scancode key, bool down) {
-  SDL_Event event{};
-  event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
-  event.key.windowID = windowId();
-  event.key.scancode = key;
-  event.key.down = down;
   push(event);
 }
 } // namespace

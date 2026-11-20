@@ -10,10 +10,13 @@
 #include "systems/pauseMenu.h"
 #include "systems/scriptSystem.h"
 #include "testing.h"
+#include "uiHelpers.h"
 #include <RmlUi/Core.h>
 #include <SDL3/SDL.h>
 #include <memory>
 #include <sol/sol.hpp>
+
+using namespace testing::ui;
 
 namespace {
 const char *kMain = "../tests/fixtures/ui/menu_main.rml";
@@ -23,54 +26,10 @@ const char *kLoading = "../tests/fixtures/ui/loading.rml";
 const char *kScene = "../tests/fixtures/loading_scene.json";
 const char *kGameScript = "../tests/fixtures/menu_game.lua";
 
-Rml::Element *element(Engine &engine, const char *id) {
-  Rml::Context *context = engine.getUIContext();
-  if (!context)
-    return nullptr;
-  for (int i = 0; i < context->GetNumDocuments(); ++i)
-    if (Rml::Element *found = context->GetDocument(i)->GetElementById(id))
-      return found;
-  return nullptr;
-}
-
 // Whether the document that holds the element is shown (menus below the top one are hidden)
 bool documentShown(Engine &engine, const char *id) {
   Rml::Element *found = element(engine, id);
   return found && found->GetOwnerDocument()->IsVisible();
-}
-
-void click(Engine &engine, const char *id) {
-  Rml::Element *button = element(engine, id);
-  CHECK(button != nullptr);
-  if (button)
-    button->Click();
-}
-
-SDL_WindowID windowId() {
-  int count = 0;
-  SDL_Window **windows = SDL_GetWindows(&count);
-  const SDL_WindowID id = windows && count > 0 ? SDL_GetWindowID(windows[0]) : 0;
-  SDL_free(windows);
-  return id;
-}
-
-void pressEscape() {
-  for (const bool down : {true, false}) {
-    SDL_Event event{};
-    event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
-    event.key.windowID = windowId();
-    event.key.scancode = SDL_SCANCODE_ESCAPE;
-    event.key.down = down;
-    SDL_PushEvent(&event);
-  }
-}
-
-bool gameInputBlocked(Engine &engine) {
-  return engine.getSystemManager().getSystem<InputSystem>().isGameInputBlocked();
-}
-
-std::string gameString(Engine &engine, const char *field) {
-  return engine.scripts().lua()["game"][field].get_or<std::string>("");
 }
 
 MenuOptions named(const char *name) {

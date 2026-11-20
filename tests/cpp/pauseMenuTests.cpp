@@ -10,6 +10,7 @@
 #include "systems/saveData.h"
 #include "systems/scriptSystem.h"
 #include "testing.h"
+#include "uiHelpers.h"
 #include <RmlUi/Core.h>
 #include <SDL3/SDL.h>
 #include <filesystem>
@@ -17,19 +18,11 @@
 #include <memory>
 #include <sol/sol.hpp>
 
+using namespace testing::ui;
+
 namespace {
 const char *kDocument = "../tests/fixtures/ui/pause_menu.rml";
 const char *kGameScript = "../tests/fixtures/pause_menu_game.lua";
-
-Rml::Element *element(Engine &engine, const char *id) {
-  Rml::Context *context = engine.getUIContext();
-  if (!context)
-    return nullptr;
-  for (int i = 0; i < context->GetNumDocuments(); ++i)
-    if (Rml::Element *found = context->GetDocument(i)->GetElementById(id))
-      return found;
-  return nullptr;
-}
 
 // Whether the element is in the document and shown (data-if hides what is not on the screen)
 bool shown(Engine &engine, const char *id) {
@@ -37,39 +30,6 @@ bool shown(Engine &engine, const char *id) {
   return found && found->IsVisible();
 }
 
-void click(Engine &engine, const char *id) {
-  Rml::Element *button = element(engine, id);
-  CHECK(button != nullptr);
-  if (button)
-    button->Click();
-}
-
-SDL_WindowID windowId() {
-  int count = 0;
-  SDL_Window **windows = SDL_GetWindows(&count);
-  const SDL_WindowID id = windows && count > 0 ? SDL_GetWindowID(windows[0]) : 0;
-  SDL_free(windows);
-  return id;
-}
-
-void pressEscape() {
-  for (const bool down : {true, false}) {
-    SDL_Event event{};
-    event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
-    event.key.windowID = windowId();
-    event.key.scancode = SDL_SCANCODE_ESCAPE;
-    event.key.down = down;
-    SDL_PushEvent(&event);
-  }
-}
-
-bool gameInputBlocked(Engine &engine) {
-  return engine.getSystemManager().getSystem<InputSystem>().isGameInputBlocked();
-}
-
-std::string gameString(Engine &engine, const char *field) {
-  return engine.scripts().lua()["game"][field].get_or<std::string>("");
-}
 int gameNumber(Engine &engine, const char *field) { return engine.scripts().lua()["game"][field].get_or(0); }
 
 PauseMenuOptions withDocument(const char *document) {
