@@ -351,8 +351,11 @@ on screen with their file and line without stopping the game.
 
 ```lua
 -- scripts/coin.lua
+properties = {                               -- tunable values, see below
+  spin = 120,
+}
 function onStart(self)                       -- once; fields on self are this entity's own state
-  self.spin = 120
+  self.score = 0
 end
 function onUpdate(self, dt)                  -- every frame
   local rotation = self.rotation
@@ -367,6 +370,15 @@ function onOverlap(self, other)              -- its Collision box overlaps anoth
   end
 end
 ```
+
+A script's `properties` table lists the values worth tuning: numbers, booleans, strings and `vec3`s (a name with
+"color" in it gets a color picker). They show in the editor's Properties panel under the entity's Script, with the
+script's value as the default, and each entity can override them there (a `reset` button returns one to the default).
+Before `onStart` every property is a field of `self` (`self.spin`), with the entity's value if it has one. Editing one
+while the game runs updates `self` at once, and so does saving the script with a new default. Overrides are saved in
+scene files as `"Script": {"path": "scripts/coin.lua", "properties": {"spin": 200}}`. A property the script stops
+declaring disappears from the panel, but its override stays in the file in case the script declares it again. The panel
+lists them by name, and reads the file (running its top level once) even while the game is not running.
 
 What scripts can use:
 
@@ -834,6 +846,20 @@ struct Health { float current = 100.0f; float max = 100.0f; };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Health, current, max)
 
 engine.getSceneSerializer().registerComponent<Health>("Health");
+```
+
+A component can instead be described by its fields, which gives it saving and a widget per field in the editor's
+Properties panel, and puts it in "Add Component" (it needs a default constructor). Fields are `float`, `int`, `bool`,
+`std::string`, `glm::vec2`, `glm::vec3` and `glm::vec4` (another type does not compile); a `vec3` named like a color gets
+a color picker. In a scene file the component is a JSON object of its fields, and fields a file lacks keep their defaults:
+
+```cpp
+struct Player { float speed = 6.0f; float jumpSpeed = 6.5f; glm::vec3 tint{1.0f}; };
+
+engine.registerComponent<Player>("Player")   // once, after engine.initialize()
+    .field("speed", &Player::speed)
+    .field("jumpSpeed", &Player::jumpSpeed)
+    .field("tint", &Player::tint);
 ```
 
 Components with handles or links to systems use `SceneSerializer::registerComponent(key, save, load)` instead (see [`src/systems/sceneSerializer.h`](src/systems/sceneSerializer.h)). In the debug UI (`F2`), the Settings panel saves and loads scenes and lists those in `assets/scenes` to switch with a click. `loadScene` reads the new scene's models on worker threads while the current one keeps running (`isLoadingScene()` tells when it is waiting), then switches at the end of a frame. Only uploading to the GPU stays on the main thread.

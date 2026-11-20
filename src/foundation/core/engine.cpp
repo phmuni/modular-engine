@@ -528,6 +528,12 @@ bool Engine::saveScene(std::string_view path) {
 
 SceneSerializer &Engine::getSceneSerializer() { return m_systemManager.getSystem<SceneSerializer>(); }
 
+ReflectedComponent &Engine::addReflectedComponent(ReflectedComponent component) {
+  ReflectedComponent &stored = m_reflectedComponents.emplace_back(std::move(component));
+  getSceneSerializer().registerReflected(stored);
+  return stored;
+}
+
 void Engine::loadScene(std::string_view path) {
   m_pendingScene = std::string(path);
   auto &resources = m_systemManager.getSystem<ResourceSystem>();

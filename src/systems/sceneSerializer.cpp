@@ -6,6 +6,7 @@
 #include "components/model.h"
 #include "components/name.h"
 #include "components/parent.h"
+#include "foundation/core/componentRegistry.h"
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
 #include "rendering/resources/material.h"
@@ -86,6 +87,65 @@ void SceneSerializer::registerComponent(const std::string &key, SaveFn save, Loa
     *existing = Serializer{key, std::move(save), std::move(load)};
   else
     m_serializers.push_back(Serializer{key, std::move(save), std::move(load)});
+}
+
+namespace {
+nlohmann::json fieldToJson(FieldKind kind, void *field) {
+  switch (kind) {
+  case FieldKind::Float: return *static_cast<float *>(field);
+  case FieldKind::Int: return *static_cast<int *>(field);
+  case FieldKind::Bool: return *static_cast<bool *>(field);
+  case FieldKind::String: return *static_cast<std::string *>(field);
+  case FieldKind::Vec2: return *static_cast<glm::vec2 *>(field);
+  case FieldKind::Vec3: return *static_cast<glm::vec3 *>(field);
+  case FieldKind::Vec4: return *static_cast<glm::vec4 *>(field);
+  }
+  return nullptr;
+}
+
+void fieldFromJson(FieldKind kind, void *field, const nlohmann::json &value) {
+  switch (kind) {
+  case FieldKind::Float: *static_cast<float *>(field) = value.get<float>(); break;
+  case FieldKind::Int: *static_cast<int *>(field) = value.get<int>(); break;
+  case FieldKind::Bool: *static_cast<bool *>(field) = value.get<bool>(); break;
+  case FieldKind::String: *static_cast<std::string *>(field) = value.get<std::string>(); break;
+  case FieldKind::Vec2: *static_cast<glm::vec2 *>(field) = value.get<glm::vec2>(); break;
+  case FieldKind::Vec3: *static_cast<glm::vec3 *>(field) = value.get<glm::vec3>(); break;
+  case FieldKind::Vec4: *static_cast<glm::vec4 *>(field) = value.get<glm::vec4>(); break;
+  }
+}
+} // namespace
+
+void SceneSerializer::registerReflected(const ReflectedComponent &component) {
+  registerComponent(
+      component.name,
+      [this, &component](Entity entity) -> std::optional<json> {
+        void *data = component.get(m_componentManager, entity);
+        if (!data)
+          return std::nullopt;
+        json fields = json::object();
+        for (const ReflectedField &field : component.fields)
+          fields[field.name] = fieldToJson(field.kind, field.access(data));
+        return fields;
+      },
+      [this, &component](Entity entity, const json &fields) {
+        if (!component.add) {
+          LOG_W("[SceneSerializer] %s has no default constructor, so it cannot be loaded", component.name.c_str());
+          return;
+        }
+        void *data = component.add(m_componentManager, entity);
+        for (const ReflectedField &field : component.fields) {
+          auto it = fields.find(field.name);
+          if (it == fields.end())
+            continue;
+          try {
+            fieldFromJson(field.kind, field.access(data), *it);
+          } catch (const json::exception &) {
+            LOG_W("[SceneSerializer] %s.%s has a value of the wrong type, keeping the default", component.name.c_str(),
+                  field.name.c_str());
+          }
+        }
+      });
 }
 
 void SceneSerializer::registerBuiltIns() {

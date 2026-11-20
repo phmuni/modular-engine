@@ -15,6 +15,8 @@
 #include <unordered_set>
 #include <vector>
 
+struct ReflectedComponent;
+
 class SceneSerializer : public BaseSystem {
 public:
   using json = nlohmann::json;
@@ -38,6 +40,10 @@ public:
         },
         [this](Entity entity, const json &data) { m_componentManager.addInPlace<T>(entity) = data.get<T>(); });
   }
+
+  // A component described by its fields (Engine::registerComponent): saved as a JSON object of them under its name.
+  // Fields a file does not have keep the component's defaults. `component` must outlive the serializer.
+  void registerReflected(const ReflectedComponent &component);
 
   bool save(const std::string &path) const;
   // Reads the whole file first; if it cannot be read, the current scene stays
