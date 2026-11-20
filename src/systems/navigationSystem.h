@@ -41,6 +41,9 @@ public:
   bool build(const glm::vec3 &min, const glm::vec3 &max, const NavigationSettings &settings = {});
   // The same, over the bounds of every static body in the scene; false when there are none
   bool buildFromScene(const NavigationSettings &settings = {});
+  // The box between `min` and `max` when both are given, else the bounds of the static bodies
+  bool buildIn(const std::optional<glm::vec3> &min, const std::optional<glm::vec3> &max,
+               const NavigationSettings &settings = {});
   // Builds the map again, with the same bounds and settings, at the next update (after moving obstacles)
   void markDirty() { m_dirty = true; }
   void update();

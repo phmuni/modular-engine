@@ -440,6 +440,16 @@ bool InputSystem::isKeyDown(SDL_Scancode key) const { return !m_gameInputBlocked
 bool InputSystem::wasKeyPressed(SDL_Scancode key) const { return m_pressed[key]; }
 bool InputSystem::wasKeyReleased(SDL_Scancode key) const { return m_released[key]; }
 
+bool InputSystem::isKeyDown(const std::string &keyName) const {
+  const SDL_Scancode key = SDL_GetScancodeFromName(keyName.c_str());
+  return key != SDL_SCANCODE_UNKNOWN && isKeyDown(key);
+}
+
+bool InputSystem::wasKeyPressed(const std::string &keyName) const {
+  const SDL_Scancode key = SDL_GetScancodeFromName(keyName.c_str());
+  return key != SDL_SCANCODE_UNKNOWN && wasKeyPressed(key);
+}
+
 bool InputSystem::isMouseButtonDown(MouseButton button) const {
   return !m_gameInputBlocked && m_mouseDown[static_cast<int>(button)];
 }

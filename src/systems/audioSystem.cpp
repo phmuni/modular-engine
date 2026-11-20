@@ -221,11 +221,12 @@ void AudioSystem::preload(const std::string &path) {
     m_impl->ensureDecoded(EngineConfig::resolveAsset(path));
 }
 
-void AudioSystem::playOneShot(const std::string &path, std::optional<glm::vec3> position, float volume, float pitch) {
+uint32_t AudioSystem::playOneShot(const std::string &path, std::optional<glm::vec3> position, float volume,
+                                  float pitch) {
   auto &impl = *m_impl;
   auto sound = impl.ready ? impl.createEffect(EngineConfig::resolveAsset(path)) : nullptr;
   if (!sound)
-    return;
+    return 0;
 
   ma_sound_set_volume(sound.get(), volume);
   ma_sound_set_pitch(sound.get(), std::max(pitch, 0.01f));
@@ -239,7 +240,28 @@ void AudioSystem::playOneShot(const std::string &path, std::optional<glm::vec3> 
   }
   ma_sound_start(sound.get());
 
-  impl.voices.emplace(impl.nextVoice++, Impl::Voice{std::move(sound), -1, {}, true, impl.frame});
+  const uint32_t id = impl.nextVoice++;
+  impl.voices.emplace(id, Impl::Voice{std::move(sound), -1, {}, true, impl.frame});
+  return id;
+}
+
+void AudioSystem::stopVoice(uint32_t voice) {
+  auto it = m_impl->voices.find(voice);
+  if (it == m_impl->voices.end() || it->second.owner != -1) // a source's voice belongs to its component
+    return;
+  m_impl->freeVoice(it->second);
+  m_impl->voices.erase(it);
+}
+
+void AudioSystem::setVoiceVolume(uint32_t voice, float volume) {
+  auto it = m_impl->voices.find(voice);
+  if (it != m_impl->voices.end() && it->second.owner == -1)
+    ma_sound_set_volume(it->second.sound.get(), std::max(volume, 0.0f));
+}
+
+bool AudioSystem::isVoicePlaying(uint32_t voice) const {
+  auto it = m_impl->voices.find(voice);
+  return it != m_impl->voices.end() && it->second.owner == -1 && !ma_sound_at_end(it->second.sound.get());
 }
 
 void AudioSystem::playMusic(const std::string &path, float volume, bool loop) {
@@ -256,6 +278,11 @@ void AudioSystem::playMusic(const std::string &path, float volume, bool loop) {
 }
 
 void AudioSystem::stopMusic() { Impl::destroySound(m_impl->currentMusic); }
+
+void AudioSystem::setMusicVolume(float volume) {
+  if (m_impl->currentMusic)
+    ma_sound_set_volume(m_impl->currentMusic.get(), std::max(volume, 0.0f));
+}
 
 void AudioSystem::setMasterVolume(float volume) {
   m_impl->masterVolume = std::max(volume, 0.0f);

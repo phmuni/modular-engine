@@ -11,10 +11,14 @@
 #include "components/transform.h"
 #include "foundation/core/app.h"
 #include "foundation/core/componentRegistry.h"
+#include "foundation/core/gameEntity.h"
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "systems/collisionSystem.h"
+#include "systems/gameCamera.h"
+#include "systems/gameTime.h"
+#include "systems/gameUI.h"
 #include "systems/navigationSystem.h"
 #include "systems/physicsSystem.h"
 #include "systems/resourceSystem.h"
@@ -172,6 +176,32 @@ public:
   // Whether the entity exists: handles of destroyed entities (or of a scene that loadScene replaced) do not
   bool isAlive(Entity entity) const;
 
+  // The game API: what Lua scripts do, for C++ games too. The Lua bindings only convert types and call these, so
+  // the two languages stay the same (tools/check_api_parity.py fails the build when one gets ahead).
+  // A GameEntity is a cheap handle with the entity's own methods (position, move, destroy, setColor...).
+  GameEntity entity(Entity entity);
+  // The first entity named so, or an empty handle (valid() is false); all of them, by entity number
+  GameEntity find(std::string_view name);
+  std::vector<GameEntity> findAll(std::string_view name);
+  // Every entity with the component, named as GameEntity::has takes it ("Model", or a registered game component)
+  std::vector<GameEntity> findWithComponent(std::string_view component);
+  bool hasComponent(Entity entity, std::string_view component);
+  // An entity from a description: a model (or the engine's box, sphere, cylinder), color, physics body, script...
+  GameEntity create(std::string_view name, const EntityDesc &desc = {});
+  // A copy of a prefab file (see instantiate), as a handle; empty if the file cannot be read
+  GameEntity spawn(std::string_view prefabPath, glm::vec3 position = glm::vec3(0.0f),
+                   glm::vec3 rotation = glm::vec3(0.0f));
+  // Changing a game's UI, the active camera and time (the Lua ui, camera and time tables)
+  GameUI &ui() { return m_ui; }
+  GameCamera &camera() { return m_camera; }
+  GameTime &time() { return m_time; }
+
+  // The color the image is cleared to, behind the skybox panorama (black until set). It lives in the scene, on the
+  // first Skybox component (setSkyColor adds an entity named "Sky" with one when there is none), so scene files keep
+  // it and the editor shows it.
+  void setSkyColor(const glm::vec3 &color);
+  glm::vec3 getSkyColor();
+
   // Component access. get throws, with a message saying whether the entity lacks the component or no longer
   // exists; tryGet returns null instead.
   template <typename T> T &get(Entity entity) {
@@ -296,12 +326,18 @@ public:
   // Decodes a sound in the background, so its first play does not wait for the file
   void preloadSound(std::string_view path);
   // Fire-and-forget effect, heard the same anywhere
-  void playSound(std::string_view path, float volume = 1.0f, float pitch = 1.0f);
+  // The effect calls return a handle (0: nothing played) to stop or quiet it while it plays; one that ended is
+  // simply not found by these.
+  uint32_t playSound(std::string_view path, float volume = 1.0f, float pitch = 1.0f);
   // Fire-and-forget effect placed in the world, panned and faded relative to the camera
-  void playSoundAt(std::string_view path, glm::vec3 position, float volume = 1.0f, float pitch = 1.0f);
+  uint32_t playSoundAt(std::string_view path, glm::vec3 position, float volume = 1.0f, float pitch = 1.0f);
+  void stopSound(uint32_t sound);
+  void setSoundVolume(uint32_t sound, float volume);
+  bool isSoundPlaying(uint32_t sound);
   // Streams from disk, replacing the music already playing
   void playMusic(std::string_view path, float volume = 1.0f, bool loop = true);
   void stopMusic();
+  void setMusicVolume(float volume);
 
   // Scenes (JSON). Saving writes every entity with components that have a serializer; see SceneSerializer.
   bool saveScene(std::string_view path);
@@ -443,6 +479,9 @@ private:
   EntityManager m_entityManager;
   ComponentManager m_componentManager;
   SystemManager m_systemManager;
+  GameUI m_ui{*this};
+  GameCamera m_camera{*this};
+  GameTime m_time{*this};
 
   App *m_app = nullptr;
   bool m_shutdown = false;

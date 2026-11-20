@@ -56,6 +56,9 @@ public:
   // Went down / came up during this frame (once per press: keyboard auto-repeat does not count)
   bool wasKeyPressed(SDL_Scancode key) const;
   bool wasKeyReleased(SDL_Scancode key) const;
+  // The same by SDL's key name ("Space", "Left Shift", "W"); false for a name SDL does not know
+  bool isKeyDown(const std::string &keyName) const;
+  bool wasKeyPressed(const std::string &keyName) const;
   bool isActionPressed(Action action) const;
 
   // Mouse, for the game: clicks the game UI or the editor handled are left out

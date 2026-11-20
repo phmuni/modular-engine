@@ -7,6 +7,7 @@
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
 #include <glm/glm.hpp>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,11 +26,17 @@ public:
 
   // Decodes a sound in the background so its first play does not wait for the file
   void preload(const std::string &path);
-  // Fire-and-forget effect; with a position it is placed in the world, without one it plays as is
-  void playOneShot(const std::string &path, std::optional<glm::vec3> position, float volume, float pitch);
+  // Fire-and-forget effect; with a position it is placed in the world, without one it plays as is. Returns a handle
+  // for stopVoice and friends (0 when nothing plays); handles are never reused, so one that ended is just not found.
+  uint32_t playOneShot(const std::string &path, std::optional<glm::vec3> position, float volume, float pitch);
+  void stopVoice(uint32_t voice);
+  void setVoiceVolume(uint32_t voice, float volume);
+  bool isVoicePlaying(uint32_t voice) const;
   // Streams from disk, replacing the current music
   void playMusic(const std::string &path, float volume, bool loop);
   void stopMusic();
+  // Volume of the music playing now (playMusic's own volume sets it at the start)
+  void setMusicVolume(float volume);
 
   void setMasterVolume(float volume);
   float getMasterVolume() const;

@@ -1,4 +1,11 @@
 // Lua scripting with sol2: script instances per entity, hot reload, and the API scripts see.
+//
+// The rule for the bindings (bindEntity, bindGlobals): a binding only converts types (Lua table <-> struct, nil <->
+// optional or empty handle, Lua function <-> std::function, entity <-> GameEntity) and calls the C++ game API
+// (GameEntity, GameUI, GameCamera, GameTime, Engine and the systems). Behavior lives in C++, where C++ games reach it
+// too, so the two languages cannot drift apart. tools/check_api_parity.py checks that every public method of the
+// facade classes is bound here, and tools/check_lua_api.py that every binding is described for the editor in
+// templates/common/lua/types/engine.lua.
 
 #include <sol/sol.hpp> // SOL_ALL_SAFETIES_ON comes from the build, the same for every file that includes sol2
 
@@ -16,6 +23,7 @@
 #include "components/transform.h"
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
+#include "foundation/core/gameEntity.h"
 #include "foundation/core/logger.h"
 #include "systems/inputSystem.h"
 #include "systems/navigationSystem.h"
@@ -131,24 +139,6 @@ sol::object jsonToLua(sol::state_view lua, const nlohmann::json &value) {
     return sol::lua_nil;
   }
 }
-
-// What scripts hold for an entity: its handle; fields set on it live in the ScriptSystem (see Impl::fields)
-struct ScriptEntity {
-  Entity id = -1;
-  friend bool operator==(const ScriptEntity &a, const ScriptEntity &b) { return a.id == b.id; }
-};
-
-// A click handler from ui.onClick
-class ClickListener final : public Rml::EventListener {
-public:
-  ClickListener(sol::protected_function handler, std::function<void(const sol::protected_function_result &)> report)
-      : m_handler(std::move(handler)), m_report(std::move(report)) {}
-  void ProcessEvent(Rml::Event &) override { m_report(m_handler()); }
-
-private:
-  sol::protected_function m_handler;
-  std::function<void(const sol::protected_function_result &)> m_report;
-};
 } // namespace
 
 struct ScriptSystem::Impl {
@@ -177,8 +167,6 @@ struct ScriptSystem::Impl {
 
   // Each entity's own Lua fields (self.speed = 5), kept apart from its script so reloading keeps them
   std::unordered_map<Entity, sol::table> fields;
-  std::vector<std::unique_ptr<ClickListener>> clickListeners;
-  std::unordered_map<std::string, Rml::ElementDocument *> documents; // ui.load, by path
 
   std::string lastError;
   std::string lastErrorPath;
@@ -333,7 +321,7 @@ struct ScriptSystem::Impl {
         call(instance, "onReload", self);
     };
     for (auto &[entity, instance] : instances)
-      reload(instance, sol::make_object(lua, ScriptEntity{entity}));
+      reload(instance, sol::make_object(lua, engine.entity(entity)));
     if (hasGameScript)
       reload(gameScript, sol::lua_nil);
   }
@@ -347,8 +335,9 @@ struct ScriptSystem::Impl {
     return it->second;
   }
 
-  sol::object entityObject(Entity entity) {
-    return entity >= 0 && engine.isAlive(entity) ? sol::make_object(lua, ScriptEntity{entity}) : sol::lua_nil;
+  // A script sees an entity that is gone (or was never found) as nil
+  sol::object entityObject(const GameEntity &entity) {
+    return entity.valid() ? sol::make_object(lua, entity) : sol::lua_nil;
   }
 
   // Instances for entities that got a Script, gone for those that lost it (or were destroyed)
@@ -401,7 +390,7 @@ struct ScriptSystem::Impl {
       applyProperties(entity, it->second);
       if (!it->second.started) {
         it->second.started = true;
-        call(it->second, "onStart", ScriptEntity{entity});
+        call(it->second, "onStart", engine.entity(entity));
       }
     }
     if (hasGameScript)
@@ -409,14 +398,14 @@ struct ScriptSystem::Impl {
     for (Entity entity : entities) {
       auto it = instances.find(entity);
       if (it != instances.end() && engine.isAlive(entity))
-        call(it->second, "onUpdate", ScriptEntity{entity}, deltaTime);
+        call(it->second, "onUpdate", engine.entity(entity), deltaTime);
     }
 
     // Contacts and overlaps, to both entities' scripts
     auto notify = [&](Entity self, Entity other, const char *name, auto &&...extra) {
       auto it = instances.find(self);
       if (it != instances.end() && engine.isAlive(self) && engine.isAlive(other))
-        call(it->second, name, ScriptEntity{self}, ScriptEntity{other}, extra...);
+        call(it->second, name, engine.entity(self), engine.entity(other), extra...);
     };
     const std::vector<PhysicsContact> contacts = engine.physics().getContacts();
     for (const PhysicsContact &contact : contacts) {
@@ -479,141 +468,119 @@ struct ScriptSystem::Impl {
   }
 
   void bindEntity() {
-    auto transform = [this](ScriptEntity &e) { return engine.tryGet<Transform>(e.id); };
-    lua.new_usertype<ScriptEntity>(
+    // The Lua `Entity` is the C++ GameEntity: its members are bound as they are, so a script and a C++ game do the
+    // same things the same way. Only the script's own fields (self.speed = 5) are Lua's: they live here, by entity.
+    lua.new_usertype<GameEntity>(
         "Entity", sol::no_constructor,
-        sol::meta_function::equal_to, [](const ScriptEntity &a, const ScriptEntity &b) { return a.id == b.id; },
-        sol::meta_function::to_string,
-        [this](const ScriptEntity &e) {
-          const Name *name = engine.tryGet<Name>(e.id);
-          return "Entity " + std::to_string(e.id) + (name ? " (" + name->name + ")" : "");
-        },
+        sol::meta_function::equal_to, [](const GameEntity &a, const GameEntity &b) { return a == b; },
+        sol::meta_function::to_string, &GameEntity::describe,
         // Unknown keys are the entity's own fields: self.speed = 5, other.health
         sol::meta_function::index,
-        [this](ScriptEntity &e, sol::stack_object key) -> sol::object { return fieldsOf(e.id)[key]; },
+        [this](GameEntity &e, sol::stack_object key) -> sol::object { return fieldsOf(e.id())[key]; },
         sol::meta_function::new_index,
-        [this](ScriptEntity &e, sol::stack_object key, sol::stack_object value) { fieldsOf(e.id)[key] = value; },
+        [this](GameEntity &e, sol::stack_object key, sol::stack_object value) { fieldsOf(e.id())[key] = value; },
 
-        "id", sol::readonly_property([](ScriptEntity &e) { return e.id; }),
-        "valid", sol::readonly_property([this](ScriptEntity &e) { return engine.isAlive(e.id); }),
-        "name", sol::property(
-                    [this](ScriptEntity &e) {
-                      const Name *name = engine.tryGet<Name>(e.id);
-                      return name ? name->name : std::string();
-                    },
-                    [this](ScriptEntity &e, const std::string &name) {
-                      if (Name *existing = engine.tryGet<Name>(e.id))
-                        existing->name = name;
-                    }),
-        "transform", sol::readonly_property(transform),
-        "position", sol::property(
-                        [this](ScriptEntity &e) {
-                          const Transform *t = engine.tryGet<Transform>(e.id);
-                          return t ? t->position : glm::vec3(0.0f);
-                        },
-                        [this](ScriptEntity &e, const glm::vec3 &position) {
-                          if (Transform *t = engine.tryGet<Transform>(e.id))
-                            t->position = position;
-                        }),
-        "rotation", sol::property(
-                        [this](ScriptEntity &e) {
-                          const Transform *t = engine.tryGet<Transform>(e.id);
-                          return t ? t->rotation : glm::vec3(0.0f);
-                        },
-                        [this](ScriptEntity &e, const glm::vec3 &rotation) {
-                          if (Transform *t = engine.tryGet<Transform>(e.id))
-                            t->rotation = rotation;
-                        }),
-        "forward", sol::readonly_property([this](ScriptEntity &e) {
-          // -Z turned by the entity's yaw
-          const Transform *t = engine.tryGet<Transform>(e.id);
-          const float yaw = t ? glm::radians(t->rotation.y) : 0.0f;
-          return glm::vec3(-std::sin(yaw), 0.0f, -std::cos(yaw));
-        }),
-        "light", sol::readonly_property([this](ScriptEntity &e) { return engine.tryGet<Light>(e.id); }),
-        "script", sol::readonly_property([this](ScriptEntity &e) -> sol::object {
-          return engine.has<Script>(e.id) ? sol::make_object(lua, e) : sol::lua_nil;
+        "id", sol::readonly_property(&GameEntity::id),
+        "valid", sol::readonly_property(&GameEntity::valid),
+        "name", sol::property(&GameEntity::name, &GameEntity::setName),
+        "transform", sol::readonly_property(&GameEntity::transform),
+        "position", sol::property(&GameEntity::position, &GameEntity::setPosition),
+        "rotation", sol::property(&GameEntity::rotation, &GameEntity::setRotation),
+        "scale", sol::property(&GameEntity::scale, &GameEntity::setScale),
+        "forward", sol::readonly_property(&GameEntity::forward),
+        "right", sol::readonly_property(&GameEntity::right),
+        "light", sol::readonly_property(&GameEntity::light),
+        // The entity itself when it has a Script component, else nil
+        "script", sol::readonly_property([this](GameEntity &e) -> sol::object {
+          return e.hasScript() ? sol::make_object(lua, e) : sol::lua_nil;
         }),
 
-        "destroy", [this](ScriptEntity &e) {
-          if (engine.isAlive(e.id))
-            engine.destroyEntity(e.id);
+        "destroy", &GameEntity::destroy,
+        "has", &GameEntity::has,
+        "parent", [this](GameEntity &e) { return entityObject(e.parent()); },
+        "setParent", [](GameEntity &e, sol::optional<GameEntity> parent) {
+          return e.setParent(parent.value_or(GameEntity()));
         },
-        // Engine components by name: "Model", "RigidBody", "CharacterController", "Light", "Camera", "Animator",
-        // "Script"
-        "has", [this](ScriptEntity &e, const std::string &component) {
-          if (component == "Model") return engine.has<Model>(e.id);
-          if (component == "RigidBody") return engine.has<RigidBody>(e.id);
-          if (component == "CharacterController") return engine.has<CharacterController>(e.id);
-          if (component == "Light") return engine.has<Light>(e.id);
-          if (component == "Camera") return engine.has<Camera>(e.id);
-          if (component == "Animator") return engine.has<Animator>(e.id);
-          if (component == "Script") return engine.has<Script>(e.id);
-          if (component == "Transform") return engine.has<Transform>(e.id);
-          return false;
-        },
-        "parent", [this](ScriptEntity &e) { return entityObject(engine.getParent(e.id)); },
-        "setParent", [this](ScriptEntity &e, sol::optional<ScriptEntity> parent) {
-          return engine.setParent(e.id, parent ? parent->id : -1);
-        },
-        "children", [this](ScriptEntity &e) {
-          sol::table list = lua.create_table();
-          for (Entity child : engine.getChildren(e.id))
-            list.add(ScriptEntity{child});
-          return list;
-        },
+        "children", [](GameEntity &e) { return sol::as_table(e.children()); },
 
         // Looks
-        "setColor", [this](ScriptEntity &e, const glm::vec3 &color) {
-          if (engine.has<Model>(e.id))
-            engine.setSolidColor(e.id, color);
+        "setColor", &GameEntity::setColor,
+        "setEmission", [](GameEntity &e, const glm::vec3 &color, sol::optional<float> strength) {
+          e.setEmission(color, strength.value_or(1.0f));
         },
-        "setEmission", [this](ScriptEntity &e, const glm::vec3 &color, sol::optional<float> strength) {
-          if (engine.has<Model>(e.id))
-            engine.setEmission(e.id, color, strength.value_or(1.0f));
-        },
-        "setVisible", [this](ScriptEntity &e, bool visible) {
-          const bool hidden = engine.has<Hidden>(e.id);
-          if (visible == !hidden)
-            return;
-          if (visible)
-            engine.removeComponent<Hidden>(e.id);
-          else
-            engine.getComponentManager().addInPlace<Hidden>(e.id);
-          engine.getSystemManager().getSystem<RenderSystem>().markBatchesDirty();
-        },
+        "setVisible", &GameEntity::setVisible,
+        "visible", sol::readonly_property(&GameEntity::isVisible),
+        "setTexture", &GameEntity::setTexture,
+        "setShininess", &GameEntity::setShininess,
 
         // Physics bodies
-        "velocity", sol::property([this](ScriptEntity &e) { return engine.physics().getLinearVelocity(e.id); },
-                                  [this](ScriptEntity &e, const glm::vec3 &velocity) {
-                                    engine.physics().setLinearVelocity(e.id, velocity);
-                                  }),
-        "impulse", [this](ScriptEntity &e, const glm::vec3 &impulse) { engine.physics().addImpulse(e.id, impulse); },
-        "force", [this](ScriptEntity &e, const glm::vec3 &force) { engine.physics().addForce(e.id, force); },
+        "velocity", sol::property(&GameEntity::velocity, &GameEntity::setVelocity),
+        "impulse", &GameEntity::impulse,
+        "force", &GameEntity::force,
 
         // Characters
-        "move", [this](ScriptEntity &e, const glm::vec3 &velocity) {
-          if (CharacterController *character = engine.tryGet<CharacterController>(e.id))
-            character->move = velocity;
-        },
-        "jump", [this](ScriptEntity &e, float speed) {
-          if (CharacterController *character = engine.tryGet<CharacterController>(e.id))
-            character->jump = speed;
-        },
-        "onGround", sol::readonly_property([this](ScriptEntity &e) {
-          const CharacterController *character = engine.tryGet<CharacterController>(e.id);
-          return character && character->onGround;
-        }),
+        "move", &GameEntity::move,
+        "jump", &GameEntity::jump,
+        "onGround", sol::readonly_property(&GameEntity::onGround),
 
         // Animation and sound
-        "play", [this](ScriptEntity &e, const std::string &clip, sol::optional<float> fade, sol::optional<bool> loop) {
-          engine.playAnimation(e.id, clip, fade.value_or(0.2f), loop.value_or(true));
+        "play", [](GameEntity &e, const std::string &clip, sol::optional<float> fade, sol::optional<bool> loop) {
+          e.play(clip, fade.value_or(GameEntity::kDefaultFade), loop.value_or(true));
         },
-        "clips", [this](ScriptEntity &e) { return sol::as_table(engine.getAnimationClips(e.id)); },
-        "sound", [this](ScriptEntity &e, const std::string &path, sol::optional<float> volume) {
-          const Transform *t = engine.tryGet<Transform>(e.id);
-          engine.playSoundAt(path, t ? t->position : glm::vec3(0.0f), volume.value_or(1.0f));
+        "clips", [](GameEntity &e) { return sol::as_table(e.clips()); },
+        "sound", [](GameEntity &e, const std::string &path, sol::optional<float> volume) {
+          return e.sound(path, volume.value_or(1.0f));
         });
+  }
+
+  // A Lua function as a C++ callback: its errors are reported like any script's, and the game goes on
+  std::function<void()> callback(sol::protected_function handler, std::string where) {
+    return [this, handler = std::move(handler), where = std::move(where)]() {
+      const sol::protected_function_result result = handler();
+      if (!result.valid()) {
+        const sol::error error = result;
+        report(where, error.what());
+      }
+    };
+  }
+
+  // A vec3 field of a table, or nothing when it is absent or not a vec3
+  static std::optional<glm::vec3> vectorField(const sol::table &table, const char *key) {
+    const sol::optional<glm::vec3> value = table[key];
+    return value ? std::optional<glm::vec3>(*value) : std::nullopt;
+  }
+
+  // engine.create's table as the description the C++ side takes (see EntityDesc for the fields)
+  static EntityDesc entityDesc(const sol::optional<sol::table> &options) {
+    EntityDesc desc;
+    if (!options)
+      return desc;
+    const sol::table &o = *options;
+    auto vectorOr = [&](const char *key, const glm::vec3 &fallback) {
+      const sol::optional<glm::vec3> value = o[key];
+      return value ? *value : fallback;
+    };
+    desc.model = o.get_or<std::string>("model", "");
+    desc.position = vectorOr("position", desc.position);
+    desc.rotation = vectorOr("rotation", desc.rotation);
+    desc.scale = vectorOr("scale", desc.scale);
+    desc.color = vectorField(o, "color");
+    desc.emission = vectorField(o, "emission");
+    desc.glow = o.get_or("glow", desc.glow);
+    if (const sol::optional<std::string> body = o["body"])
+      desc.body = *body == "static"      ? BodyType::Static
+                  : *body == "kinematic" ? BodyType::Kinematic
+                                         : BodyType::Dynamic;
+    const std::string shape = o.get_or<std::string>("shape", "box");
+    desc.shape = shape == "sphere"       ? BodyShape::Sphere
+                 : shape == "capsule"    ? BodyShape::Capsule
+                 : shape == "convexHull" ? BodyShape::ConvexHull
+                 : shape == "mesh"       ? BodyShape::Mesh
+                                         : BodyShape::Box;
+    desc.mass = o.get_or("mass", desc.mass);
+    desc.collision = o.get_or("collision", false);
+    desc.script = o.get_or<std::string>("script", "");
+    return desc;
   }
 
   void bindGlobals() {
@@ -629,83 +596,69 @@ struct ScriptSystem::Impl {
       LOG_I("[Lua] %s", line.c_str());
     });
 
-    // engine: entities, scenes, time
+    // engine: entities, scenes, the sky
     sol::table api = lua.create_named_table("engine");
-    api.set_function("find", [this](const std::string &name) { return entityObject(engine.findEntity(name)); });
+    api.set_function("find", [this](const std::string &name) { return entityObject(engine.find(name)); });
+    // The entities named so, or with a component ("Model", "Script", a game component's name), by entity number
+    api.set_function("findAll", [this](const std::string &name) { return sol::as_table(engine.findAll(name)); });
+    api.set_function("findWithComponent",
+                     [this](const std::string &component) { return sol::as_table(engine.findWithComponent(component)); });
     api.set_function("spawn", [this](const std::string &prefab, sol::optional<glm::vec3> position,
                                      sol::optional<glm::vec3> rotation) {
-      return entityObject(engine.instantiate(prefab, position.value_or(glm::vec3(0.0f)),
-                                             rotation.value_or(glm::vec3(0.0f))));
+      return entityObject(engine.spawn(prefab, position.value_or(glm::vec3(0.0f)), rotation.value_or(glm::vec3(0.0f))));
     });
     // engine.create("Coin", { model = "models/coin.glb", position = vec3(0, 1, 0), scale = vec3(0.5),
     //                         color = vec3(1, 0.8, 0.2), body = "dynamic", shape = "sphere", script = "scripts/coin.lua" })
     // engine.create(name, { model = "box" | "sphere" | "cylinder" | path, position, rotation, scale, color, emission, glow,
     //                       body = "static" | "dynamic" | "kinematic", shape, mass, collision = true, script })
     api.set_function("create", [this](const std::string &name, sol::optional<sol::table> options) {
-      sol::table o = options ? *options : lua.create_table();
-      auto vectorOr = [&](const char *key, glm::vec3 fallback) {
-        sol::optional<glm::vec3> value = o[key];
-        return value ? *value : fallback;
-      };
-      const glm::vec3 position = vectorOr("position", glm::vec3(0.0f));
-      const glm::vec3 rotation = vectorOr("rotation", glm::vec3(0.0f));
-      const glm::vec3 scale = vectorOr("scale", glm::vec3(1.0f));
-      auto builder = engine.entities().create(name);
-      // "box", "sphere" and "cylinder" are the engine's own models
-      if (sol::optional<std::string> model = o["model"])
-        builder.withModel(*model == "box"        ? std::string(EngineConfig::MODEL_BOX)
-                          : *model == "sphere"   ? std::string(EngineConfig::MODEL_SPHERE)
-                          : *model == "cylinder" ? std::string(EngineConfig::MODEL_CYLINDER)
-                                                 : *model,
-                          position, rotation, scale);
-      else
-        builder.withTransform(position, rotation, scale);
-      if (sol::optional<glm::vec3> color = o["color"])
-        builder.withSolidColor(*color);
-      if (sol::optional<glm::vec3> emission = o["emission"])
-        builder.withEmission(*emission, o.get_or("glow", 1.5f));
-      if (sol::optional<std::string> body = o["body"]) {
-        const std::string shape = o.get_or<std::string>("shape", "box");
-        builder.withRigidBody(*body == "static" ? BodyType::Static
-                              : *body == "kinematic" ? BodyType::Kinematic
-                                                     : BodyType::Dynamic,
-                              shape == "sphere"       ? BodyShape::Sphere
-                              : shape == "capsule"    ? BodyShape::Capsule
-                              : shape == "convexHull" ? BodyShape::ConvexHull
-                              : shape == "mesh"       ? BodyShape::Mesh
-                                                      : BodyShape::Box,
-                              o.get_or("mass", 0.0f));
-      }
-      if (o.get_or("collision", false))
-        builder.withModelCollision();
-      if (sol::optional<std::string> script = o["script"])
-        builder.withComponent<Script>(*script);
-      return entityObject(builder.build());
+      return entityObject(engine.create(name, entityDesc(options)));
     });
-    api.set_function("destroy", [this](sol::optional<ScriptEntity> e) {
-      if (e && engine.isAlive(e->id))
-        engine.destroyEntity(e->id);
+    api.set_function("destroy", [](sol::optional<GameEntity> e) {
+      if (e)
+        e->destroy();
     });
     api.set_function("loadScene", [this](const std::string &path) { engine.loadScene(path); });
     api.set_function("setTitle", [this](const std::string &title) { engine.setWindowTitle(title); });
+    api.set_function("quit", [this]() { engine.quit(); });
+    // The color the image is cleared to, behind the skybox panorama; kept in the scene (see Engine::setSkyColor)
+    api.set_function("setSkyColor", [this](const glm::vec3 &color) { engine.setSkyColor(color); });
+    api.set_function("getSkyColor", [this]() { return engine.getSkyColor(); });
 
     // camera: the active one
     sol::table camera = lua.create_named_table("camera");
-    // Lets go while the free camera (Settings) is on, like the engine's own examples
-    camera.set_function("lookAt", [this](const glm::vec3 &from, const glm::vec3 &target) {
-      if (engine.getState(Toggle::CameraMovement))
-        return;
-      if (Camera *active = engine.getActiveCamera())
-        active->lookAt(from, target);
+    camera.set_function("lookAt", &GameCamera::lookAt, &engine.camera());
+    camera.set_function("position", &GameCamera::position, &engine.camera());
+    camera.set_function("forward", &GameCamera::forward, &engine.camera());
+    // camera.fov() reads the field of view, camera.fov(70) sets it (degrees)
+    camera.set_function("fov", [this](sol::optional<float> degrees) {
+      if (degrees)
+        engine.camera().setFov(*degrees);
+      return engine.camera().fov();
     });
-    camera.set_function("position", [this]() {
-      const Camera *active = engine.getActiveCamera();
-      return active ? active->position : glm::vec3(0.0f);
+
+    // time: the scale and pause, the game clock, timers
+    sol::table time = lua.create_named_table("time");
+    time.set_function("scale", [this](sol::optional<float> scale) {
+      if (scale)
+        engine.time().setScale(*scale);
+      return engine.time().scale();
     });
-    camera.set_function("forward", [this]() {
-      const Camera *active = engine.getActiveCamera();
-      return active ? active->front : glm::vec3(0.0f, 0.0f, -1.0f);
+    time.set_function("paused", [this](sol::optional<bool> paused) {
+      if (paused)
+        engine.time().setPaused(*paused);
+      return engine.time().isPaused();
     });
+    time.set_function("elapsed", &GameTime::elapsed, &engine.time());
+    time.set_function("delta", &GameTime::delta, &engine.time());
+    // time.after(2, function() ... end) once, time.every(1, fn) repeatedly; both return a handle for time.cancel
+    time.set_function("after", [this](float seconds, sol::protected_function action) {
+      return engine.time().after(seconds, callback(std::move(action), "time.after"));
+    });
+    time.set_function("every", [this](float seconds, sol::protected_function action) {
+      return engine.time().every(seconds, callback(std::move(action), "time.every"));
+    });
+    time.set_function("cancel", &GameTime::cancel, &engine.time());
 
     // input: actions and axes (see InputSystem::bindAction), keys by SDL's names ("Space", "Left Shift")
     sol::table input = lua.create_named_table("input");
@@ -713,21 +666,20 @@ struct ScriptSystem::Impl {
     input.set_function("down", [this](const std::string &name) { return engine.input().isActionDown(name); });
     input.set_function("pressed", [this](const std::string &name) { return engine.input().wasActionPressed(name); });
     input.set_function("released", [this](const std::string &name) { return engine.input().wasActionReleased(name); });
-    input.set_function("key", [this](const std::string &name) {
-      const SDL_Scancode key = SDL_GetScancodeFromName(name.c_str());
-      return key != SDL_SCANCODE_UNKNOWN && engine.input().isKeyDown(key);
-    });
-    input.set_function("keyPressed", [this](const std::string &name) {
-      const SDL_Scancode key = SDL_GetScancodeFromName(name.c_str());
-      return key != SDL_SCANCODE_UNKNOWN && engine.input().wasKeyPressed(key);
-    });
+    input.set_function("key", [this](const std::string &name) { return engine.input().isKeyDown(name); });
+    input.set_function("keyPressed", [this](const std::string &name) { return engine.input().wasKeyPressed(name); });
     input.set_function("mouse", [this]() {
       const glm::vec2 position = engine.input().getMousePosition();
       return std::make_tuple(position.x, position.y);
     });
+    // Buttons: 1 left (the default), 2 middle, 3 right
     input.set_function("click", [this](sol::optional<int> button) {
       return engine.input().wasMouseButtonPressed(static_cast<MouseButton>(button.value_or(1)));
     });
+    input.set_function("mouseDown", [this](sol::optional<int> button) {
+      return engine.input().isMouseButtonDown(static_cast<MouseButton>(button.value_or(1)));
+    });
+    input.set_function("wheel", [this]() { return engine.input().getMouseWheel(); });
     input.set_function("bindings", [this](const std::string &path) { return engine.input().loadBindings(path); });
 
     // physics
@@ -738,7 +690,7 @@ struct ScriptSystem::Impl {
       if (!hit)
         return sol::lua_nil;
       sol::table result = lua.create_table();
-      result["entity"] = entityObject(hit->entity);
+      result["entity"] = entityObject(engine.entity(hit->entity));
       result["point"] = hit->point;
       result["normal"] = hit->normal;
       result["distance"] = hit->distance;
@@ -756,7 +708,7 @@ struct ScriptSystem::Impl {
     sol::table nav = lua.create_named_table("nav");
     nav.set_function("build", [this](sol::optional<sol::table> options) {
       NavigationSettings settings;
-      sol::optional<glm::vec3> min, max;
+      std::optional<glm::vec3> min, max;
       if (options) {
         const sol::table &o = *options;
         settings.cellSize = o.get_or("cellSize", settings.cellSize);
@@ -764,12 +716,10 @@ struct ScriptSystem::Impl {
         settings.agentHeight = o.get_or("agentHeight", settings.agentHeight);
         settings.maxSlope = o.get_or("maxSlope", settings.maxSlope);
         settings.stepHeight = o.get_or("stepHeight", settings.stepHeight);
-        min = o.get<sol::optional<glm::vec3>>("min");
-        max = o.get<sol::optional<glm::vec3>>("max");
+        min = vectorField(o, "min");
+        max = vectorField(o, "max");
       }
-      if (min && max)
-        return engine.navigation().build(*min, *max, settings);
-      return engine.navigation().buildFromScene(settings);
+      return engine.navigation().buildIn(min, max, settings);
     });
     // The points to walk, on the ground, or nil when there is no way (or no map)
     nav.set_function("path", [this](const glm::vec3 &from, const glm::vec3 &to) -> sol::object {
@@ -780,18 +730,23 @@ struct ScriptSystem::Impl {
     });
     nav.set_function("walkable", [this](const glm::vec3 &point) { return engine.navigation().isWalkable(point); });
 
-    // sound
+    // sound: play and playAt return a handle (0: nothing played) for stop, setVolume and isPlaying
     sol::table sound = lua.create_named_table("sound");
     sound.set_function("play", [this](const std::string &path, sol::optional<float> volume, sol::optional<float> pitch) {
-      engine.playSound(path, volume.value_or(1.0f), pitch.value_or(1.0f));
+      return engine.playSound(path, volume.value_or(1.0f), pitch.value_or(1.0f));
     });
     sound.set_function("playAt", [this](const std::string &path, const glm::vec3 &position, sol::optional<float> volume) {
-      engine.playSoundAt(path, position, volume.value_or(1.0f));
+      return engine.playSoundAt(path, position, volume.value_or(1.0f));
     });
+    sound.set_function("stop", [this](uint32_t handle) { engine.stopSound(handle); });
+    sound.set_function("setVolume", [this](uint32_t handle, float volume) { engine.setSoundVolume(handle, volume); });
+    sound.set_function("isPlaying", [this](uint32_t handle) { return engine.isSoundPlaying(handle); });
+    sound.set_function("preload", [this](const std::string &path) { engine.preloadSound(path); });
     sound.set_function("music", [this](const std::string &path, sol::optional<float> volume) {
       engine.playMusic(path, volume.value_or(1.0f));
     });
     sound.set_function("stopMusic", [this]() { engine.stopMusic(); });
+    sound.set_function("musicVolume", [this](float volume) { engine.setMusicVolume(volume); });
 
     // save: progress and settings that stay between runs (see SaveData); values are numbers, strings, booleans or
     // tables of those, nested
@@ -814,63 +769,24 @@ struct ScriptSystem::Impl {
 
     // ui: RmlUi documents, changed by element id
     sol::table ui = lua.create_named_table("ui");
-    // A document loaded once: loading it again (the game script running again after Stop) shows the same one
-    ui.set_function("load", [this](const std::string &path) {
-      auto it = documents.find(path);
-      if (it != documents.end()) {
-        it->second->Show();
-        return true;
-      }
-      Rml::ElementDocument *document = engine.loadUIDocument(path);
-      if (document)
-        documents[path] = document;
-      return document != nullptr;
-    });
+    ui.set_function("load", &GameUI::load, &engine.ui());
     // The ready-made pause menu: Escape opens it once enabled (see Engine::enablePauseMenu)
-    ui.set_function("pauseMenu", [this](sol::optional<bool> enabled) { engine.enablePauseMenu(enabled.value_or(true)); });
-    ui.set_function("openPauseMenu", [this]() { engine.openPauseMenu(); });
-    ui.set_function("closePauseMenu", [this]() { engine.closePauseMenu(); });
-    ui.set_function("isPaused", [this]() { return engine.isPauseMenuOpen(); });
+    ui.set_function("pauseMenu", [this](sol::optional<bool> enabled) { engine.ui().pauseMenu(enabled.value_or(true)); });
+    ui.set_function("openPauseMenu", &GameUI::openPauseMenu, &engine.ui());
+    ui.set_function("closePauseMenu", &GameUI::closePauseMenu, &engine.ui());
+    ui.set_function("isPaused", &GameUI::isPaused, &engine.ui());
+    // Any value, written as Lua's tostring does (12, 1.5, true)
     ui.set_function("text", [this](const std::string &id, sol::object value) {
-      if (Rml::Element *element = findElement(id))
-        element->SetInnerRML(lua["tostring"](value).get<std::string>());
+      engine.ui().text(id, lua["tostring"](value).get<std::string>());
     });
-    ui.set_function("show", [this](const std::string &id, bool visible) {
-      if (Rml::Element *element = findElement(id)) {
-        if (visible)
-          element->RemoveProperty("display");
-        else
-          element->SetProperty("display", "none");
-      }
-    });
-    ui.set_function("class", [this](const std::string &id, const std::string &name, bool on) {
-      if (Rml::Element *element = findElement(id))
-        element->SetClass(name, on);
-    });
+    ui.set_function("show", &GameUI::show, &engine.ui());
+    ui.set_function("class", &GameUI::setClass, &engine.ui());
+    // ui.style("panel", "background-color", "#204060"): one RCSS property, "" to go back to the stylesheet's
+    ui.set_function("style", &GameUI::style, &engine.ui());
+    ui.set_function("attribute", &GameUI::attribute, &engine.ui());
     ui.set_function("onClick", [this](const std::string &id, sol::protected_function handler) {
-      Rml::Element *element = findElement(id);
-      if (!element)
-        return false;
-      clickListeners.push_back(std::make_unique<ClickListener>(
-          std::move(handler), [this](const sol::protected_function_result &result) {
-            if (!result.valid()) {
-              const sol::error error = result;
-              report("ui.onClick", error.what());
-            }
-          }));
-      element->AddEventListener(Rml::EventId::Click, clickListeners.back().get());
-      return true;
+      return engine.ui().onClick(id, callback(std::move(handler), "ui.onClick"));
     });
-  }
-
-  Rml::Element *findElement(const std::string &id) {
-    Rml::Context *context = engine.getUIContext();
-    if (!context)
-      return nullptr;
-    for (int i = 0; i < context->GetNumDocuments(); ++i)
-      if (Rml::Element *element = context->GetDocument(i)->GetElementById(id))
-        return element;
-    return nullptr;
   }
 };
 

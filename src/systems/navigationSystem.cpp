@@ -100,6 +100,11 @@ bool NavigationSystem::build(const glm::vec3 &min, const glm::vec3 &max, const N
   return true;
 }
 
+bool NavigationSystem::buildIn(const std::optional<glm::vec3> &min, const std::optional<glm::vec3> &max,
+                               const NavigationSettings &settings) {
+  return min && max ? build(*min, *max, settings) : buildFromScene(settings);
+}
+
 bool NavigationSystem::buildFromScene(const NavigationSettings &settings) {
   m_physics.syncBodies();
   glm::vec3 min, max;

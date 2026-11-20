@@ -35,6 +35,7 @@
 #include "systems/timeSystem.h"
 #include "systems/transformSystem.h"
 #include "systems/editorUISystem.h"
+#include "components/particleEmitter.h"
 #include "systems/windowSystem.h"
 #include <algorithm>
 #include <cstdlib>
@@ -272,6 +273,8 @@ void Engine::update(bool &isRunning) {
   auto &editorUI = m_systemManager.getSystem<EditorUISystem>();
   editorUI.update(m_systemManager);
 
+  if (m_playMode != PlayMode::Editing)
+    m_time.tick(timeSystem.getDeltaTime()); // the game clock and timers, before the app
   if (m_app && m_playMode != PlayMode::Editing) {
     m_app->update(*this, timeSystem.getDeltaTime());
   }
@@ -581,13 +584,23 @@ void Engine::preloadSound(std::string_view path) {
   m_systemManager.getSystem<AudioSystem>().preload(std::string(path));
 }
 
-void Engine::playSound(std::string_view path, float volume, float pitch) {
-  m_systemManager.getSystem<AudioSystem>().playOneShot(std::string(path), std::nullopt, volume, pitch);
+uint32_t Engine::playSound(std::string_view path, float volume, float pitch) {
+  return m_systemManager.getSystem<AudioSystem>().playOneShot(std::string(path), std::nullopt, volume, pitch);
 }
 
-void Engine::playSoundAt(std::string_view path, glm::vec3 position, float volume, float pitch) {
-  m_systemManager.getSystem<AudioSystem>().playOneShot(std::string(path), position, volume, pitch);
+uint32_t Engine::playSoundAt(std::string_view path, glm::vec3 position, float volume, float pitch) {
+  return m_systemManager.getSystem<AudioSystem>().playOneShot(std::string(path), position, volume, pitch);
 }
+
+void Engine::stopSound(uint32_t sound) { m_systemManager.getSystem<AudioSystem>().stopVoice(sound); }
+
+void Engine::setSoundVolume(uint32_t sound, float volume) {
+  m_systemManager.getSystem<AudioSystem>().setVoiceVolume(sound, volume);
+}
+
+bool Engine::isSoundPlaying(uint32_t sound) { return m_systemManager.getSystem<AudioSystem>().isVoicePlaying(sound); }
+
+void Engine::setMusicVolume(float volume) { m_systemManager.getSystem<AudioSystem>().setMusicVolume(volume); }
 
 void Engine::playMusic(std::string_view path, float volume, bool loop) {
   m_systemManager.getSystem<AudioSystem>().playMusic(std::string(path), volume, loop);
@@ -739,6 +752,7 @@ void Engine::applyPlayModeRequest() {
     m_playSnapshot.reset();
     restoreScene(std::move(snapshot));
     m_systemManager.getSystem<ScriptSystem>().reset();
+    m_time.clear();
     refreshPinnedMaterials();
     LOG_I("[Engine] Stop: %zu entities restored", m_entityManager.count());
     m_playMode = PlayMode::Editing;
@@ -853,6 +867,116 @@ Entity Engine::findEntity(std::string_view name) {
       found = entity;
   });
   return found;
+}
+
+GameEntity Engine::entity(Entity entity) { return GameEntity(*this, entity); }
+
+GameEntity Engine::find(std::string_view name) {
+  const Entity found = findEntity(name);
+  return found == -1 ? GameEntity() : GameEntity(*this, found);
+}
+
+std::vector<GameEntity> Engine::findAll(std::string_view name) {
+  std::vector<Entity> found;
+  m_componentManager.forEachComponent<Name>([&](Entity entity, Name &entityName) {
+    if (entityName.name == name)
+      found.push_back(entity);
+  });
+  std::sort(found.begin(), found.end());
+  std::vector<GameEntity> handles;
+  handles.reserve(found.size());
+  for (Entity entity : found)
+    handles.emplace_back(*this, entity);
+  return handles;
+}
+
+bool Engine::hasComponent(Entity entity, std::string_view component) {
+  if (component == "Model") return has<Model>(entity);
+  if (component == "RigidBody") return has<RigidBody>(entity);
+  if (component == "CharacterController") return has<CharacterController>(entity);
+  if (component == "Light") return has<Light>(entity);
+  if (component == "Camera") return has<Camera>(entity);
+  if (component == "Animator") return has<Animator>(entity);
+  if (component == "Script") return has<Script>(entity);
+  if (component == "Transform") return has<Transform>(entity);
+  if (component == "AudioSource") return has<AudioSource>(entity);
+  if (component == "Skybox") return has<Skybox>(entity);
+  if (component == "Collision") return has<Collision>(entity);
+  if (component == "ParticleEmitter") return has<ParticleEmitter>(entity);
+  if (component == "Hidden") return has<Hidden>(entity);
+  for (const ReflectedComponent &reflected : m_reflectedComponents)
+    if (reflected.name == component)
+      return reflected.get && reflected.get(m_componentManager, entity) != nullptr;
+  return false;
+}
+
+std::vector<GameEntity> Engine::findWithComponent(std::string_view component) {
+  std::vector<Entity> found;
+  for (Entity entity : m_entityManager.entities())
+    if (hasComponent(entity, component))
+      found.push_back(entity);
+  std::sort(found.begin(), found.end());
+  std::vector<GameEntity> handles;
+  handles.reserve(found.size());
+  for (Entity entity : found)
+    handles.emplace_back(*this, entity);
+  return handles;
+}
+
+GameEntity Engine::create(std::string_view name, const EntityDesc &desc) {
+  auto builder = entities().create(name);
+  // "box", "sphere" and "cylinder" are the engine's own models
+  if (!desc.model.empty())
+    builder.withModel(desc.model == "box"        ? std::string(EngineConfig::MODEL_BOX)
+                      : desc.model == "sphere"   ? std::string(EngineConfig::MODEL_SPHERE)
+                      : desc.model == "cylinder" ? std::string(EngineConfig::MODEL_CYLINDER)
+                                                 : desc.model,
+                      desc.position, desc.rotation, desc.scale);
+  else
+    builder.withTransform(desc.position, desc.rotation, desc.scale);
+  if (desc.color)
+    builder.withSolidColor(*desc.color);
+  if (desc.emission)
+    builder.withEmission(*desc.emission, desc.glow);
+  if (desc.body)
+    builder.withRigidBody(*desc.body, desc.shape, desc.mass);
+  if (desc.collision)
+    builder.withModelCollision();
+  if (!desc.script.empty())
+    builder.withScript(desc.script);
+  return GameEntity(*this, builder.build());
+}
+
+GameEntity Engine::spawn(std::string_view prefabPath, glm::vec3 position, glm::vec3 rotation) {
+  const Entity spawned = instantiate(prefabPath, position, rotation);
+  return spawned == -1 ? GameEntity() : GameEntity(*this, spawned);
+}
+
+void Engine::setSkyColor(const glm::vec3 &color) {
+  Skybox *sky = nullptr;
+  m_componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
+    if (!sky && !has<Hidden>(entity))
+      sky = &skybox;
+  });
+  if (sky) {
+    sky->color = color;
+    return;
+  }
+  const Entity entity = createEntity();
+  addComponent<Name>(entity, "Sky");
+  addComponent<Skybox>(entity).color = color;
+}
+
+glm::vec3 Engine::getSkyColor() {
+  glm::vec3 color(0.0f);
+  bool found = false;
+  m_componentManager.forEachComponent<Skybox>([&](Entity entity, Skybox &skybox) {
+    if (!found && !has<Hidden>(entity)) {
+      color = skybox.color;
+      found = true;
+    }
+  });
+  return color;
 }
 
 void Engine::enablePauseMenu(bool enabled) { m_systemManager.getSystem<PauseMenu>().setEnabled(enabled); }
