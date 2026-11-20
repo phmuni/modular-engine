@@ -49,8 +49,14 @@ private:
   mutable GLuint m_emptyCubeMap = 0;
   static GLuint createDepthCubeMap(int size);
 
+  // The window's framebuffer in pixels, which the editor, the game UI and the final pass draw at
   int m_screenWidth = 1280;
   int m_screenHeight = 720;
+  // The 3D scene's own size: the screen's times the render scale
+  float m_renderScale = 1.0f;
+  int m_renderWidth = 1280;
+  int m_renderHeight = 720;
+  void updateTargets();
 
   // The scene renders into an HDR target; finishScene brings it to the screen
   PostProcess m_postProcess;
@@ -123,6 +129,18 @@ public:
   void setWireframe(bool enabled);
   // Back-face culling, on by default; double-sided materials turn it off while they draw
   void setFaceCulling(bool enabled) const;
+  // The framebuffer's size in pixels (the window's, with its pixel density)
   void setViewportSize(int width, int height);
+  // The fraction of the screen's pixels the 3D scene is drawn at before it is stretched onto the screen, within
+  // kMinRenderScale to kMaxRenderScale: below 1 trades sharpness for speed, above 1 supersamples. The editor and the
+  // game UI always draw at the screen's own size.
+  static constexpr float kMinRenderScale = 0.5f;
+  static constexpr float kMaxRenderScale = 2.0f;
+  void setRenderScale(float scale);
+  float getRenderScale() const { return m_renderScale; }
+  int getRenderWidth() const { return m_renderWidth; }
+  int getRenderHeight() const { return m_renderHeight; }
+  int getScreenWidth() const { return m_screenWidth; }
+  int getScreenHeight() const { return m_screenHeight; }
   void shutdown();
 };

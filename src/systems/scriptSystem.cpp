@@ -827,6 +827,32 @@ struct ScriptSystem::Impl {
     api.set_function("loadScene", [this](const std::string &path) { engine.loadScene(path); });
     api.set_function("setTitle", [this](const std::string &title) { engine.setWindowTitle(title); });
     api.set_function("quit", [this]() { engine.quit(); });
+    // The window and the resolution the scene renders at (see Engine::setWindowSize, Engine::setRenderScale).
+    // engine.windowSize() and engine.renderResolution() return width and height; engine.resolutions() a list of
+    // { width = 1280, height = 720 } that fit the display.
+    api.set_function("setWindowSize", [this](int width, int height) { engine.setWindowSize(width, height); });
+    api.set_function("windowSize", [this]() {
+      const glm::ivec2 size = engine.windowSize();
+      return std::make_tuple(size.x, size.y);
+    });
+    api.set_function("resolutions", [this]() {
+      sol::table result = lua.create_table();
+      for (const glm::ivec2 &size : engine.resolutions()) {
+        sol::table entry = lua.create_table();
+        entry["width"] = size.x;
+        entry["height"] = size.y;
+        result.add(entry);
+      }
+      return result;
+    });
+    api.set_function("setRenderScale", [this](float scale) { engine.setRenderScale(scale); });
+    api.set_function("renderScale", [this]() { return engine.renderScale(); });
+    api.set_function("renderResolution", [this]() {
+      const glm::ivec2 size = engine.renderResolution();
+      return std::make_tuple(size.x, size.y);
+    });
+    api.set_function("setFullscreen", [this](bool enabled) { engine.setFullscreen(enabled); });
+    api.set_function("isFullscreen", [this]() { return engine.isFullscreen(); });
     // The color the image is cleared to, behind the skybox panorama; kept in the scene (see Engine::setSkyColor)
     api.set_function("setSkyColor", [this](const glm::vec3 &color) { engine.setSkyColor(color); });
     api.set_function("getSkyColor", [this]() { return engine.getSkyColor(); });

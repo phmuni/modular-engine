@@ -10,6 +10,8 @@
 #include <RmlUi/Core.h>
 #include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
 namespace {
 constexpr const char *DOCUMENT = "../assets/ui/engine/pauseMenu.rml";
@@ -20,10 +22,19 @@ constexpr const char *KEY_MUSIC = "engine.volume.music";
 constexpr const char *KEY_EFFECTS = "engine.volume.effects";
 constexpr const char *KEY_FULLSCREEN = "engine.fullscreen";
 constexpr const char *KEY_VSYNC = "engine.vsync";
+// The window's size is kept under the same keys the engine remembers where the window was closed (Engine::startWindow)
+constexpr const char *KEY_WINDOW_WIDTH = "engine.window.width";
+constexpr const char *KEY_WINDOW_HEIGHT = "engine.window.height";
+constexpr const char *KEY_RENDER_SCALE = "engine.renderScale";
 
 int toPercent(float volume) { return std::clamp(static_cast<int>(std::lround(volume * 100.0f)), 0, 100); }
 // 0.49 in the file, not the 0.49000000953674316 a float widens to
 double percentToSaved(int percent) { return static_cast<double>(percent) / 100.0; }
+
+// The render scale slider moves in steps of 5 %, as the document's step says
+int scaleToSlider(float scale) { return std::clamp(static_cast<int>(std::lround(scale * 20.0f)) * 5, 50, 200); }
+
+std::string sizeText(const glm::ivec2 &size) { return std::to_string(size.x) + " x " + std::to_string(size.y); }
 } // namespace
 
 struct PauseMenu::Impl {
@@ -43,7 +54,10 @@ struct PauseMenu::Impl {
   int effects = 100;
   bool fullscreen = false;
   bool vsync = true;
-  bool options = false; // the Options screen instead of the main one
+  int renderScale = 100; // percent of the framebuffer's pixels the scene is drawn at; the slider is 50 to 200
+  Rml::String resolution;       // the window's size, as shown
+  Rml::String renderResolution; // the scene's size in pixels, as shown
+  bool options = false;         // the Options screen instead of the main one
 
   // What buttons asked for: handled in update(), outside RmlUi's event dispatch
   bool resumeRequested = false;
@@ -51,6 +65,7 @@ struct PauseMenu::Impl {
   bool backRequested = false;
   bool toggleFullscreen = false;
   bool toggleVSync = false;
+  int stepResolution = 0; // -1 or 1: the previous or next window size
 
   bool wasCursorLocked = false;
 
@@ -74,6 +89,9 @@ struct PauseMenu::Impl {
       window().setFullscreen(data.getBool(KEY_FULLSCREEN, false));
     if (data.has(KEY_VSYNC))
       engine.setState(Toggle::VSync, data.getBool(KEY_VSYNC, true));
+    // The window's own size comes back with its place when the window is shown (Engine::startWindow)
+    if (data.has(KEY_RENDER_SCALE))
+      engine.setRenderScale(static_cast<float>(data.getNumber(KEY_RENDER_SCALE, 1.0)));
   }
 
   // The model's view of the engine, as it is now (F6 or the game may have changed it since)
@@ -83,7 +101,52 @@ struct PauseMenu::Impl {
     effects = toPercent(audio().getBusVolume(AudioSystem::Bus::Effects));
     fullscreen = window().isFullscreen();
     vsync = engine.getState(Toggle::VSync);
+    renderScale = scaleToSlider(engine.renderScale());
+    refreshResolutions();
     model.DirtyAllVariables();
+  }
+
+  // The texts that follow the window's and the scene's sizes, which change by themselves (dragging the window)
+  void refreshResolutions() {
+    resolution = sizeText(engine.windowSize());
+    renderResolution = sizeText(engine.renderResolution());
+  }
+
+  // The window moves to the next (or previous) of the sizes that fit the display, from where it is now: a size
+  // that is not on the list (the window was dragged) goes to the nearest one in that direction
+  void applyResolutionStep() {
+    if (stepResolution == 0)
+      return;
+    const int direction = stepResolution;
+    stepResolution = 0;
+    if (fullscreen) // the button looks disabled; a click that got in anyway does nothing
+      return;
+    const std::vector<glm::ivec2> sizes = engine.resolutions();
+    const glm::ivec2 current = engine.windowSize();
+    const auto area = [](const glm::ivec2 &size) { return static_cast<long long>(size.x) * size.y; };
+    const glm::ivec2 *chosen = nullptr;
+    for (const glm::ivec2 &size : sizes) { // smallest first
+      if (direction > 0 && area(size) > area(current)) {
+        chosen = &size;
+        break;
+      }
+      if (direction < 0 && area(size) < area(current))
+        chosen = &size; // the last one that is smaller
+    }
+    if (!chosen) // past the end: around to the other one
+      chosen = direction > 0 ? &sizes.front() : &sizes.back();
+    engine.setWindowSize(chosen->x, chosen->y);
+    const glm::ivec2 applied = engine.windowSize();
+    save().set(KEY_WINDOW_WIDTH, applied.x);
+    save().set(KEY_WINDOW_HEIGHT, applied.y);
+  }
+
+  // Applies what the render scale slider shows, and keeps it in the save data
+  void applyRenderScale() {
+    if (renderScale != scaleToSlider(engine.renderScale())) {
+      engine.setRenderScale(static_cast<float>(renderScale) / 100.0f);
+      save().set(KEY_RENDER_SCALE, percentToSaved(renderScale));
+    }
   }
 
   // Applies what the sliders show, and keeps it in the save data
@@ -119,6 +182,9 @@ struct PauseMenu::Impl {
     constructor.Bind("effects", &effects);
     constructor.Bind("fullscreen", &fullscreen);
     constructor.Bind("vsync", &vsync);
+    constructor.Bind("renderScale", &renderScale);
+    constructor.Bind("resolution", &resolution);
+    constructor.Bind("renderResolution", &renderResolution);
     constructor.Bind("options", &options);
     const auto onClick = [](bool &flag) {
       return [&flag](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) { flag = true; };
@@ -128,6 +194,13 @@ struct PauseMenu::Impl {
     constructor.BindEventCallback("back", onClick(backRequested));
     constructor.BindEventCallback("toggle_fullscreen", onClick(toggleFullscreen));
     constructor.BindEventCallback("toggle_vsync", onClick(toggleVSync));
+    const auto onStep = [this](int direction) {
+      return [this, direction](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
+        stepResolution = direction;
+      };
+    };
+    constructor.BindEventCallback("resolution_prev", onStep(-1));
+    constructor.BindEventCallback("resolution_next", onStep(1));
     constructor.BindEventCallback("show_options", [this](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
       options = true;
       model.DirtyVariable("options");
@@ -154,6 +227,7 @@ struct PauseMenu::Impl {
     engine.setState(Toggle::Paused, true);
     options = false;
     resumeRequested = quitRequested = backRequested = toggleFullscreen = toggleVSync = false;
+    stepResolution = 0;
     readOptions();
     document->Show(Rml::ModalFlag::Modal, Rml::FocusFlag::Document);
     document->PullToFront(); // over the game's own documents, whenever they were loaded
@@ -205,6 +279,17 @@ struct PauseMenu::Impl {
       save().set(KEY_VSYNC, vsync);
     }
     applyVolumes();
+    applyResolutionStep();
+    applyRenderScale();
+    // The sizes can change without a click: the window was dragged, or the menu's own request just landed
+    const Rml::String windowText = sizeText(engine.windowSize());
+    const Rml::String sceneText = sizeText(engine.renderResolution());
+    if (windowText != resolution || sceneText != renderResolution) {
+      resolution = windowText;
+      renderResolution = sceneText;
+      model.DirtyVariable("resolution");
+      model.DirtyVariable("renderResolution");
+    }
     if (backRequested) {
       backRequested = false;
       showMainScreen();

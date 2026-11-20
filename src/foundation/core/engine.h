@@ -495,6 +495,37 @@ public:
 
   void setWindowTitle(std::string_view title);
 
+  // Window and render resolution. Sizes are in window units (what SDL calls the window size: points on a Retina
+  // screen, pixels elsewhere); the framebuffer behind the window has pixelDensity times as many pixels.
+  struct WindowConfig {
+    int width = 0; // 0 for either: the default size (DEFAULT_SCREEN_WIDTH x HEIGHT, grown on a scaled display)
+    int height = 0;
+    bool fullscreen = false;
+    float renderScale = 1.0f;
+  };
+  // The game's window, as project.json's "window" describes it (the Lua runner reads it). Call it before initialize()
+  // and the window is created at that size, with no visible resize; called later (in setup) it resizes the window.
+  // What the player chose or left behind in an earlier run (the pause menu's options, the size and place the window
+  // was closed at) still comes after it. Ignored by deterministic runs, which keep a fixed window and render scale.
+  void configureWindow(const WindowConfig &config);
+  // Resizes the window; the call returns once it has the new size. Does nothing for a size that is not positive. In
+  // fullscreen it is the size the window takes when it leaves it.
+  void setWindowSize(int width, int height);
+  glm::ivec2 windowSize();
+  // Window sizes that fit the display the window is on (usable area: no taskbar or menu bar), smallest first; the
+  // common 16:9 sizes and the display's own size. Never empty.
+  std::vector<glm::ivec2> resolutions();
+  // The 3D scene is drawn at the framebuffer's pixels times this scale (0.5 to 2, clamped; 1 by default) and
+  // stretched onto the window with linear filtering: below 1 is faster, above 1 sharper (supersampling). The editor
+  // and the game UI keep drawing at the framebuffer's own size.
+  void setRenderScale(float scale);
+  float renderScale();
+  // The scene's size in pixels now: the framebuffer's times the render scale
+  glm::ivec2 renderResolution();
+  // Borderless fullscreen at the desktop's size; the window comes back at its old size
+  void setFullscreen(bool enabled);
+  bool isFullscreen();
+
   // Material utilities
   // `submesh` of -1 applies to every submesh of the entity.
   void setEmission(Entity entity, glm::vec3 color, float strength, int submesh = -1);
@@ -534,6 +565,15 @@ private:
   App *m_app = nullptr;
   bool m_shutdown = false;
   bool m_deterministic = false;
+  // --deterministic was on the command line: known before the window exists, which setDeterministic comes too late for
+  static inline bool s_deterministicRun = false;
+  bool m_initialized = false;
+  bool m_windowShown = false; // the window was put in place and shown: its size is worth remembering
+  WindowConfig m_windowConfig; // from configureWindow before initialize()
+  // Puts the window where it was last time and shows it; the window starts hidden for this
+  void startWindow();
+  // Keeps the window's size and place for the next run
+  void rememberWindow();
 
   struct ScreenshotRequest {
     std::string path;

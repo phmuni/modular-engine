@@ -5,12 +5,13 @@
 #include "foundation/core/logger.h"
 #include "rendering/resources/mesh.h"
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 void Renderer::init(SDL_Window *window) {
   m_window = window;
   SDL_GetWindowSizeInPixels(window, &m_screenWidth, &m_screenHeight);
-  m_postProcess.resize(m_screenWidth, m_screenHeight);
+  updateTargets();
   initShadowMapping();
   initParticleBuffers();
   // Point shadows are filtered across cube faces instead of showing seams at the edges
@@ -128,7 +129,7 @@ void Renderer::finishScene(Shader &bloomDownsample, Shader &bloomUpsample, Shade
 void Renderer::endShadowPass() {
   // Back to the scene target, which the shadow passes interrupted
   glBindFramebuffer(GL_FRAMEBUFFER, m_postProcess.sceneFramebuffer());
-  glViewport(0, 0, m_screenWidth, m_screenHeight);
+  glViewport(0, 0, m_renderWidth, m_renderHeight);
 }
 
 void Renderer::initShadowMapping() {
@@ -265,8 +266,29 @@ void Renderer::setWireframe(bool enabled) { glPolygonMode(GL_FRONT_AND_BACK, ena
 void Renderer::setViewportSize(int width, int height) {
   m_screenWidth = width;
   m_screenHeight = height;
-  m_postProcess.resize(width, height);
+  updateTargets();
   glViewport(0, 0, m_screenWidth, m_screenHeight);
+}
+
+void Renderer::setRenderScale(float scale) {
+  m_renderScale = std::clamp(scale, kMinRenderScale, kMaxRenderScale);
+  if (m_window) // before init() the scale waits for the targets to be made
+    updateTargets();
+}
+
+// The scene's targets follow the screen's size times the render scale; the screen is only drawn onto at the end
+void Renderer::updateTargets() {
+  // A target larger than the GPU allows would fail to be created: a 4K screen at 200 % is already 7680 pixels wide
+  static GLint maxSize = 0;
+  if (!maxSize)
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxSize);
+  const auto scaled = [&](int pixels) {
+    return std::clamp(static_cast<int>(std::lround(static_cast<double>(pixels) * m_renderScale)), 1,
+                      std::max(static_cast<int>(maxSize), 1));
+  };
+  m_renderWidth = scaled(m_screenWidth);
+  m_renderHeight = scaled(m_screenHeight);
+  m_postProcess.resize(m_renderWidth, m_renderHeight, m_screenWidth, m_screenHeight);
 }
 
 void Renderer::beginTransparentPass() {

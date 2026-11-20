@@ -32,6 +32,21 @@
 			<div class="value">{{ effects }}</div>
 		</div>
 
+		<!-- The window's size: stepped through the sizes that fit the display; kept as it is in fullscreen -->
+		<div class="row" data-class-disabled="fullscreen">
+			<div class="name">Window</div>
+			<button class="step" data-event-click="resolution_prev">&lt;</button>
+			<div class="choice">{{ resolution }}</div>
+			<button class="step" data-event-click="resolution_next">&gt;</button>
+		</div>
+		<!-- What the 3D scene is drawn at, as a share of the screen's pixels; the menu itself always is at full size -->
+		<div class="row">
+			<div class="name">Render</div>
+			<input type="range" min="50" max="200" step="5" data-value="renderScale"/>
+			<div class="value">{{ renderScale }}%</div>
+		</div>
+		<div class="note">Render: {{ renderResolution }} px</div>
+
 		<button class="toggle" data-class-on="fullscreen" data-event-click="toggle_fullscreen">
 			Fullscreen <span class="state">{{ fullscreen ? 'On' : 'Off' }}</span>
 		</button>
