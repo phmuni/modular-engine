@@ -380,10 +380,12 @@ struct PhysicsSystem::Impl {
     settings.mSupportingVolume = JPH::Plane(JPH::Vec3::sAxisY(), halfCylinder);
     settings.mMass = 70.0f;
     settings.mMaxStrength = 200.0f; // how hard it pushes dynamic bodies
-    // A kinematic body of the same capsule that it carries along: without it, the character is not in the physics
-    // world, so dynamic bodies fall and roll through it (it then shoves them out slowly). The character itself skips
-    // it; raycasts and the navigation's capsule test skip it too (see isCharacter).
-    settings.mInnerBodyShape = settings.mShape;
+    // A kinematic capsule that it carries along: without it, the character is not in the physics world, so dynamic
+    // bodies fall and roll through it (it then shoves them out slowly). A little wider than the character's own
+    // capsule, so what rests on it stays out of the character's padding: a box sunk into its head with the floor under
+    // its feet would pin it in place. The character itself skips it; raycasts and the navigation's capsule test skip
+    // it too (see isCharacter).
+    settings.mInnerBodyShape = new JPH::CapsuleShape(halfCylinder, radius + 0.05f);
     settings.mInnerBodyLayer = Layers::objectLayer(layers.resolve(controller.layer), true);
     JPH::Ref<JPH::CharacterVirtual> character = new JPH::CharacterVirtual(
         &settings, JPH::RVec3(toJolt(transform.position)), JPH::Quat::sIdentity(), static_cast<JPH::uint64>(entity),

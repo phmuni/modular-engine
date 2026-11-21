@@ -202,3 +202,18 @@ TEST_CASE(physics_body_lands_on_character) {
     CHECK(!throughHero.has_value() || throughHero->entity != hero.id());
   });
 }
+
+TEST_CASE(physics_body_falls_when_character_walks_away) {
+  // A box resting on a character's head (long enough to fall asleep) falls when the character walks out from under it
+  engine.create("Floor", Desc("box").at(0, -0.5f, 0).size(30, 1, 30).body(BodyType::Static));
+  GameEntity hero = engine.create("Hero", Desc().at(0, 0.9f, 0).character());
+  // A wide flat box, so it stays on the round head instead of rolling off
+  GameEntity box = engine.create("Box", Desc("box").at(0, 2.2f, 0).size(1.2f, 0.2f, 1.2f).body(BodyType::Dynamic));
+  steps.seconds(3.0f, [box]() { CHECK(box.position().y > 1.7f); });
+  steps.step(1, [hero]() mutable { hero.move(glm::vec3(4, 0, 0)); });
+  steps.seconds(2.0f, [hero, box]() mutable {
+    hero.move(glm::vec3(0));
+    CHECK(hero.position().x > 3.0f);
+    CHECK_NEAR(box.position().y, 0.1f, 0.15f); // on the floor
+  });
+}
