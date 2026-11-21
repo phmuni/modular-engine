@@ -1300,6 +1300,8 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
     model = glm::translate(glm::mat4(1.0f), transform->position) * glm::mat4_cast(m_dragRotation) *
             glm::scale(glm::mat4(1.0f), transform->scale);
   const bool snapping = m_gizmoSnap || io.KeyCtrl;
+  if (ImGuizmo::IsUsing())
+    cameraSystem.editorTookCamera();
   // Rotations are snapped here, not by the gizmo (which only steps from where the drag started): see below
   const bool gizmoMoved =
       ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode, glm::value_ptr(model),
@@ -1570,6 +1572,7 @@ void EditorUISystem::renderResizeHandles(SystemManager &systemManager, Component
     m_resize.faceStart = handles[hovered].world;
     m_resize.direction = glm::normalize(axes[m_resize.axis] * m_resize.side);
     m_resize.applied = 0.0f;
+    systemManager.getSystem<CameraSystem>().editorTookCamera();
   }
 
   // Drag: the face follows the point of its line nearest to the cursor's ray
@@ -1683,16 +1686,17 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   const glm::vec2 display(io.DisplaySize.x, io.DisplaySize.y);
   const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
 
-  // The first frame: where the grabbed point (the entity's origin, the gizmo's center) is on screen from the cursor,
-  // a few pixels at most. From then on the origin stays under the cursor (plus that), the way the gizmo moves it
-  // anywhere else; keeping the base there instead would drift with perspective, the base and the origin being further
-  // apart on screen near the camera than far from it.
+  // The first frame: where the entity's base (the bottom of its bounds, below its origin along its up) is on screen
+  // from the cursor. From then on the base stays under the cursor (plus that) and sits on the point it is over. The
+  // origin is not what follows the cursor: it is above the base, so seen from the side its base would land further
+  // along the ray than what the cursor is over, off the edge of a small top (a crate, the player) onto the floor.
   if (!m_alignGrabbed) {
-    const glm::vec4 clip = viewProjection * glm::vec4(transform.position, 1.0f);
+    const glm::vec3 base = transform.position + rotationOf(transform) * glm::vec3(0.0f, baseHeight, 0.0f);
+    const glm::vec4 clip = viewProjection * glm::vec4(base, 1.0f);
     m_alignGrabOffset = glm::vec2(0.0f);
     if (clip.w > 1e-4f) {
-      const glm::vec2 originNdc = glm::vec2(clip) / clip.w;
-      m_alignGrabOffset = glm::vec2((originNdc.x + 1.0f) * 0.5f, (1.0f - originNdc.y) * 0.5f) * display - mouse;
+      const glm::vec2 baseNdc = glm::vec2(clip) / clip.w;
+      m_alignGrabOffset = glm::vec2((baseNdc.x + 1.0f) * 0.5f, (1.0f - baseNdc.y) * 0.5f) * display - mouse;
     }
     m_alignGrabbed = true;
   }
@@ -1722,35 +1726,8 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   const auto hit = queries.raycast(origin, direction, std::numeric_limits<float>::max(), other);
   if (!hit)
     return false;
-
-  // The origin sits `height` above the surface along its normal (its base on it). So it is where the cursor's ray
-  // meets the surface raised by that height: the ray's own hit is behind it, by the entity's thickness. The surface
-  // under that spot may not be the one the ray hit (the edge of a step, a slope): found by looking down from it, and
-  // the spot found again on that one, a few times.
-  // A spot is only taken once a surface is found under it: the raised surface is an infinite plane, and seen at a
-  // grazing angle (the side of a pillar) its spot is far off the real face, in the air towards the camera. Then the
-  // entity stays against the point the cursor is on, its origin off it along the normal.
-  const float height = -baseHeight;
-  ModelHit target = *hit;
-  glm::vec3 placed = hit->point + hit->normal * height;
-  for (int pass = 0; pass < 3 && height > 1e-4f; ++pass) {
-    const float facing = glm::dot(direction, target.normal);
-    if (facing > -0.05f) // the ray grazes the surface: the raised one would be met far away, if at all
-      break;
-    const float along = glm::dot(target.point + target.normal * height - origin, target.normal) / facing;
-    if (along <= 0.0f)
-      break;
-    const glm::vec3 spot = origin + direction * along;
-    const auto below = queries.raycast(spot, -target.normal, height * 2.0f + 0.5f, other);
-    if (!below)
-      break;
-    const bool same = glm::dot(below->normal, target.normal) > 0.9999f &&
-                      std::abs(glm::dot(below->point - target.point, target.normal)) < 1e-4f;
-    target = *below;
-    placed = below->point + below->normal * height;
-    if (same)
-      break;
-  }
+  const ModelHit &target = *hit;
+  const float height = -baseHeight; // the origin's height above its base
 
   // Its up (+Y) along the surface's normal, keeping the heading it had when the drag started (to 15 degrees when
   // snapping: the rotation around the normal)
@@ -1759,9 +1736,8 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   const glm::quat tilt = glm::rotation(up, target.normal);
   const glm::quat heading = glm::angleAxis(glm::radians(headingDegrees), up);
   transform.rotation = eulerOf(tilt * heading);
-  // Its lowest point (the bottom of its bounds) on the surface, which is on the grid when snapping
-  const glm::vec3 base = placed - target.normal * height;
-  const glm::vec3 point = snapped ? snapToSurfaceGrid(base, target.normal, kSnapStep) : base;
+  // Its lowest point (the bottom of its bounds) on the point the cursor is over, which is on the grid when snapping
+  const glm::vec3 point = snapped ? snapToSurfaceGrid(target.point, target.normal, kSnapStep) : target.point;
   transform.position = point + target.normal * height;
   return true;
 }

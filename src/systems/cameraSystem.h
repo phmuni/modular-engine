@@ -29,6 +29,9 @@ public:
   bool canNavigate(const StateSystem &state) const;
   // The camera is being flown by hand this frame (locked cursor or right button): the editor keeps its shortcuts quiet
   bool isNavigating() const { return m_navigating; }
+  // The editor moved something by hand (a gizmo drag): like flying the camera, the rig stays off until the game runs
+  // again, or a camera following the dragged entity would move with it and carry it further under the cursor
+  void editorTookCamera() { m_editorOverridesRig = m_editorOverridesRig || (m_editing && m_editorShown); }
   // Scroll while flying changes this: a multiplier on the camera's move speed
   float getFlySpeedScale() const { return m_flySpeedScale; }
 

@@ -127,8 +127,8 @@ private:
   glm::quat m_dragRotation{1.0f, 0.0f, 0.0f, 0.0f}; // the rotate gizmo's unsnapped rotation during the drag
   bool m_gizmoAlign = false;
   float m_alignHeading = 0.0f; // degrees around +Y, from when the drag started
-  // Where the entity's origin (the gizmo's center) was on screen from the cursor when the drag started, in pixels: it
-  // stays at that distance from the cursor, so nothing jumps when the drag starts
+  // Where the entity's base (the bottom of its bounds) was on screen from the cursor when the drag started, in pixels:
+  // it stays at that distance from the cursor, so nothing jumps when the drag starts
   glm::vec2 m_alignGrabOffset{0.0f};
   bool m_alignGrabbed = false; // m_alignGrabOffset is set for this drag
   // Places the selected entity on the surface under the cursor; false if there is none. With `snapped`, its place on
