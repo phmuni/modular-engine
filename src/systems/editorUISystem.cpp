@@ -2,6 +2,7 @@
 // UI that games build with RmlUi (GameUISystem).
 
 #include "systems/editorUISystem.h"
+#include <RmlUi/Core/Context.h>
 #include "components/animationStateMachine.h"
 #include "components/animator.h"
 #include "components/audioSource.h"
@@ -772,6 +773,9 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
                 (ImGui::IsKeyPressed(ImGuiKey_Space, false) && io.KeyShift)))
     toggleMaximized();
   followPlayMode(engine.getPlayMode() == Engine::PlayMode::Testing);
+  const bool playing = engine.getPlayMode() != Engine::PlayMode::Editing && !engine.time().isPaused();
+  m_altPicking = playing && io.KeyAlt;
+  m_viewForEditor = !playing || io.KeyAlt;
 
   handleHistoryShortcuts(engine, systemManager);
   handleEditShortcuts(engine, systemManager, componentManager);
@@ -1057,6 +1061,10 @@ void EditorUISystem::endEditTracking(Engine &engine) {
 void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemManager,
                                           ComponentManager &componentManager) {
   const ImGuiIO &io = ImGui::GetIO();
+  if (!m_viewForEditor) { // the game is playing: its clicks are its own
+    m_marquee.active = false;
+    return;
+  }
   updateMarquee(engine, systemManager, componentManager);
   if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left) || mouseOnPanels() ||
       systemManager.getSystem<StateSystem>().isToggled(Toggle::CursorLock))
@@ -1065,6 +1073,8 @@ void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemM
     return; // the click grabs the gizmo
   if (m_resizeHovered || m_resize.axis >= 0)
     return; // the click grabs a resize handle
+  if (const Rml::Context *gameUI = engine.getUIContext(); gameUI && gameUI->IsMouseInteracting())
+    return; // a button of the game's UI (a pause menu over the scene) is not a pick of what is behind it
   const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
   const auto hit = engine.pickModel(viewMouse());
   if (hit) {
@@ -1358,7 +1368,12 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   const glm::mat4 view = cameraSystem.getViewMatrix(*camera);
   const glm::mat4 projection = cameraSystem.getProjectionMatrix(*camera);
   if (m_gizmoOperation == GizmoOperation::Resize) {
-    renderResizeHandles(systemManager, componentManager, *transform, view, projection);
+    if (m_viewForEditor) {
+      renderResizeHandles(systemManager, componentManager, *transform, view, projection);
+    } else { // nothing grabbed while the game has the clicks
+      m_resizeHovered = false;
+      m_resize.axis = -1;
+    }
     return;
   }
   m_resize.axis = -1;
@@ -1401,6 +1416,7 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   if (ImGuizmo::IsUsing())
     cameraSystem.editorTookCamera();
   // Rotations are snapped here, not by the gizmo (which only steps from where the drag started): see below
+  ImGuizmo::Enable(m_viewForEditor); // shown while the game plays, but its clicks are the game's (Alt: the gizmo's)
   const bool gizmoMoved =
       ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation, mode, glm::value_ptr(model),
                            nullptr, snapping && operation != ImGuizmo::ROTATE ? snap : nullptr);

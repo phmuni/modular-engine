@@ -53,7 +53,7 @@ public:
   glm::vec4 gameViewRect() const { return m_viewRect; }
   const ViewRect &gameViewPixels() const { return m_viewPixels; }
   // The mouse is over the game view (nothing in front of it), or a press that began there is still held
-  bool gameHasMouse() const { return m_gameMouse; }
+  bool gameHasMouse() const { return m_gameMouse && !m_altPicking; }
   // The Game panel is the window ImGui has focused
   bool gameFocused() const { return m_gameFocused; }
   // Maximized: the panels are hidden and the game view fills the window, the editor staying on (toolbar, gizmo,
@@ -122,6 +122,10 @@ private:
   glm::vec4 m_viewRect{0.0f};     // see gameViewRect()
   ViewRect m_viewPixels;
   bool m_gameMouse = false;
+  // Clicks and drags in the view: the editor's (select, box select, gizmo, resize handles) while editing or paused, the
+  // game's while it plays, except with Alt held, which picks without the game seeing the click
+  bool m_viewForEditor = true;
+  bool m_altPicking = false; // playing with Alt held: the view's clicks are kept from the game
   bool m_gameFocused = false;
   bool m_gameHovered = false;
   glm::vec4 m_lastGameRect{0.0f}; // the Game panel's last visible rectangle (window units)

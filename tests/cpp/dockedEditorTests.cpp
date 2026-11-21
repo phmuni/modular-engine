@@ -205,36 +205,69 @@ TEST_CASE(docked_editor_reset_layout_rebuilds_the_default) {
   });
 }
 
-// A click in the middle of the Game panel selects what is drawn there: the editor measures it from the panel's corner,
-// as pickModel takes it (with the window's coordinates it would land a panel's width off). "input": run alone.
-TEST_CASE(docked_editor_click_selects_input) {
+// Clicks in the middle of the Game panel, where a box is drawn: while the game is paused (or being edited) they select it (measured from the panel's
+// corner, as pickModel takes it: with the window's coordinates the click would land a panel's width off); while the
+// game plays they are the game's; with Alt held they select and the game does not see them. "input": run alone.
+namespace {
+void mouseEvent(glm::vec2 at, Uint32 type) {
+  SDL_Event event{};
+  event.type = type;
+  if (type == SDL_EVENT_MOUSE_MOTION) {
+    event.motion.windowID = windowId();
+    event.motion.x = at.x;
+    event.motion.y = at.y;
+  } else {
+    event.button.windowID = windowId();
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.down = type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+    event.button.clicks = 1;
+    event.button.x = at.x;
+    event.button.y = at.y;
+  }
+  SDL_PushEvent(&event);
+}
+
+void altKey(bool down) {
+  SDL_Event event{};
+  event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+  event.key.windowID = windowId();
+  event.key.scancode = SDL_SCANCODE_LALT;
+  event.key.key = SDLK_LALT;
+  event.key.down = down;
+  event.key.mod = down ? SDL_KMOD_LALT : SDL_KMOD_NONE;
+  SDL_PushEvent(&event);
+}
+
+// Clicks the panel's middle; `selects`: whether the box ends up selected, `gameSees`: whether the game saw the press
+void clickTheBox(Engine &engine, testing::Steps &steps, bool paused, bool alt, bool selects, bool gameSees) {
   GameEntity target = engine.create("Target", Desc("box").at(0, 2, 0)); // at the test camera's center
   showEditor(engine, true);
-  auto mouse = [](float x, float y, Uint32 type) {
-    SDL_Event event{};
-    event.type = type;
-    if (type == SDL_EVENT_MOUSE_MOTION) {
-      event.motion.windowID = windowId();
-      event.motion.x = x;
-      event.motion.y = y;
-    } else {
-      event.button.windowID = windowId();
-      event.button.button = SDL_BUTTON_LEFT;
-      event.button.down = type == SDL_EVENT_MOUSE_BUTTON_DOWN;
-      event.button.clicks = 1;
-      event.button.x = x;
-      event.button.y = y;
-    }
-    SDL_PushEvent(&event);
-  };
+  engine.time().setPaused(paused); // Editing works the same, but a test's frames do not run in it
   auto center = std::make_shared<glm::vec2>(0.0f);
-  steps.step(6, [&engine, center, mouse]() {
+  steps.step(6, [&engine, center, alt]() {
     const glm::vec4 rect = editorOf(engine).gameViewRect();
     *center = glm::vec2(rect.x + rect.z * 0.5f, rect.y + rect.w * 0.5f);
     CHECK(rect.x > 1.0f); // the left panel is there: the two ways of measuring differ
-    mouse(center->x, center->y, SDL_EVENT_MOUSE_MOTION);
+    mouseEvent(*center, SDL_EVENT_MOUSE_MOTION);
+    if (alt)
+      altKey(true);
   });
-  steps.step(2, [center, mouse]() { mouse(center->x, center->y, SDL_EVENT_MOUSE_BUTTON_DOWN); });
-  steps.step(2, [center, mouse]() { mouse(center->x, center->y, SDL_EVENT_MOUSE_BUTTON_UP); });
-  steps.step(2, [&engine, target]() { CHECK_EQ(editorOf(engine).selectedEntity, target.id()); });
+  steps.step(2, [center]() { mouseEvent(*center, SDL_EVENT_MOUSE_BUTTON_DOWN); });
+  steps.step(2, [&engine, gameSees, paused]() {
+    if (!paused) // paused, the game sees it too: its UI (a pause menu) still takes clicks
+      CHECK_EQ(engine.input().isMouseButtonDown(MouseButton::Left), gameSees);
+  });
+  steps.step(1, [center, alt]() {
+    mouseEvent(*center, SDL_EVENT_MOUSE_BUTTON_UP);
+    if (alt)
+      altKey(false);
+  });
+  steps.step(2, [&engine, target, selects]() {
+    CHECK_EQ(editorOf(engine).selectedEntity == target.id(), selects);
+  });
 }
+} // namespace
+
+TEST_CASE(docked_editor_click_selects_while_paused_input) { clickTheBox(engine, steps, true, false, true, false); }
+TEST_CASE(docked_editor_click_is_the_games_while_playing_input) { clickTheBox(engine, steps, false, false, false, true); }
+TEST_CASE(docked_editor_alt_click_selects_while_playing_input) { clickTheBox(engine, steps, false, true, true, false); }
