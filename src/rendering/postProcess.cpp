@@ -325,7 +325,7 @@ void PostProcess::finish(const Shaders &shaders, const Settings &settings) {
 
   // Onto the screen, at its own size: this is where the render scale is undone (by the stretch, if FSR did not)
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  glViewport(0, 0, m_displayWidth, m_displayHeight);
+  glViewport(m_outputX, m_outputY, m_displayWidth, m_displayHeight);
   composite.use();
   composite.setTex("displayTexture", image, 0);
   composite.setTex("bloomTexture", bloom ? m_bloom[0].texture : image, 1);

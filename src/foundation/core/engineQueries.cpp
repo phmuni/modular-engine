@@ -67,12 +67,23 @@ std::optional<Engine::Ray> Engine::screenRay(glm::vec2 windowPosition) {
   auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();
   const Camera *camera = cameraEntity != -1 ? tryGet<Camera>(cameraEntity) : nullptr;
-  int width = 0, height = 0;
-  SDL_GetWindowSize(m_systemManager.getSystem<WindowSystem>().getWindow(), &width, &height);
-  if (!camera || width <= 0 || height <= 0)
+  // The picture the game is drawn in: the editor's Game panel when it is open, else the window
+  float width = 0.0f, height = 0.0f;
+  const auto &editorUI = m_systemManager.getSystem<EditorUISystem>();
+  const glm::vec4 view = editorUI.gameViewRect();
+  if (editorUI.gameViewPixels().active && view.z > 0.0f && view.w > 0.0f) {
+    width = view.z;
+    height = view.w;
+  } else {
+    int windowWidth = 0, windowHeight = 0;
+    SDL_GetWindowSize(m_systemManager.getSystem<WindowSystem>().getWindow(), &windowWidth, &windowHeight);
+    width = static_cast<float>(windowWidth);
+    height = static_cast<float>(windowHeight);
+  }
+  if (!camera || width <= 0.0f || height <= 0.0f)
     return std::nullopt;
 
-  // Window to normalized device coordinates (y up), then back through the camera onto the near and far planes
+  // View to normalized device coordinates (y up), then back through the camera onto the near and far planes
   const glm::vec2 ndc(windowPosition.x / width * 2.0f - 1.0f, 1.0f - windowPosition.y / height * 2.0f);
   const glm::mat4 inverse =
       glm::inverse(cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera));

@@ -4,6 +4,7 @@
 #include "foundation/core/config.h"
 #include "rendering/graphicsSettings.h"
 #include "rendering/postProcess.h"
+#include "rendering/viewRect.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
@@ -53,6 +54,8 @@ private:
   // The window's framebuffer in pixels, which the editor, the game UI and the final pass draw at
   int m_screenWidth = 1280;
   int m_screenHeight = 720;
+  // Where in the window the game is drawn (the editor's Game panel), or the whole window
+  ViewRect m_view;
   // The 3D scene's own size: the screen's times the render scale
   float m_renderScale = 1.0f;
   int m_renderWidth = 1280;
@@ -134,6 +137,13 @@ public:
   void setFaceCulling(bool enabled) const;
   // The framebuffer's size in pixels (the window's, with its pixel density)
   void setViewportSize(int width, int height);
+  // Draws the game into a part of the window (the editor's Game panel) instead of all of it: the scene's targets, the
+  // render scale and FSR follow that rectangle's size. Cheap when nothing changed. clearViewRect() goes back to the
+  // whole window.
+  void setViewRect(const ViewRect &rect);
+  void clearViewRect() { setViewRect(ViewRect()); }
+  // The part of the window the game is drawn in, in framebuffer pixels (the whole window when not active)
+  ViewRect viewRect() const;
   // The fraction of the screen's pixels the 3D scene is drawn at before it is stretched onto the screen, within
   // kMinRenderScale to kMaxRenderScale: below 1 trades sharpness for speed, above 1 supersamples. The editor and the
   // game UI always draw at the screen's own size.
@@ -161,6 +171,9 @@ public:
   // The resolved single-sample scene depth (DEPTH_COMPONENT24, nearest) and HDR color, valid after resolveScene()
   GLuint sceneDepthTexture() const { return m_postProcess.sceneDepthTexture(); }
   GLuint sceneColorTexture() const { return m_postProcess.sceneColorTexture(); }
+  // The size of the picture the game is drawn at: the view's, or the window's
+  int getViewWidth() const { return m_view.active ? m_view.width : m_screenWidth; }
+  int getViewHeight() const { return m_view.active ? m_view.height : m_screenHeight; }
   int getScreenWidth() const { return m_screenWidth; }
   int getScreenHeight() const { return m_screenHeight; }
   void shutdown();

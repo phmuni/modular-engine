@@ -37,6 +37,10 @@ public:
 
   glm::mat4 getViewMatrix(const Camera &cam) const;
   glm::mat4 getProjectionMatrix(const Camera &cam) const;
+  // The aspect ratio of the picture the game is drawn in when it is not the whole window (the editor's Game panel):
+  // projections use it instead of the camera's own. 0 goes back to the camera's.
+  void setViewAspect(float aspect) { m_viewAspect = aspect; }
+  float viewAspect() const { return m_viewAspect; }
 
   Entity getActiveCamera() const;
   void removeActiveCamera();
@@ -52,6 +56,7 @@ private:
   bool m_editorOverridesRig = false; // flown by hand in the editor: the rig stays off until the game runs again
   bool m_navigating = false;
   float m_flySpeedScale = 1.0f;
+  float m_viewAspect = 0.0f;
 
   // Finds the entity a rig follows by its name; false when there is none (yet)
   bool resolveRigTarget(CameraRig &rig, float deltaTime);

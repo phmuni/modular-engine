@@ -120,22 +120,23 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
 
     // The game UI gets what the debug panels do not want; with the cursor locked, the mouse belongs to the camera
     const ImGuiIO &io = ImGui::GetIO();
-    bool mouseAllowed = !state.isToggled(Toggle::CursorLock) && !io.WantCaptureMouse;
+    const bool panelsHaveMouse = io.WantCaptureMouse && !m_mouseOverView; // the view is an ImGui window too
+    bool mouseAllowed = !state.isToggled(Toggle::CursorLock) && !panelsHaveMouse;
     bool usedByUI = gameUI.processEvent(event, mouseAllowed, !io.WantCaptureKeyboard);
     // Escape belongs to the panels while one of them is focused (closing a popup, leaving a field), and to the game UI
     // when it used the key; otherwise it is the pause menu's. Seen before the block below, so it can close the menu.
     if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE && !event.key.repeat &&
         !usedByUI && !io.WantCaptureKeyboard &&
-        !(state.isToggled(Toggle::ShowUI) && GImGui->NavWindow))
+        !(state.isToggled(Toggle::ShowUI) && GImGui->NavWindow && !m_viewFocused))
       m_escapePressed = true;
     // A menu takes everything: the game gets no key presses or clicks (releases still count, so nothing sticks down)
     usedByUI = usedByUI || m_gameInputBlocked;
     // The right button for the editor's camera: taken when it goes down over the view, kept until it comes up
-    const bool takesFlyButton = m_editorFlyAllowed && !usedByUI && !io.WantCaptureMouse && !m_editorFlying &&
+    const bool takesFlyButton = m_editorFlyAllowed && !usedByUI && !panelsHaveMouse && !m_editorFlying &&
                                 !state.isToggled(Toggle::CursorLock);
     // The game gets clicks whether the cursor is locked or not (a locked cursor is how a shooter aims and fires),
     // except those the game UI or the editor's panels took
-    const bool mouseForGame = !usedByUI && !io.WantCaptureMouse;
+    const bool mouseForGame = !usedByUI && !panelsHaveMouse;
 
     switch (event.type) {
     case SDL_EVENT_QUIT:
@@ -157,7 +158,8 @@ void InputSystem::update(bool *running, SystemManager &systemManager) {
         if (state.isToggled(Toggle::ShowUI) &&
             ((io.KeyCtrl && (key == SDL_SCANCODE_Z || key == SDL_SCANCODE_Y || key == SDL_SCANCODE_D ||
                              key == SDL_SCANCODE_C || key == SDL_SCANCODE_V)) ||
-             key == SDL_SCANCODE_DELETE || key == SDL_SCANCODE_BACKSPACE || key == SDL_SCANCODE_TAB)) // Tab hides panels
+             key == SDL_SCANCODE_DELETE || key == SDL_SCANCODE_BACKSPACE || key == SDL_SCANCODE_TAB || // Tab hides panels
+             (io.KeyShift && key == SDL_SCANCODE_SPACE))) // Shift+Space maximizes the view
           break;
         m_pressed[key] = m_pressed[key] || (!event.key.repeat && !m_keys[key] && !m_editorFlying);
         m_keys[key] = true;

@@ -4,6 +4,7 @@
 
 #include "foundation/core/config.h"
 #include "foundation/core/logger.h"
+#include <algorithm>
 #include <RmlUi/Core.h>
 #include <RmlUi/Debugger.h>
 #include <RmlUi_Platform_SDL.h>
@@ -52,6 +53,7 @@ struct GameUISystem::Impl {
   std::unique_ptr<RenderInterface_GL3> renderer;
   Rml::Context *context = nullptr;
   bool debuggerVisible = false;
+  ViewRect view;
 };
 
 GameUISystem::GameUISystem(SDL_Window *window) : m_impl(std::make_unique<Impl>()) {
@@ -141,6 +143,14 @@ bool GameUISystem::processEvent(SDL_Event &event, bool mouseAllowed, bool keysAl
   if (isKeyEvent(event.type) && !keysAllowed)
     return false;
   // Resizes are applied by the handler (SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED); returns false when the UI used the event
+  if (impl.view.active && event.type == SDL_EVENT_MOUSE_MOTION) {
+    // The panel's corner is the UI's origin (the event is in window units, the view in pixels)
+    SDL_Event moved = event;
+    const float density = std::max(SDL_GetWindowPixelDensity(impl.window), 1.0f);
+    moved.motion.x -= static_cast<float>(impl.view.x) / density;
+    moved.motion.y -= static_cast<float>(impl.view.y) / density;
+    return !RmlSDL::InputEventHandler(impl.context, impl.window, moved);
+  }
   return !RmlSDL::InputEventHandler(impl.context, impl.window, event);
 }
 
@@ -156,12 +166,29 @@ void GameUISystem::update(bool showDebugger, float seconds) {
   impl.context->Update();
 }
 
+void GameUISystem::setView(const ViewRect &view) {
+  auto &impl = *m_impl;
+  impl.view = view;
+  if (!impl.context)
+    return;
+  int width = view.width, height = view.height;
+  if (!view.active)
+    SDL_GetWindowSizeInPixels(impl.window, &width, &height);
+  if (impl.context->GetDimensions() != Rml::Vector2i(width, height))
+    impl.context->SetDimensions(Rml::Vector2i(width, height));
+}
+
 void GameUISystem::render() {
   auto &impl = *m_impl;
   if (!impl.context)
     return;
-  int width = 0, height = 0;
-  SDL_GetWindowSizeInPixels(impl.window, &width, &height);
+  int width = 0, height = 0, windowHeight = 0;
+  SDL_GetWindowSizeInPixels(impl.window, &width, &windowHeight);
+  height = windowHeight;
+  if (impl.view.active) {
+    width = impl.view.width;
+    height = impl.view.height;
+  }
   if (impl.context->GetDimensions() != Rml::Vector2i(width, height))
     impl.context->SetDimensions(Rml::Vector2i(width, height));
 
@@ -178,7 +205,10 @@ void GameUISystem::render() {
     return;
 
   // The renderer saves the engine's GL state here and restores it in EndFrame
-  impl.renderer->SetViewport(width, height);
+  if (impl.view.active)
+    impl.renderer->SetViewport(width, height, impl.view.x, windowHeight - impl.view.y - impl.view.height);
+  else
+    impl.renderer->SetViewport(width, height);
   impl.renderer->BeginFrame();
   impl.context->Render();
   impl.renderer->EndFrame();

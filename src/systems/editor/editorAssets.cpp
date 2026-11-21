@@ -40,25 +40,12 @@ std::string nameOfAsset(const std::string &asset) { return std::filesystem::path
 } // namespace
 
 void EditorUISystem::renderAssetPanel(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
-  const ImGuiIO &io = ImGui::GetIO();
-  // A strip along the bottom of the view, between the side panels. Collapsed it is only its title bar, so the view
-  // stays free until it is wanted; it opens from its arrow.
-  const float left = m_explorerWidth;
-  const float width = std::max(io.DisplaySize.x - left - m_propertiesWidth, ui(200.0f));
-  const float expanded = std::clamp(io.DisplaySize.y * 0.3f, ui(170.0f), io.DisplaySize.y * 0.5f);
-  const float height = m_assetsCollapsed ? ImGui::GetFrameHeight() : expanded;
-  m_assetsHeight = height;
-  ImGui::SetNextWindowPos(ImVec2(left, io.DisplaySize.y - height));
-  ImGui::SetNextWindowSize(ImVec2(width, height));
+  // Docked along the bottom of the view in the default layout; a request to open it brings its tab forward
   if (m_assetsOpenRequest) {
-    ImGui::SetNextWindowCollapsed(false, ImGuiCond_Always);
+    ImGui::SetNextWindowFocus();
     m_assetsOpenRequest = false;
-  } else {
-    ImGui::SetNextWindowCollapsed(true, ImGuiCond_FirstUseEver);
   }
-  const bool open = ImGui::Begin("Assets", nullptr,
-                                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
-  m_assetsCollapsed = ImGui::IsWindowCollapsed();
+  const bool open = ImGui::Begin("Assets");
   if (open) {
     const bool focused = (SDL_GetWindowFlags(m_window) & SDL_WINDOW_INPUT_FOCUS) != 0;
     const AssetBrowser::Event event = m_assets.draw(focused);
@@ -226,8 +213,8 @@ void EditorUISystem::handleAssetDrop(Engine &engine, SystemManager &systemManage
   const ImGuiPayload *payload = ImGui::GetDragDropPayload();
   if (!payload || !payload->IsDataType(AssetBrowser::kPayload) || !payload->Data || !ImGui::IsMousePosValid())
     return;
-  if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
-    return; // over a panel: its own drop targets take it
+  if (!m_gameHovered && ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
+    return; // over a panel: its own drop targets take it (the Game panel is the view: the drop lands there)
   const ImGuiIO &io = ImGui::GetIO();
   const std::string asset = static_cast<const char *>(payload->Data);
   const Kind kind = AssetBrowser::classify(asset);

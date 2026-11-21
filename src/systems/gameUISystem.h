@@ -5,6 +5,7 @@
 // before loading the documents that use them. Clicks and key presses the UI handles do not reach the game.
 
 #include "foundation/ecs/systemManager.h"
+#include "rendering/viewRect.h"
 #include <SDL3/SDL.h>
 #include <memory>
 #include <string>
@@ -32,6 +33,9 @@ public:
   bool processEvent(SDL_Event &event, bool mouseAllowed, bool keysAllowed);
   // `seconds` advances the clock RmlUi animates with: the engine's frame time, so fixed-step runs repeat exactly
   void update(bool showDebugger, float seconds);
+  // Where the UI is drawn: the whole window, or the editor's Game panel. The context takes that size and the mouse
+  // positions are measured from its corner. Set every frame before update/render, so it applies to both.
+  void setView(const ViewRect &view);
   void render();
   // Frees RmlUi and its GPU resources; must run while the OpenGL context is alive
   void shutdown();

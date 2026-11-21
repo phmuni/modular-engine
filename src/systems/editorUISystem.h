@@ -2,9 +2,11 @@
 // ImGui-based editor UI: scene explorer, properties panel, and entity creation.
 
 #include "foundation/ecs/systemManager.h"
+#include "rendering/viewRect.h"
 #include "systems/editor/assetBrowser.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
+#include <imgui/imgui.h>
 #include <glm/gtc/quaternion.hpp>
 #include <string>
 #include <vector>
@@ -44,6 +46,27 @@ public:
               ComponentManager &componentManager);
   void endFrame();
 
+  // The game view: where the game is drawn in the window. With the editor open it is the content of the docked "Game"
+  // panel (updated by beginFrame); closed, or maximized (Shift+Space, Tab), it is the whole window.
+  // gameViewRect(): x, y, width, height in window units (what ImGui and mouse events use);
+  // gameViewPixels(): the same in framebuffer pixels, `active` only while it is not the whole window.
+  glm::vec4 gameViewRect() const { return m_viewRect; }
+  const ViewRect &gameViewPixels() const { return m_viewPixels; }
+  // The mouse is over the game view (nothing in front of it), or a press that began there is still held
+  bool gameHasMouse() const { return m_gameMouse; }
+  // The Game panel is the window ImGui has focused
+  bool gameFocused() const { return m_gameFocused; }
+  // Maximized: the panels are hidden and the game view fills the window, the editor staying on (toolbar, gizmo,
+  // selection). The docked layout is kept and comes back as it was.
+  bool isMaximized() const { return m_panelsHidden; }
+  void setMaximized(bool maximized) { m_panelsHidden = maximized; }
+  // Maximize when Play starts and restore at Stop (kept in imgui.ini, unlike the maximized state)
+  bool maximizeOnPlay() const { return m_maximizeOnPlay; }
+  void setMaximizeOnPlay(bool enabled) { m_maximizeOnPlay = enabled; }
+  // Puts the docked layout back to the default one, at the next frame
+  void toggleMaximized();
+  void resetLayout() { m_resetLayout = true; }
+
   // Feeds the performance overlay: the whole frame, and the part spent in update + render before the buffer swap
   void recordFrame(float frameSeconds, float workSeconds);
 
@@ -82,12 +105,39 @@ private:
   void applyUiScale();
   void registerSettings();
   // Layout, all from the window's size and the scale
-  float m_explorerWidth = 0.0f;   // this frame's left and right panels, 0 when not shown
-  float m_propertiesWidth = 0.0f;
   float panelWidth(float base) const;
   float ui(float size) const { return size * m_uiScale; }
-  bool m_panelsHidden = false;    // only the view, the toolbar and the gizmo: the editor stays on (Tab)
-  bool m_resetLayout = false;     // put the Settings panel back where it starts, at the next frame
+  bool m_panelsHidden = false;    // maximized: only the view, the toolbar and the gizmo, the editor stays on (Tab)
+  bool m_resetLayout = false;     // build the default docked layout again, at the next frame
+  bool m_maximizeOnPlay = false;
+  bool m_maximizedByPlay = false; // Play maximized the view, so Stop restores it
+  bool m_wasPlaying = false;      // the game was in play mode last frame, to see Play and Stop
+  // Docking: the panels around the Game panel. beginFrame submits the dock space and the Game panel first, so the
+  // frame's game view is known before the scene is drawn.
+  void beginDockSpace();
+  void followPlayMode(bool playing);
+  void buildDefaultLayout(ImGuiID dockSpace, float width, float height);
+  bool m_docked = false;          // the editor is open with its panels: the game view is the Game panel
+  bool m_layoutBuilt = false;     // a docked layout exists (saved or built), to be kept alive while it is not shown
+  glm::vec4 m_viewRect{0.0f};     // see gameViewRect()
+  ViewRect m_viewPixels;
+  bool m_gameMouse = false;
+  bool m_gameFocused = false;
+  bool m_gameHovered = false;
+  glm::vec4 m_lastGameRect{0.0f}; // the Game panel's last visible rectangle (window units)
+  // The view's corner and size as ImGui draws (window units), the window's own when not docked
+  ImVec2 viewPos() const { return ImVec2(m_viewRect.x, m_viewRect.y); }
+  ImVec2 viewSize() const { return ImVec2(m_viewRect.z, m_viewRect.w); }
+  // A point in ImGui's window units to the view's normalized device coordinates (y up), and the reverse
+  glm::vec2 toNdc(const ImVec2 &point) const {
+    return glm::vec2((point.x - m_viewRect.x) / m_viewRect.z * 2.0f - 1.0f, 1.0f - (point.y - m_viewRect.y) / m_viewRect.w * 2.0f);
+  }
+  ImVec2 fromClip(const glm::vec4 &clip) const {
+    return ImVec2(m_viewRect.x + (clip.x / clip.w * 0.5f + 0.5f) * m_viewRect.z,
+                  m_viewRect.y + (0.5f - clip.y / clip.w * 0.5f) * m_viewRect.w);
+  }
+  // The panels have the mouse: over one, or dragging in one (the view, an ImGui window too, does not count)
+  bool mouseOnPanels() const;
   bool m_wasShown = false;        // the debug UI was on last frame
   bool m_lockBeforeShown = false; // the cursor lock the game had when the debug UI came up
   // The hint over the view about flying the camera
@@ -180,7 +230,7 @@ private:
   float m_shownWorkMs = 0.0f;
   float m_shownMaxMs = 0.0f;
 
-  void renderStatsOverlay(float rightInset);
+  void renderStatsOverlay();
   void renderSettingsPanel(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
                            ComponentManager &componentManager);
   void renderSceneExplorer(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
@@ -212,9 +262,7 @@ private:
 
   // --- Assets and linked prefabs (editor/editorAssets.cpp)
   AssetBrowser m_assets;
-  bool m_assetsCollapsed = true;     // the strip at the bottom starts as its title bar
-  bool m_assetsOpenRequest = false;  // open it at the next frame (Select prefab file)
-  float m_assetsHeight = 0.0f;       // this frame's strip, 0 when not shown
+  bool m_assetsOpenRequest = false;  // bring the Assets panel to the front at the next frame (Select prefab file)
   std::string m_pendingScene;        // a scene asked for while the current one has unsaved changes
   Entity m_overrideRoot = -1;        // the instance whose overrides are listed in Properties
   double m_overrideTime = -1000.0;

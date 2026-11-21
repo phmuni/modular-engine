@@ -352,8 +352,9 @@ public:
   std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance) {
     return raycast(origin, direction, maxDistance, [this](Entity entity) { return has<T>(entity); });
   }
-  // Picking: the ray from the active camera through a point of the window (window coordinates, like mouse
-  // positions), and the nearest model it hits, e.g. pickModel(engine.input().getMousePosition())
+  // Picking: the ray from the active camera through a point of the game view (the window's coordinates, like mouse
+  // positions; in the editor, measured from the corner of its Game panel), and the nearest model it hits, e.g.
+  // pickModel(engine.input().getMousePosition())
   struct Ray {
     glm::vec3 origin;
     glm::vec3 direction; // unit length

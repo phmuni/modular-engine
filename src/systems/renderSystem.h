@@ -130,7 +130,7 @@ private:
   // The first directional light's shadow, in cascades fitted to the camera's view out to SHADOW_DISTANCE
   DirectionalShadow renderDirectionalShadow(ComponentManager &componentManager, ResourceSystem &resourceSystem,
                                             TransformSystem &transformSystem, LightSystem &lightSystem,
-                                            const Camera &camera, const glm::mat4 &view);
+                                            const Camera &camera, const glm::mat4 &view, float aspect);
   // A depth cube map per caster: six 90-degree views, one per face
   void renderPointShadows(ComponentManager &componentManager, ResourceSystem &resourceSystem,
                           TransformSystem &transformSystem, const std::vector<PointShadowCaster> &casters);

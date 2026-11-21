@@ -148,7 +148,7 @@ glm::mat4 CameraSystem::getViewMatrix(const Camera &cam) const {
 }
 
 glm::mat4 CameraSystem::getProjectionMatrix(const Camera &cam) const {
-  return glm::perspective(glm::radians(cam.fov), cam.aspectRatio, EngineConfig::CAMERA_NEAR, EngineConfig::CAMERA_FAR);
+  return glm::perspective(glm::radians(cam.fov), m_viewAspect > 0.0f ? m_viewAspect : cam.aspectRatio, EngineConfig::CAMERA_NEAR, EngineConfig::CAMERA_FAR);
 }
 
 void CameraSystem::updateFrontVector(Camera &cam) { cam.updateFront(); }

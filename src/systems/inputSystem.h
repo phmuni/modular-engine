@@ -81,7 +81,16 @@ public:
   bool wasMouseButtonPressed(MouseButton button) const;
   bool wasMouseButtonReleased(MouseButton button) const;
   // Cursor position in window pixels (top-left origin); wheel movement this frame (positive is away from the user)
-  glm::vec2 getMousePosition() const { return m_mousePosition; }
+  // In window units, from the game view's top-left corner (the editor's Game panel; the window's when it is not docked)
+  glm::vec2 getMousePosition() const { return m_mousePosition - m_viewOrigin; }
+  // Where the game view starts in the window (units), and whether the mouse is over it, for the editor's docked layout:
+  // the panels keep the mouse unless it is over the view (or a press that began there is still held). Set each frame.
+  // `viewFocused`: the view is the focused window, which is not a panel taking the keyboard (Escape stays the game's).
+  void setView(const glm::vec2 &origin, bool mouseOverView, bool viewFocused) {
+    m_viewOrigin = origin;
+    m_mouseOverView = mouseOverView;
+    m_viewFocused = viewFocused;
+  }
   float getMouseWheel() const { return m_mouseWheel; }
 
   float getMouseXOffset() const;
@@ -167,6 +176,9 @@ private:
   bool m_mousePressed[kMouseButtons]{false};
   bool m_mouseReleased[kMouseButtons]{false};
   glm::vec2 m_mousePosition{0.0f};
+  glm::vec2 m_viewOrigin{0.0f};
+  bool m_mouseOverView = false;
+  bool m_viewFocused = false;
   float m_mouseWheel = 0.0f;
 
   float m_mouseXOffset = 0.0f;

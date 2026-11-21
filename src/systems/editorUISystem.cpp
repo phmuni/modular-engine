@@ -102,6 +102,7 @@ constexpr float kBaseFontSize = 13.0f; // ImGui's built-in font
 EditorUISystem::EditorUISystem(SDL_Window *window, SDL_GLContext glContext) : m_window(window) {
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
+  ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable; // the panels dock around the Game view
   ImGui::StyleColorsDark();
   g_baseStyle = ImGui::GetStyle();
 
@@ -147,14 +148,17 @@ void EditorUISystem::registerSettings() {
   };
   handler.ReadLineFn = [](ImGuiContext *, ImGuiSettingsHandler *handler, void *, const char *line) {
     float scale = 0.0f;
-    if (std::sscanf(line, "Scale=%f", &scale) == 1) {
-      auto *editor = static_cast<EditorUISystem *>(handler->UserData);
+    int maximizeOnPlay = 0;
+    auto *editor = static_cast<EditorUISystem *>(handler->UserData);
+    if (std::sscanf(line, "Scale=%f", &scale) == 1)
       editor->m_uiScaleUser = scale > 0.0f ? std::clamp(scale, kMinUiScale, kMaxUiScale) : 0.0f;
-    }
+    else if (std::sscanf(line, "MaximizeOnPlay=%d", &maximizeOnPlay) == 1)
+      editor->m_maximizeOnPlay = maximizeOnPlay != 0;
   };
   handler.WriteAllFn = [](ImGuiContext *, ImGuiSettingsHandler *handler, ImGuiTextBuffer *out) {
     const auto *editor = static_cast<EditorUISystem *>(handler->UserData);
-    out->appendf("[%s][UI]\nScale=%.3f\n\n", handler->TypeName, editor->m_uiScaleUser);
+    out->appendf("[%s][UI]\nScale=%.3f\nMaximizeOnPlay=%d\n\n", handler->TypeName, editor->m_uiScaleUser,
+                 editor->m_maximizeOnPlay ? 1 : 0);
   };
   ImGui::AddSettingsHandler(&handler);
 }
@@ -194,7 +198,97 @@ void EditorUISystem::beginFrame() {
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
   ImGuizmo::BeginFrame();
+  beginDockSpace();
 }
+
+namespace {
+constexpr const char *kGamePanel = "Game";
+constexpr float kExplorerWidth = 260.0f, kPropertiesWidth = 340.0f; // the default layout's columns, at scale 1
+// Fixed, so the layout kept in imgui.ini finds its dock space again
+ImGuiID dockSpaceId() { return ImHashStr("ModularEditorDockSpace"); }
+} // namespace
+
+// The default layout, like the fixed panels it replaces: the Scene Explorer and Settings in a column at the left, the
+// Properties at the right, the Assets along the bottom, and the Game in the middle
+void EditorUISystem::buildDefaultLayout(ImGuiID dockSpace, float width, float height) {
+  width = std::max(width, 1.0f);
+  const float left = panelWidth(kExplorerWidth) / width, right = panelWidth(kPropertiesWidth) / width;
+  ImGui::DockBuilderRemoveNode(dockSpace);
+  ImGui::DockBuilderAddNode(dockSpace, ImGuiDockNodeFlags_DockSpace);
+  ImGui::DockBuilderSetNodeSize(dockSpace, ImVec2(width, std::max(height, 1.0f)));
+  ImGuiID center = dockSpace, leftColumn = 0, rightColumn = 0, bottom = 0, settings = 0;
+  leftColumn = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, left, nullptr, &center);
+  rightColumn = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, right / (1.0f - left), nullptr, &center);
+  bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.28f, nullptr, &center);
+  settings = ImGui::DockBuilderSplitNode(leftColumn, ImGuiDir_Down, 0.45f, nullptr, &leftColumn);
+  ImGui::DockBuilderDockWindow("Scene Explorer", leftColumn);
+  ImGui::DockBuilderDockWindow("Settings", settings);
+  ImGui::DockBuilderDockWindow("Properties", rightColumn);
+  ImGui::DockBuilderDockWindow("Assets", bottom);
+  ImGui::DockBuilderDockWindow(kGamePanel, center);
+  ImGui::DockBuilderFinish(dockSpace);
+}
+
+// The dock space and the Game panel are submitted first in the frame, so the Game panel's rectangle (the game view)
+// is known before the scene is drawn. While the editor is closed or maximized the dock space is only kept alive
+// (never shown), so the layout is still there, as it was, when the panels come back.
+void EditorUISystem::beginDockSpace() {
+  const ImGuiIO &io = ImGui::GetIO();
+  const ImGuiViewport *viewport = ImGui::GetMainViewport();
+  const ImGuiID dockSpace = dockSpaceId();
+  const bool previousMouse = m_gameMouse;
+
+  m_docked = false;
+  m_gameMouse = m_gameFocused = m_gameHovered = false;
+  m_viewRect = glm::vec4(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+  m_viewPixels = ViewRect();
+
+  if (!(m_renderUI && !m_panelsHidden)) {
+    if (ImGui::DockBuilderGetNode(dockSpace))
+      ImGui::DockSpaceOverViewport(dockSpace, viewport,
+                                   ImGuiDockNodeFlags_KeepAliveOnly | ImGuiDockNodeFlags_PassthruCentralNode);
+    return;
+  }
+
+  // No layout yet (first run, or an imgui.ini from before docking, which has only window positions): the default one
+  if (m_resetLayout || !ImGui::DockBuilderGetNode(dockSpace))
+    buildDefaultLayout(dockSpace, viewport->WorkSize.x, viewport->WorkSize.y);
+  m_resetLayout = false;
+  ImGui::DockSpaceOverViewport(dockSpace, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
+  m_docked = true;
+
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+  constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
+                                      ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoNavInputs;
+  const bool visible = ImGui::Begin(kGamePanel, nullptr, kFlags);
+  ImGui::PopStyleVar();
+  if (visible) {
+    const ImVec2 position = ImGui::GetCursorScreenPos(), size = ImGui::GetContentRegionAvail();
+    m_gameHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem); // also mid drag and drop
+    m_gameFocused = ImGui::IsWindowFocused();
+    // The panel's own mouse state: over it, or still holding a press that began there
+    m_gameMouse = ImGui::IsAnyMouseDown() ? previousMouse : m_gameHovered;
+    if (size.x >= 8.0f && size.y >= 8.0f)
+      m_lastGameRect = glm::vec4(position.x, position.y, size.x, size.y);
+  }
+  ImGui::End();
+
+  if (m_lastGameRect.z > 0.0f) {
+    // Whole framebuffer pixels, so the picture and the mouse agree; y from the top
+    const ImVec2 scale = io.DisplayFramebufferScale;
+    const float fx = scale.x > 0.0f ? scale.x : 1.0f, fy = scale.y > 0.0f ? scale.y : 1.0f;
+    const int x0 = static_cast<int>(std::lround(m_lastGameRect.x * fx)), y0 = static_cast<int>(std::lround(m_lastGameRect.y * fy));
+    const int x1 = static_cast<int>(std::lround((m_lastGameRect.x + m_lastGameRect.z) * fx));
+    const int y1 = static_cast<int>(std::lround((m_lastGameRect.y + m_lastGameRect.w) * fy));
+    m_viewPixels = ViewRect{x0, y0, std::max(x1 - x0, 1), std::max(y1 - y0, 1), true};
+    m_viewRect = glm::vec4(x0 / fx, y0 / fy, m_viewPixels.width / fx, m_viewPixels.height / fy);
+    // What is drawn over the view (selection boxes, the gizmo) stays out of the panels
+    ImGui::GetBackgroundDrawList()->PushClipRect(ImVec2(m_viewRect.x, m_viewRect.y),
+                                                 ImVec2(m_viewRect.x + m_viewRect.z, m_viewRect.y + m_viewRect.w), false);
+  }
+}
+
+bool EditorUISystem::mouseOnPanels() const { return ImGui::GetIO().WantCaptureMouse && !m_gameMouse; }
 
 void EditorUISystem::endFrame() {
   ImGui::Render();
@@ -224,7 +318,6 @@ void EditorUISystem::update(SystemManager &systemManager) {
 }
 
 namespace {
-constexpr float kExplorerWidth = 260.0f, kPropertiesWidth = 340.0f; // at scale 1
 const ImVec4 kPrefabLinkColor(0.45f, 0.7f, 1.0f, 1.0f); // linked prefab instances in the lists
 
 // Name of the key bound to a toggle in the default keybinds, or nullptr
@@ -258,9 +351,7 @@ void EditorUISystem::renderViewportHint(SystemManager &systemManager) {
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   if (!cameraSystem.canNavigate(systemManager.getSystem<StateSystem>()))
     return;
-  const ImGuiViewport *viewport = ImGui::GetMainViewport();
-  const float left = m_explorerWidth, right = viewport->WorkSize.x - m_propertiesWidth;
-  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + (left + right) * 0.5f, viewport->WorkPos.y + viewport->WorkSize.y - ui(10.0f) - m_assetsHeight),
+  ImGui::SetNextWindowPos(ImVec2(m_viewRect.x + m_viewRect.z * 0.5f, m_viewRect.y + m_viewRect.w - ui(10.0f)),
                           ImGuiCond_Always, ImVec2(0.5f, 1.0f));
   ImGui::SetNextWindowBgAlpha(0.45f);
   constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
@@ -276,12 +367,10 @@ void EditorUISystem::renderViewportHint(SystemManager &systemManager) {
   ImGui::End();
 }
 
-void EditorUISystem::renderStatsOverlay(float rightInset) {
-  const ImGuiViewport *viewport = ImGui::GetMainViewport();
+void EditorUISystem::renderStatsOverlay() {
   constexpr float kMargin = 10.0f;
-  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - rightInset - kMargin,
-                                 viewport->WorkPos.y + kMargin),
-                          ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+  ImGui::SetNextWindowPos(ImVec2(m_viewRect.x + m_viewRect.z - kMargin, m_viewRect.y + kMargin), ImGuiCond_Always,
+                          ImVec2(1.0f, 0.0f));
   ImGui::SetNextWindowBgAlpha(0.6f);
 
   constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
@@ -323,13 +412,7 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
 
-  // Starts under the Scene Explorer, in the left column, so the view stays free; movable and collapsible
-  const ImGuiIO &windowIO = ImGui::GetIO();
-  const float explorerHeight = windowIO.DisplaySize.y * 0.55f;
-  const ImGuiCond placement = m_resetLayout ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
-  m_resetLayout = false;
-  ImGui::SetNextWindowPos(ImVec2(0.0f, explorerHeight), placement);
-  ImGui::SetNextWindowSize(ImVec2(panelWidth(kExplorerWidth), windowIO.DisplaySize.y - explorerHeight), placement);
+  // Docked under the Scene Explorer in the default layout
   if (!ImGui::Begin("Settings")) {
     ImGui::End();
     return;
@@ -471,13 +554,18 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     if (ImGui::SmallButton("Reset layout"))
       m_resetLayout = true;
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Puts this panel back under the Scene Explorer");
-    if (ImGui::Button(m_panelsHidden ? "Show panels" : "Hide panels"))
-      m_panelsHidden = !m_panelsHidden;
+      ImGui::SetTooltip("Puts every panel back where it starts");
+    if (ImGui::Button("Maximize view"))
+      toggleMaximized();
     ImGui::SameLine();
-    ImGui::TextDisabled("[Tab]");
+    ImGui::TextDisabled("[Shift+Space, Tab]");
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Hides every panel and keeps the editor going: click to select, the gizmo, flying the camera");
+    ImGui::Checkbox("Maximize on Play", &m_maximizeOnPlay);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("The game view fills the window while the game plays, and the panels come back at Stop");
+    if (ImGui::IsItemDeactivatedAfterEdit() || ImGui::IsItemEdited())
+      ImGui::MarkIniSettingsDirty();
   }
 
   if (ImGui::CollapsingHeader("Collision layers")) {
@@ -647,9 +735,8 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   // Script errors show on screen, editor open or not, until the script loads and runs cleanly again
   const std::string &scriptError = engine.scripts().getLastError();
   if (!scriptError.empty()) {
-    const ImGuiIO &io = ImGui::GetIO();
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y - 12.0f), ImGuiCond_Always,
-                            ImVec2(0.5f, 1.0f));
+    ImGui::SetNextWindowPos(ImVec2(m_viewRect.x + m_viewRect.z * 0.5f, m_viewRect.y + m_viewRect.w - 12.0f),
+                            ImGuiCond_Always, ImVec2(0.5f, 1.0f));
     ImGui::SetNextWindowBgAlpha(0.9f);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.45f, 0.08f, 0.08f, 1.0f));
     ImGui::Begin("##ScriptError", nullptr,
@@ -657,31 +744,29 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
                      ImGuiWindowFlags_NoInputs);
     ImGui::TextUnformatted("Script error");
-    ImGui::PushTextWrapPos(io.DisplaySize.x * 0.7f);
+    ImGui::PushTextWrapPos(m_viewRect.z * 0.7f);
     ImGui::TextUnformatted(scriptError.c_str());
     ImGui::PopTextWrapPos();
     ImGui::End();
     ImGui::PopStyleColor();
   }
 
-  // The panels' widths this frame (what the toolbar and the overlays keep clear of)
   const bool panels = m_renderUI && !m_panelsHidden;
-  m_explorerWidth = panels ? panelWidth(kExplorerWidth) : 0.0f;
-  m_propertiesWidth = panels && selectedEntity != -1 ? panelWidth(kPropertiesWidth) : 0.0f;
-  m_assetsHeight = 0.0f;
   if (m_showStats)
-    renderStatsOverlay(m_propertiesWidth);
+    renderStatsOverlay();
 
   if (!m_renderUI) {
     engine.endCheckpoint(); // hiding the panels (F2) mid-edit ends the edit
     return;
   }
 
-  // Tab hides the panels and brings them back (not while typing)
+  // Tab and Shift+Space maximize the game view (hide the panels) and bring them back (not while typing)
   const ImGuiIO &io = ImGui::GetIO();
-  if (ImGui::IsKeyPressed(ImGuiKey_Tab, false) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt &&
-      !systemManager.getSystem<CameraSystem>().isNavigating())
-    m_panelsHidden = !m_panelsHidden;
+  const bool quiet = !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !systemManager.getSystem<CameraSystem>().isNavigating();
+  if (quiet && ((ImGui::IsKeyPressed(ImGuiKey_Tab, false) && !io.KeyShift) ||
+                (ImGui::IsKeyPressed(ImGuiKey_Space, false) && io.KeyShift)))
+    toggleMaximized();
+  followPlayMode(engine.getPlayMode() == Engine::PlayMode::Testing);
 
   handleHistoryShortcuts(engine, systemManager);
   handleEditShortcuts(engine, systemManager, componentManager);
@@ -696,9 +781,9 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
     renderAssetPanel(engine, systemManager, componentManager);
   renderPlayToolbar(engine, systemManager);
   m_gizmoShown = false;
+  if (panels)
+    renderPropertiesPanel(engine, systemManager, componentManager); // always there, so its dock slot is not empty
   if (selectedEntity != -1) {
-    if (panels)
-      renderPropertiesPanel(engine, systemManager, componentManager);
     drawSelectionBoxes(systemManager, componentManager);
     renderGizmo(systemManager, componentManager);
   }
@@ -707,6 +792,25 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   renderSceneLoadDialog(engine);
   handleClickSelection(engine, systemManager, componentManager);
   endEditTracking(engine);
+}
+
+void EditorUISystem::toggleMaximized() {
+  m_panelsHidden = !m_panelsHidden;
+  m_maximizedByPlay = false; // the user's own choice from here on
+}
+
+// Maximize on Play: Play hides the panels, Stop brings them back, unless the user changed that meanwhile
+void EditorUISystem::followPlayMode(bool playing) {
+  if (m_wasPlaying != playing) {
+    if (playing && m_maximizeOnPlay && !m_panelsHidden) {
+      m_panelsHidden = true;
+      m_maximizedByPlay = true;
+    } else if (!playing && m_maximizedByPlay) {
+      m_panelsHidden = false;
+      m_maximizedByPlay = false;
+    }
+  }
+  m_wasPlaying = playing;
 }
 
 void EditorUISystem::handleHistoryShortcuts(Engine &engine, SystemManager &systemManager) {
@@ -929,7 +1033,7 @@ void EditorUISystem::entityContextMenu(Engine &engine, SystemManager &systemMana
 // ends. A click on empty space (selecting) starts nothing.
 void EditorUISystem::beginEditTracking(Engine &engine) {
   const ImGuiIO &io = ImGui::GetIO();
-  const bool onEditor = io.WantCaptureMouse || (m_gizmoShown && ImGuizmo::IsOver()) || m_resizeHovered;
+  const bool onEditor = mouseOnPanels() || (m_gizmoShown && ImGuizmo::IsOver()) || m_resizeHovered;
   if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left) || !onEditor)
     return;
   // A click while an edit is still open (a text field keeps it open until something else is clicked) closes it first,
@@ -949,7 +1053,7 @@ void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemM
                                           ComponentManager &componentManager) {
   const ImGuiIO &io = ImGui::GetIO();
   updateMarquee(engine, systemManager, componentManager);
-  if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left) || io.WantCaptureMouse ||
+  if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left) || mouseOnPanels() ||
       systemManager.getSystem<StateSystem>().isToggled(Toggle::CursorLock))
     return;
   if (m_gizmoShown && (ImGuizmo::IsOver() || ImGuizmo::IsUsing()))
@@ -998,7 +1102,7 @@ void EditorUISystem::updateMarquee(Engine &engine, SystemManager &systemManager,
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();
   const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
-  if (!camera || io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
+  if (!camera || m_viewRect.z <= 0.0f || m_viewRect.w <= 0.0f)
     return;
   const glm::mat4 toClip = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
@@ -1013,8 +1117,8 @@ void EditorUISystem::updateMarquee(Engine &engine, SystemManager &systemManager,
     const glm::vec4 clip = toClip * transformSystem.calculateModelMatrix(*transform) * glm::vec4(center, 1.0f);
     if (clip.w <= 0.01f)
       return; // behind the camera
-    const glm::vec2 screen((clip.x / clip.w * 0.5f + 0.5f) * io.DisplaySize.x,
-                           (0.5f - clip.y / clip.w * 0.5f) * io.DisplaySize.y);
+    const ImVec2 point = fromClip(clip);
+    const glm::vec2 screen(point.x, point.y);
     if (screen.x >= low.x && screen.x <= high.x && screen.y >= low.y && screen.y <= high.y)
       inside.push_back(entity);
   });
@@ -1053,10 +1157,7 @@ void EditorUISystem::drawBox(SystemManager &systemManager, ComponentManager &com
   for (int i = 0; i < 8; ++i)
     corners[i] = toClip * glm::vec4(i & 1 ? high.x : low.x, i & 2 ? high.y : low.y, i & 4 ? high.z : low.z, 1.0f);
 
-  const ImVec2 size = ImGui::GetIO().DisplaySize;
-  auto toScreen = [&](const glm::vec4 &clip) {
-    return ImVec2((clip.x / clip.w * 0.5f + 0.5f) * size.x, (0.5f - clip.y / clip.w * 0.5f) * size.y);
-  };
+  auto toScreen = [&](const glm::vec4 &clip) { return fromClip(clip); };
   ImDrawList *drawList = ImGui::GetBackgroundDrawList();
   // The 12 edges: corners that differ in one bit
   for (int a = 0; a < 8; ++a)
@@ -1077,13 +1178,12 @@ void EditorUISystem::drawNavigation(Engine &engine, SystemManager &systemManager
     return;
 
   const glm::mat4 toClip = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
-  const ImVec2 size = ImGui::GetIO().DisplaySize;
   // False for a point behind the camera
   auto project = [&](const glm::vec3 &point, ImVec2 &screen) {
     const glm::vec4 clip = toClip * glm::vec4(point, 1.0f);
     if (clip.w <= 0.01f)
       return false;
-    screen = ImVec2((clip.x / clip.w * 0.5f + 0.5f) * size.x, (0.5f - clip.y / clip.w * 0.5f) * size.y);
+    screen = fromClip(clip);
     return true;
   };
 
@@ -1271,10 +1371,10 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   const float snapStep = operation == ImGuizmo::TRANSLATE ? kSnapStep : operation == ImGuizmo::ROTATE ? kSnapAngle : 0.1f;
   const float snap[3] = {snapStep, snapStep, snapStep};
 
-  // Drawn over the whole screen, behind the editor's windows
+  // Drawn over the game view, behind the editor's windows
   ImGuizmo::SetOrthographic(false);
   ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
-  ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+  ImGuizmo::SetRect(m_viewRect.x, m_viewRect.y, m_viewRect.z, m_viewRect.w);
   m_gizmoShown = true;
   // The heading kept while aligning to surfaces is the one the entity had when the drag started
   if (!ImGuizmo::IsUsing()) {
@@ -1507,7 +1607,7 @@ void EditorUISystem::renderResizeHandles(SystemManager &systemManager, Component
                                          Transform &transform, const glm::mat4 &view, const glm::mat4 &projection) {
   const auto *model = componentManager.tryGet<Model>(m_gizmoEntity);
   ImGuiIO &io = ImGui::GetIO();
-  if (!model || io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f) {
+  if (!model || m_viewRect.z <= 0.0f || m_viewRect.w <= 0.0f) {
     m_resize.axis = -1;
     m_resizeHovered = false;
     return;
@@ -1526,7 +1626,7 @@ void EditorUISystem::renderResizeHandles(SystemManager &systemManager, Component
     const glm::vec4 clip = toClip * glm::vec4(world, 1.0f);
     if (clip.w <= 0.01f)
       return false;
-    screen = ImVec2((clip.x / clip.w * 0.5f + 0.5f) * io.DisplaySize.x, (0.5f - clip.y / clip.w * 0.5f) * io.DisplaySize.y);
+    screen = fromClip(clip);
     return true;
   };
 
@@ -1549,7 +1649,7 @@ void EditorUISystem::renderResizeHandles(SystemManager &systemManager, Component
       if (!toScreen(handle.world, handle.screen))
         continue;
       const float distance = std::hypot(io.MousePos.x - handle.screen.x, io.MousePos.y - handle.screen.y);
-      if (distance < hoveredDistance && !io.WantCaptureMouse) {
+      if (distance < hoveredDistance && !mouseOnPanels()) {
         hoveredDistance = distance;
         hovered = static_cast<int>(handles.size());
       }
@@ -1573,7 +1673,7 @@ void EditorUISystem::renderResizeHandles(SystemManager &systemManager, Component
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
       m_resize.axis = -1;
     } else {
-      const glm::vec2 ndc(io.MousePos.x / io.DisplaySize.x * 2.0f - 1.0f, 1.0f - io.MousePos.y / io.DisplaySize.y * 2.0f);
+      const glm::vec2 ndc = toNdc(io.MousePos);
       const glm::mat4 inverse = glm::inverse(toClip);
       glm::vec4 nearPoint = inverse * glm::vec4(ndc, -1.0f, 1.0f), farPoint = inverse * glm::vec4(ndc, 1.0f, 1.0f);
       nearPoint /= nearPoint.w;
@@ -1670,18 +1770,17 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   const Entity cameraEntity = cameraSystem.getActiveCamera();
   const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
   const ImGuiIO &io = ImGui::GetIO();
-  if (!model || !camera || io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
+  if (!model || !camera || m_viewRect.z <= 0.0f || m_viewRect.w <= 0.0f)
     return false;
 
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
   const glm::vec3 boundsMin = mesh.getBoundsMin(), boundsMax = mesh.getBoundsMax();
   const glm::mat4 viewProjection = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
-  const glm::vec2 display(io.DisplaySize.x, io.DisplaySize.y);
   const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
 
   // The cursor's ray
-  const glm::vec2 ndc(mouse.x / display.x * 2.0f - 1.0f, 1.0f - mouse.y / display.y * 2.0f);
+  const glm::vec2 ndc = toNdc(io.MousePos);
   const glm::mat4 inverse = glm::inverse(viewProjection);
   glm::vec4 nearPoint = inverse * glm::vec4(ndc, -1.0f, 1.0f), farPoint = inverse * glm::vec4(ndc, 1.0f, 1.0f);
   nearPoint /= nearPoint.w;
@@ -2091,9 +2190,9 @@ void EditorUISystem::renderPlayToolbar(Engine &engine, SystemManager &systemMana
       engine.edit();
   }
 
-  // A small bar at the top right of the view, left of the Properties panel when it is open
-  const float right = io.DisplaySize.x - m_propertiesWidth - ui(8.0f);
-  ImGui::SetNextWindowPos(ImVec2(right, ui(6.0f)), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+  // A small bar at the top right of the view
+  const float right = m_viewRect.x + m_viewRect.z - ui(8.0f);
+  ImGui::SetNextWindowPos(ImVec2(right, m_viewRect.y + ui(6.0f)), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
   ImGui::SetNextWindowBgAlpha(0.85f);
   ImGui::Begin("##PlayToolbar", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
@@ -2112,10 +2211,11 @@ void EditorUISystem::renderPlayToolbar(Engine &engine, SystemManager &systemMana
   historyButton("Redo", engine.canRedo(), "Does the undone edit again (Ctrl+Shift+Z or Ctrl+Y)",
                 [&] { engine.redo(); });
   ImGui::SameLine();
-  if (ImGui::Button(m_panelsHidden ? "Panels" : "Hide"))
-    m_panelsHidden = !m_panelsHidden;
+  if (ImGui::Button(m_panelsHidden ? "Restore" : "Maximize"))
+    toggleMaximized();
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("%s the panels, keeping the editor going: click to select, the gizmo, the camera (Tab)",
+    ImGui::SetTooltip("%s the panels, keeping the editor going: click to select, the gizmo, the camera\n"
+                      "(Shift+Space or Tab)",
                       m_panelsHidden ? "Shows" : "Hides");
   ImGui::SameLine();
   ImGui::TextDisabled("|");
@@ -2167,10 +2267,8 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
-  // Docked at the left, the top part of the column (Settings is below it); collapsible to its title bar
-  ImGui::SetNextWindowPos(ImVec2(0, 0));
-  ImGui::SetNextWindowSize(ImVec2(m_explorerWidth, io.DisplaySize.y * 0.55f));
-  ImGui::Begin("Scene Explorer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+  // Docked at the left, the top part of the column (Settings is below it)
+  ImGui::Begin("Scene Explorer");
 
   ImVec2 avail = ImGui::GetContentRegionAvail();
   float buttonHeight = ImGui::GetFrameHeightWithSpacing();
@@ -2350,12 +2448,14 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
-  // Docked at the right, the whole height; collapsible to its title bar
-  const float propW = m_propertiesWidth;
-  ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - propW, 0));
-  ImGui::SetNextWindowSize(ImVec2(propW, io.DisplaySize.y));
+  // Docked at the right, the whole height
   bool propOpen = true;
-  ImGui::Begin("Properties", &propOpen, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+  ImGui::Begin("Properties", &propOpen);
+  if (selectedEntity == -1) {
+    ImGui::TextDisabled("Nothing selected");
+    ImGui::End();
+    return;
+  }
 
   if (!propOpen) {
     selectOnly(-1);

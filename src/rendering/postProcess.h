@@ -41,6 +41,12 @@ public:
   // neither size nor the sample count has changed. `samples` is the MSAA sample count (0 or 1 for none), clamped to
   // what the GPU offers; samples() tells what was used.
   void resize(int width, int height, int displayWidth, int displayHeight, int samples);
+  // Where the final pass draws on the screen (framebuffer 0): the lower-left corner of the displayWidth x
+  // displayHeight rectangle, in pixels. 0, 0 for the whole window.
+  void setOutputOrigin(int x, int y) {
+    m_outputX = x;
+    m_outputY = y;
+  }
   // The most samples the GPU's multisampled color and depth buffers take (0 if none); needs a current context
   static int maxSamples();
   // The MSAA sample count in use (0: the scene renders single-sampled)
@@ -78,6 +84,8 @@ private:
   int m_height = 0;
   int m_displayWidth = 0; // the screen's pixels, which the final pass fills
   int m_displayHeight = 0;
+  int m_outputX = 0; // where the final pass draws on the screen, from its lower-left corner
+  int m_outputY = 0;
   int m_samples = 0;
   // Single-sample scene: the target itself without MSAA, the resolve target with it
   GLuint m_sceneFBO = 0;

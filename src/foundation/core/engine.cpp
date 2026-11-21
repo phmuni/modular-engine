@@ -357,6 +357,16 @@ void Engine::render() {
   renderer.beginFrame();
 
   editorUI.beginFrame();
+  // With the editor docked the game is drawn into its Game panel: the picture, its aspect, the game UI and the mouse
+  // follow that rectangle (the whole window when it is not docked)
+  const ViewRect view = editorUI.gameViewPixels();
+  renderer.setViewRect(view);
+  const glm::vec4 viewUnits = editorUI.gameViewRect();
+  m_systemManager.getSystem<CameraSystem>().setViewAspect(view.active ? view.width / static_cast<float>(view.height)
+                                                                      : 0.0f);
+  m_systemManager.getSystem<GameUISystem>().setView(view);
+  m_systemManager.getSystem<InputSystem>().setView(view.active ? glm::vec2(viewUnits.x, viewUnits.y) : glm::vec2(0.0f),
+                                                   editorUI.gameHasMouse(), editorUI.gameFocused());
 
   renderSystem.setShaderTime(m_playMode == PlayMode::Editing ? m_previewTime : m_time.elapsed());
 

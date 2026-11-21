@@ -302,8 +302,36 @@ void Renderer::setWireframe(bool enabled) { glPolygonMode(GL_FRONT_AND_BACK, ena
 void Renderer::setViewportSize(int width, int height) {
   m_screenWidth = width;
   m_screenHeight = height;
+  if (m_view.active) { // the view stays inside the new size (the editor sets it again next frame)
+    ViewRect keep = m_view;
+    m_view = ViewRect();
+    setViewRect(keep);
+    return;
+  }
   updateTargets();
   glViewport(0, 0, m_screenWidth, m_screenHeight);
+}
+
+void Renderer::setViewRect(const ViewRect &rect) {
+  ViewRect wanted = rect;
+  if (wanted.active) {
+    // Inside the window, at least a pixel
+    wanted.x = std::clamp(wanted.x, 0, std::max(m_screenWidth - 1, 0));
+    wanted.y = std::clamp(wanted.y, 0, std::max(m_screenHeight - 1, 0));
+    wanted.width = std::clamp(wanted.width, 1, std::max(m_screenWidth - wanted.x, 1));
+    wanted.height = std::clamp(wanted.height, 1, std::max(m_screenHeight - wanted.y, 1));
+  }
+  if (wanted == m_view)
+    return;
+  m_view = wanted;
+  if (m_window)
+    updateTargets();
+}
+
+ViewRect Renderer::viewRect() const {
+  if (m_view.active)
+    return m_view;
+  return ViewRect{0, 0, m_screenWidth, m_screenHeight, false};
 }
 
 void Renderer::setRenderScale(float scale) {
@@ -322,9 +350,11 @@ void Renderer::updateTargets() {
     return std::clamp(static_cast<int>(std::lround(static_cast<double>(pixels) * m_renderScale)), 1,
                       std::max(static_cast<int>(maxSize), 1));
   };
-  m_renderWidth = scaled(m_screenWidth);
-  m_renderHeight = scaled(m_screenHeight);
-  m_postProcess.resize(m_renderWidth, m_renderHeight, m_screenWidth, m_screenHeight, m_antialiasing.msaa);
+  m_renderWidth = scaled(getViewWidth());
+  m_renderHeight = scaled(getViewHeight());
+  m_postProcess.resize(m_renderWidth, m_renderHeight, getViewWidth(), getViewHeight(), m_antialiasing.msaa);
+  // The final pass fills the view; GL measures from the bottom
+  m_postProcess.setOutputOrigin(m_view.active ? m_view.x : 0, m_view.active ? m_screenHeight - m_view.y - m_view.height : 0);
   m_antialiasing.msaa = m_postProcess.samples(); // what the GPU gave (a multisampled target that failed is off)
 }
 

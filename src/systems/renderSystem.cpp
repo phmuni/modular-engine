@@ -364,7 +364,7 @@ void RenderSystem::drawCustomShadowCasters(Shader &depthShader, const glm::mat4 
 RenderSystem::DirectionalShadow
 RenderSystem::renderDirectionalShadow(ComponentManager &componentManager, ResourceSystem &resourceSystem,
                                       TransformSystem &transformSystem, LightSystem &lightSystem, const Camera &camera,
-                                      const glm::mat4 &view) {
+                                      const glm::mat4 &view, float aspect) {
   DirectionalShadow shadow;
   const Light *sun = nullptr;
   for (Entity lightEntity : lightSystem.getLights()) {
@@ -385,7 +385,7 @@ RenderSystem::renderDirectionalShadow(ComponentManager &componentManager, Resour
   const float farPlane = std::min(EngineConfig::SHADOW_DISTANCE, EngineConfig::CAMERA_FAR);
   const glm::mat4 cameraToWorld = glm::inverse(view);
   const float tanY = std::tan(glm::radians(camera.fov) * 0.5f);
-  const float tanX = tanY * camera.aspectRatio;
+  const float tanX = tanY * aspect;
   const glm::vec3 lightDir = glm::normalize(sun->direction);
   const glm::vec3 up = std::abs(lightDir.y) > 0.99f ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
 
@@ -590,7 +590,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   m_shadowViewPos = viewPos;
   DirectionalShadow sunShadow;
   if (shadowsEnabled)
-    sunShadow = renderDirectionalShadow(componentManager, resourceSystem, transformSystem, lightSystem, camera, view);
+    sunShadow = renderDirectionalShadow(componentManager, resourceSystem, transformSystem, lightSystem, camera, view,
+                                         cameraSystem.viewAspect() > 0.0f ? cameraSystem.viewAspect() : camera.aspectRatio);
   const auto &pointShadows =
       lightSystem.updatePointShadows(componentManager, shadowsEnabled, EngineConfig::MAX_POINT_SHADOWS);
   renderPointShadows(componentManager, resourceSystem, transformSystem, pointShadows);
