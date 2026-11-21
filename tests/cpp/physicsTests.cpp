@@ -175,3 +175,30 @@ TEST_CASE(physics_box_tips_over_edge) {
     CHECK_NEAR(base.rotation(), glm::vec3(0), 2.0f);
   });
 }
+
+TEST_CASE(physics_body_lands_on_character) {
+  // A box dropped on a standing character stays out of its capsule (the capsule is a body dynamic bodies meet, not
+  // only one that shoves them away afterwards), and raycasts still pass through the character
+  engine.create("Floor", Desc("box").at(0, -0.5f, 0).size(30, 1, 30).body(BodyType::Static));
+  GameEntity hero = engine.create("Hero", Desc().at(0, 0.9f, 0).character());
+  GameEntity box = engine.create("Box", Desc("box").at(0.1f, 4, 0).size(0.6f, 0.6f, 0.6f).body(BodyType::Dynamic));
+  // Every frame for a second and a half: the box's middle never gets nearer the capsule's axis (from 0.35 to 1.45
+  // up, radius 0.35) than the capsule's radius, as it would falling through it
+  auto deepest = std::make_shared<float>(1e9f);
+  auto frames = std::make_shared<int>(0);
+  steps.until(
+      [hero, box, deepest, frames]() {
+        const glm::vec3 base = hero.position() - glm::vec3(0, 0.55f, 0), top = hero.position() + glm::vec3(0, 0.55f, 0);
+        const glm::vec3 at = box.position();
+        const float along = glm::clamp(glm::dot(at - base, top - base) / glm::dot(top - base, top - base), 0.0f, 1.0f);
+        *deepest = std::min(*deepest, glm::length(at - (base + (top - base) * along)));
+        return ++*frames >= 90;
+      },
+      "a second and a half", 200);
+  steps.step(1, [&engine, hero, deepest]() {
+    CHECK(*deepest > 0.35f);
+    CHECK_NEAR(hero.position().y, 0.9f, 0.1f);
+    const auto throughHero = engine.physics().raycast(glm::vec3(5, 0.9f, 0), glm::vec3(-1, 0, 0), 10.0f);
+    CHECK(!throughHero.has_value() || throughHero->entity != hero.id());
+  });
+}

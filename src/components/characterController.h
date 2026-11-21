@@ -1,7 +1,7 @@
 #pragma once
 // A character that walks on what physics bodies make up: an upright capsule that stays on the ground, climbs slopes
-// up to maxSlope and steps up stairs up to stepHeight, is pushed by nothing and pushes dynamic bodies. Its Transform
-// is the capsule's middle. Each frame the game sets `move` (and `jump` to jump); PhysicsSystem moves it and fills in
+// up to maxSlope and steps up stairs up to stepHeight, is pushed by nothing and pushes dynamic bodies, which land on
+// it and bump into it (physics raycasts pass through it). Its Transform is the capsule's middle. Each frame the game sets `move` (and `jump` to jump); PhysicsSystem moves it and fills in
 // `onGround` and `velocity`.
 
 #include <glm/glm.hpp>

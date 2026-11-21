@@ -240,6 +240,12 @@ struct PhysicsSystem::Impl {
     system.reset();
   }
 
+  // A character's inner body (see createCharacter)
+  bool isCharacter(const JPH::Body &body) const {
+    const auto it = characters.find(static_cast<Entity>(body.GetUserData()));
+    return it != characters.end() && it->second.character->GetInnerBodyID() == body.GetID();
+  }
+
   void removeAll() {
     JPH::BodyInterface &bodyInterface = system->GetBodyInterface();
     for (auto &[entity, record] : bodies) {
@@ -374,6 +380,11 @@ struct PhysicsSystem::Impl {
     settings.mSupportingVolume = JPH::Plane(JPH::Vec3::sAxisY(), halfCylinder);
     settings.mMass = 70.0f;
     settings.mMaxStrength = 200.0f; // how hard it pushes dynamic bodies
+    // A kinematic body of the same capsule that it carries along: without it, the character is not in the physics
+    // world, so dynamic bodies fall and roll through it (it then shoves them out slowly). The character itself skips
+    // it; raycasts and the navigation's capsule test skip it too (see isCharacter).
+    settings.mInnerBodyShape = settings.mShape;
+    settings.mInnerBodyLayer = Layers::objectLayer(layers.resolve(controller.layer), true);
     JPH::Ref<JPH::CharacterVirtual> character = new JPH::CharacterVirtual(
         &settings, JPH::RVec3(toJolt(transform.position)), JPH::Quat::sIdentity(), static_cast<JPH::uint64>(entity),
         system.get());
@@ -491,6 +502,8 @@ struct PhysicsSystem::Impl {
         record.layerName = controller.layer;
         record.layerVersion = layers.version();
         record.layerIndex = layers.resolve(controller.layer);
+        system->GetBodyInterface().SetObjectLayer(character.GetInnerBodyID(),
+                                                  Layers::objectLayer(record.layerIndex, true));
       }
       const JPH::ObjectLayer objectLayer = Layers::objectLayer(record.layerIndex, true);
       character.UpdateGroundVelocity();
@@ -639,14 +652,15 @@ std::optional<RayHit> PhysicsSystem::raycast(const glm::vec3 &origin, const glm:
   // Skips bodies `accept` turns down
   class Filter final : public JPH::BodyFilter {
   public:
-    explicit Filter(const std::function<bool(Entity)> &accept) : m_accept(accept) {}
+    Filter(const std::function<bool(Entity)> &accept, const Impl &impl) : m_accept(accept), m_impl(impl) {}
     bool ShouldCollideLocked(const JPH::Body &body) const override {
-      return !m_accept || m_accept(static_cast<Entity>(body.GetUserData()));
+      return !m_impl.isCharacter(body) && (!m_accept || m_accept(static_cast<Entity>(body.GetUserData())));
     }
 
   private:
     const std::function<bool(Entity)> &m_accept;
-  } filter(accept);
+    const Impl &m_impl;
+  } filter(accept, *m_impl);
 
   JPH::RayCastResult hit;
   const LayerMaskFilter layerFilter(layerMask);
@@ -665,13 +679,17 @@ bool PhysicsSystem::isCapsuleBlocked(const glm::vec3 &base, float height, float 
   radius = std::max(radius, 0.01f);
   const float halfCylinder = std::max(height * 0.5f - radius, 0.01f);
 
-  // Only what stays put and blocks
+  // Only what stays put and blocks (not a character standing there)
   class Filter final : public JPH::BodyFilter {
   public:
+    explicit Filter(const Impl &impl) : m_impl(impl) {}
     bool ShouldCollideLocked(const JPH::Body &body) const override {
-      return body.GetMotionType() != JPH::EMotionType::Dynamic && !body.IsSensor();
+      return body.GetMotionType() != JPH::EMotionType::Dynamic && !body.IsSensor() && !m_impl.isCharacter(body);
     }
-  } filter;
+
+  private:
+    const Impl &m_impl;
+  } filter(*m_impl);
 
   const JPH::CapsuleShape shape(halfCylinder, radius);
   const glm::vec3 middle = base + glm::vec3(0.0f, halfCylinder + radius, 0.0f);
