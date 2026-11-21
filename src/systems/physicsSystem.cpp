@@ -416,7 +416,15 @@ struct PhysicsSystem::Impl {
       const uint32_t meshHandle = model ? model->meshHandle : UINT32_MAX;
       if (it != bodies.end() && (it->second.settings != body || it->second.scale != transform->scale ||
                                  it->second.meshHandle != meshHandle)) {
-        bodyInterface.RemoveBody(it->second.id); // changed: built again
+        // Changed: built again, keeping the motion a dynamic body had (a hit, a push) unless game code set another
+        if (it->second.settings.type == BodyType::Dynamic && body.type == BodyType::Dynamic) {
+          PendingMotion &motion = pending[entity];
+          if (!motion.linear)
+            motion.linear = toGlm(bodyInterface.GetLinearVelocity(it->second.id));
+          if (!motion.angular && !body.lockRotation)
+            motion.angular = toGlm(bodyInterface.GetAngularVelocity(it->second.id));
+        }
+        bodyInterface.RemoveBody(it->second.id);
         bodyInterface.DestroyBody(it->second.id);
         bodies.erase(it);
         it = bodies.end();

@@ -4,6 +4,7 @@
 #include "describe.h"
 #include "foundation/core/engine.h"
 #include "testing.h"
+#include <cmath>
 #include <memory>
 
 namespace {
@@ -111,4 +112,66 @@ TEST_CASE(collision_boxes) {
   engine.fitCollisionToModel(neighbor.id());
   CHECK(!engine.isColliding(a.id(), neighbor.id()));
   CHECK_EQ(engine.findCollisions().size(), size_t(0));
+}
+
+// Bodies with gravityScale 0 drift as in space while the world keeps its gravity: a hit hands its momentum on
+TEST_CASE(physics_zero_gravity_collision) {
+  CHECK_NEAR(engine.physics().getGravity(), glm::vec3(0, -9.81f, 0), 0.01f);
+  auto floating = [&engine](GameEntity entity, float restitution) {
+    RigidBody *body = engine.tryGet<RigidBody>(entity.id());
+    CHECK(body != nullptr);
+    if (!body)
+      return;
+    body->gravityScale = 0.0f;
+    body->linearDamping = 0.0f;
+    body->angularDamping = 0.0f;
+    body->restitution = restitution;
+  };
+  // Equal masses, head on at 10 m/s: elastic, the shot stops and the target takes its speed; inelastic, they share it
+  GameEntity shot = engine.create("Shot", Desc("sphere").at(-5, 10, 0).body(BodyType::Dynamic, BodyShape::Sphere, 1.0f));
+  GameEntity target = engine.create("Target", Desc("sphere").at(0, 10, 0).body(BodyType::Dynamic, BodyShape::Sphere, 1.0f));
+  GameEntity lumpShot = engine.create("LumpShot", Desc("sphere").at(-5, 10, 20).body(BodyType::Dynamic, BodyShape::Sphere, 1.0f));
+  GameEntity lump = engine.create("Lump", Desc("sphere").at(0, 10, 20).body(BodyType::Dynamic, BodyShape::Sphere, 1.0f));
+  floating(shot, 1.0f);
+  floating(target, 1.0f);
+  floating(lumpShot, 0.0f);
+  floating(lump, 0.0f);
+  shot.setVelocity(glm::vec3(10, 0, 0));
+  lumpShot.setVelocity(glm::vec3(10, 0, 0));
+
+  steps.seconds(1.0f, [shot, target, lumpShot, lump]() {
+    CHECK_NEAR(target.velocity(), glm::vec3(10, 0, 0), 0.5f);
+    CHECK_NEAR(shot.velocity(), glm::vec3(0), 0.5f);
+    CHECK_NEAR(lump.velocity(), glm::vec3(5, 0, 0), 0.5f);
+    CHECK_NEAR(lumpShot.velocity(), glm::vec3(5, 0, 0), 0.5f);
+    CHECK_NEAR(shot.velocity().x + target.velocity().x, 10.0f, 0.1f); // momentum kept in both
+    CHECK_NEAR(lumpShot.velocity().x + lump.velocity().x, 10.0f, 0.1f);
+    CHECK_NEAR(target.position().y, 10.0f, 0.01f); // none of them falls
+    CHECK_NEAR(lump.position().y, 10.0f, 0.01f);
+  });
+  // Without damping the speed it was given lasts
+  steps.seconds(2.0f, [&engine, target, lump]() {
+    CHECK_NEAR(target.velocity(), glm::vec3(10, 0, 0), 0.5f);
+    CHECK_NEAR(lump.velocity(), glm::vec3(5, 0, 0), 0.5f);
+    CHECK_NEAR(target.position().y, 10.0f, 0.01f);
+    // A setting changed in flight (the body is built again) keeps its motion: a little gravity now bends its path
+    engine.tryGet<RigidBody>(target.id())->gravityScale = 0.1f;
+  });
+  steps.seconds(1.0f, [target]() {
+    CHECK_NEAR(target.velocity().x, 10.0f, 0.5f);
+    CHECK(target.velocity().y < -0.5f && target.velocity().y > -1.5f); // about 0.981 m/s after a second
+  });
+}
+
+// A box landing with most of it past another box's edge tips over that edge: contacts turn bodies, not only move them
+TEST_CASE(physics_box_tips_over_edge) {
+  engine.create("Floor", Desc("box").at(0, -0.5f, 0).size(30, 1, 30).body(BodyType::Static));
+  GameEntity base = engine.create("Base", Desc("box").at(0, 0.75f, 0).size(1.5f).body(BodyType::Dynamic, BodyShape::Box, 20.0f));
+  GameEntity top = engine.create("Top", Desc("box").at(1.1f, 3.0f, 0).size(1.0f).body(BodyType::Dynamic, BodyShape::Box, 20.0f));
+  steps.seconds(1.5f, [top, base]() {
+    CHECK(std::abs(top.rotation().z) > 60.0f); // rolled about z, off the base's +x edge
+    CHECK(top.position().x > 1.3f);
+    CHECK_NEAR(top.position().y, 0.5f, 0.1f); // lying on the floor
+    CHECK_NEAR(base.rotation(), glm::vec3(0), 2.0f);
+  });
 }
