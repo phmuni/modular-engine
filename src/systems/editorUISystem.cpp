@@ -254,7 +254,12 @@ void EditorUISystem::beginDockSpace() {
   if (m_resetLayout || !ImGui::DockBuilderGetNode(dockSpace))
     buildDefaultLayout(dockSpace, viewport->WorkSize.x, viewport->WorkSize.y);
   m_resetLayout = false;
+  // A passthru dock space leaves a hole in its background only while the central node is empty; with the Game panel
+  // docked there it would paint WindowBg over the whole picture. The panels draw their own backgrounds, so the dock
+  // space's is not needed at all.
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
   ImGui::DockSpaceOverViewport(dockSpace, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
+  ImGui::PopStyleColor();
   m_docked = true;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
