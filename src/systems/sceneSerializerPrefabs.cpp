@@ -152,7 +152,8 @@ void SceneSerializer::expandNested(PrefabFile &file, size_t index, json &part, c
   const std::string at = std::to_string(index);
   const std::string path = link["path"].get<std::string>();
   const std::string innerKey = fileKey(EngineConfig::resolveAsset(path));
-  const std::string &outerKey = m_resolving.back();
+  // A copy: resolving the inner file below pushes onto m_resolving, which can move its strings
+  const std::string outerKey = m_resolving.back();
   const json ownParent = componentsOf(part).contains("Parent") ? componentsOf(part)["Parent"] : json();
   const json marker = {{"path", path}};
   addUnique(file.deps, innerKey);

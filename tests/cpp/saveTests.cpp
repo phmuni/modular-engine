@@ -39,9 +39,11 @@ TEST_CASE(save_to_folder) {
   CHECK(std::filesystem::exists(file));
   CHECK(!std::filesystem::exists(file + ".tmp")); // replaced atomically: no leftover temp file
 
-  // What is on disk
-  std::ifstream stream(file);
-  const nlohmann::json onDisk = nlohmann::json::parse(stream);
+  // What is on disk (read and closed: an open file cannot be replaced on Windows, so the next write would fail)
+  const nlohmann::json onDisk = [&] {
+    std::ifstream stream(file);
+    return nlohmann::json::parse(stream);
+  }();
   CHECK_EQ(onDisk["score"].get<int>(), 120);
   CHECK_EQ(onDisk["player"].get<std::string>(), std::string("Ada"));
   CHECK_EQ(onDisk["inventory"]["items"][1].get<std::string>(), std::string("map"));
