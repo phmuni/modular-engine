@@ -1153,9 +1153,10 @@ void EditorUISystem::renderGizmoControls() {
   ImGui::Checkbox("Align to surface##gizmo", &m_gizmoAlign);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Dragging the move gizmo's center (the white circle) slides the entity over the surfaces under the\n"
-                      "cursor: its bottom on the one you point at, the circle on the cursor (held back at an edge). The arrows and squares still\n"
-                      "move it along their axis or plane. With Snap on, its place goes to the 0.5 grid of the surface's\n"
-                      "model and its heading to 15 degrees; the rotate gizmo then turns it around the surface's normal.\n"
+                      "cursor: its bottom on the one you point at, the circle on the cursor (held back at the surface's\n"
+                      "edge; on a small top it follows the spot you point at). The arrows and squares still move it\n"
+                      "along their axis or plane. With Snap on, its place goes to the 0.5 grid of the surface's model\n"
+                      "and its heading to 15 degrees; the rotate gizmo then turns it around the surface's normal.\n"
                       "While dragging: R turns it 90 degrees around the surface's normal; T (without Tilt) tips it 90\n"
                       "degrees towards the camera's side.");
   ImGui::SameLine();
@@ -1741,7 +1742,7 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
 
   // The gizmo's center (the origin) stays under the cursor: on the cursor's ray, as high above the surface it points
   // at as the entity's base is below its origin, while that surface is under the center. Whether it can be is decided
-  // when the cursor comes onto a surface. On one too small for it (a pillar's top or a head seen from low, where the
+  // when the cursor comes onto a surface (with a ray not along it). On one too small for it (a pillar's top or a head seen from low, where the
   // held center is in front of it), or with the ray running along the surface, the entity follows the spot pointed at
   // instead, its origin over it, so it moves freely there. Near the edge of a surface it holds on, it is slid back
   // towards that spot, the least that puts the center over the surface again: it always rests on the surface you
@@ -1756,9 +1757,9 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   };
   glm::vec3 center;
   const bool canHold = surfacePlacement::heldOrigin(origin, direction, hit->point, normal, height, center);
-  if (hit->entity != m_alignSurface) {
+  if (canHold && hit->entity != m_alignSurface) { // with the ray along the surface, decided once it is not
     m_alignSurface = hit->entity;
-    m_alignHeld = canHold && onSurface(center);
+    m_alignHeld = onSurface(center);
   }
   const glm::vec3 overHit = hit->point + normal * height;
   glm::vec3 position =
