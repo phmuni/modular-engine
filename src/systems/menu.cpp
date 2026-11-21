@@ -246,12 +246,14 @@ struct Menu::Impl {
     Rml::DataTypeRegister *types = constructor.GetDataTypeRegister();
     auto variantItem = std::make_unique<VariantDefinition>();
     Rml::VariableDefinition *variantPointer = variantItem.get();
-    constructor.RegisterCustomDataVariableDefinition<NamedValues<Rml::Variant>>(
-        std::make_unique<NamedValuesDefinition<Rml::Variant>>(variantPointer, std::move(variantItem)));
-    constructor.RegisterCustomDataVariableDefinition<NamedValues<Rml::String>>(
-        std::make_unique<NamedValuesDefinition<Rml::String>>(types->GetDefinition<Rml::String>()));
-    constructor.RegisterCustomDataVariableDefinition<NamedValues<bool>>(
-        std::make_unique<NamedValuesDefinition<bool>>(types->GetDefinition<bool>()));
+    // The types belong to the context, shared by every menu's model: the first menu loaded registers them, and the
+    // register keeps what it has (the constructor's own Register... would log an error for each later menu)
+    types->RegisterDefinition(Rml::Family<NamedValues<Rml::Variant>>::Id(),
+                              std::make_unique<NamedValuesDefinition<Rml::Variant>>(variantPointer, std::move(variantItem)));
+    types->RegisterDefinition(Rml::Family<NamedValues<Rml::String>>::Id(),
+                              std::make_unique<NamedValuesDefinition<Rml::String>>(types->GetDefinition<Rml::String>()));
+    types->RegisterDefinition(Rml::Family<NamedValues<bool>>::Id(),
+                              std::make_unique<NamedValuesDefinition<bool>>(types->GetDefinition<bool>()));
     constructor.Bind("settings", &settingValues);
     constructor.Bind("labels", &labels);
     constructor.Bind("enabled", &enabledValues);
