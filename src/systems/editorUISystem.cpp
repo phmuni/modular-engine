@@ -3074,22 +3074,63 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
   const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
   const auto &submeshes = mesh.getSubmeshes();
 
-  static char globalPaths[4][256] = {};
-  static std::array<std::string, 4> lastAppliedPaths{};
-  static std::vector<std::array<char[256], 4>> paths;
-  // The text fields hold what was typed for one entity: a new primary selection starts them empty
-  static Entity textureEntity = -1;
-  if (textureEntity != entity) {
-    textureEntity = entity;
-    for (auto &path : globalPaths)
-      path[0] = '\0';
-    for (auto &applied : lastAppliedPaths)
-      applied.clear();
-    paths.clear();
-  }
   const char *labels[4] = {"Diffuse", "Specular", "Normal", "Emission"};
   const TextureSlot slots[4] = {TextureSlot::Diffuse, TextureSlot::Specular, TextureSlot::Normal,
                                 TextureSlot::Emission};
+  // The texture a part has in a slot, as an asset path (empty: none, or a solid color)
+  const auto texturePath = [&](size_t part, int slot) -> std::string {
+    if (part >= model.materialHandles.size() || model.materialHandles[part] == 0)
+      return {};
+    const Material &material = resourceSystem.getMaterial(model.materialHandles[part]);
+    const GLuint texture = slot == 0 ? material.getDiffuse()
+                           : slot == 1 ? material.getSpecular()
+                           : slot == 2 ? material.getNormal()
+                                       : material.getEmission();
+    const std::string path = texture ? resourceSystem.getTexturePath(texture) : std::string();
+    if (path.empty() || path.rfind("solid_", 0) == 0)
+      return {};
+    std::string relative = EngineConfig::relativePath(path);
+    if (relative.rfind(EngineConfig::ASSETS_PREFIX, 0) == 0)
+      relative.erase(0, EngineConfig::ASSETS_PREFIX.size());
+    return relative;
+  };
+  // The text fields show the texture each part has; what is typed stays until the texture changes (another entity
+  // selected, Set, X, undo), when they show the new one. The "all" fields show a texture all the parts share.
+  static char globalPaths[4][256] = {};
+  static std::array<std::string, 4> globalShown{};
+  static std::array<std::string, 4> globalTried{}; // the last path applied from an "all" field, not tried again
+  static std::vector<std::array<char[256], 4>> paths;
+  static std::vector<std::array<std::string, 4>> shown;
+  static Entity textureEntity = -1;
+  if (textureEntity != entity || paths.size() != model.materialHandles.size()) {
+    textureEntity = entity;
+    paths.assign(model.materialHandles.size(), {});
+    shown.assign(model.materialHandles.size(), {});
+    for (auto &all : globalShown)
+      all = "\x01"; // matches no path, so every field is filled below
+    for (auto &tried : globalTried)
+      tried.clear();
+    for (auto &part : shown)
+      part.fill("\x01");
+  }
+  const auto show = [](char *field, std::string &seen, const std::string &now) {
+    if (seen == now)
+      return false;
+    seen = now;
+    std::snprintf(field, 256, "%s", now.c_str());
+    return true;
+  };
+  for (size_t i = 0; i < paths.size(); ++i)
+    for (int t = 0; t < 4; ++t)
+      show(paths[i][t], shown[i][t], texturePath(i, t));
+  for (int t = 0; t < 4; ++t) {
+    std::string shared = texturePath(0, t);
+    for (size_t i = 1; i < model.materialHandles.size() && !shared.empty(); ++i)
+      if (texturePath(i, t) != shared)
+        shared.clear();
+    if (show(globalPaths[t], globalShown[t], shared))
+      globalTried[t].clear(); // the texture changed: any path may be applied again
+  }
 
   ImGui::Text("%zu parts", submeshes.size());
 
@@ -3103,20 +3144,21 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
       ImGui::Text("%s", labels[t]);
       ImGui::SetNextItemWidth(140.0f);
       ImGui::InputText((std::string("##global_") + labels[t]).c_str(), globalPaths[t], 256);
+      const bool editing = ImGui::IsItemActive();
       pickFileButton((std::string("pick_g_") + labels[t]).c_str(), globalPaths[t], 256, window);
       ImGui::SameLine();
 
-      // Auto-apply if path changed after picking
-      std::string currentPath(globalPaths[t]);
-      if (!currentPath.empty() && currentPath != lastAppliedPaths[t]) {
-        resourceSystem.setTexture(entity, -1, slots[t], globalPaths[t]);
-        lastAppliedPaths[t] = currentPath;
+      // Applied when the field has a new path and is not being typed in (after picking a file, or leaving the field)
+      const std::string typedPath(globalPaths[t]);
+      if (!editing && !typedPath.empty() && typedPath != globalShown[t] && typedPath != globalTried[t]) {
+        engine.beginCheckpoint();
+        resourceSystem.setTexture(entity, -1, slots[t], typedPath);
+        globalTried[t] = typedPath;
       }
 
       if (ImGui::Button((std::string("X##g_") + labels[t]).c_str())) {
+        engine.beginCheckpoint();
         resourceSystem.removeTexture(entity, -1, slots[t]);
-        globalPaths[t][0] = '\0';
-        lastAppliedPaths[t] = "";
       }
     }
 
@@ -3165,9 +3207,6 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
   }
 
   // Per-submesh
-  if (paths.size() != submeshes.size())
-    paths.resize(submeshes.size());
-
   for (size_t i = 0; i < model.materialHandles.size(); ++i) {
     ImGui::PushID(static_cast<int>(i));
     const std::string &partName = i < submeshes.size() ? submeshes[i].name : std::string();
@@ -3186,10 +3225,12 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
         pickFileButton((std::string("pick_s") + std::to_string(i) + "_" + labels[t]).c_str(), paths[i][t], 256, window);
         ImGui::SameLine();
         if (ImGui::Button((std::string("Set##") + labels[t]).c_str())) {
+          engine.beginCheckpoint();
           resourceSystem.setTexture(entity, static_cast<int>(i), slots[t], paths[i][t]);
         }
         ImGui::SameLine();
         if (ImGui::Button((std::string("X##") + labels[t]).c_str())) {
+          engine.beginCheckpoint();
           resourceSystem.removeTexture(entity, static_cast<int>(i), slots[t]);
         }
       }
