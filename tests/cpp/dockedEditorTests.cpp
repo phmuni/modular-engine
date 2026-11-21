@@ -10,6 +10,7 @@
 #include "systems/stateSystem.h"
 #include "testing.h"
 #include "uiHelpers.h"
+#include <ImGuizmo.h>
 #include <imgui/imgui_internal.h>
 #include <memory>
 
@@ -271,3 +272,22 @@ void clickTheBox(Engine &engine, testing::Steps &steps, bool paused, bool alt, b
 TEST_CASE(docked_editor_click_selects_while_paused_input) { clickTheBox(engine, steps, true, false, true, false); }
 TEST_CASE(docked_editor_click_is_the_games_while_playing_input) { clickTheBox(engine, steps, false, false, false, true); }
 TEST_CASE(docked_editor_alt_click_selects_while_playing_input) { clickTheBox(engine, steps, false, true, true, false); }
+
+// The gizmo takes the mouse over the Game panel (ImGuizmo only does over its draw list's window, or one it is told of)
+TEST_CASE(docked_editor_gizmo_is_grabbable_input) {
+  GameEntity target = engine.create("Target", Desc("box").at(0, 2, 0)); // at the test camera's center
+  showEditor(engine, true);
+  engine.time().setPaused(true);
+  auto center = std::make_shared<glm::vec2>(0.0f);
+  steps.step(6, [&engine, center]() {
+    const glm::vec4 rect = editorOf(engine).gameViewRect();
+    *center = glm::vec2(rect.x + rect.z * 0.5f, rect.y + rect.w * 0.5f);
+    mouseEvent(*center, SDL_EVENT_MOUSE_MOTION);
+  });
+  steps.step(2, [center]() { mouseEvent(*center, SDL_EVENT_MOUSE_BUTTON_DOWN); }); // selects it: the gizmo appears
+  steps.step(1, [center]() { mouseEvent(*center, SDL_EVENT_MOUSE_BUTTON_UP); });
+  steps.step(3, [&engine, target]() {
+    CHECK_EQ(editorOf(engine).selectedEntity, target.id());
+    CHECK(ImGuizmo::IsOver()); // its center handle is under the cursor
+  });
+}

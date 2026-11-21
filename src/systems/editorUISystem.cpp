@@ -1394,6 +1394,8 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   // Drawn over the game view, behind the editor's windows
   ImGuizmo::SetOrthographic(false);
   ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
+  // It takes the mouse only over its draw list's window or this one: the Game panel is what lies under the cursor
+  ImGuizmo::SetAlternativeWindow(ImGui::FindWindowByName(kGamePanel));
   ImGuizmo::SetRect(m_viewRect.x, m_viewRect.y, m_viewRect.z, m_viewRect.w);
   m_gizmoShown = true;
   // The heading kept while aligning to surfaces is the one the entity had when the drag started
