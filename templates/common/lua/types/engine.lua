@@ -495,8 +495,9 @@ function engine.setWindowSize(width, height) end
 ---@return integer height
 function engine.windowSize() end
 
----Window sizes that fit the display the window is on (usable area, without taskbar or menu bar), smallest first: the
----common 16:9 sizes and the display's own. Never empty.
+---Window sizes that fit the display the window is on (usable area, without taskbar or menu bar, and room for the
+---window's title bar), smallest first: the common 16:9 sizes (the display's own size is what fullscreen is for). On a
+---display smaller than all of them, the window's current size. Never empty.
 ---@return { width: integer, height: integer }[]
 function engine.resolutions() end
 

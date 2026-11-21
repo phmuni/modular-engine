@@ -12,21 +12,19 @@ TEST_CASE(window_resolutions_fit_the_display) {
   SDL_Window *window = engine.getSystemManager().getSystem<WindowSystem>().getWindow();
   SDL_Rect usable;
   CHECK(SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(window), &usable));
-  // The window's title bar and frame take part of the usable area: the content gets the rest
-  int top = 0, left = 0, bottom = 0, right = 0;
-  if (!engine.isFullscreen() && SDL_GetWindowBordersSize(window, &top, &left, &bottom, &right)) {
-    usable.w -= left + right;
-    usable.h -= top + bottom;
-  }
-  bool hasDesktop = false;
+  // Every size fits the usable area (the window's frame is taken off it inside resolutions(), so this is looser)
   for (size_t i = 0; i < sizes.size(); ++i) {
     CHECK(sizes[i].x > 0 && sizes[i].y > 0);
     CHECK(sizes[i].x <= usable.w && sizes[i].y <= usable.h);
     if (i > 0)
       CHECK(sizes[i].x >= sizes[i - 1].x);
-    hasDesktop = hasDesktop || (sizes[i].x == usable.w && sizes[i].y == usable.h);
   }
-  CHECK(hasDesktop); // the display's own size is always there
+  // Each one can really be given to the window: the system does not shrink it to another size
+  for (const glm::ivec2 &size : sizes) {
+    engine.setWindowSize(size.x, size.y);
+    CHECK_EQ(engine.windowSize().x, size.x);
+    CHECK_EQ(engine.windowSize().y, size.y);
+  }
 }
 
 TEST_CASE(window_size_and_render_scale) {

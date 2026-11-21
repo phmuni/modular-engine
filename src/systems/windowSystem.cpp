@@ -144,6 +144,8 @@ bool WindowSystem::setWindowSize(int width, int height) {
 }
 
 std::vector<glm::ivec2> WindowSystem::getResolutions() const {
+  // Room kept for a title bar the system does not report (macOS's is 28 to 32 points)
+  constexpr int kTitleBarAllowance = 40;
   // 16:9 sizes, the ones games and monitors use
   static constexpr glm::ivec2 kCommon[] = {{960, 540},   {1280, 720},  {1600, 900},
                                            {1920, 1080}, {2560, 1440}, {3840, 2160}};
@@ -154,19 +156,24 @@ std::vector<glm::ivec2> WindowSystem::getResolutions() const {
     sizes.push_back(getWindowSize());
     return sizes;
   }
-  // The usable area holds the whole window, its title bar and frame too: what is left for the content is the most a
-  // size can be (offered at the desktop's own size, the system shrank the window to fit, to another size)
+  // The usable area holds the whole window, its title bar and frame too: the content gets what is left. Some systems
+  // report no frame (macOS), so a decorated window keeps room for a title bar anyway; offered a size the content cannot
+  // have, the system would shrink the window to another one.
   int top = 0, left = 0, bottom = 0, right = 0;
-  if (!isFullscreen() && SDL_GetWindowBordersSize(m_window, &top, &left, &bottom, &right)) {
+  if (!isFullscreen()) {
+    if (!SDL_GetWindowBordersSize(m_window, &top, &left, &bottom, &right))
+      top = left = bottom = right = 0;
+    if (top == 0 && !(SDL_GetWindowFlags(m_window) & SDL_WINDOW_BORDERLESS))
+      top = kTitleBarAllowance;
     usable.w -= left + right;
     usable.h -= top + bottom;
   }
+  // Only the common sizes: the display's own is what fullscreen is for
   for (const glm::ivec2 &size : kCommon)
     if (size.x <= usable.w && size.y <= usable.h)
       sizes.push_back(size);
-  const glm::ivec2 desktop(usable.w, usable.h);
-  if (std::find(sizes.begin(), sizes.end(), desktop) == sizes.end())
-    sizes.push_back(desktop);
+  if (sizes.empty()) // a display smaller than every common size: the window as it is
+    sizes.push_back(getWindowSize());
   std::sort(sizes.begin(), sizes.end(),
             [](const glm::ivec2 &a, const glm::ivec2 &b) { return a.x != b.x ? a.x < b.x : a.y < b.y; });
   return sizes;

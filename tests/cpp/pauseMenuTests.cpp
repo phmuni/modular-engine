@@ -353,7 +353,9 @@ TEST_CASE(settings_at_startup) {
   CHECK(engine.fsr());
   CHECK_NEAR(static_cast<float>(std::get<double>(engine.settings().get("masterVolume"))), 1.0f, 1e-6f);
   CHECK(!engine.saveData().has("engine.volume.master"));
-
+  // resetAll turned VSync back on (its default): the test host keeps it off, or a covered window waits for the
+  // display at every frame (macOS) and the test runs out of time
+  engine.setState(Toggle::VSync, false);
 }
 
 // A game that names itself in setup has its own save applied then; what another save had applied goes back to the

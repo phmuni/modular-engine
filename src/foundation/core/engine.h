@@ -558,8 +558,9 @@ public:
   // fullscreen it is the size the window takes when it leaves it.
   void setWindowSize(int width, int height);
   glm::ivec2 windowSize();
-  // Window sizes that fit the display the window is on (usable area: no taskbar or menu bar), smallest first; the
-  // common 16:9 sizes and the display's own size. Never empty.
+  // Window sizes that fit the display the window is on (usable area: no taskbar or menu bar, and room for the title
+  // bar), smallest first: the common 16:9 sizes (the display's own is what fullscreen is for); on a display smaller
+  // than all of them, the window's current size. Never empty.
   std::vector<glm::ivec2> resolutions();
   // The 3D scene is drawn at the framebuffer's pixels times this scale (0.5 to 2, clamped; 1 by default) and
   // stretched onto the window with linear filtering: below 1 is faster, above 1 sharper (supersampling). The editor
