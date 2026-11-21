@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fails when the C++ game API gets ahead of Lua: every public method of the facade classes (GameEntity, GameUI,
-GameCamera, GameTime, GameTween, PlayerSettings) and of Engine (src/foundation/core/engine.h) must be bound in src/systems/scriptSystem.cpp, or listed below with the reason it is C++ only.
+GameCamera, GameTime, GameTween, PlayerSettings) and of Engine (src/foundation/core/engine.h) must be bound in the Lua bindings (src/systems/lua/*.cpp, scriptSystem.cpp), or listed below with the reason it is C++ only.
 Needs no build.
 
     python3 tools/check_api_parity.py
@@ -8,7 +8,7 @@ Needs no build.
 Together with tools/check_lua_api.py (every binding is described in templates/common/lua/types/engine.lua) this makes
 a new C++ method fail CI until Lua has it and the editor's definitions describe it.
 
-A method counts as bound when scriptSystem.cpp takes its address (`&GameUI::load`), or binds a Lua name made from it:
+A method counts as bound when the bindings take its address (`&GameUI::load`), or binds a Lua name made from it:
 the same name, or `setX` / `isX` for the property or function `x`. Engine's methods live in several Lua tables (engine,
 sound, input, physics...) or on Entity, so ENGINE_ALIASES says where a method went when its name differs.
 """
@@ -20,7 +20,7 @@ from pathlib import Path
 import check_lua_api
 
 ENGINE_DIR = Path(__file__).resolve().parent.parent
-BINDINGS = ENGINE_DIR / "src" / "systems" / "scriptSystem.cpp"
+BINDINGS = ENGINE_DIR / "src" / "systems" / "lua"  # with scriptSystem.cpp: see check_lua_api.read_sources
 
 # Facade class -> (header, what it is called in Lua: a usertype or a table of functions)
 FACADES = {
@@ -268,7 +268,7 @@ def lua_names_for(method):
 
 
 def main():
-    code = check_lua_api.strip_comments(BINDINGS.read_text(encoding="utf-8"))
+    code = check_lua_api.strip_comments(check_lua_api.read_sources())
     bound = check_lua_api.bound_names(code)
     problems = []
     total = 0
@@ -293,7 +293,7 @@ def main():
             problems.append(f"{class_name}: no public methods found in {header} (is this script out of date?)")
         lua_members = bound.get(owner, set())
         if owner not in bound.get("", set()):
-            problems.append(f"{class_name}: nothing called {owner} is bound in {BINDINGS.name}")
+            problems.append(f"{class_name}: nothing called {owner} is bound in the Lua bindings")
         engine = class_name == "Engine"
         for method in methods:
             total += 1
@@ -309,7 +309,7 @@ def main():
                 continue
             if f"&{class_name}::{method}" in code or lua_names_for(method) & lua_members:
                 continue
-            problems.append(f"{class_name}::{method}: not bound in Lua. Bind it in {BINDINGS.name} (as {owner}."
+            problems.append(f"{class_name}::{method}: not bound in Lua. Bind it in src/systems/lua (as {owner}."
                             f"{method}), describe it in templates/common/lua/types/engine.lua, or list it in "
                             f"{'ENGINE_C_PLUS_PLUS_ONLY' if engine else 'C_PLUS_PLUS_ONLY'} here with the reason")
 

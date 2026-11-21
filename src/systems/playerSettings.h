@@ -8,7 +8,7 @@
 //   engine.settings().step("resolution", 1);   // the next window size
 //   engine.settings().label("msaa");           // "MSAA 4x"
 //
-// Lua's `settings` table is this class (see systems/scriptSystem.cpp), reached from C++ as engine.settings().
+// Lua's `settings` table is this class (see systems/lua), reached from C++ as engine.settings().
 //
 // Saved choices are applied when the game starts, whether or not any menu is used (Engine::run, before the game's
 // setup), and again when the game names itself (Engine::setGameName). The order of precedence: the engine's defaults,

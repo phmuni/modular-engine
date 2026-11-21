@@ -1,6 +1,6 @@
 #pragma once
 // The game API for the active camera: where it looks and how wide. Lua's `camera` table is this class (see
-// systems/scriptSystem.cpp), reached from C++ as engine.camera(). The full component is engine.getActiveCamera().
+// systems/lua), reached from C++ as engine.camera(). The full component is engine.getActiveCamera().
 
 #include "components/cameraRig.h"
 #include <glm/glm.hpp>

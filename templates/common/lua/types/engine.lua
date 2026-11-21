@@ -1,6 +1,6 @@
 ---@meta
 -- The Lua API modular-engine gives scripts (autocomplete and type hints for the Lua extension, sumneko.lua).
--- Written from src/systems/scriptSystem.cpp; tools/check_lua_api.py fails when a binding is missing here.
+-- Written from the bindings in src/systems/lua; tools/check_lua_api.py fails when a binding is missing here.
 
 -- Script callbacks ---------------------------------------------------------------------------------------------------
 -- A script is a .lua file: an entity's (its Script component) or the game script (project.json). Define these as

@@ -1,6 +1,6 @@
 #pragma once
 // The game API for UI: changing the elements of the documents a game loaded, by id. Lua's `ui` table is this class
-// (see systems/scriptSystem.cpp), reached from C++ as engine.ui(). Anything not covered here is RmlUi itself:
+// (see systems/lua), reached from C++ as engine.ui(). Anything not covered here is RmlUi itself:
 // engine.getUIContext() and engine.loadUIDocument() give the raw objects, and data models bind to those.
 //
 // Every call that names an element does nothing when there is none (a document not loaded yet, a typo).

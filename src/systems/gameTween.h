@@ -1,6 +1,6 @@
 #pragma once
 // The game API for tweens: animating an entity's position, rotation, scale or color, or any number, over a time with an
-// easing curve. Lua's `tween` table is this class (see systems/scriptSystem.cpp), reached from C++ as engine.tween().
+// easing curve. Lua's `tween` table is this class (see systems/lua), reached from C++ as engine.tween().
 //
 // Tweens run on game time like timers (GameTime): a paused game, or one in slow motion, holds them. A tween of an
 // entity that is destroyed meanwhile stops without calling its completion callback. They are cancelled when a play

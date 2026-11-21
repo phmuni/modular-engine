@@ -1,6 +1,6 @@
 #pragma once
 // The game API's entity handle, and the description engine.create takes. Lua scripts and C++ games use the same
-// ones: the Lua `Entity` type is this class (see the bindings in systems/scriptSystem.cpp), so what a script does to
+// ones: the Lua `Entity` type is this class (see the bindings in systems/lua), so what a script does to
 // an entity, C++ can too, with the same behavior.
 //
 // A handle is an engine pointer and an entity number: cheap to copy and to keep, and safe to keep after the entity

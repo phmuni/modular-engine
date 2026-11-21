@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Fails when something src/systems/scriptSystem.cpp binds for Lua is missing from the editor definitions
-(templates/common/lua/types/engine.lua), so the autocomplete cannot fall behind the API. Needs no build.
+"""Fails when something the Lua bindings (src/systems/lua/*.cpp and src/systems/scriptSystem.cpp) bind is missing from
+the editor definitions (templates/common/lua/types/engine.lua), so the autocomplete cannot fall behind the API. Needs no build.
 
     python3 tools/check_lua_api.py
 """
@@ -11,11 +11,19 @@ from pathlib import Path
 
 ENGINE_DIR = Path(__file__).resolve().parent.parent
 SOURCE = ENGINE_DIR / "src" / "systems" / "scriptSystem.cpp"
+BINDING_DIR = ENGINE_DIR / "src" / "systems" / "lua"
+SOURCE_NAME = "the Lua bindings (src/systems/lua, scriptSystem.cpp)"
 DEFINITIONS = ENGINE_DIR / "templates" / "common" / "lua" / "types" / "engine.lua"
 LUARC = ENGINE_DIR / "templates" / "common" / "lua" / ".luarc.json"
 
 # Bound but not described on purpose: the Lua extension already knows these (the standard library)
 ALLOWED = {"print"}  # same as Lua's print; only the output goes to the engine's log
+
+
+def read_sources():
+    """The text of every file that binds something for Lua: scriptSystem.cpp and the files of src/systems/lua."""
+    files = [SOURCE] + sorted(BINDING_DIR.glob("*.cpp"))
+    return "\n".join(file.read_text(encoding="utf-8") for file in files)
 
 
 def strip_comments(text):
@@ -131,7 +139,7 @@ def defined_names(text):
 
 
 def main():
-    code = strip_comments(SOURCE.read_text(encoding="utf-8"))
+    code = strip_comments(read_sources())
     definitions = DEFINITIONS.read_text(encoding="utf-8")
     defined = defined_names(definitions)
 
@@ -152,11 +160,11 @@ def main():
             missing.append(f"{name} (script global; add it to diagnostics.globals in {LUARC.name})")
 
     if missing:
-        print(f"{DEFINITIONS.relative_to(ENGINE_DIR)} lacks what {SOURCE.name} binds:")
+        print(f"{DEFINITIONS.relative_to(ENGINE_DIR)} lacks what {SOURCE_NAME} binds:")
         for name in missing:
             print(f"  {name}")
         sys.exit(1)
-    print(f"Lua API definitions cover all {total} names bound in {SOURCE.name}")
+    print(f"Lua API definitions cover all {total} names bound in {SOURCE_NAME}")
 
 
 if __name__ == "__main__":

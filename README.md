@@ -475,7 +475,7 @@ engine.scripts().lua()["celebrate"] = [&] { /* ... */ };   // in Lua: celebrate(
 ### One API for C++ and Lua
 
 Everything above is implemented once, in C++, and Lua only adapts types and calls it (the rule at the top of
-[`scriptSystem.cpp`](src/systems/scriptSystem.cpp)). A C++ game uses the same API directly, so the two read alike:
+[`luaBindings.h`](src/systems/lua/luaBindings.h)). A C++ game uses the same API directly, so the two read alike:
 
 | Lua | C++ |
 | --- | --- |

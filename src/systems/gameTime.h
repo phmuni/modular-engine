@@ -1,6 +1,6 @@
 #pragma once
 // The game API for time: the time scale, pausing, the game clock and timers. Lua's `time` table is this class (see
-// systems/scriptSystem.cpp), reached from C++ as engine.time().
+// systems/lua), reached from C++ as engine.time().
 //
 // Game time is what frames advance by: the real frame time times the scale, and nothing while paused or while the
 // editor has the game frozen. Timers run on it, so a paused game keeps its timers where they were.
