@@ -45,4 +45,4 @@ assets/models/*
 /dist/
 
 # Local context for Claude Code (not shared)
-CLAUDE.local.md
+CLAUDE.md
