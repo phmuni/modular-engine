@@ -24,6 +24,7 @@
 #include "foundation/core/logger.h"
 #include "systems/animationGraph.h"
 #include "systems/animationSystem.h"
+#include "systems/editor/surfacePlacement.h"
 #include "systems/modelQueries.h"
 #include "systems/navigationSystem.h"
 #include "systems/scriptSystem.h"
@@ -1152,9 +1153,16 @@ void EditorUISystem::renderGizmoControls() {
   ImGui::Checkbox("Align to surface##gizmo", &m_gizmoAlign);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Dragging the move gizmo's center (the white circle) slides the entity over the surfaces under the\n"
-                      "cursor: its bottom on them and its up axis along their slope, keeping its heading. The arrows and\n"
-                      "squares still move it along their axis or plane. With Snap on, its place on the surface\n"
-                      "goes to the 0.5 grid and its heading to 15 degrees; the rotate gizmo then turns it around the surface's normal.");
+                      "cursor, holding the point you grabbed on the cursor, its bottom on them. The arrows and squares still\n"
+                      "move it along their axis or plane. With Snap on, its place goes to the 0.5 grid of the surface's\n"
+                      "model and its heading to 15 degrees; the rotate gizmo then turns it around the surface's normal.\n"
+                      "While dragging: R turns it 90 degrees around the surface's normal; T (without Tilt) tips it 90\n"
+                      "degrees towards the camera's side.");
+  ImGui::SameLine();
+  ImGui::Checkbox("Tilt to surface##gizmo", &m_gizmoAlignTilt);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("On: its up axis follows the surface's slope, keeping its heading. Off: it keeps its rotation (a box\n"
+                      "on its side stays on its side) and rests on whichever part of it points down.");
 }
 
 namespace {
@@ -1171,19 +1179,6 @@ glm::vec3 eulerOf(const glm::quat &rotation) { return TransformSystem::eulerDegr
 // The turn around +Y left in a rotation once its tilt (the shortest turn taking +Y to where its up went) is taken
 // out: the heading it keeps on a slope, in degrees. The twist of a swing-twist split.
 float headingAround(const glm::quat &rotation) { return glm::degrees(2.0f * std::atan2(rotation.y, rotation.w)); }
-
-// A point on a surface (through `point`, facing `normal`) put on the world grid: the two axes the surface faces
-// least are rounded, and the third follows so the result stays on the surface
-glm::vec3 snapToSurfaceGrid(const glm::vec3 &point, const glm::vec3 &normal, float step) {
-  const glm::vec3 magnitude = glm::abs(normal);
-  const int k = magnitude.x >= magnitude.y && magnitude.x >= magnitude.z ? 0 : magnitude.y >= magnitude.z ? 1 : 2;
-  const int i = (k + 1) % 3, j = (k + 2) % 3;
-  glm::vec3 snapped = point;
-  snapped[i] = std::round(point[i] / step) * step;
-  snapped[j] = std::round(point[j] / step) * step;
-  snapped[k] = point[k] - (normal[i] * (snapped[i] - point[i]) + normal[j] * (snapped[j] - point[j])) / normal[k];
-  return snapped;
-}
 } // namespace
 
 void EditorUISystem::renderGizmo(SystemManager &systemManager, ComponentManager &componentManager) {
@@ -1289,6 +1284,8 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   if (!ImGuizmo::IsUsing()) {
     m_alignHeading = headingAround(rotationOf(*transform));
     m_alignGrabbed = false;
+    m_alignRotation = rotationOf(*transform);
+    m_alignTurned = false;
     m_dragStartRotation = rotationOf(*transform);
     m_dragStartAngles = transform->rotation;
     m_dragRotation = m_dragStartRotation;
@@ -1681,35 +1678,33 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
     return false;
 
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
-  const float baseHeight = resourceSystem.getMesh(model->meshHandle).getBoundsMin().y * transform.scale.y;
+  const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
+  const glm::vec3 boundsMin = mesh.getBoundsMin(), boundsMax = mesh.getBoundsMax();
   const glm::mat4 viewProjection = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
   const glm::vec2 display(io.DisplaySize.x, io.DisplaySize.y);
   const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
 
-  // The first frame: where the entity's base (the bottom of its bounds, below its origin along its up) is on screen
-  // from the cursor. From then on the base stays under the cursor (plus that) and sits on the point it is over. The
-  // origin is not what follows the cursor: it is above the base, so seen from the side its base would land further
-  // along the ray than what the cursor is over, off the edge of a small top (a crate, the player) onto the floor.
-  if (!m_alignGrabbed) {
-    const glm::vec3 base = transform.position + rotationOf(transform) * glm::vec3(0.0f, baseHeight, 0.0f);
-    const glm::vec4 clip = viewProjection * glm::vec4(base, 1.0f);
-    m_alignGrabOffset = glm::vec2(0.0f);
-    if (clip.w > 1e-4f) {
-      const glm::vec2 baseNdc = glm::vec2(clip) / clip.w;
-      m_alignGrabOffset = glm::vec2((baseNdc.x + 1.0f) * 0.5f, (1.0f - baseNdc.y) * 0.5f) * display - mouse;
-    }
-    m_alignGrabbed = true;
-  }
-
   // The cursor's ray
-  const glm::vec2 screen = mouse + m_alignGrabOffset;
-  const glm::vec2 ndc(screen.x / display.x * 2.0f - 1.0f, 1.0f - screen.y / display.y * 2.0f);
+  const glm::vec2 ndc(mouse.x / display.x * 2.0f - 1.0f, 1.0f - mouse.y / display.y * 2.0f);
   const glm::mat4 inverse = glm::inverse(viewProjection);
   glm::vec4 nearPoint = inverse * glm::vec4(ndc, -1.0f, 1.0f), farPoint = inverse * glm::vec4(ndc, 1.0f, 1.0f);
   nearPoint /= nearPoint.w;
   farPoint /= farPoint.w;
   const glm::vec3 origin(nearPoint);
   const glm::vec3 direction = glm::normalize(glm::vec3(farPoint - nearPoint));
+
+  // The first frame: the point of the entity the cursor holds, found where the cursor's ray meets the plane of the
+  // entity's current support (its base point, facing its up in Tilt mode and the world's up otherwise). It is kept in
+  // the entity's own frame, so it stays under the cursor whatever the entity turns into, with nothing jumping when
+  // the drag starts and no drift with perspective.
+  if (!m_alignGrabbed) {
+    const glm::vec3 support =
+        m_gizmoAlignTilt ? m_alignRotation * glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+    const float height =
+        surfacePlacement::supportDistance(boundsMin, boundsMax, transform.scale, m_alignRotation, support);
+    m_alignGrab = surfacePlacement::grabPoint(transform.position, m_alignRotation, support, height, origin, direction);
+    m_alignGrabbed = true;
+  }
 
   // Surfaces of anything but what is being moved: the entity, the other selected ones, and their children (a
   // prefab's parts), which it would otherwise climb onto
@@ -1726,19 +1721,58 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   const auto hit = queries.raycast(origin, direction, std::numeric_limits<float>::max(), other);
   if (!hit)
     return false;
-  const ModelHit &target = *hit;
-  const float height = -baseHeight; // the origin's height above its base
+  const glm::vec3 normal = hit->normal;
 
-  // Its up (+Y) along the surface's normal, keeping the heading it had when the drag started (to 15 degrees when
-  // snapping: the rotation around the normal)
-  const glm::vec3 up(0.0f, 1.0f, 0.0f);
-  const float headingDegrees = snapped ? std::round(m_alignHeading / kSnapAngle) * kSnapAngle : m_alignHeading;
-  const glm::quat tilt = glm::rotation(up, target.normal);
-  const glm::quat heading = glm::angleAxis(glm::radians(headingDegrees), up);
-  transform.rotation = eulerOf(tilt * heading);
-  // Its lowest point (the bottom of its bounds) on the point the cursor is over, which is on the grid when snapping
-  const glm::vec3 point = snapped ? snapToSurfaceGrid(target.point, target.normal, kSnapStep) : target.point;
-  transform.position = point + target.normal * height;
+  // R and T while dragging (not while a text field has the keyboard). R turns it 90 degrees around the surface's
+  // normal; T, without Tilt, tips it 90 degrees around the surface axis nearest the camera's right.
+  if (!io.WantTextInput) {
+    if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+      if (m_gizmoAlignTilt)
+        m_alignHeading += 90.0f;
+      else
+        m_alignRotation = glm::angleAxis(glm::radians(90.0f), normal) * m_alignRotation;
+      m_alignTurned = true;
+    }
+    if (!m_gizmoAlignTilt && ImGui::IsKeyPressed(ImGuiKey_T, false)) {
+      const glm::vec3 right(glm::inverse(cameraSystem.getViewMatrix(*camera))[0]);
+      const glm::vec3 axis = right - normal * glm::dot(right, normal);
+      if (glm::length(axis) > 1e-4f) {
+        m_alignRotation = glm::angleAxis(glm::radians(90.0f), glm::normalize(axis)) * m_alignRotation;
+        m_alignTurned = true;
+      }
+    }
+  }
+
+  // Tilt: its up (+Y) along the surface's normal, keeping the heading it had when the drag started (to 15 degrees
+  // when snapping: the rotation around the normal). Otherwise the rotation it has, which only R and T change.
+  glm::quat rotation = m_alignRotation;
+  if (m_gizmoAlignTilt) {
+    const glm::vec3 up(0.0f, 1.0f, 0.0f);
+    const float headingDegrees = snapped ? std::round(m_alignHeading / kSnapAngle) * kSnapAngle : m_alignHeading;
+    rotation = glm::rotation(up, normal) * glm::angleAxis(glm::radians(headingDegrees), up);
+    transform.rotation = eulerOf(rotation);
+  }
+  else if (m_alignTurned)
+    transform.rotation = eulerOf(rotation);
+
+  // The grabbed point on the hit, the entity resting on the surface; when snapping, the spot under its origin goes
+  // to the grid of the model it is on, and the origin follows
+  glm::vec3 position =
+      surfacePlacement::place(boundsMin, boundsMax, transform.scale, rotation, m_alignGrab, hit->point, normal);
+  if (snapped) {
+    const float height = surfacePlacement::supportDistance(boundsMin, boundsMax, transform.scale, rotation, normal);
+    glm::quat frameRotation(1.0f, 0.0f, 0.0f, 0.0f);
+    glm::vec3 frameOrigin(0.0f);
+    if (const Transform *surface = componentManager.tryGet<Transform>(hit->entity)) {
+      const glm::mat4 world = transformSystem.calculateModelMatrix(*surface);
+      frameRotation = glm::quat_cast(glm::mat3(glm::normalize(glm::vec3(world[0])), glm::normalize(glm::vec3(world[1])),
+                                               glm::normalize(glm::vec3(world[2]))));
+      frameOrigin = glm::vec3(world[3]);
+    }
+    position = surfacePlacement::snapInFrame(position - normal * height, normal, frameRotation, frameOrigin, kSnapStep) +
+               normal * height;
+  }
+  transform.position = position;
   return true;
 }
 

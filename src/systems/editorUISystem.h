@@ -126,13 +126,17 @@ private:
   glm::vec3 m_dragStartAngles{0.0f};
   glm::quat m_dragRotation{1.0f, 0.0f, 0.0f, 0.0f}; // the rotate gizmo's unsnapped rotation during the drag
   bool m_gizmoAlign = false;
-  float m_alignHeading = 0.0f; // degrees around +Y, from when the drag started
-  // Where the entity's base (the bottom of its bounds) was on screen from the cursor when the drag started, in pixels:
-  // it stays at that distance from the cursor, so nothing jumps when the drag starts
-  glm::vec2 m_alignGrabOffset{0.0f};
-  bool m_alignGrabbed = false; // m_alignGrabOffset is set for this drag
+  bool m_gizmoAlignTilt = true; // Align to surface: tilt the entity to the slope (else it keeps its rotation)
+  float m_alignHeading = 0.0f;  // degrees around +Y, from when the drag started; R adds 90 in Tilt mode
+  // The rotation the entity keeps without Tilt: from when the drag started, turned by R and T
+  glm::quat m_alignRotation{1.0f, 0.0f, 0.0f, 0.0f};
+  bool m_alignTurned = false; // R or T changed m_alignRotation during this drag
+  // The point of the entity the cursor holds, in its own (rotated, unscaled) frame, found on the first frame of the
+  // drag: it is put on the surface under the cursor, so nothing jumps and perspective does not drift it
+  glm::vec3 m_alignGrab{0.0f};
+  bool m_alignGrabbed = false; // m_alignGrab is set for this drag
   // Places the selected entity on the surface under the cursor; false if there is none. With `snapped`, its place on
-  // the surface goes to the grid (0.5 units along the surface) and its heading to 15 degrees.
+  // the surface goes to the grid of the model under it (0.5 units along the surface) and its heading to 15 degrees.
   // The rotate gizmo's result with Snap on, as angles: on the 15 degree steps when the turn changed one angle, else
   // the turn itself in 15 degree steps from where the drag started
   glm::vec3 snappedRotation(const glm::quat &dragged) const;
