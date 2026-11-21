@@ -136,9 +136,17 @@ test.run(function()
   test.eq(save.get("engine.window.height"), height)
   -- A size by its text, from the list (the window's earlier size is not on it any more: a dragged size only lives in
   -- the list while the window has it)
-  local other = settings.choices("resolution")[2]
-  test.eq(settings.set("resolution", other), true)
-  test.eq(settings.get("resolution"), other)
+  -- A small display (CI's 1024 x 768) may have just one size left once the window has it: then there is no other
+  local other
+  for _, size in ipairs(settings.choices("resolution")) do
+    if size ~= after then
+      other = size
+    end
+  end
+  if other then
+    test.eq(settings.set("resolution", other), true)
+    test.eq(settings.get("resolution"), other)
+  end
   test.eq(settings.set("resolution", "7 x 3"), false, "a size that is not on the list does not fit")
 
   -- reset: back to what the game started with, and out of the save data
