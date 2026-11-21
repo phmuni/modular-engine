@@ -1832,7 +1832,9 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
                       "Every term must match. A search shows a flat list.");
   const sceneFilter::Query query = sceneFilter::parse(m_sceneFilter);
 
-  ImGui::BeginChild("Hierarchy", ImVec2(0, ui(260.0f)), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
+  // The list fills the panel (it is all there is); the empty space at its bottom is where a drop detaches
+  ImGui::BeginChild("Hierarchy", ImVec2(0, std::max(ImGui::GetContentRegionAvail().y, ui(120.0f))),
+                    ImGuiChildFlags_Borders);
 
   // Every entity of the scene, in creation order. Nothing is left out: Hidden only turns the entity's drawing off, and
   // the editor keeps no entities of its own.
