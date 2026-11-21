@@ -248,6 +248,7 @@ const SceneSerializer::PrefabFile *SceneSerializer::cachedPrefabFile(const std::
   PrefabFile file;
   file.entities = std::move((*scene)["entities"]);
   file.time = std::filesystem::last_write_time(key, error);
+  file.size = std::filesystem::file_size(key, error);
   fillPrefabFile(file, key);
   return &m_prefabFiles.emplace(key, std::move(file)).first->second;
 }
@@ -263,6 +264,7 @@ const SceneSerializer::PrefabFile *SceneSerializer::prefabFile(const std::string
     PrefabFile file;
     file.entities = std::move((*scene)["entities"]);
     file.time = std::filesystem::last_write_time(key, error);
+    file.size = std::filesystem::file_size(key, error);
     fillPrefabFile(file, key);
     const std::vector<std::string> deps = file.deps;
     m_prefabFiles.emplace(key, std::move(file));
@@ -708,6 +710,7 @@ size_t SceneSerializer::updateInstances(std::map<std::string, PrefabFile> fresh,
     PrefabFile &stored = m_prefabFiles[key];
     stored.entities = std::move(file.entities);
     stored.time = file.time;
+    stored.size = file.size;
     stored.exists = true;
   }
   for (const std::string &key : affected)
@@ -745,12 +748,15 @@ size_t SceneSerializer::refreshKeys(const std::vector<std::string> &keys, bool l
     std::error_code error;
     const auto time = std::filesystem::last_write_time(key, error);
     known.exists = !error;
-    if (!error && time != known.time) {
+    std::error_code sizeError;
+    const std::uintmax_t size = std::filesystem::file_size(key, sizeError);
+    if (!error && (time != known.time || (!sizeError && size != known.size))) {
       // Unreadable now (half written): tried again the next time
       if (std::optional<json> scene = readFile(key, log)) {
         PrefabFile changed;
         changed.entities = std::move((*scene)["entities"]);
         changed.time = time;
+        changed.size = sizeError ? 0 : size;
         fresh.emplace(key, std::move(changed));
       }
       continue;
@@ -762,6 +768,7 @@ size_t SceneSerializer::refreshKeys(const std::vector<std::string> &keys, bool l
         PrefabFile again;
         again.entities = known.entities;
         again.time = known.time;
+        again.size = known.size;
         fresh.emplace(key, std::move(again));
         break;
       }
@@ -926,6 +933,7 @@ bool SceneSerializer::restorePrefabFile(const std::string &resolvedPath, const s
   PrefabFile fresh;
   fresh.entities = std::move((*scene)["entities"]);
   fresh.time = std::filesystem::last_write_time(resolvedPath, error);
+  fresh.size = std::filesystem::file_size(resolvedPath, error);
   fillPrefabFile(fresh, key);
   m_prefabFiles[key] = std::move(fresh);
   refillDependents(key); // the prefabs that hold this one see it as it is now
@@ -981,6 +989,7 @@ bool SceneSerializer::applyInstance(Entity root, const std::string &path) {
   fresh.entities = (*written)["entities"];
   std::error_code error;
   fresh.time = std::filesystem::last_write_time(resolved, error);
+  fresh.size = std::filesystem::file_size(resolved, error);
   std::map<std::string, PrefabFile> changed;
   changed.emplace(fileKey(resolved), std::move(fresh));
   updateInstances(std::move(changed), root);

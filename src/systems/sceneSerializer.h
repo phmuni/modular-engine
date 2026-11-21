@@ -180,6 +180,7 @@ private:
                                             // nested prefabs expanded (their overrides in it applied)
     int root = -1;                          // the one entity without a parent; -1 if there is not exactly one
     std::filesystem::file_time_type time{}; // when it was read
+    std::uintmax_t size = 0;                // and its size then: two writes in one clock tick share a time
     bool exists = true;
     std::vector<std::string> opaque;  // keys of nested instances that could not be expanded: left as they are
     std::vector<std::string> deps;    // the files nested in it, however deep (keys as fileKey)
