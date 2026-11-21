@@ -83,6 +83,10 @@ struct ScriptSystem::Impl : LuaHost {
   std::unordered_map<Entity, std::map<std::string, ScriptValue>> appliedProperties;
   Instance gameScript;
   bool hasGameScript = false;
+  // A second script beside the game's (the --script option): same globals and `game` table, its own onStart and
+  // onUpdate, started after the game script's
+  Instance sideScript;
+  bool hasSideScript = false;
   std::string gameScriptPath;
 
   // Each entity's own Lua fields (self.speed = 5), kept apart from its script so reloading keeps them
@@ -314,6 +318,10 @@ struct ScriptSystem::Impl : LuaHost {
       gameScript.started = true;
       call(gameScript, "onStart");
     }
+    if (hasSideScript && !sideScript.started) {
+      sideScript.started = true;
+      call(sideScript, "onStart");
+    }
     // A copy of the list: scripts may create and destroy entities (with scripts) while running
     std::vector<Entity> entities;
     entities.reserve(instances.size());
@@ -333,6 +341,8 @@ struct ScriptSystem::Impl : LuaHost {
     }
     if (hasGameScript)
       call(gameScript, "onUpdate", deltaTime);
+    if (hasSideScript)
+      call(sideScript, "onUpdate", deltaTime);
     for (Entity entity : entities) {
       auto it = instances.find(entity);
       if (it != instances.end() && engine.isAlive(entity))
@@ -466,6 +476,14 @@ bool ScriptSystem::runGameScript(const std::string &path) {
   impl.gameScript.path = impl.gameScriptPath;
   impl.hasGameScript = true;
   return impl.load(impl.gameScript);
+}
+
+bool ScriptSystem::runSideScript(const std::string &path) {
+  Impl &impl = *m_impl;
+  impl.sideScript = Impl::Instance{};
+  impl.sideScript.path = EngineConfig::resolveAsset(path);
+  impl.hasSideScript = true;
+  return impl.load(impl.sideScript);
 }
 
 std::vector<ScriptProperty> ScriptSystem::getProperties(Entity entity) { return m_impl->propertiesOf(entity); }

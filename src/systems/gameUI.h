@@ -43,6 +43,12 @@ public:
   void attribute(const std::string &id, const std::string &name, const std::string &value);
   // Calls the handler whenever the element is clicked; false if there is no such element
   bool onClick(const std::string &id, std::function<void()> handler);
+  // Clicks the first element that is shown and matches an RCSS selector ("button.quit", "#play",
+  // "[data-event-click*=options]"), as if the player had: its data-event-click runs. For driving a game's menus from a
+  // script (smoke tests); false if nothing shown matches.
+  bool click(const std::string &selector);
+  // Whether an element that is shown (not hidden, nor in a hidden document) matches the selector
+  bool isVisible(const std::string &selector);
 
   // The pause menu (see systems/pauseMenu.h): a document of the project's, which Escape opens once enabled. It is a
   // Menu (named "pause"): pauseMenu().open("options"), pauseMenu().isOpen(), close(); that works without Escape being

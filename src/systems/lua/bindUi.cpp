@@ -129,6 +129,9 @@ void LuaBindings::bindUi() {
   // ui.style("panel", "background-color", "#204060"): one RCSS property, "" to go back to the stylesheet's
   ui.set_function("style", &GameUI::style, &engine.ui());
   ui.set_function("attribute", &GameUI::attribute, &engine.ui());
+  // ui.click("button.quit"): clicks the first shown element matching an RCSS selector; ui.isVisible(selector)
+  ui.set_function("click", &GameUI::click, &engine.ui());
+  ui.set_function("isVisible", &GameUI::isVisible, &engine.ui());
   ui.set_function("onClick", [this](const std::string &id, sol::protected_function handler) {
     return engine.ui().onClick(id, callback(std::move(handler), "ui.onClick"));
   });

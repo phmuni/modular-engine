@@ -134,3 +134,25 @@ jobs:
             ${{ matrix.toolset && format('-T {0}', matrix.toolset) || '' }}
           cmake --build "$RUNNER_TEMP/MixedGame/build" --config Release --parallel 4
           ls "$RUNNER_TEMP/MixedGame/bin"
+
+      # Runs the six projects created above and drives their screens (main menu, Options, pause menu, game over) with
+      # --script (tools/smoke/*.lua); the C++ ones are built here when the step above has not (see the script's header).
+      - name: Smoke test of the projects' menus (virtual screen, software OpenGL)
+        if: runner.os == 'Linux'
+        env:
+          SDL_VIDEODRIVER: x11
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a -s "-screen 0 1280x720x24" python3 tools/smoke_templates.py --cpp examples --work-dir "$RUNNER_TEMP"
+
+      - name: Smoke test of the projects' menus (macOS, not required to pass)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: python3 tools/smoke_templates.py --cpp examples --work-dir "$RUNNER_TEMP"
+
+      - name: Smoke test of the projects' menus (Windows, not required to pass)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: bash
+        env:
+          GALLIUM_DRIVER: llvmpipe
+        run: python tools/smoke_templates.py --cpp examples --work-dir "$RUNNER_TEMP" ${{ matrix.toolset && format('--cmake-arg=-T --cmake-arg={0}', matrix.toolset) || '' }}

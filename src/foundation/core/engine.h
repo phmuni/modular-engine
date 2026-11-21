@@ -543,6 +543,8 @@ public:
   //   --benchmark [seconds]               log frame-time statistics (10 s by default) and quit
   //   --save-scene <file.json> [seconds]  save what the game built (after 0 s by default) and quit
   //   --deterministic                     fixed 1/60 s frames and seeded randomness, for repeatable runs
+  //   --script <file.lua>                 run a Lua script beside the game (onStart, onUpdate, engine.run), e.g. to
+  //                                       drive its menus in a smoke test; a script error is logged like any other
   // parseCommandLine reads them (no window needed, so bad arguments can be reported first) and leaves the rest,
   // in order, to the game; applyCommandLine acts on them, after initialize() and before run().
   struct CommandLine {
@@ -552,6 +554,7 @@ public:
     std::string saveScenePath;
     float saveSceneDelay = 0.0f;
     bool deterministic = false;
+    std::string scriptPath; // --script, absolute
     std::vector<std::string> arguments; // everything else, argv[0] left out
   };
   static CommandLine parseCommandLine(int argc, char **argv);

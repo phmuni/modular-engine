@@ -1341,3 +1341,15 @@ function ui.attribute(id, name, value) end
 ---@param handler fun()
 ---@return boolean
 function ui.onClick(id, handler) end
+
+---Clicks the first shown element that matches an RCSS selector (`"button.quit"`, `"#play"`,
+---`"[data-event-click*=options]"`), as if the player had: its data-event-click runs. For driving menus from a script
+---(a smoke test); false if nothing shown matches.
+---@param selector string
+---@return boolean
+function ui.click(selector) end
+
+---Whether an element that is shown (not hidden, nor in a hidden document) matches the RCSS selector.
+---@param selector string
+---@return boolean
+function ui.isVisible(selector) end

@@ -285,6 +285,8 @@ python3 tools/run_tests.py -j 1 -v         # one at a time, with the output of p
 
 They need a window with OpenGL 4.1, but not a GPU: on Linux without a screen, install `xvfb` and Mesa's software driver (`libgl1-mesa-dri`) and run `xvfb-run -a -s "-screen 0 1280x720x24" python3 tools/run_tests.py`, as CI does. On Windows, CI puts Mesa's `opengl32.dll` and `libgallium_wgl.dll` (llvmpipe, from pal1000/mesa-dist-win) next to `bin/engine_tests.exe` and sets `GALLIUM_DRIVER=llvmpipe`; you can do the same on a machine without a GPU. The engine's systems all start together with the window and the GL context, so there is no logic-only mode; a small window and software rendering keep the whole suite under a few minutes. Tests keep the save data in memory or in a temporary folder, never in the real save folder.
 
+`tools/smoke_templates.py` creates a project of each kind with the launcher (Lua, C++, C++ + Lua, each as the example game and as an empty project), runs every game with `--deterministic` and `--script tools/smoke/<example|empty>.lua`, and clicks through its screens like a player (`ui.click`): main menu, Options, Play, pause menu, game over. `--script <file.lua>` works on any game: it runs a Lua script beside the game's own (onStart, onUpdate, `engine.run`). The C++ projects are built against the checkout first (minutes); `--cpp none` runs only the Lua ones in seconds.
+
 To add a Lua test, create `tests/lua/<name>.lua`; the runner finds it. The global `test` helper reports failures with their line and lets the script go on:
 
 ```lua

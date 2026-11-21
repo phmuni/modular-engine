@@ -26,6 +26,21 @@ struct GameUI::Impl {
 
   explicit Impl(Engine &e) : engine(e) {}
 
+  // The first element of a shown document that matches the selector
+  Rml::Element *findShown(const std::string &selector) {
+    Rml::Context *context = engine.getUIContext();
+    if (!context)
+      return nullptr;
+    for (int i = 0; i < context->GetNumDocuments(); ++i) {
+      Rml::ElementList matches;
+      context->GetDocument(i)->QuerySelectorAll(matches, selector);
+      for (Rml::Element *element : matches)
+        if (element->IsVisible(true))
+          return element;
+    }
+    return nullptr;
+  }
+
   Rml::Element *find(const std::string &id) {
     Rml::Context *context = engine.getUIContext();
     if (!context)
@@ -101,6 +116,16 @@ bool GameUI::onClick(const std::string &id, std::function<void()> handler) {
   element->AddEventListener(Rml::EventId::Click, m_impl->listeners.back().get());
   return true;
 }
+
+bool GameUI::click(const std::string &selector) {
+  Rml::Element *element = m_impl->findShown(selector);
+  if (!element)
+    return false;
+  element->Click();
+  return true;
+}
+
+bool GameUI::isVisible(const std::string &selector) { return m_impl->findShown(selector) != nullptr; }
 
 bool GameUI::loadFont(const std::string &path, bool fallback) { return m_impl->engine.loadUIFont(path, fallback); }
 

@@ -37,6 +37,10 @@ public:
   // A script for the whole game, not tied to an entity: onStart() once, onUpdate(dt) every frame. Its globals and
   // the shared `game` table are seen by every script.
   bool runGameScript(const std::string &path);
+  // A second game script beside the first, with the same globals and `game` table and its own onStart and onUpdate
+  // (it starts after the game script's). Not tied to what the game script is, so it can drive any game: the engine's
+  // --script option uses it. A path that is not absolute is relative to assets/, like the game script's.
+  bool runSideScript(const std::string &path);
 
   // The properties the entity's script declares, by name, with their defaults (empty if it has no script, or the file
   // is missing or broken). Reads the file if the game has not started it (the editor asks while editing), running its

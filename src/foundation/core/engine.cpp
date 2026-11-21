@@ -462,6 +462,8 @@ Engine::CommandLine Engine::parseCommandLine(int argc, char **argv) {
     } else if (arg == "--save-scene" && i + 1 < argc) {
       result.saveScenePath = std::filesystem::absolute(argv[++i]).string();
       number(i, result.saveSceneDelay);
+    } else if (arg == "--script" && i + 1 < argc) {
+      result.scriptPath = std::filesystem::absolute(argv[++i]).string();
     } else if (arg == "--deterministic") {
       result.deterministic = true;
       s_deterministicRun = true;
@@ -479,7 +481,8 @@ const char *Engine::commandLineHelp() {
   return "  --screenshot <file.bmp> [seconds]   Save a frame after that long (3 s by default) and quit\n"
          "  --benchmark [seconds]               Log frame-time statistics (10 s by default) and quit\n"
          "  --save-scene <file.json> [seconds]  Save what the game built (after 0 s by default) and quit\n"
-         "  --deterministic                     Fixed 1/60 s frames and seeded randomness, for repeatable runs\n";
+         "  --deterministic                     Fixed 1/60 s frames and seeded randomness, for repeatable runs\n"
+         "  --script <file.lua>                 Run a Lua script beside the game (onStart, onUpdate, engine.run)\n";
 }
 
 void Engine::applyCommandLine(const CommandLine &commandLine) {
@@ -492,6 +495,8 @@ void Engine::applyCommandLine(const CommandLine &commandLine) {
     saveSceneAfter(commandLine.saveScenePath, commandLine.saveSceneDelay, true);
   if (commandLine.benchmarkSeconds > 0.0f)
     runBenchmark(commandLine.benchmarkSeconds);
+  if (!commandLine.scriptPath.empty())
+    scripts().runSideScript(commandLine.scriptPath);
 }
 
 void Engine::enablePauseMenu(bool enabled) { pauseMenu().setEnabled(enabled); }
