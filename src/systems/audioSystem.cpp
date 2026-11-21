@@ -28,6 +28,8 @@ struct AudioSystem::Impl {
     uint64_t seenFrame = 0;
   };
 
+  ma_context context{}; // only for the null backend: the engine makes its own otherwise
+  bool hasContext = false;
   ma_engine engine{};
   ma_sound_group effects{};
   ma_sound_group music{};
@@ -49,8 +51,11 @@ struct AudioSystem::Impl {
   bool paused = false;
 
   ~Impl() {
-    if (!ready)
+    if (!ready) {
+      if (hasContext)
+        ma_context_uninit(&context);
       return;
+    }
     // Sounds before their groups, groups before the engine
     for (auto &[id, voice] : voices)
       destroySound(voice.sound);
@@ -60,6 +65,8 @@ struct AudioSystem::Impl {
     ma_sound_group_uninit(&effects);
     ma_sound_group_uninit(&music);
     ma_engine_uninit(&engine);
+    if (hasContext)
+      ma_context_uninit(&context);
   }
 
   static void destroySound(std::unique_ptr<ma_sound> &sound) {
@@ -108,6 +115,13 @@ struct AudioSystem::Impl {
 
 AudioSystem::AudioSystem(ComponentManager &cm) : m_impl(std::make_unique<Impl>()), m_componentManager(cm) {
   ma_engine_config config = ma_engine_config_init();
+  if (s_nullBackend) {
+    const ma_backend backends[] = {ma_backend_null};
+    if (ma_context_init(backends, 1, nullptr, &m_impl->context) == MA_SUCCESS) {
+      m_impl->hasContext = true;
+      config.pContext = &m_impl->context;
+    }
+  }
   ma_result result = ma_engine_init(&config, &m_impl->engine);
   if (result != MA_SUCCESS) {
     LOG_W("[AudioSystem] No audio device, sound disabled: %s", ma_result_description(result));

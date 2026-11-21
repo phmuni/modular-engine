@@ -466,6 +466,8 @@ Engine::CommandLine Engine::parseCommandLine(int argc, char **argv) {
       result.deterministic = true;
       s_deterministicRun = true;
       WindowSystem::setHighDensity(false); // the same pixels on any screen: the window is created after this
+      WindowSystem::setUnattended(true);   // nobody to bring the window to the front
+      AudioSystem::setNullBackend(true);   // nobody to listen: skip the sound card
     } else {
       result.arguments.push_back(arg);
     }

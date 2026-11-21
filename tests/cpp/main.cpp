@@ -9,7 +9,9 @@
 
 #include "foundation/core/engine.h"
 #include "host.h"
+#include "systems/audioSystem.h"
 #include "systems/saveData.h"
+#include "systems/windowSystem.h"
 #include "testing.h"
 #include <cstdio>
 #include <cstdlib>
@@ -47,6 +49,9 @@ int main(int argc, char **argv) {
     return 2;
   }
 
+  // Nobody sees or hears a test: no sound card to open, and no window to wait for the system to bring to the front
+  WindowSystem::setUnattended(true);
+  AudioSystem::setNullBackend(true);
   Engine engine;
   if (!engine.initialize()) {
     std::fprintf(stderr, "engine_tests: the engine could not start (no window or OpenGL 4.1?)\n");

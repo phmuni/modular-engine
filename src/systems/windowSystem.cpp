@@ -10,6 +10,8 @@ WindowSystem::WindowSystem(float screenWidth, float screenHeight) : m_window(nul
 };
 
 bool WindowSystem::initialize(float screenWidth, float screenHeight) {
+  if (s_unattended)
+    SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
     LOG_E("[Window System] Failed to initialize SDL: %s", SDL_GetError());
     return false;

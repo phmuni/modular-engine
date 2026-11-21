@@ -19,6 +19,11 @@ public:
   explicit AudioSystem(ComponentManager &cm);
   ~AudioSystem() override;
 
+  // Whether the next AudioSystem opens miniaudio's null backend (a device that plays to nowhere, at real speed) rather
+  // than the sound card: opening a real device takes ~70 ms, and deterministic runs have nobody to listen. Sounds load,
+  // play and end as usual. Before the system is created.
+  static void setNullBackend(bool enabled) { s_nullBackend = enabled; }
+
   bool isAvailable() const;
 
   // Syncs listener, sources and pause state; frees finished one-shots and sounds of removed sources. Once per frame.
@@ -48,6 +53,8 @@ public:
   size_t getVoiceCount() const;
 
 private:
+  static inline bool s_nullBackend = false;
+
   struct Impl;
   std::unique_ptr<Impl> m_impl;
   ComponentManager &m_componentManager;

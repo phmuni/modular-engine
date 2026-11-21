@@ -15,12 +15,18 @@ private:
   bool m_cursorVisible = true;
   static inline bool s_highDensity = true;
   static inline bool s_sizeRequested = false;
+  static inline bool s_unattended = false;
 
 public:
   // Whether the next window gets a framebuffer at the display's full pixel density (sharp on Retina and Wayland, and
   // the window scaled up on displays with a content scale). Off for deterministic runs, so their pictures do not
   // depend on the screen they ran on. Before the window is created.
   static void setHighDensity(bool enabled) { s_highDensity = enabled; }
+
+  // For runs nobody watches: on macOS the app stays in the background (no Dock icon, no activation), which spares
+  // the ~300 ms the first window waits for the system to bring it to the front. Before SDL starts, which is when the
+  // window system is created.
+  static void setUnattended(bool enabled) { s_unattended = enabled; }
 
   // Where a window sits and how big it is, in window units; what is remembered between runs of a game
   struct Placement {
