@@ -18,24 +18,28 @@ float supportDistance(const glm::vec3 &boundsMin, const glm::vec3 &boundsMax, co
   return most;
 }
 
-glm::vec3 grabPoint(const glm::vec3 &position, const glm::quat &rotation, const glm::vec3 &support,
-                    float supportHeight, const glm::vec3 &rayOrigin, const glm::vec3 &rayDirection) {
-  const float facing = glm::dot(rayDirection, support);
-  if (std::abs(facing) < 1e-4f)
-    return glm::vec3(0.0f);
-  const glm::vec3 base = position - support * supportHeight;
-  const float along = glm::dot(base - rayOrigin, support) / facing;
+bool heldOrigin(const glm::vec3 &rayOrigin, const glm::vec3 &rayDirection, const glm::vec3 &hitPoint,
+                const glm::vec3 &hitNormal, float height, glm::vec3 &origin) {
+  const float facing = glm::dot(rayDirection, hitNormal);
+  if (std::abs(facing) < 0.05f)
+    return false;
+  const float along = glm::dot(hitPoint + hitNormal * height - rayOrigin, hitNormal) / facing;
   if (along <= 0.0f)
-    return glm::vec3(0.0f);
-  return glm::inverse(rotation) * (rayOrigin + rayDirection * along - position);
+    return false;
+  origin = rayOrigin + rayDirection * along;
+  return true;
 }
 
-glm::vec3 place(const glm::vec3 &boundsMin, const glm::vec3 &boundsMax, const glm::vec3 &scale,
-                const glm::quat &rotation, const glm::vec3 &grabLocal, const glm::vec3 &hitPoint,
-                const glm::vec3 &hitNormal) {
-  const glm::vec3 grabbed = rotation * grabLocal;
-  const glm::vec3 along = grabbed - hitNormal * glm::dot(grabbed, hitNormal);
-  return hitPoint - along + hitNormal * supportDistance(boundsMin, boundsMax, scale, rotation, hitNormal);
+glm::vec3 slideToSupport(const glm::vec3 &held, const glm::vec3 &fallback,
+                         const std::function<bool(const glm::vec3 &)> &supported, int steps) {
+  if (supported(held))
+    return held;
+  float off = 0.0f, on = 1.0f; // fractions of the way: not supported at `off`, taken as supported at `on`
+  for (int step = 0; step < steps; ++step) {
+    const float middle = 0.5f * (off + on);
+    (supported(held + (fallback - held) * middle) ? on : off) = middle;
+  }
+  return held + (fallback - held) * on;
 }
 
 glm::vec3 snapInFrame(const glm::vec3 &point, const glm::vec3 &normal, const glm::quat &frameRotation,

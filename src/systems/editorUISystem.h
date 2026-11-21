@@ -131,10 +131,10 @@ private:
   // The rotation the entity keeps without Tilt: from when the drag started, turned by R and T
   glm::quat m_alignRotation{1.0f, 0.0f, 0.0f, 0.0f};
   bool m_alignTurned = false; // R or T changed m_alignRotation during this drag
-  // The point of the entity the cursor holds, in its own (rotated, unscaled) frame, found on the first frame of the
-  // drag: it is put on the surface under the cursor, so nothing jumps and perspective does not drift it
-  glm::vec3 m_alignGrab{0.0f};
-  bool m_alignGrabbed = false; // m_alignGrab is set for this drag
+  // The surface the cursor points at, and whether the gizmo's center is held on the cursor over it (decided when the
+  // cursor comes onto it: true when the held center is over it then; else the entity follows the spot pointed at)
+  Entity m_alignSurface = -1;
+  bool m_alignHeld = false;
   // Places the selected entity on the surface under the cursor; false if there is none. With `snapped`, its place on
   // the surface goes to the grid of the model under it (0.5 units along the surface) and its heading to 15 degrees.
   // The rotate gizmo's result with Snap on, as angles: on the 15 degree steps when the turn changed one angle, else

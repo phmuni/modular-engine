@@ -1,5 +1,5 @@
-// The geometry of the editor's Align to surface drag (systems/editor/surfacePlacement.h): resting on a surface, the grab
-// point, and the grid of the surface's own model.
+// The geometry of the editor's Align to surface drag (systems/editor/surfacePlacement.h): resting on a surface, holding the
+// gizmo's center on the cursor, sliding back onto a surface, and the grid of the surface's own model.
 
 #include "systems/editor/surfacePlacement.h"
 #include "testing.h"
@@ -17,35 +17,37 @@ const glm::vec3 kMin(-1.0f, -0.5f, -0.5f), kMax(1.0f, 0.5f, 0.5f);
 } // namespace
 
 TEST_CASE(surface_placement_flat_floor) {
-  // Tilt mode on a floor: the base (-boundsMin.y * scale.y) goes on the hit point
+  // Upright on a floor: the origin rests -boundsMin.y * scale.y above it
   const glm::vec3 scale(1.0f, 3.0f, 1.0f);
   CHECK_NEAR(supportDistance(kMin, kMax, scale, kNone, kUp), 1.5f, 1e-5f);
-  CHECK_NEAR(place(kMin, kMax, scale, kNone, glm::vec3(0.0f), glm::vec3(4, 2, -1), kUp), glm::vec3(4, 3.5f, -1), 1e-5f);
 }
 
 TEST_CASE(surface_placement_keep_rotation_on_its_side) {
   // Turned 90 degrees about Z, the 2 long side is vertical: it rests on its 1 wide face, the origin 1 above
   const glm::quat onSide = glm::angleAxis(glm::radians(90.0f), glm::vec3(0, 0, 1));
   CHECK_NEAR(supportDistance(kMin, kMax, glm::vec3(1.0f), onSide, kUp), 1.0f, 1e-5f);
-  CHECK_NEAR(place(kMin, kMax, glm::vec3(1.0f), onSide, glm::vec3(0.0f), glm::vec3(0, 0, 0), kUp), glm::vec3(0, 1, 0), 1e-5f);
   // Upright, the same box is 0.5 above
   CHECK_NEAR(supportDistance(kMin, kMax, glm::vec3(1.0f), kNone, kUp), 0.5f, 1e-5f);
 }
 
-TEST_CASE(surface_placement_grab_point_lands_on_hit) {
-  // The entity is at (0, 0.5, 0) on the floor; the cursor's ray meets the floor at (1, 0, 0.5), not under the origin
-  const glm::quat rotation = glm::angleAxis(glm::radians(30.0f), kUp);
-  const glm::vec3 eye(1.0f, 5.0f, 5.5f), toward = glm::normalize(glm::vec3(1, 0, 0.5f) - eye);
-  const glm::vec3 grab = grabPoint(glm::vec3(0, 0.5f, 0), rotation, kUp, 0.5f, eye, toward);
-  CHECK_NEAR(glm::vec3(rotation * grab) + glm::vec3(0, 0.5f, 0), glm::vec3(1, 0, 0.5f), 1e-4f);
-  // The first frame: the cursor still on that spot, nothing moves
-  CHECK_NEAR(place(kMin, kMax, glm::vec3(1.0f), rotation, grab, glm::vec3(1, 0, 0.5f), kUp), glm::vec3(0, 0.5f, 0), 1e-4f);
-  // Turned by 90 degrees about the normal, the grabbed point is still where the cursor is, on the surface
-  const glm::quat turned = glm::angleAxis(glm::radians(90.0f), kUp) * rotation;
-  const glm::vec3 where = place(kMin, kMax, glm::vec3(1.0f), turned, grab, glm::vec3(1, 0, 0.5f), kUp);
-  CHECK_NEAR(where + glm::vec3(turned * grab), glm::vec3(1, 0, 0.5f), 1e-4f);
-  // A ray parallel to the plane grabs the origin
-  CHECK_NEAR(grabPoint(glm::vec3(0, 0.5f, 0), rotation, kUp, 0.5f, eye, glm::vec3(0, 0, -1)), glm::vec3(0.0f), 1e-6f);
+TEST_CASE(surface_placement_held_origin_on_the_cursor) {
+  // The cursor's ray from (0, 5, 5) toward the floor: the origin, 0.5 above it, is where the ray is 0.5 high
+  const glm::vec3 eye(0, 5, 5), toward = glm::normalize(glm::vec3(0, -1, -1));
+  glm::vec3 origin;
+  CHECK(heldOrigin(eye, toward, glm::vec3(0, 0, 0), kUp, 0.5f, origin));
+  CHECK_NEAR(origin, glm::vec3(0, 0.5f, 0.5f), 1e-5f);
+  // Along the floor, or meeting the plane behind the eye, it cannot be held
+  CHECK(!heldOrigin(eye, glm::vec3(0, 0, -1), glm::vec3(0, 0, 0), kUp, 0.5f, origin));
+  CHECK(!heldOrigin(glm::vec3(0, 0.2f, 0), toward, glm::vec3(0, 0, 0), kUp, 0.5f, origin));
+}
+
+TEST_CASE(surface_placement_slide_to_support) {
+  // A pillar whose top reaches z = 0.5: the held center at z = 2 is off it, so it slides back towards the spot the
+  // cursor meets (z = -1) until it is over the top again
+  const auto onPillar = [](const glm::vec3 &at) { return at.z <= 0.5f; };
+  CHECK_NEAR(slideToSupport(glm::vec3(0, 3.5f, 2), glm::vec3(0, 3.5f, -1), onPillar), glm::vec3(0, 3.5f, 0.5f), 1e-3f);
+  // Over the top already, the held center is kept
+  CHECK_NEAR(slideToSupport(glm::vec3(0, 3.5f, 0.2f), glm::vec3(0, 3.5f, -1), onPillar), glm::vec3(0, 3.5f, 0.2f), 1e-6f);
 }
 
 TEST_CASE(surface_placement_snap_in_target_frame) {

@@ -1153,7 +1153,7 @@ void EditorUISystem::renderGizmoControls() {
   ImGui::Checkbox("Align to surface##gizmo", &m_gizmoAlign);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Dragging the move gizmo's center (the white circle) slides the entity over the surfaces under the\n"
-                      "cursor, holding the point you grabbed on the cursor, its bottom on them. The arrows and squares still\n"
+                      "cursor: its bottom on the one you point at, the circle on the cursor (held back at an edge). The arrows and squares still\n"
                       "move it along their axis or plane. With Snap on, its place goes to the 0.5 grid of the surface's\n"
                       "model and its heading to 15 degrees; the rotate gizmo then turns it around the surface's normal.\n"
                       "While dragging: R turns it 90 degrees around the surface's normal; T (without Tilt) tips it 90\n"
@@ -1283,7 +1283,7 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   // The heading kept while aligning to surfaces is the one the entity had when the drag started
   if (!ImGuizmo::IsUsing()) {
     m_alignHeading = headingAround(rotationOf(*transform));
-    m_alignGrabbed = false;
+    m_alignSurface = -1;
     m_alignRotation = rotationOf(*transform);
     m_alignTurned = false;
     m_dragStartRotation = rotationOf(*transform);
@@ -1693,19 +1693,6 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   const glm::vec3 origin(nearPoint);
   const glm::vec3 direction = glm::normalize(glm::vec3(farPoint - nearPoint));
 
-  // The first frame: the point of the entity the cursor holds, found where the cursor's ray meets the plane of the
-  // entity's current support (its base point, facing its up in Tilt mode and the world's up otherwise). It is kept in
-  // the entity's own frame, so it stays under the cursor whatever the entity turns into, with nothing jumping when
-  // the drag starts and no drift with perspective.
-  if (!m_alignGrabbed) {
-    const glm::vec3 support =
-        m_gizmoAlignTilt ? m_alignRotation * glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
-    const float height =
-        surfacePlacement::supportDistance(boundsMin, boundsMax, transform.scale, m_alignRotation, support);
-    m_alignGrab = surfacePlacement::grabPoint(transform.position, m_alignRotation, support, height, origin, direction);
-    m_alignGrabbed = true;
-  }
-
   // Surfaces of anything but what is being moved: the entity, the other selected ones, and their children (a
   // prefab's parts), which it would otherwise climb onto
   auto &transformSystem = systemManager.getSystem<TransformSystem>();
@@ -1750,17 +1737,37 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
     const glm::vec3 up(0.0f, 1.0f, 0.0f);
     const float headingDegrees = snapped ? std::round(m_alignHeading / kSnapAngle) * kSnapAngle : m_alignHeading;
     rotation = glm::rotation(up, normal) * glm::angleAxis(glm::radians(headingDegrees), up);
-    transform.rotation = eulerOf(rotation);
   }
-  else if (m_alignTurned)
+
+  // The gizmo's center (the origin) stays under the cursor: on the cursor's ray, as high above the surface it points
+  // at as the entity's base is below its origin, while that surface is under the center. Whether it can be is decided
+  // when the cursor comes onto a surface. On one too small for it (a pillar's top or a head seen from low, where the
+  // held center is in front of it), or with the ray running along the surface, the entity follows the spot pointed at
+  // instead, its origin over it, so it moves freely there. Near the edge of a surface it holds on, it is slid back
+  // towards that spot, the least that puts the center over the surface again: it always rests on the surface you
+  // point at, without jumping.
+  const float height = surfacePlacement::supportDistance(boundsMin, boundsMax, transform.scale, rotation, normal);
+  constexpr float kLift = 0.01f; // the ray down starts a little above the center, for an entity whose base is it
+  const auto onSurface = [&](const glm::vec3 &at) {
+    const auto below = queries.raycast(at + normal * kLift, -normal, std::numeric_limits<float>::max(), other);
+    // The surface pointed at, or another in its plane (a floor of several tiles)
+    return below && glm::dot(below->normal, normal) > 0.99f &&
+           std::abs(below->distance - kLift - height) < 0.01f + 0.01f * height;
+  };
+  glm::vec3 center;
+  const bool canHold = surfacePlacement::heldOrigin(origin, direction, hit->point, normal, height, center);
+  if (hit->entity != m_alignSurface) {
+    m_alignSurface = hit->entity;
+    m_alignHeld = canHold && onSurface(center);
+  }
+  const glm::vec3 overHit = hit->point + normal * height;
+  glm::vec3 position =
+      canHold && m_alignHeld ? surfacePlacement::slideToSupport(center, overHit, onSurface) : overHit;
+  if (m_gizmoAlignTilt || m_alignTurned)
     transform.rotation = eulerOf(rotation);
 
-  // The grabbed point on the hit, the entity resting on the surface; when snapping, the spot under its origin goes
-  // to the grid of the model it is on, and the origin follows
-  glm::vec3 position =
-      surfacePlacement::place(boundsMin, boundsMax, transform.scale, rotation, m_alignGrab, hit->point, normal);
+  // When snapping, the spot under its origin goes to the grid of the model it rests on, and the origin follows
   if (snapped) {
-    const float height = surfacePlacement::supportDistance(boundsMin, boundsMax, transform.scale, rotation, normal);
     glm::quat frameRotation(1.0f, 0.0f, 0.0f, 0.0f);
     glm::vec3 frameOrigin(0.0f);
     if (const Transform *surface = componentManager.tryGet<Transform>(hit->entity)) {
