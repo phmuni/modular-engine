@@ -139,6 +139,29 @@ def main():
     work_dir = options.work_dir or tempfile.mkdtemp(prefix="smoke-templates-")
     os.makedirs(work_dir, exist_ok=True)
 
+    # Where XDG_DATA_HOME does not apply (macOS, Windows), the launcher writes to the real list: put it back afterwards
+    listed = launcher_list()
+    saved = open(listed, "rb").read() if listed and os.path.exists(listed) else None
+    try:
+        return run_all(chosen, options, work_dir, env)
+    finally:
+        if listed and saved is not None:
+            with open(listed, "wb") as file:
+                file.write(saved)
+        elif listed and os.path.exists(listed):
+            os.remove(listed)
+
+
+def launcher_list():
+    """The launcher's project list (SDL_GetPrefPath("modular-engine", "launcher")) on macOS and Windows."""
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support/modular-engine/launcher/projects.json")
+    if os.name == "nt" and os.environ.get("APPDATA"):
+        return os.path.join(os.environ["APPDATA"], "modular-engine", "launcher", "projects.json")
+    return None
+
+
+def run_all(chosen, options, work_dir, env):
     failures = []
     total = time.time()
     for name, kind, empty in chosen:
