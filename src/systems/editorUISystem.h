@@ -30,6 +30,8 @@ public:
   bool m_renderUI = false;
 
   const std::vector<Entity> &selection() const { return m_selection; }
+  // The scene list's search text ("wheel", "t:Light", "tag:enemy"); empty shows the whole tree
+  void setSceneFilter(const std::string &text);
   bool isSelected(Entity entity) const;
   // Drops the entities that no longer exist (after undo, Stop or loading a scene)
   void pruneSelection(const EntityManager &entityManager);
@@ -164,6 +166,7 @@ private:
   bool m_showNavigation = false;
   bool m_deleteRequested = false;   // from a context menu: done at the next frame, not while the lists are drawn
   bool m_scrollToSelection = false; // the scene explorer brings the entity a click selected into view
+  char m_sceneFilter[128] = "";     // the scene list's search box
   void renderGizmoControls();
 
   // Performance overlay, averaged over kStatsWindow seconds so the numbers stay readable

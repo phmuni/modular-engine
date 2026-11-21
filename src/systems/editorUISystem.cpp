@@ -24,6 +24,7 @@
 #include "foundation/core/logger.h"
 #include "systems/animationGraph.h"
 #include "systems/animationSystem.h"
+#include "systems/editor/sceneFilter.h"
 #include "systems/editor/surfacePlacement.h"
 #include "systems/modelQueries.h"
 #include "systems/navigationSystem.h"
@@ -64,6 +65,8 @@
 #include <imgui/imgui_impl_sdl3.h>
 #include <ImGuizmo.h> // after imgui.h, which it does not include itself
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <cmath>
 #include <cstdio>
@@ -638,14 +641,6 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
   ImGui::PopItemWidth();
   ImGui::End();
 }
-
-namespace {
-template <typename T> std::vector<Entity> entitiesWith(ComponentManager &componentManager) {
-  std::vector<Entity> result;
-  componentManager.forEachComponent<T>([&](Entity entity, T &) { result.push_back(entity); });
-  return result;
-}
-} // namespace
 
 void EditorUISystem::render(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
                             ComponentManager &componentManager) {
@@ -1822,71 +1817,195 @@ void EditorUISystem::dragToParent(Engine &engine, SystemManager &systemManager, 
   (void)label;
 }
 
-void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
-  if (!ImGui::CollapsingHeader("Hierarchy", ImGuiTreeNodeFlags_DefaultOpen))
-    return;
-  auto &transformSystem = systemManager.getSystem<TransformSystem>();
-  ImGui::BeginChild("Hierarchy", ImVec2(0, ui(90.0f)), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
+void EditorUISystem::setSceneFilter(const std::string &text) {
+  std::snprintf(m_sceneFilter, sizeof(m_sceneFilter), "%s", text.c_str());
+}
 
-  // Families only: the entities that have a parent or children, from their roots down
-  std::vector<Entity> roots;
-  componentManager.forEachComponent<Parent>([&](Entity entity, Parent &) {
-    Entity root = entity;
-    for (int guard = 0; guard < 256 && transformSystem.getParent(componentManager, root) != -1; ++guard)
-      root = transformSystem.getParent(componentManager, root);
-    if (std::find(roots.begin(), roots.end(), root) == roots.end())
-      roots.push_back(root);
-  });
-  std::sort(roots.begin(), roots.end());
+void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
+  auto &transformSystem = systemManager.getSystem<TransformSystem>();
+  auto &serializer = systemManager.getSystem<SceneSerializer>();
+
+  ImGui::SetNextItemWidth(-1);
+  ImGui::InputTextWithHint("##sceneSearch", "Search (name, t:Light, tag:enemy)", m_sceneFilter, sizeof(m_sceneFilter));
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Words match the name; t:Model, t:Light, t:Script... match a component; tag:enemy a tag.\n"
+                      "Every term must match. A search shows a flat list.");
+  const sceneFilter::Query query = sceneFilter::parse(m_sceneFilter);
+
+  ImGui::BeginChild("Hierarchy", ImVec2(0, ui(260.0f)), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
+
+  // Every entity of the scene, in creation order. Nothing is left out: Hidden only turns the entity's drawing off, and
+  // the editor keeps no entities of its own.
+  std::vector<Entity> all(engine.getEntityManager().entities().begin(), engine.getEntityManager().entities().end());
+  std::sort(all.begin(), all.end());
 
   // The rows as drawn, for Shift+click ranges; the range is made once they all are
   std::vector<Entity> visible;
   Entity rangeTarget = -1;
-  auto &serializer = systemManager.getSystem<SceneSerializer>();
-  std::function<void(Entity, int)> node = [&](Entity entity, int depth) {
-    const std::vector<Entity> children = transformSystem.getChildren(componentManager, entity);
-    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen |
-                               ImGuiTreeNodeFlags_SpanAvailWidth;
-    if (children.empty())
-      flags |= ImGuiTreeNodeFlags_Leaf;
-    if (isSelected(entity))
-      flags |= ImGuiTreeNodeFlags_Selected;
-    // Linked prefab instances: blue, the root marked
-    const bool linked = serializer.instanceRoot(entity) != -1;
-    // A nested instance's root names its own prefab: "[P door]"
-    std::string mark;
-    if (const PrefabInstance *instance = componentManager.tryGet<PrefabInstance>(entity))
-      mark = serializer.enclosingInstance(entity) != -1
-                 ? "[P " + std::filesystem::path(instance->path).stem().string() + "] "
-                 : "[P] ";
-    const std::string label = mark + displayName(componentManager, entity) + "##tree" + std::to_string(entity);
-    visible.push_back(entity);
-    if (linked)
-      ImGui::PushStyleColor(ImGuiCol_Text, kPrefabLinkColor);
-    const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
-    if (linked)
-      ImGui::PopStyleColor();
-    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
-      if (ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl)
-        rangeTarget = entity;
-      else
-        clickInList(entity, visible, false);
-    }
-    dragToParent(engine, systemManager, componentManager, entity, label);
-    entityContextMenu(engine, systemManager, componentManager, entity);
-    if (open) {
-      if (depth < 64)
-        for (Entity child : children)
-          node(child, depth + 1);
-      ImGui::TreePop();
-    }
+
+  // The tag in front of the name: what the entity is, as the old per-type lists said
+  auto iconOf = [&](Entity entity) -> const char * {
+    if (componentManager.has<Model>(entity))
+      return "[M] ";
+    if (componentManager.has<Light>(entity))
+      return "[L] ";
+    if (componentManager.has<Camera>(entity))
+      return "[C] ";
+    if (componentManager.has<ParticleEmitter>(entity))
+      return "[FX] "; // [P] is a prefab's
+    return "";
   };
-  for (Entity root : roots)
-    node(root, 0);
-  if (rangeTarget != -1)
-    clickInList(rangeTarget, visible, false);
-  if (roots.empty())
-    ImGui::TextDisabled("  Drag an entity onto another\n  to attach it to it");
+  // "[P] " on a prefab instance's root, "[P door] " on a nested one (it names its own prefab)
+  auto prefabMark = [&](Entity entity) -> std::string {
+    const PrefabInstance *instance = componentManager.tryGet<PrefabInstance>(entity);
+    if (!instance)
+      return "";
+    return serializer.enclosingInstance(entity) != -1
+               ? "[P " + std::filesystem::path(instance->path).stem().string() + "] "
+               : "[P] ";
+  };
+
+  const bool scroll = m_scrollToSelection;
+  if (query.empty()) {
+    // Children by parent, built once for the frame (asking the TransformSystem per row would be quadratic)
+    std::unordered_map<Entity, std::vector<Entity>> children;
+    std::vector<Entity> roots;
+    for (Entity entity : all) {
+      const Entity parent = transformSystem.getParent(componentManager, entity);
+      if (parent == -1 || !engine.getEntityManager().isAlive(parent))
+        roots.push_back(entity);
+      else
+        children[parent].push_back(entity);
+    }
+    // The way to the selected entity opens when a click elsewhere selected it
+    std::unordered_set<Entity> openPath;
+    if (scroll && selectedEntity != -1)
+      for (Entity up = transformSystem.getParent(componentManager, selectedEntity); up != -1 && openPath.size() < 256;
+           up = transformSystem.getParent(componentManager, up))
+        openPath.insert(up);
+    // In a big scene the roots start closed, or the list would open with thousands of rows
+    const bool bigScene = all.size() > 200;
+
+    std::function<void(Entity, int)> node = [&](Entity entity, int depth) {
+      static const std::vector<Entity> none;
+      const auto found = children.find(entity);
+      const std::vector<Entity> &kids = found == children.end() ? none : found->second;
+      ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+      if (!(bigScene && depth == 0))
+        flags |= ImGuiTreeNodeFlags_DefaultOpen;
+      if (kids.empty())
+        flags |= ImGuiTreeNodeFlags_Leaf;
+      if (isSelected(entity))
+        flags |= ImGuiTreeNodeFlags_Selected;
+      // Linked prefab instances: blue, the root marked
+      const bool linked = serializer.instanceRoot(entity) != -1;
+      const std::string label = std::string(iconOf(entity)) + prefabMark(entity) + displayName(componentManager, entity) +
+                                "##tree" + std::to_string(entity);
+      visible.push_back(entity);
+      if (openPath.count(entity))
+        ImGui::SetNextItemOpen(true);
+      if (linked)
+        ImGui::PushStyleColor(ImGuiCol_Text, kPrefabLinkColor);
+      const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
+      if (linked)
+        ImGui::PopStyleColor();
+      if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+        if (ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl)
+          rangeTarget = entity;
+        else
+          clickInList(entity, visible, false);
+      }
+      if (scroll && selectedEntity == entity)
+        ImGui::SetScrollHereY();
+      dragToParent(engine, systemManager, componentManager, entity, label);
+      entityContextMenu(engine, systemManager, componentManager, entity);
+      if (open) {
+        if (depth < 64)
+          for (Entity child : kids)
+            node(child, depth + 1);
+        ImGui::TreePop();
+      }
+    };
+    for (Entity root : roots)
+      node(root, 0);
+    if (rangeTarget != -1)
+      clickInList(rangeTarget, visible, false);
+    if (roots.empty())
+      ImGui::TextDisabled("  (empty scene)");
+  } else {
+    // A search: the matches as a flat list, each with the names of its parents in front, dimmed
+    std::unordered_map<std::string, std::string> componentNames; // lowercase -> the name Engine::hasComponent knows
+    for (const std::string &name : sceneFilter::builtInComponentNames())
+      componentNames[sceneFilter::lower(name)] = name;
+    for (const auto &reflected : engine.getReflectedComponents())
+      componentNames[sceneFilter::lower(reflected.name)] = reflected.name;
+    for (Entity entity : all) {
+      const bool fits = sceneFilter::matches(
+          query, displayName(componentManager, entity),
+          [&](const std::string &term) {
+            const auto name = componentNames.find(term);
+            return name != componentNames.end() && engine.hasComponent(entity, name->second);
+          },
+          [&](const std::string &term) {
+            const Tags *tags = componentManager.tryGet<Tags>(entity);
+            if (tags)
+              for (const std::string &tag : tags->tags)
+                if (sceneFilter::lower(tag) == term)
+                  return true;
+            return false;
+          });
+      if (fits)
+        visible.push_back(entity);
+    }
+
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(visible.size()));
+    if (scroll) {
+      const auto at = std::find(visible.begin(), visible.end(), selectedEntity);
+      if (at != visible.end())
+        clipper.IncludeItemByIndex(static_cast<int>(at - visible.begin())); // drawn even if off screen, to scroll to it
+    }
+    while (clipper.Step()) {
+      for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+        const Entity entity = visible[row];
+        std::string path;
+        Entity up = transformSystem.getParent(componentManager, entity);
+        for (int guard = 0; up != -1 && guard < 64; ++guard, up = transformSystem.getParent(componentManager, up))
+          path = displayName(componentManager, up) + " / " + path;
+        const std::string head = std::string(iconOf(entity)) + prefabMark(entity);
+        const std::string name = displayName(componentManager, entity);
+        const bool linked = serializer.instanceRoot(entity) != -1;
+        const std::string label = head + path + name + "##flat" + std::to_string(entity);
+
+        // The row is one selectable; its text is drawn over it in two colors, the path dimmed
+        const ImVec2 textPos = ImGui::GetCursorScreenPos();
+        if (ImGui::Selectable(("##flat" + std::to_string(entity)).c_str(), isSelected(entity))) {
+          if (ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl)
+            rangeTarget = entity;
+          else
+            clickInList(entity, visible, false);
+        }
+        ImDrawList *draw = ImGui::GetWindowDrawList();
+        const ImU32 color = linked ? ImGui::GetColorU32(kPrefabLinkColor) : ImGui::GetColorU32(ImGuiCol_Text);
+        const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+        float x = textPos.x;
+        draw->AddText(ImVec2(x, textPos.y), color, head.c_str());
+        x += ImGui::CalcTextSize(head.c_str()).x;
+        draw->AddText(ImVec2(x, textPos.y), dim, path.c_str());
+        x += ImGui::CalcTextSize(path.c_str()).x;
+        draw->AddText(ImVec2(x, textPos.y), color, name.c_str());
+        if (scroll && selectedEntity == entity)
+          ImGui::SetScrollHereY();
+        dragToParent(engine, systemManager, componentManager, entity, label);
+        entityContextMenu(engine, systemManager, componentManager, entity);
+      }
+    }
+    if (rangeTarget != -1)
+      clickInList(rangeTarget, visible, false);
+    if (visible.empty())
+      ImGui::TextDisabled("  Nothing matches");
+  }
+  m_scrollToSelection = false;
 
   // Dropped on the empty space below: no parent any more
   ImGui::Dummy(ImVec2(ImGui::GetContentRegionAvail().x, std::max(ImGui::GetContentRegionAvail().y, 20.0f)));
@@ -2041,10 +2160,8 @@ void EditorUISystem::renderPlayToolbar(Engine &engine, SystemManager &systemMana
 void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemManager,
                                          ComponentManager &componentManager) {
   auto &renderSystem = systemManager.getSystem<RenderSystem>();
-  auto &lightSystem = systemManager.getSystem<LightSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   auto &sceneSystem = systemManager.getSystem<SceneSystem>();
-  auto &serializer = systemManager.getSystem<SceneSerializer>();
   auto *window = systemManager.getSystem<WindowSystem>().getWindow();
   ImGuiIO &io = ImGui::GetIO();
 
@@ -2057,49 +2174,7 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
   float buttonHeight = ImGui::GetFrameHeightWithSpacing();
   ImGui::BeginChild("SceneTree", ImVec2(avail.x, avail.y - buttonHeight), true);
 
-  auto entityLabel = [&](Entity e, const char *icon) -> std::string {
-    auto *nc = componentManager.tryGet<Name>(e);
-    std::string name;
-    if (nc && !nc->name.empty()) {
-      name = nc->name;
-    } else {
-      name = std::string("Entity ") + std::to_string(e);
-    }
-    return std::string(icon) + " " + name + "##" + std::to_string(e);
-  };
-
-  const float kSectionHeight = ui(90.0f); // initial height
-  auto section = [&](const char *header, const char *icon, const std::vector<Entity> &entities) {
-    if (!ImGui::CollapsingHeader(header, ImGuiTreeNodeFlags_DefaultOpen))
-      return;
-    // Scroll area with a stable, user-resizable height so sections keep their size as entities come and go.
-    ImGui::BeginChild(header, ImVec2(0, kSectionHeight), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY);
-    for (Entity entity : entities) {
-      std::string label = entityLabel(entity, icon);
-      const bool linked = serializer.instanceRoot(entity) != -1;
-      if (linked)
-        ImGui::PushStyleColor(ImGuiCol_Text, kPrefabLinkColor);
-      if (ImGui::Selectable(label.c_str(), isSelected(entity)))
-        clickInList(entity, entities, true);
-      if (linked)
-        ImGui::PopStyleColor();
-      dragToParent(engine, systemManager, componentManager, entity, label);
-      entityContextMenu(engine, systemManager, componentManager, entity);
-      if (m_scrollToSelection && selectedEntity == entity) {
-        ImGui::SetScrollHereY();
-        m_scrollToSelection = false;
-      }
-    }
-    if (entities.empty())
-      ImGui::TextDisabled("  (empty)");
-    ImGui::EndChild();
-  };
-
   renderHierarchy(engine, systemManager, componentManager);
-  section("Models", "[M]", entitiesWith<Model>(componentManager));
-  section("Lights", "[L]", lightSystem.getLights());
-  section("Camera", "[C]", entitiesWith<Camera>(componentManager));
-  section("Particles", "[P]", entitiesWith<ParticleEmitter>(componentManager));
 
   ImGui::EndChild();
 
