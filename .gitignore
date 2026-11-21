@@ -43,3 +43,6 @@ assets/models/*
 # Release builds for export and packaging (tools/package_engine.py), and the packaged engine
 /build-*/
 /dist/
+
+# Local context for Claude Code (not shared)
+CLAUDE.local.md
