@@ -20,7 +20,7 @@ test.run(function()
   test.near(placed.scale, vec3(2, 2, 2))
 
   local red = engine.create("Red", { model = "box", color = vec3(1, 0, 0) })
-  test.near(red:getColor(), vec3(1, 0, 0))
+  test.near(red:color(), vec3(1, 0, 0))
 
   -- Bodies: static and dynamic, and the shape and mass given
   local floor = engine.create("Floor", { model = "box", scale = vec3(10, 1, 10), body = "static" })

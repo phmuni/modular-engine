@@ -51,11 +51,19 @@ void LuaBindings::bindUi() {
   ui.set_function("loadFont", [this](const std::string &path, sol::optional<bool> fallback) {
     return engine.ui().loadFont(path, fallback.value_or(false));
   });
-  // The pause menu: Escape opens it once enabled (see systems/pauseMenu.h). ui.pauseMenu(true) or a table of options;
-  // the game script's onPauseMenuOpened, onPauseMenuClosed and onPauseMenuAction(name) are called from C++
-  ui.set_function("pauseMenu", [this](sol::object arg) {
-    if (arg.is<sol::table>()) {
-      const sol::table table = arg.as<sol::table>();
+  // The Menu a script holds: what ui.menu and ui.pauseMenu return
+  lua.new_usertype<Menu>(
+      "Menu", sol::no_constructor, "open",
+      [](Menu &menu, sol::optional<std::string> screen) { menu.open(screen.value_or("")); }, "close", &Menu::close,
+      "isOpen", &Menu::isOpen, "show", &Menu::show, "name", [](Menu &menu) { return menu.name(); });
+  // The pause menu: ui.pauseMenu() returns its Menu (ui.pauseMenu():open("options")) and changes nothing. Escape opens it
+  // once enabled (see systems/pauseMenu.h): ui.pauseMenu(true) or a table of options, which return the Menu as well. The
+  // game script's onMenuOpened, onMenuClosed and onMenuAction are called from C++ with the name "pause".
+  ui.set_function("pauseMenu", [this](sol::optional<sol::object> arg) -> Menu & {
+    if (!arg)
+      return engine.ui().pauseMenu();
+    if (arg->is<sol::table>()) {
+      const sol::table table = arg->as<sol::table>();
       PauseMenuOptions options;
       options.enabled = table.get_or("enabled", options.enabled);
       options.document = table.get_or("document", options.document);
@@ -63,25 +71,14 @@ void LuaBindings::bindUi() {
       options.freeCursor = table.get_or("freeCursor", options.freeCursor);
       options.blockInput = table.get_or("blockInput", options.blockInput);
       options.escape = table.get_or("escape", options.escape);
-      engine.ui().pauseMenu(options);
-    } else {
-      engine.ui().pauseMenu(arg.is<bool>() ? arg.as<bool>() : true);
+      return engine.ui().pauseMenu(options);
     }
+    return engine.ui().pauseMenu(arg->is<bool>() ? arg->as<bool>() : true);
   });
-  ui.set_function("openPauseMenu", [this](sol::optional<std::string> screen) {
-    engine.ui().openPauseMenu(screen.value_or(""));
-  });
-  ui.set_function("closePauseMenu", &GameUI::closePauseMenu, &engine.ui());
-  ui.set_function("isPaused", &GameUI::isPaused, &engine.ui());
-  ui.set_function("isPauseMenuOpen", &GameUI::isPauseMenuOpen, &engine.ui());
   // Menus (see systems/menu.h): ui.menu("ui/mainMenu.rml", { pause = true, escape = "none" }) makes the menu for that
   // document, opens it and returns it; the game script's onMenuOpened(menu), onMenuClosed(menu) and
   // onMenuAction(menu, name) are called from C++. `escape` is "none", "back", "close" or "quit" (true is "close",
   // false is "none").
-  lua.new_usertype<Menu>(
-      "Menu", sol::no_constructor, "open",
-      [](Menu &menu, sol::optional<std::string> screen) { menu.open(screen.value_or("")); }, "close", &Menu::close,
-      "isOpen", &Menu::isOpen, "show", &Menu::show, "name", [](Menu &menu) { return menu.name(); });
   ui.set_function("menu", [this](const std::string &path, sol::optional<sol::table> table) -> Menu & {
     MenuOptions options;
     if (table) {

@@ -2,7 +2,6 @@
 game.opened = ""
 game.closed = ""
 game.action = ""
-game.pauseAction = ""
 
 function onMenuOpened(menu)
   game.opened = game.opened .. menu .. ";"
@@ -14,8 +13,4 @@ end
 
 function onMenuAction(menu, name)
   game.action = menu .. ":" .. name
-end
-
-function onPauseMenuAction(name)
-  game.pauseAction = name
 end

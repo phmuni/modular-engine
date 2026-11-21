@@ -29,7 +29,7 @@ TEST_CASE(ui_helpers) {
   CHECK(ui.load(kDocument));
   CHECK(ui.load(kDocument)); // again: shown, not loaded twice
   CHECK(!ui.load("../tests/fixtures/ui/missing.rml"));
-  CHECK(!ui.isPaused());
+  CHECK(!ui.pauseMenu().isOpen());
 
   Rml::Element *score = element(engine, "score");
   Rml::Element *banner = element(engine, "banner");

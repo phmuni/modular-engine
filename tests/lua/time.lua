@@ -34,7 +34,7 @@ test.run(function()
 
   -- The time scale slows everything on game time: timers, the clock, waits
   test.eq(time.scale(), 1)
-  time.scale(0.5)
+  time.setScale(0.5)
   test.eq(time.scale(), 0.5)
   local slowFired = nil
   local s0 = time.elapsed()
@@ -47,13 +47,13 @@ test.run(function()
   local frames = test.frame() - frames0
   test.near(frames, 2 * 60 * 1.1, 3, "at half speed 1.1 s of game time takes 132 frames")
   test.near(time.delta(), FRAME * 0.5, 0.0001)
-  time.scale(1)
+  time.setScale(1)
 
   -- Paused: nothing moves, timers hold their remaining time
   local pausedFired = false
   time.after(0.2, function() pausedFired = true end)
-  time.paused(true)
-  test.eq(time.paused(), true)
+  time.setPaused(true)
+  test.eq(time.isPaused(), true)
   local frozen = time.elapsed()
   local pausedFrames = test.frame()
   while test.frame() - pausedFrames < 30 do
@@ -61,8 +61,8 @@ test.run(function()
   end
   test.eq(time.elapsed(), frozen, "the clock stands still")
   test.ok(not pausedFired, "so do timers")
-  time.paused(false)
-  test.eq(time.paused(), false)
+  time.setPaused(false)
+  test.eq(time.isPaused(), false)
   wait(0.3)
   test.ok(pausedFired, "and they go on afterwards")
 end)

@@ -154,7 +154,7 @@ void LuaBindings::bindEntity() {
         else
           e.setColor(color, part && part->is<int>() ? part->as<int>() : -1);
       },
-      "getColor", &GameEntity::color, // not `color`: a script may keep its own field of that name
+      "color", &GameEntity::color,
       "setEmission", [](GameEntity &e, const glm::vec3 &color, sol::optional<float> strength,
                         sol::optional<sol::object> part) {
         if (part && part->is<std::string>())
@@ -183,17 +183,29 @@ void LuaBindings::bindEntity() {
       },
       "isTouching", [](GameEntity &e, sol::optional<GameEntity> other) { return other && e.isTouching(*other); },
 
-      // Custom surface shaders; the submesh counts from 0 and none means every part
-      "setShader", [](GameEntity &e, sol::optional<std::string> path, sol::optional<int> submesh) {
-        e.setShader(path.value_or(""), submesh.value_or(-1));
+      // Custom surface shaders; the optional last argument is a part, as for setColor: none means every part
+      "setShader", [](GameEntity &e, sol::optional<std::string> path, sol::optional<sol::object> part) {
+        if (part && part->is<std::string>())
+          e.setShader(path.value_or(""), part->as<std::string>());
+        else
+          e.setShader(path.value_or(""), part && part->is<int>() ? part->as<int>() : -1);
       },
-      "shader", [](GameEntity &e, sol::optional<int> submesh) { return e.shader(submesh.value_or(0)); },
+      "shader", [](GameEntity &e, sol::optional<sol::object> part) {
+        if (part && part->is<std::string>())
+          return e.shader(part->as<std::string>());
+        return e.shader(part && part->is<int>() ? part->as<int>() : 0);
+      },
       "setShaderParam", [](GameEntity &e, const std::string &name, const sol::object &value,
-                           sol::optional<int> submesh) {
-        e.setShaderParam(name, luaToShaderValue(value), submesh.value_or(-1));
+                           sol::optional<sol::object> part) {
+        if (part && part->is<std::string>())
+          e.setShaderParam(name, luaToShaderValue(value), part->as<std::string>());
+        else
+          e.setShaderParam(name, luaToShaderValue(value), part && part->is<int>() ? part->as<int>() : -1);
       },
-      "shaderParam", [](sol::this_state state, GameEntity &e, const std::string &name, sol::optional<int> submesh) {
-        return shaderValueToLua(sol::state_view(state), e.shaderParam(name, submesh.value_or(0)));
+      "shaderParam", [](sol::this_state state, GameEntity &e, const std::string &name, sol::optional<sol::object> part) {
+        if (part && part->is<std::string>())
+          return shaderValueToLua(sol::state_view(state), e.shaderParam(name, part->as<std::string>()));
+        return shaderValueToLua(sol::state_view(state), e.shaderParam(name, part && part->is<int>() ? part->as<int>() : 0));
       },
 
       // Physics bodies

@@ -218,16 +218,16 @@ public:
   // first Skybox component (setSkyColor adds an entity named "Sky" with one when there is none), so scene files keep
   // it and the editor shows it.
   void setSkyColor(const glm::vec3 &color);
-  glm::vec3 getSkyColor();
+  glm::vec3 skyColor();
   // Fog and ambient light of the scene, kept in the same Skybox component as the sky color (so a scene file keeps
   // them, and the editor's Skybox panel edits them). setFog replaces all of the fog's settings; to change one,
-  // start from getFog(). With `matchSky` the fog takes the sky color, so distant things fade into the sky.
+  // start from fog(). With `matchSky` the fog takes the sky color, so distant things fade into the sky.
   void setFog(const Fog &fog);
-  Fog getFog();
+  Fog fog();
   // Light added to everything lit: color times intensity, on top of each Light's own ambient (0 adds nothing)
   void setAmbient(const glm::vec3 &color, float intensity);
-  glm::vec3 getAmbientColor();
-  float getAmbientIntensity();
+  glm::vec3 ambientColor();
+  float ambientIntensity();
 
   // Component access. get throws, with a message saying whether the entity lacks the component or no longer
   // exists; tryGet returns null instead.
@@ -485,10 +485,8 @@ public:
   // is enabled; the game pauses like with F7, and keys and clicks stay away from the game until it closes.
   // pauseMenu() has all of its options and callbacks; ui().pauseMenu(...) is the game API for the same.
   void enablePauseMenu(bool enabled = true);
-  // To open or close it from code (a button of your own, a game-over screen); works without enablePauseMenu
-  void openPauseMenu();
-  void closePauseMenu();
-  bool isPauseMenuOpen();
+  // pauseMenu().open(), close() and isOpen() work from code (a button of your own, a game-over screen), without
+  // enablePauseMenu
   PauseMenu &pauseMenu();
   // Menus (systems/menu.h): any document the game shows as a menu; ui().menu(path, options) is the game API
   MenuSystem &menus();

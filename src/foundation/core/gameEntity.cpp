@@ -214,6 +214,13 @@ void GameEntity::setShader(const std::string &path, int submesh) {
   m_engine->getSystemManager().getSystem<RenderSystem>().markBatchesDirty();
 }
 
+void GameEntity::setShader(const std::string &path, const std::string &part) {
+  if (!m_engine || !m_engine->has<Model>(m_id))
+    return;
+  if (const int submesh = m_engine->getSystemManager().getSystem<ResourceSystem>().findSubmesh(m_id, part); submesh >= 0)
+    setShader(path, submesh);
+}
+
 std::string GameEntity::shader(int submesh) const {
   return m_engine ? m_engine->getSystemManager().getSystem<ResourceSystem>().getShader(m_id, submesh) : std::string();
 }
@@ -221,6 +228,29 @@ std::string GameEntity::shader(int submesh) const {
 void GameEntity::setShaderParam(const std::string &name, const ShaderValue &value, int submesh) {
   if (m_engine && m_engine->has<Model>(m_id))
     m_engine->getSystemManager().getSystem<ResourceSystem>().setShaderParam(m_id, submesh, name, value);
+}
+
+std::string GameEntity::shader(const std::string &part) const {
+  if (!m_engine || !m_engine->has<Model>(m_id))
+    return std::string();
+  const int submesh = m_engine->getSystemManager().getSystem<ResourceSystem>().findSubmesh(m_id, part);
+  return submesh >= 0 ? shader(submesh) : std::string();
+}
+
+void GameEntity::setShaderParam(const std::string &name, const ShaderValue &value, const std::string &part) {
+  if (!m_engine || !m_engine->has<Model>(m_id))
+    return;
+  if (const int submesh = m_engine->getSystemManager().getSystem<ResourceSystem>().findSubmesh(m_id, part); submesh >= 0)
+    setShaderParam(name, value, submesh);
+}
+
+std::optional<ShaderValue> GameEntity::shaderParam(const std::string &name, const std::string &part) const {
+  if (!m_engine || !m_engine->has<Model>(m_id))
+    return std::nullopt;
+  const int submesh = m_engine->getSystemManager().getSystem<ResourceSystem>().findSubmesh(m_id, part);
+  if (submesh < 0)
+    return std::nullopt;
+  return shaderParam(name, submesh);
 }
 
 std::optional<ShaderValue> GameEntity::shaderParam(const std::string &name, int submesh) const {

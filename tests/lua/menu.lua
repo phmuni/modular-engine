@@ -36,7 +36,7 @@ test.run(function()
   test.eq(opened, "menu_main;")
 
   -- The default options pause the game
-  test.eq(ui.isPaused(), false, "ui.isPaused is the pause menu's")
+  test.eq(ui.pauseMenu():isOpen(), false, "the pause menu is not the one opened")
   main:close()
   frames(1)
   test.eq(main:isOpen(), false)

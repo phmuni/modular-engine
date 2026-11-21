@@ -450,17 +450,17 @@ What scripts can use:
 | | |
 | --- | --- |
 | `vec3(x, y, z)` | `+ - * /`, `:length()`, `:normalized()`, `:dot(v)`, `:cross(v)`, `:distance(v)`, `:lerp(v, t)` |
-| Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setShininess(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `layer` (collision layer, by name); `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; tags: `:addTag(t)`, `:removeTag(t)`, `:hasTag(t)`, `:tags()`; its `AudioSource`: `:playAudio()`, `:stopAudio()`, `:pauseAudio()`, `audioPlaying`, `audioVolume`, `audioPitch`, `audioLoop`; `:getColor()`; `:run(fn)` (a coroutine that ends with the entity); any other field is the entity's own (`other.health`) |
-| `engine` | `find(name)`, `findAll(name)`, `findTagged(tag)`, `findWithComponent(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script, tags, layer, character, components })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)`, `quit()`, `setSkyColor(c)`, `getSkyColor()`, `setFog({...})`, `getFog()`, `setAmbient(c, intensity)`, `getAmbient()`, `run(fn)` and `stop(handle)` (coroutines) |
+| Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setShininess(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `layer` (collision layer, by name); `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; tags: `:addTag(t)`, `:removeTag(t)`, `:hasTag(t)`, `:tags()`; its `AudioSource`: `:playAudio()`, `:stopAudio()`, `:pauseAudio()`, `audioPlaying`, `audioVolume`, `audioPitch`, `audioLoop`; `:color()`; `:run(fn)` (a coroutine that ends with the entity); any other field is the entity's own (`other.health`) |
+| `engine` | `find(name)`, `findAll(name)`, `findTagged(tag)`, `findWithComponent(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script, tags, layer, character, components })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)`, `quit()`, `setSkyColor(c)`, `skyColor()`, `setFog({...})`, `fog()`, `setAmbient(c, intensity)`, `ambient()`, `run(fn)` and `stop(handle)` (coroutines) |
 | `wait(seconds)` | inside `engine.run` / `self:run`: suspends the coroutine for game time; `wait()` until the next frame |
 | `tween` | `to(entity, "position" \| "rotation" \| "scale" \| "color", value, seconds, easing, onComplete)`, `value(from, to, seconds, easing, fn, onComplete)`, `cancel(handle)`; easings `linear`, `easeInQuad`, `easeOutQuad`, `easeInOutQuad`, `easeInCubic`, `easeOutCubic`, `easeInOutCubic` |
 | `input` | `axis(name)`, `down(name)`, `pressed(name)`, `released(name)` (the actions and axes of `input.json`), `key("Space")`, `keyPressed("Space")`, `mouse()`, `mouseDown(button)`, `wheel()`, `click(button)`, `bindings(path)`; `mouseDelta()`, `captureMouse(b)`, `isMouseCaptured()`, `showCursor(b)`; text entry: `startText(initial, maxLength)`, `text()`, `typed()`, `stopText()`; `rumble(low, high, seconds)`, `stopRumble()` |
-| `camera` | `lookAt(from, target)`, `position()`, `forward()`, `fov(degrees)` (reads the field of view, or sets it), `follow(entity, { offset, lookAhead, smoothing, orbit... })`, `stopFollow()`, `following()` |
-| `time` | `scale(n)` (slow motion: reads the time scale, or sets it), `paused(b)`, `elapsed()`, `delta()`, `after(seconds, fn)` and `every(seconds, fn)` (timers on game time, return a handle), `cancel(handle)` |
-| `physics` | `raycast(origin, direction, distance, { layers = {"enemy"} })` (a table with `entity`, `point`, `normal`, `distance`; `layers` is optional), `gravity(v)`; collision layers: `addLayer(name)`, `layers()`, `setLayersCollide(a, b, bool)`, `layersCollide(a, b)` |
+| `camera` | `lookAt(from, target)`, `position()`, `forward()`, `fov()`, `setFov(degrees)`, `follow(entity, { offset, lookAhead, smoothing, orbit... })`, `stopFollow()`, `isFollowing()` |
+| `time` | `scale()`, `setScale(n)` (slow motion), `isPaused()`, `setPaused(b)`, `elapsed()`, `delta()`, `after(seconds, fn)` and `every(seconds, fn)` (timers on game time, return a handle), `cancel(handle)` |
+| `physics` | `raycast(origin, direction, distance, { layers = {"enemy"} })` (a table with `entity`, `point`, `normal`, `distance`; `layers` is optional), `gravity()`, `setGravity(v)`; collision layers: `addLayer(name)`, `layers()`, `setLayersCollide(a, b, bool)`, `layersCollide(a, b)` |
 | `nav` | `build({ min, max, cellSize, agentRadius, agentHeight, maxSlope, stepHeight })` (all optional; without `min` and `max` it covers the static bodies), `path(from, to)` (a table of `vec3` on the ground, or `nil` if there is no way), `walkable(point)` |
-| `sound` | `play(path, volume, pitch)` and `playAt(path, position, volume)` (return a handle for `stop(handle)`, `setVolume(handle, v)`, `isPlaying(handle)`), `preload(path)`, `music(path, volume, loop)` (returns a handle), `musicVolume(v, handle)`, `stopMusic(handle)`, `isMusicPlaying(handle)` |
-| `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `style(id, property, value)`, `attribute(id, name, value)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled or options)`, `openPauseMenu(screen)`, `closePauseMenu()`, `isPauseMenuOpen()` (`isPaused()` is the same) |
+| `sound` | `play(path, volume, pitch)` and `playAt(path, position, volume)` (return a handle for `stop(handle)`, `setVolume(handle, v)`, `isPlaying(handle)`), `preload(path)`, `music(path, volume, loop)` (returns a handle), `setMusicVolume(v, handle)`, `stopMusic(handle)`, `isMusicPlaying(handle)` |
+| `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `style(id, property, value)`, `attribute(id, name, value)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled or options)` (returns its `Menu`: `ui.pauseMenu():open(screen)`, `:close()`, `:isOpen()`) |
 | `settings` | The player's options: `get(name)`, `set(name, value)`, `step(name, dir)`, `choices(name)`, `label(name)`, `enabled(name)`, `kind(name)`, `range(name)`, `names()`, `reset(name)`; see Player settings |
 | `save` | `set(key, value)` (a number, string, boolean, or a table of those, nested), `get(key, default)`, `has(key)`, `remove(key)`, `write()` |
 
@@ -1125,13 +1125,13 @@ For direct ResourceSystem access and full API reference, explore [`src/systems/r
 A material can run a small GLSL file of your own, in the style of Godot's spatial shaders. You write only the part that changes the surface; the engine puts it into its standard lit shader, so lights, shadows, fog, instancing, skinning and alpha masks keep working. A part (submesh) uses one file, and its own values for the file's parameters:
 
 ```cpp
-entity.setShader("shaders/examples/water.glsl");              // every part; a part number (from 0) picks one
+entity.setShader("shaders/examples/water.glsl");              // every part; a part number (from 0) or name picks one
 entity.setShaderParam("waveHeight", 0.3f);                    // float, vec2, vec3, vec4, or a texture path
 entity.setShader("");                                         // back to the standard shader
 ```
 
 ```lua
-e:setShader("shaders/examples/dissolve.glsl")                 -- e:setShader(path, part) for one part
+e:setShader("shaders/examples/dissolve.glsl")                 -- e:setShader(path, part) for one part: a submesh number or a name
 e:setShaderParam("dissolve", 0.5)                             -- a number, vec3, a table of 2 to 4 numbers, or a texture path
 e:setShaderParam("edgeColor", vec3(1, 0.4, 0.1))
 print(e:shader(), e:shaderParam("dissolve"))
@@ -1565,17 +1565,17 @@ Opening it pauses the game like `F7` does, frees the cursor and keeps keys, clic
 game until it closes (`Escape` again, or Resume; in Options it goes back first).
 
 ```lua
-ui.pauseMenu(true)       -- Escape opens it
-ui.openPauseMenu()       -- from code; ui.openPauseMenu("options") starts on a screen of the document
-ui.closePauseMenu()
-if ui.isPauseMenuOpen() then ... end   -- ui.isPaused() is the same
+ui.pauseMenu(true)       -- Escape opens it; returns the pause menu's Menu
+ui.pauseMenu():open()    -- from code; ui.pauseMenu():open("options") starts on a screen of the document
+ui.pauseMenu():close()
+if ui.pauseMenu():isOpen() then ... end
 ```
 
 ```cpp
 engine.ui().pauseMenu(true);                   // or engine.enablePauseMenu(true)
-engine.openPauseMenu();                        // from code, e.g. a button of your own
-engine.closePauseMenu();
-if (engine.isPauseMenuOpen()) { /* ... */ }
+engine.pauseMenu().open();                     // from code, e.g. a button of your own
+engine.pauseMenu().close();
+if (engine.pauseMenu().isOpen()) { /* ... */ }
 engine.quit();                                 // closes the game at the end of the frame
 ```
 
@@ -1637,19 +1637,18 @@ document, which has one entry per player setting (see below):
 </body>
 ```
 
-The game hears about the menu with callbacks. In Lua they are functions of the game script, in C++ they go through
-`engine.ui()`:
+The game hears about the menu with callbacks. In Lua they are the functions of the game script every menu has, called
+with the menu's name, `"pause"` here; in C++ they go through `engine.ui()`:
 
 ```lua
-function onPauseMenuOpened() end
-function onPauseMenuClosed() end
-function onPauseMenuAction(name)               -- from action('name') in the document
-  if name == "restart" then
-    ui.closePauseMenu()
+function onMenuOpened(menu) end                -- menu == "pause"
+function onMenuClosed(menu) end
+function onMenuAction(menu, name)              -- from action('name') in the document
+  if menu == "pause" and name == "restart" then
+    ui.pauseMenu():close()
     engine.loadScene("scenes/level.json")
   end
 end
--- the pause menu is a menu like any other, so onMenuAction("pause", name) is called too (below)
 ```
 
 ```cpp
@@ -1730,8 +1729,8 @@ engine.ui().onMenuOpened([](const std::string &menu) { /* ... */ });
 engine.ui().onMenuClosed([](const std::string &menu) { /* ... */ });
 ```
 
-The pause menu is the menu named `pause`: its actions call `onMenuAction("pause", name)` and also its own
-`onPauseMenuAction(name)` (and the same for opened and closed), so existing games keep working. A button that should
+The pause menu is the menu named `pause`: its actions call `onMenuAction("pause", name)`, and `onMenuOpened("pause")`
+and `onMenuClosed("pause")` tell when it opens and closes. A button that should
 close its menu and start something does both in the game (`main:close()` in `onMenuAction`): closing is the game's
 choice, and the document's `close()` button event stays for menus that only close.
 

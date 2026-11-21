@@ -199,5 +199,4 @@ void LuaBindings::bindSettings() {
     else if (knownSetting("settings.reset", *name))
       engine.settings().reset(*name);
   });
-  settings.set_function("resetAll", [this]() { engine.settings().resetAll(); });
 }

@@ -43,12 +43,8 @@ public:
   // top level once; a changed file is read again.
   std::vector<ScriptProperty> getProperties(Entity entity);
 
-  // Tells the game script that the pause menu opened or closed (onPauseMenuOpened, onPauseMenuClosed), or that a button
-  // of its document asked for an action (onPauseMenuAction(name))
-  void pauseMenuOpened();
-  void pauseMenuClosed();
-  void pauseMenuAction(const std::string &name);
-  // The same for every menu (onMenuOpened(menu), onMenuClosed(menu), onMenuAction(menu, name)), the pause menu's too
+  // Tells the game script that a menu opened or closed, or that a button of its document asked for an action
+  // (onMenuOpened(menu), onMenuClosed(menu), onMenuAction(menu, name)); the pause menu's name is "pause"
   void menuOpened(const std::string &menu);
   void menuClosed(const std::string &menu);
   void menuAction(const std::string &menu, const std::string &name);

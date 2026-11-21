@@ -94,11 +94,8 @@ void LuaBindings::bindPhysics() {
     requireLayer("physics.layersCollide", b);
     return engine.layers().collide(a, b);
   });
-  physics.set_function("gravity", [this](sol::optional<glm::vec3> gravity) {
-    if (gravity)
-      engine.physics().setGravity(*gravity);
-    return engine.physics().getGravity();
-  });
+  physics.set_function("gravity", [this]() { return engine.physics().getGravity(); });
+  physics.set_function("setGravity", [this](const glm::vec3 &gravity) { engine.physics().setGravity(gravity); });
 
   // navigation
   // nav.build({ min = vec3, max = vec3, cellSize = 0.5, agentRadius = 0.35, agentHeight = 1.8, maxSlope = 45,

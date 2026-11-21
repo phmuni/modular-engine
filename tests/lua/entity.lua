@@ -30,7 +30,7 @@ test.run(function()
 
   -- Color and visibility
   e:setColor(vec3(1, 0, 0.5))
-  test.near(e:getColor(), vec3(1, 0, 0.5))
+  test.near(e:color(), vec3(1, 0, 0.5))
   test.ok(e.visible)
   e:setVisible(false)
   test.eq(e.visible, false)

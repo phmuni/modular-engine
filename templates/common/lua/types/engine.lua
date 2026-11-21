@@ -49,15 +49,6 @@ onReload = nil
 ---@type fun(self: Entity, old: string, new: string)
 onStateChanged = nil
 
----Game script only: the pause menu opened.
----@type fun()
-onPauseMenuOpened = nil
----Game script only: the pause menu closed.
----@type fun()
-onPauseMenuClosed = nil
----Game script only: a button of the pause menu's document asked for `action('name')`.
----@type fun(name: string)
-onPauseMenuAction = nil
 ---Game script only: a menu (ui.menu, the pause menu too, named "pause") opened.
 ---@type fun(menu: string)
 onMenuOpened = nil
@@ -210,7 +201,7 @@ function Entity:setColor(color, part) end
 
 ---The color of its model's first part (white without a model).
 ---@return vec3
-function Entity:getColor() end
+function Entity:color() end
 
 ---Runs a function as a coroutine that can `wait`, and ends it when the entity is destroyed:
 ---`self:run(function() wait(1) self:setColor(vec3(1, 0, 0)) wait(0.5) self:destroy() end)`.
@@ -259,28 +250,28 @@ function Entity:isTouching(other) end
 ---shaders/examples/). Only this entity changes, not others made from the same model. A file that does not compile is
 ---logged with its name and the model keeps the standard shader.
 ---@param path? string Relative to assets/ ("shaders/examples/water.glsl"); nil or "" is back to the standard shader
----@param submesh? integer The model's part, counting from 0 as the editor lists them; nil is every part
-function Entity:setShader(path, submesh) end
+---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
+function Entity:setShader(path, part) end
 
 ---The shader file a part uses ("" for the standard shader).
----@param submesh? integer The part, counting from 0 (the first by default)
+---@param part? integer|string A submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; the first part by default
 ---@return string
-function Entity:shader(submesh) end
+function Entity:shader(part) end
 
 ---Gives one of its custom shader's uniforms a value (set the shader first). A name the shader does not declare, or a
 ---value of the wrong kind, is a warning.
 ---@param name string The uniform's name in the .glsl file
 ---@param value number|vec3|number[]|string A number for a float; a vec3 or a table of 2, 3 or 4 numbers for a vecN; a
 --- texture path relative to assets/ for a sampler2D
----@param submesh? integer The part, counting from 0; nil is every part
-function Entity:setShaderParam(name, value, submesh) end
+---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
+function Entity:setShaderParam(name, value, part) end
 
 ---A custom shader uniform's value on a part: what was set, or the file's default. Floats come back as numbers, vec3 as a
 ---vec3, vec2 and vec4 as tables of numbers, textures as their path; nil for a name the shader does not have.
 ---@param name string
----@param submesh? integer The part, counting from 0 (the first by default)
+---@param part? integer|string A submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; the first part by default
 ---@return number|vec3|number[]|string|nil
-function Entity:shaderParam(name, submesh) end
+function Entity:shaderParam(name, part) end
 
 ---Adds an impulse to its physics body.
 ---@param impulse vec3
@@ -621,7 +612,7 @@ function engine.setSkyColor(color) end
 
 ---The sky color.
 ---@return vec3
-function engine.getSkyColor() end
+function engine.skyColor() end
 
 ---Settings for engine.setFog. Everything is optional.
 ---@class FogOptions
@@ -640,7 +631,7 @@ function engine.setFog(settings) end
 
 ---The fog's settings. `color` is the sky color while `matchSky` is true.
 ---@return FogOptions
-function engine.getFog() end
+function engine.fog() end
 
 ---Light added to everything lit, from nowhere, on top of each Light's own `ambient`: color times intensity (an intensity of 0 adds
 ---nothing, which is how scenes start). Kept in the scene file with the sky.
@@ -651,7 +642,7 @@ function engine.setAmbient(color, intensity) end
 ---The scene's ambient light.
 ---@return vec3 color
 ---@return number intensity
-function engine.getAmbient() end
+function engine.ambient() end
 
 -- game ---------------------------------------------------------------------------------------------------------------
 
@@ -698,7 +689,7 @@ function camera.stopFollow() end
 
 ---Whether the active camera has a follow rig.
 ---@return boolean
-function camera.following() end
+function camera.isFollowing() end
 
 ---Where the camera is.
 ---@return vec3
@@ -708,10 +699,13 @@ function camera.position() end
 ---@return vec3
 function camera.forward() end
 
----The vertical field of view in degrees: reads it, or sets it when given one (between 1 and 179).
----@param degrees? number
+---The vertical field of view in degrees.
 ---@return number
-function camera.fov(degrees) end
+function camera.fov() end
+
+---Sets the vertical field of view in degrees (between 1 and 179).
+---@param degrees number
+function camera.setFov(degrees) end
 
 -- time ---------------------------------------------------------------------------------------------------------------
 
@@ -719,15 +713,21 @@ function camera.fov(degrees) end
 ---@class time
 time = {}
 
----The speed of time: 1 is normal, 0.5 slow motion, 0 stands still. Sets it when given a number.
----@param scale? number
+---The speed of time: 1 is normal, 0.5 slow motion, 0 stands still.
 ---@return number
-function time.scale(scale) end
+function time.scale() end
 
----Whether the game is paused (like F7 and the pause menu). Pauses or resumes when given a boolean.
----@param paused? boolean
+---Sets the speed of time: 1 is normal, 0.5 slow motion, 0 stands still.
+---@param scale number
+function time.setScale(scale) end
+
+---Whether the game is paused (like F7 and the pause menu).
 ---@return boolean
-function time.paused(paused) end
+function time.isPaused() end
+
+---Pauses or resumes the game.
+---@param paused boolean
+function time.setPaused(paused) end
 
 ---Seconds of game time since the game started.
 ---@return number
@@ -980,10 +980,13 @@ function physics.setLayersCollide(a, b, collide) end
 ---@return boolean
 function physics.layersCollide(a, b) end
 
----Sets the gravity when given one; returns the current gravity.
----@param gravity? vec3
+---The current gravity.
 ---@return vec3
-function physics.gravity(gravity) end
+function physics.gravity() end
+
+---Sets the gravity.
+---@param gravity vec3
+function physics.setGravity(gravity) end
 
 -- nav ----------------------------------------------------------------------------------------------------------------
 
@@ -1069,7 +1072,7 @@ function sound.stopMusic(handle) end
 ---Changes the volume of the music playing now (or of the music of the handle, if it still plays).
 ---@param volume number
 ---@param handle? integer
-function sound.musicVolume(volume, handle) end
+function sound.setMusicVolume(volume, handle) end
 
 ---Whether music plays: false once music that does not loop has ended, or for a handle that was replaced.
 ---@param handle? integer
@@ -1176,9 +1179,6 @@ function settings.range(name) end
 ---@param name? string
 function settings.reset(name) end
 
----Resets every setting.
-function settings.resetAll() end
-
 -- ui -----------------------------------------------------------------------------------------------------------------
 
 ---RmlUi documents (.rml), changed by element id.
@@ -1204,29 +1204,17 @@ function ui.loadFont(path, fallback) end
 ---@field blockInput? boolean Keys and clicks do not reach the game while it is open (default true)
 ---@field escape? boolean Escape opens, steps back and closes it (default true); false: only code does
 
----Sets up the pause menu: Escape opens it. `true`/`false` turns it on or off with the defaults, a table sets its options.
+---The pause menu, as a Menu: `ui.pauseMenu():open("options")`, `ui.pauseMenu():isOpen()`, `ui.pauseMenu():close()`.
+---Without an argument it only returns the Menu (opening works without Escape being enabled). With `true`/`false` it
+---turns Escape on or off with the defaults, with a table it sets the options, and it returns the Menu as well.
 ---The document (assets/ui/pauseMenu.rml in a new project) is written against the data model "pause_menu":
 ---`settings.<name>`, `labels.<name>`, `enabled.<name>`, `screen`, and the events `set('name', value)`,
 ---`step('name', 1)`, `toggle('name')`, `show('screen')`, `back()`, `resume()`, `quit()` and `action('name')`.
----`action` calls the game script's `onPauseMenuAction(name)` (and `onMenuAction("pause", name)`). It is a menu like
----those of ui.menu, and `open('ui/options.rml')` works in it too.
----@param options? boolean|PauseMenuOptions Defaults to true
+---`action` calls the game script's `onMenuAction("pause", name)`, like any menu's, and the menu opening and closing
+---call `onMenuOpened("pause")` and `onMenuClosed("pause")`. `open('ui/options.rml')` works in it too.
+---@param options? boolean|PauseMenuOptions
+---@return Menu
 function ui.pauseMenu(options) end
-
----Opens the pause menu from code (works without ui.pauseMenu).
----@param screen? string The screen to start on, "main" by default (a document can have more: "options")
-function ui.openPauseMenu(screen) end
-
----Closes the pause menu.
-function ui.closePauseMenu() end
-
----Whether the pause menu is open.
----@return boolean
-function ui.isPauseMenuOpen() end
-
----The same as ui.isPauseMenuOpen (the menu pauses the game by default).
----@return boolean
-function ui.isPaused() end
 
 ---A menu: a document shown over the game (see ui.menu).
 ---@class Menu

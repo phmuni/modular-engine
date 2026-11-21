@@ -76,7 +76,7 @@ test.run(function()
   wait(0.6)
   test.near(e.rotation, vec3(0, 90, 0), 0.01)
   test.near(e.scale, vec3(3, 3, 3), 0.0001)
-  test.near(e:getColor(), vec3(0, 1, 0), 0.0001)
+  test.near(e:color(), vec3(0, 1, 0), 0.0001)
 
   -- An easing curve shows on an entity: ease-in is behind linear at the middle
   local slow = engine.create("Slow", { position = vec3(0, 0, 0) })
@@ -100,11 +100,11 @@ test.run(function()
 
   -- The time scale and pause apply: a tween is on game time
   local s = engine.create("Scaled", { position = vec3(0, 0, 0) })
-  time.scale(0.5)
+  time.setScale(0.5)
   tween.to(s, "position", vec3(10, 0, 0), 1)
   wait(1) -- one game second at half speed
   test.near(s.position.x, 10, 0.5, "done after one game second")
-  time.scale(1)
+  time.setScale(1)
 
   -- An entity destroyed mid-tween: the tween ends without crashing, and nothing is revived
   local gone = engine.create("Gone", { model = "box" })

@@ -42,7 +42,7 @@ test.run(function()
   test.eq(frames[2] - frames[1], 1)
 
   -- The time scale: a wait is game time
-  time.scale(0.5)
+  time.setScale(0.5)
   local finished = nil
   local s0 = time.elapsed()
   engine.run(function()
@@ -51,7 +51,7 @@ test.run(function()
   end)
   local f0 = test.frame()
   wait(1.2)
-  time.scale(1)
+  time.setScale(1)
   test.near(finished, 1, 2 * FRAME, "a second of game time")
   test.ok(test.frame() - f0 >= 2 * 60, "which took two seconds of frames at half speed")
 

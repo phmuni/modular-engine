@@ -30,9 +30,8 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
   in the engine's README, under Menu documents and screens.
 - `Escape` opens the pause menu while playing (`ui.pauseMenu(true)` in `game.lua`): Resume, Options (volumes, window,
   graphics) and Quit. It is the file `assets/ui/pauseMenu.rml` (with `pauseMenu.rcss`): edit it to change the screens
-  and the style. A button with `data-event-click="action('restart')"` calls `onMenuAction("pause", "restart")` (and
-  `function onPauseMenuAction(name)`) in `game.lua`, and `ui.pauseMenu{ pause = false }` keeps the game running under
-  the menu. The player's options are in `settings` (`settings.set("masterVolume", 0.5)`). The best score is kept
+  and the style. A button with `data-event-click="action('restart')"` calls `onMenuAction("pause", "restart")` in `game.lua`, and `ui.pauseMenu{ pause = false }` keeps the game
+  running under the menu. The player's options are in `settings` (`settings.set("masterVolume", 0.5)`). The best score is kept
   between runs with `save.set` / `save.get` (see `game.lua`).
 - `assets/prefabs/coin.json` is the coin: a prefab, an entity saved to a file, that `game.lua` copies into the level
   with `engine.spawn("prefabs/coin.json", position)`. To change every coin, run the game, press `F2`, click a coin,

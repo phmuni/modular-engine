@@ -39,7 +39,7 @@ NOT_FACADES = {"GameUISystem"}
 # Bound under another Lua name: (class, method) -> the Lua name
 ALIASES = {
     ("GameEntity", "hasScript"): "script",  # Lua's `script` is the entity itself or nil, a different type
-    ("GameEntity", "color"): "getColor",  # not `color`: a script may keep its own field of that name
+    ("PlayerSettings", "resetAll"): "reset",  # settings.reset() with no name resets all of them
 }
 
 # Engine methods bound under another name or in another Lua table: method -> "table.name" (Entity.name for a method
@@ -84,19 +84,16 @@ ENGINE_ALIASES = {
     "isSoundPlaying": "sound.isPlaying",
     "playMusic": "sound.music",
     "stopMusic": "sound.stopMusic",
-    "setMusicVolume": "sound.musicVolume",
+    "setMusicVolume": "sound.setMusicVolume",
     "isMusicPlaying": "sound.isMusicPlaying",
     "getScenePath": "scenePath",
     "loadUIDocument": "ui.load",
     "loadUIFont": "ui.loadFont",
     "enablePauseMenu": "ui.pauseMenu",
-    "openPauseMenu": "ui.openPauseMenu",
-    "closePauseMenu": "ui.closePauseMenu",
-    "isPauseMenuOpen": "ui.isPaused",
     "captureScreenshot": "screenshot",
     "setWindowTitle": "setTitle",
-    "getAmbientColor": "getAmbient",
-    "getAmbientIntensity": "getAmbient",
+    "ambientColor": "ambient",
+    "ambientIntensity": "ambient",
 }
 
 # Not bound on purpose: (class, method) -> why
@@ -105,9 +102,9 @@ C_PLUS_PLUS_ONLY = {
     ("GameTime", "clear"): "the engine calls it when a play session ends",
     ("GameTween", "tick"): "the engine calls it once per frame",
     ("GameTween", "clear"): "the engine calls it when a play session ends",
-    ("GameUI", "onPauseMenuOpened"): "C++ callback; Lua scripts define onPauseMenuOpened() in the game script",
-    ("GameUI", "onPauseMenuClosed"): "C++ callback; Lua scripts define onPauseMenuClosed() in the game script",
-    ("GameUI", "onPauseMenuAction"): "C++ callback; Lua scripts define onPauseMenuAction(name) in the game script",
+    ("GameUI", "onPauseMenuOpened"): "C++ callback; Lua scripts define onMenuOpened(menu) in the game script (called with \"pause\")",
+    ("GameUI", "onPauseMenuClosed"): "C++ callback; Lua scripts define onMenuClosed(menu) in the game script (called with \"pause\")",
+    ("GameUI", "onPauseMenuAction"): "C++ callback; Lua scripts define onMenuAction(menu, name) in the game script (called with \"pause\")",
     ("GameUI", "onMenuOpened"): "C++ callback; Lua scripts define onMenuOpened(menu) in the game script",
     ("GameUI", "onMenuClosed"): "C++ callback; Lua scripts define onMenuClosed(menu) in the game script",
     ("GameUI", "onMenuAction"): "C++ callback; Lua scripts define onMenuAction(menu, name) in the game script",
@@ -147,7 +144,7 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "layers": "accessor; physics.addLayer, setLayersCollide and layersCollide",
     "saveData": "accessor; the Lua save table",
     "settings": "accessor; the Lua settings table",
-    "pauseMenu": "accessor of the pause menu system; the Lua ui.pauseMenu, ui.openPauseMenu... and the script callbacks",
+    "pauseMenu": "accessor of the pause menu system; the Lua ui.pauseMenu (its Menu opens and closes it) and the script callbacks",
     "menus": "accessor of the menu system; the Lua ui.menu and the Menu handle it returns",
     "loadingScreen": "accessor of the loading screen; the Lua ui.loadingScreen",
     "getUIContext": "raw RmlUi, for C++ data models",

@@ -9,7 +9,7 @@
        enabled.<name>    whether it matters now (the FSR sharpness only while FSR is on)
        screen            "main" or any name you give to a div with data-if="screen == 'name'"
      and the events set('name', value), step('name', 1), toggle('name'), show('screen'), back(), resume(), quit() and
-     action('name'), which calls onPauseMenuAction(name) in the game script. The options are listed in the README
+     action('name'), which calls onMenuAction("pause", name) in the game script. The options are listed in the README
      (settings.names() in Lua). This file is yours: change the screens, the texts and pauseMenu.rcss as you like. -->
 <body data-model="pause_menu">
 	<div class="card" data-if="screen == 'main'">

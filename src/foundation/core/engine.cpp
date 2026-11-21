@@ -493,9 +493,6 @@ void Engine::applyCommandLine(const CommandLine &commandLine) {
 }
 
 void Engine::enablePauseMenu(bool enabled) { pauseMenu().setEnabled(enabled); }
-void Engine::openPauseMenu() { pauseMenu().open(); }
-void Engine::closePauseMenu() { pauseMenu().close(); }
-bool Engine::isPauseMenuOpen() { return pauseMenu().isOpen(); }
 PauseMenu &Engine::pauseMenu() { return m_systemManager.getSystem<MenuSystem>().pauseMenu(); }
 MenuSystem &Engine::menus() { return m_systemManager.getSystem<MenuSystem>(); }
 LoadingScreen &Engine::loadingScreen() { return m_systemManager.getSystem<LoadingScreen>(); }

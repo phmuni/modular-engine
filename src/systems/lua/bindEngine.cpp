@@ -203,12 +203,12 @@ void LuaBindings::bindEngine() {
   });
   // The color the image is cleared to, behind the skybox panorama; kept in the scene (see Engine::setSkyColor)
   api.set_function("setSkyColor", [this](const glm::vec3 &color) { engine.setSkyColor(color); });
-  api.set_function("getSkyColor", [this]() { return engine.getSkyColor(); });
+  api.set_function("skyColor", [this]() { return engine.skyColor(); });
   // Fog: engine.setFog({ color = vec3(0.6, 0.7, 0.8), start = 20, finish = 90 }) turns it on, with only the fields given
   // changed (mode = "linear" or "exponential", density for the exponential one; without `color` it takes the sky color);
-  // engine.setFog(false) turns it off. engine.getFog() reads it back.
+  // engine.setFog(false) turns it off. engine.fog() reads it back.
   api.set_function("setFog", [this](sol::object settings) {
-    Fog fog = engine.getFog();
+    Fog fog = engine.fog();
     if (settings.is<bool>()) {
       fog.enabled = settings.as<bool>();
     } else if (settings.is<sol::table>()) {
@@ -232,22 +232,22 @@ void LuaBindings::bindEngine() {
     }
     engine.setFog(fog);
   });
-  api.set_function("getFog", [this]() {
-    const Fog fog = engine.getFog();
+  api.set_function("fog", [this]() {
+    const Fog fog = engine.fog();
     sol::table result = lua.create_table();
     result["enabled"] = fog.enabled;
     result["mode"] = fog.mode == FogMode::Exponential ? "exponential" : "linear";
     result["matchSky"] = fog.matchSky;
-    result["color"] = fog.matchSky ? engine.getSkyColor() : fog.color;
+    result["color"] = fog.matchSky ? engine.skyColor() : fog.color;
     result["start"] = fog.start;
     result["finish"] = fog.finish;
     result["density"] = fog.density;
     return result;
   });
   // Light added to everything lit, on top of each Light's own ambient: engine.setAmbient(vec3(0.5, 0.6, 0.8), 0.3)
-  // (intensity 1 without one; engine.setAmbient(vec3(1), 0) is off). engine.getAmbient() returns the color and intensity.
+  // (intensity 1 without one; engine.setAmbient(vec3(1), 0) is off). engine.ambient() returns the color and intensity.
   api.set_function("setAmbient", [this](const glm::vec3 &color, sol::optional<float> intensity) {
     engine.setAmbient(color, intensity.value_or(1.0f));
   });
-  api.set_function("getAmbient", [this]() { return std::make_tuple(engine.getAmbientColor(), engine.getAmbientIntensity()); });
+  api.set_function("ambient", [this]() { return std::make_tuple(engine.ambientColor(), engine.ambientIntensity()); });
 }

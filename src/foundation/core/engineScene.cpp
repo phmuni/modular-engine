@@ -333,14 +333,14 @@ const Skybox *Engine::findSceneSky() {
 
 void Engine::setSkyColor(const glm::vec3 &color) { sceneSky().color = color; }
 
-glm::vec3 Engine::getSkyColor() {
+glm::vec3 Engine::skyColor() {
   const Skybox *sky = findSceneSky();
   return sky ? sky->color : glm::vec3(0.0f);
 }
 
 void Engine::setFog(const Fog &fog) { sceneSky().fog = fog; }
 
-Fog Engine::getFog() {
+Fog Engine::fog() {
   const Skybox *sky = findSceneSky();
   return sky ? sky->fog : Fog();
 }
@@ -351,12 +351,12 @@ void Engine::setAmbient(const glm::vec3 &color, float intensity) {
   sky.ambientIntensity = intensity;
 }
 
-glm::vec3 Engine::getAmbientColor() {
+glm::vec3 Engine::ambientColor() {
   const Skybox *sky = findSceneSky();
   return sky ? sky->ambientColor : glm::vec3(1.0f);
 }
 
-float Engine::getAmbientIntensity() {
+float Engine::ambientIntensity() {
   const Skybox *sky = findSceneSky();
   return sky ? sky->ambientIntensity : 0.0f;
 }

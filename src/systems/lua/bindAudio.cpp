@@ -61,7 +61,7 @@ void LuaBindings::bindAudio() {
     return engine.playMusic(path, volume.value_or(1.0f), loop.value_or(true));
   });
   sound.set_function("stopMusic", [this](sol::optional<uint32_t> handle) { engine.stopMusic(handle.value_or(0)); });
-  sound.set_function("musicVolume", [this](float volume, sol::optional<uint32_t> handle) {
+  sound.set_function("setMusicVolume", [this](float volume, sol::optional<uint32_t> handle) {
     engine.setMusicVolume(volume, handle.value_or(0));
   });
   sound.set_function("isMusicPlaying", [this](sol::optional<uint32_t> handle) {

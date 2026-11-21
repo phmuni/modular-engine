@@ -14,8 +14,8 @@
 //   screen               the screen shown ("main" when the menu opens); data-if="screen == 'options'"
 //   events               set('name', value)  step('name', 1)  toggle('name')  show('screen')  back()
 //                        resume()  quit()  action('name')   (back() on the first screen closes the menu)
-// action('name') calls the game's callback: Lua's onPauseMenuAction(name), or the one given to onAction in C++ (and
-// onMenuAction("pause", name), like any menu's actions).
+// action('name') calls the game's callback: Lua's onMenuAction("pause", name), or the one given to onAction in C++
+// (and onMenuAction in C++, like any menu's actions).
 //
 // The document is, in this order: PauseMenuOptions::document, the project's ui/pauseMenu.rml, or the engine's own
 // copy (assets/ui/engine/pauseMenu.rml, what projects made before the file was part of the template use).
@@ -69,7 +69,7 @@ public:
   // The document in use, as it was given to the UI (empty until it is loaded)
   const std::string &documentPath() const;
 
-  // The game's callbacks (Lua's onPauseMenuOpened, onPauseMenuClosed and onPauseMenuAction are called as well)
+  // The game's callbacks (Lua's onMenuOpened, onMenuClosed and onMenuAction are called as well, with "pause")
   void onOpened(std::function<void()> callback);
   void onClosed(std::function<void()> callback);
   void onAction(std::function<void(const std::string &)> callback);

@@ -44,19 +44,17 @@ public:
   // Calls the handler whenever the element is clicked; false if there is no such element
   bool onClick(const std::string &id, std::function<void()> handler);
 
-  // The pause menu (see systems/pauseMenu.h): a document of the project's, which Escape opens once enabled.
-  // pauseMenu(true) takes the defaults; the options choose the document, whether it pauses the game, frees the cursor,
-  // blocks the game's input, and whether Escape opens it.
-  void pauseMenu(bool enabled = true);
-  void pauseMenu(const PauseMenuOptions &options);
-  // The screen it starts on: "main" by default (a document's own screens, like "options")
-  void openPauseMenu(const std::string &screen = {});
-  void closePauseMenu();
-  // Whether the pause menu is open
-  bool isPaused() const;
-  bool isPauseMenuOpen() const;
-  // The game's callbacks for what happens in the menu (Lua scripts define onPauseMenuOpened, onPauseMenuClosed and
-  // onPauseMenuAction(name) instead). The action is the name a button of the document gave to action('name').
+  // The pause menu (see systems/pauseMenu.h): a document of the project's, which Escape opens once enabled. It is a
+  // Menu (named "pause"): pauseMenu().open("options"), pauseMenu().isOpen(), close(); that works without Escape being
+  // enabled. With no argument nothing about it changes. pauseMenu(true) takes the defaults; the options choose the
+  // document, whether it pauses the game, frees the cursor, blocks the game's input, and whether Escape opens it.
+  // Each also returns the Menu.
+  Menu &pauseMenu();
+  Menu &pauseMenu(bool enabled);
+  Menu &pauseMenu(const PauseMenuOptions &options);
+  // The game's callbacks for what happens in the menu (Lua scripts define onMenuOpened(menu), onMenuClosed(menu) and
+  // onMenuAction(menu, name) instead, which are called with "pause" for this one). The action is the name a button of
+  // the document gave to action('name').
   void onPauseMenuOpened(std::function<void()> callback);
   void onPauseMenuClosed(std::function<void()> callback);
   void onPauseMenuAction(std::function<void(const std::string &)> callback);

@@ -149,7 +149,7 @@ struct Menu::Impl {
   std::string modelName;
   MenuOptions options;
   std::vector<std::string> fallbacks; // documents to use when the option's is missing (the pause menu's)
-  bool isPause = false;               // also calls the pause menu's callbacks of the game script
+  bool isPause = false;               // the pause menu: its data model keeps its name when the document changes
   bool open = false;
   bool wasCursorLocked = false;
   bool wasPaused = false;
@@ -351,8 +351,6 @@ struct Menu::Impl {
     screen = startScreen.empty() ? MAIN_SCREEN : startScreen;
     model.DirtyVariable("screen");
     display();
-    if (isPause)
-      engine.scripts().pauseMenuOpened();
     engine.scripts().menuOpened(name);
     if (openedCallback)
       openedCallback();
@@ -378,8 +376,6 @@ struct Menu::Impl {
       menus.back()->m_impl->requests.clear();
       menus.back()->m_impl->display();
     }
-    if (isPause)
-      engine.scripts().pauseMenuClosed();
     engine.scripts().menuClosed(name);
     if (closedCallback)
       closedCallback();
@@ -458,8 +454,6 @@ struct Menu::Impl {
       system.openDocument(request.name);
       break;
     case Kind::Action:
-      if (isPause)
-        engine.scripts().pauseMenuAction(request.name);
       engine.scripts().menuAction(name, request.name);
       if (actionCallback)
         actionCallback(request.name);

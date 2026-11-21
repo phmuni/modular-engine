@@ -29,6 +29,6 @@ test.run(function()
   ui.attribute("nothing", "title", "x")
 
   wait(0.2) -- a few frames drawn with it
-  test.ok(not ui.isPaused(), "the game is not paused")
+  test.ok(not ui.pauseMenu():isOpen(), "the game is not paused")
   test.eq(clicks, 0)
 end)

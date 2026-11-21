@@ -10,6 +10,6 @@ end
 function onUpdate(dt)
 end
 
--- A pause menu button with data-event-click="action('name')" calls this with its name.
--- function onPauseMenuAction(name)
+-- A pause menu button with data-event-click="action('name')" calls this with the menu ("pause") and its name.
+-- function onMenuAction(menu, name)
 -- end

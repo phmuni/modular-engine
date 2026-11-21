@@ -52,14 +52,14 @@ TEST_CASE(pause_menu_events) {
   engine.ui().onPauseMenuClosed([closed]() { ++*closed; });
   engine.settings().set("fxaa", false);
   engine.settings().set("ssaoQuality", std::string("low"));
-  engine.ui().openPauseMenu();
+  engine.pauseMenu().open();
 
   Engine *game = &engine;
   steps.step(2, [game, opened] {
-    CHECK(game->isPauseMenuOpen());
+    CHECK(game->pauseMenu().isOpen());
     CHECK(game->getState(Toggle::Paused)); // opening pauses
     CHECK_EQ(*opened, 1);
-    CHECK_EQ(gameNumber(*game, "opened"), 1); // the game script's onPauseMenuOpened
+    CHECK_EQ(gameNumber(*game, "opened"), 1); // the game script's onMenuOpened
     Rml::Element *label = element(*game, "msaa_label");
     CHECK(label != nullptr);
     if (label)
@@ -114,7 +114,7 @@ TEST_CASE(pause_menu_events) {
   });
   steps.step(2, [game, actions] {
     CHECK_EQ(*actions, std::string("hello")); // action('hello') reaches C++...
-    CHECK_EQ(gameString(*game, "action"), std::string("hello")); // ...and the game script's onPauseMenuAction
+    CHECK_EQ(gameString(*game, "action"), std::string("hello")); // ...and the game script's onMenuAction
     click(*game, "show_second");
   });
   steps.step(2, [game] {
@@ -123,12 +123,12 @@ TEST_CASE(pause_menu_events) {
     click(*game, "back");
   });
   steps.step(2, [game] {
-    CHECK(game->isPauseMenuOpen()); // back() from a second screen goes to the first
+    CHECK(game->pauseMenu().isOpen()); // back() from a second screen goes to the first
     CHECK(shown(*game, "first"));
     click(*game, "resume");
   });
   steps.step(2, [game, closed] {
-    CHECK(!game->isPauseMenuOpen());
+    CHECK(!game->pauseMenu().isOpen());
     CHECK(!game->getState(Toggle::Paused));
     CHECK_EQ(*closed, 1);
     CHECK_EQ(gameNumber(*game, "closed"), 1);
@@ -143,46 +143,46 @@ TEST_CASE(pause_menu_escape) {
   engine.pauseMenu().configure(options);
   Engine *game = &engine;
   steps.step(2, [game] {
-    CHECK(!game->isPauseMenuOpen());
+    CHECK(!game->pauseMenu().isOpen());
     pressEscape();
   });
   steps.step(3, [game] {
-    CHECK(game->isPauseMenuOpen()); // Escape opened it
+    CHECK(game->pauseMenu().isOpen()); // Escape opened it
     click(*game, "show_second");
   });
   steps.step(2, [game] {
     pressEscape();
   });
   steps.step(3, [game] {
-    CHECK(game->isPauseMenuOpen()); // from the second screen: back to the first
+    CHECK(game->pauseMenu().isOpen()); // from the second screen: back to the first
     CHECK(shown(*game, "first"));
     pressEscape();
   });
   steps.step(3, [game] {
-    CHECK(!game->isPauseMenuOpen()); // from the first: out of the menu
+    CHECK(!game->pauseMenu().isOpen()); // from the first: out of the menu
     PauseMenuOptions options = withDocument(kDocument);
     options.escape = false;
     game->pauseMenu().configure(options);
     pressEscape();
   });
   steps.step(3, [game] {
-    CHECK(!game->isPauseMenuOpen()); // escape = false: only code opens it
-    game->openPauseMenu();
+    CHECK(!game->pauseMenu().isOpen()); // escape = false: only code opens it
+    game->pauseMenu().open();
   });
   steps.step(2, [game] {
-    CHECK(game->isPauseMenuOpen());
+    CHECK(game->pauseMenu().isOpen());
     pressEscape();
   });
   steps.step(3, [game] {
-    CHECK(game->isPauseMenuOpen()); // and Escape does not close it either
-    game->closePauseMenu();
+    CHECK(game->pauseMenu().isOpen()); // and Escape does not close it either
+    game->pauseMenu().close();
     PauseMenuOptions options = withDocument(kDocument);
     options.enabled = false;
     game->pauseMenu().configure(options);
     pressEscape();
   });
   steps.step(3, [game] {
-    CHECK(!game->isPauseMenuOpen()); // not enabled: Escape does nothing
+    CHECK(!game->pauseMenu().isOpen()); // not enabled: Escape does nothing
   });
 }
 
@@ -192,14 +192,14 @@ TEST_CASE(pause_menu_behavior) {
   game->setState(Toggle::CursorLock, true);
   // All of it (the defaults)
   game->pauseMenu().configure(withDocument(kDocument));
-  game->openPauseMenu();
+  game->pauseMenu().open();
   steps.step(2, [game] {
     CHECK(game->getState(Toggle::Paused));
     CHECK(!game->getState(Toggle::CursorLock)); // the cursor is the menu's
     CHECK(gameInputBlocked(*game));
     game->setMouseCaptured(true); // the game asks for the mouse while the menu has it: it gets it after
     CHECK(!game->getState(Toggle::CursorLock));
-    game->closePauseMenu();
+    game->pauseMenu().close();
   });
   steps.step(2, [game] {
     CHECK(!game->getState(Toggle::Paused));
@@ -212,16 +212,16 @@ TEST_CASE(pause_menu_behavior) {
     options.freeCursor = false;
     options.blockInput = false;
     game->pauseMenu().configure(options);
-    game->openPauseMenu();
+    game->pauseMenu().open();
   });
   steps.step(2, [game] {
-    CHECK(game->isPauseMenuOpen());
+    CHECK(game->pauseMenu().isOpen());
     CHECK(!game->getState(Toggle::Paused));
     CHECK(game->getState(Toggle::CursorLock));
     CHECK(!gameInputBlocked(*game));
     CHECK(!game->pauseMenu().blocksInput());
     CHECK(!game->pauseMenu().showsCursor());
-    game->closePauseMenu();
+    game->pauseMenu().close();
   });
   steps.step(2, [game] {
     CHECK(game->getState(Toggle::CursorLock));
@@ -232,13 +232,13 @@ TEST_CASE(pause_menu_behavior) {
     options.pause = false;
     options.freeCursor = false;
     game->pauseMenu().configure(options);
-    game->openPauseMenu();
+    game->pauseMenu().open();
   });
   steps.step(2, [game] {
     CHECK(gameInputBlocked(*game));
     CHECK(!game->getState(Toggle::Paused));
     CHECK(game->pauseMenu().blocksInput());
-    game->closePauseMenu();
+    game->pauseMenu().close();
   });
   steps.step(2, [game] { CHECK(!gameInputBlocked(*game)); });
 }
@@ -252,20 +252,20 @@ TEST_CASE(pause_menu_game_time) {
   game->pauseMenu().configure(options);
   steps.step(2, [game, start] {
     *start = game->time().elapsed();
-    game->openPauseMenu();
+    game->pauseMenu().open();
   });
   steps.step(30, [game, start] {
-    CHECK(game->isPauseMenuOpen());
+    CHECK(game->pauseMenu().isOpen());
     CHECK_NEAR(game->time().elapsed() - *start, 0.5f, 0.05f);
-    game->closePauseMenu();
+    game->pauseMenu().close();
     game->pauseMenu().configure(withDocument(kDocument));
-    game->openPauseMenu();
+    game->pauseMenu().open();
     *start = game->time().elapsed();
   });
   steps.step(30, [game, start] {
-    CHECK(game->isPauseMenuOpen());
+    CHECK(game->pauseMenu().isOpen());
     CHECK_NEAR(game->time().elapsed() - *start, 0.0f, 0.02f);
-    game->closePauseMenu();
+    game->pauseMenu().close();
   });
 }
 
@@ -309,6 +309,30 @@ TEST_CASE(pause_menu_document_lookup) {
   menu.open();
   CHECK(menu.isOpen());
   menu.close();
+}
+
+// ui().pauseMenu() with no argument only gives the Menu: it neither enables the pause menu nor changes its options; the
+// overloads with an argument configure it and give the same Menu back
+TEST_CASE(pause_menu_accessor_changes_nothing) {
+  PauseMenu &settings = engine.pauseMenu();
+  settings.configure(withDocument(kDocument));
+  settings.setEnabled(false);
+  Menu &menu = engine.ui().pauseMenu();
+  CHECK_EQ(menu.name(), std::string("pause"));
+  CHECK(!settings.isEnabled());
+  CHECK_EQ(settings.documentPath(), std::string(kDocument));
+  CHECK(&engine.ui().pauseMenu(true) == &menu);
+  CHECK(settings.isEnabled());
+  PauseMenuOptions options = withDocument(kDocument);
+  options.pause = false;
+  CHECK(&engine.ui().pauseMenu(options) == &menu);
+  CHECK(!settings.options().pause);
+  CHECK(&engine.ui().pauseMenu() == &menu);
+  CHECK(!settings.options().pause); // still as configured
+  menu.open();
+  CHECK(menu.isOpen());
+  menu.close();
+  settings.configure(PauseMenuOptions{});
 }
 
 // Saved choices are applied at start-up, with no menu enabled, over the game's own defaults and only where there is a

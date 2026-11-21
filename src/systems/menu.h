@@ -19,7 +19,7 @@
 // closes the menu. open('path') opens another menu document on top: the new one takes the input, and closing it
 // (back() or Escape) shows this one again.
 // action('name') is how a button reaches the game: Lua's onMenuAction(menu, name), or the callback given to
-// onMenuAction in C++ (menu is the menu's name; the pause menu also calls onPauseMenuAction(name)).
+// onMenuAction in C++ (menu is the menu's name; the pause menu's is "pause").
 //
 // A stack: only the menu opened last takes input. Opening one over another hides the one below; closing the top one
 // shows it again, and closing one below the top closes everything above it.

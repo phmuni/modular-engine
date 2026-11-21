@@ -91,8 +91,8 @@ TEST_CASE(menu_missing_document) {
   });
 }
 
-// action('name') reaches the game: Lua's onMenuAction(menu, name), and the C++ callback; the pause menu's too (and its
-// own onPauseMenuAction); onMenuOpened and onMenuClosed with the name
+// action('name') reaches the game: Lua's onMenuAction(menu, name), and the C++ callback; the pause menu's too (with the name
+// "pause"); onMenuOpened and onMenuClosed with the name
 TEST_CASE(menu_actions_and_callbacks) {
   CHECK(engine.scripts().runGameScript(EngineConfig::resolvePath(kGameScript)));
   auto actions = std::make_shared<std::string>();
@@ -119,18 +119,17 @@ TEST_CASE(menu_actions_and_callbacks) {
   steps.step(2, [game, events] {
     CHECK_EQ(gameString(*game, "closed"), std::string("menu_main;"));
     CHECK_EQ(*events, std::string("+menu_main-menu_main"));
-    // The pause menu: its action reaches the generic callback with the name "pause", and onPauseMenuAction as before
+    // The pause menu: its action reaches the generic callback with the name "pause"
     PauseMenuOptions options;
     options.document = kPauseDocument;
     game->pauseMenu().configure(options);
-    game->ui().openPauseMenu();
+    game->pauseMenu().open();
   });
   steps.step(2, [game] { click(*game, "action"); });
   steps.step(2, [game, actions] {
     CHECK_EQ(gameString(*game, "action"), std::string("pause:hello"));
-    CHECK_EQ(gameString(*game, "pauseAction"), std::string("hello"));
     CHECK_EQ(*actions, std::string("menu_main:play;pause:hello;"));
-    game->closePauseMenu();
+    game->pauseMenu().close();
   });
 }
 
@@ -236,12 +235,12 @@ TEST_CASE(menu_escape_does_not_open_pause_over_a_menu) {
   game->ui().menu(kMain, none);
   steps.step(2, [] { pressEscape(); });
   steps.step(3, [game] {
-    CHECK(!game->isPauseMenuOpen());
+    CHECK(!game->pauseMenu().isOpen());
     CHECK_EQ(game->menus().topName(), std::string("main"));
     game->menus().find("main")->close();
     pressEscape();
   });
-  steps.step(3, [game] { CHECK(game->isPauseMenuOpen()); }); // and it opens when no menu is
+  steps.step(3, [game] { CHECK(game->pauseMenu().isOpen()); }); // and it opens when no menu is
 }
 
 // What the screen does as a load goes on, fed the way Engine feeds it every frame. Tests run deterministically, where a

@@ -10,7 +10,7 @@
        screen            "main" or any name you give to a div with data-if="screen == 'name'"
      and the events set('name', value), step('name', 1), toggle('name'), show('screen'), back(), resume(), quit(),
      open('ui/other.rml') (another menu over this one: Options is options.rml, shared with the main menu) and
-     action('name'), which calls onPauseMenuAction(name) and onMenuAction("pause", name) in the game script. This file
+     action('name'), which calls onMenuAction("pause", name) in the game script. This file
      is yours: change the screens, the texts and pauseMenu.rcss as you like. -->
 <body data-model="pause_menu">
 	<div class="card" data-if="screen == 'main'">

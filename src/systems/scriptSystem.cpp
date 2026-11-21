@@ -467,21 +467,6 @@ std::vector<ScriptProperty> ScriptSystem::getProperties(Entity entity) { return 
 
 sol::state &ScriptSystem::lua() { return m_impl->lua; }
 const std::string &ScriptSystem::getLastError() const { return m_impl->lastError; }
-void ScriptSystem::pauseMenuOpened() {
-  Impl &impl = *m_impl;
-  if (impl.hasGameScript)
-    impl.call(impl.gameScript, "onPauseMenuOpened");
-}
-void ScriptSystem::pauseMenuClosed() {
-  Impl &impl = *m_impl;
-  if (impl.hasGameScript)
-    impl.call(impl.gameScript, "onPauseMenuClosed");
-}
-void ScriptSystem::pauseMenuAction(const std::string &name) {
-  Impl &impl = *m_impl;
-  if (impl.hasGameScript)
-    impl.call(impl.gameScript, "onPauseMenuAction", name);
-}
 void ScriptSystem::menuOpened(const std::string &menu) {
   Impl &impl = *m_impl;
   if (impl.hasGameScript)

@@ -55,26 +55,17 @@ void LuaBindings::bindGame() {
       engine.camera().follow(*target, cameraRigOptions(options));
   });
   camera.set_function("stopFollow", &GameCamera::stopFollow, &engine.camera());
-  camera.set_function("following", &GameCamera::isFollowing, &engine.camera());
-  // camera.fov() reads the field of view, camera.fov(70) sets it (degrees)
-  camera.set_function("fov", [this](sol::optional<float> degrees) {
-    if (degrees)
-      engine.camera().setFov(*degrees);
-    return engine.camera().fov();
-  });
+  camera.set_function("isFollowing", &GameCamera::isFollowing, &engine.camera());
+  // The field of view in degrees
+  camera.set_function("fov", &GameCamera::fov, &engine.camera());
+  camera.set_function("setFov", &GameCamera::setFov, &engine.camera());
 
   // time: the scale and pause, the game clock, timers
   sol::table time = lua.create_named_table("time");
-  time.set_function("scale", [this](sol::optional<float> scale) {
-    if (scale)
-      engine.time().setScale(*scale);
-    return engine.time().scale();
-  });
-  time.set_function("paused", [this](sol::optional<bool> paused) {
-    if (paused)
-      engine.time().setPaused(*paused);
-    return engine.time().isPaused();
-  });
+  time.set_function("scale", &GameTime::scale, &engine.time());
+  time.set_function("setScale", &GameTime::setScale, &engine.time());
+  time.set_function("isPaused", &GameTime::isPaused, &engine.time());
+  time.set_function("setPaused", &GameTime::setPaused, &engine.time());
   time.set_function("elapsed", &GameTime::elapsed, &engine.time());
   time.set_function("delta", &GameTime::delta, &engine.time());
   // time.after(2, function() ... end) once, time.every(1, fn) repeatedly; both return a handle for time.cancel
