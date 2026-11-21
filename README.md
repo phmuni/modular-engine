@@ -428,7 +428,7 @@ function onUpdate(self, dt)                  -- every frame
   self.rotation = rotation
 end
 function onOverlap(self, other)              -- its Collision box overlaps another; also onContact(self, other, point,
-  if other.name == "Player" then             --   normal) for physics bodies, and onReload(self) after an edit
+  if other.name == "Player" then             --   normal) and onContactEnd(self, other) for physics bodies, and onReload(self) after an edit
     game.score = game.score + 1
     sound.play("sounds/coin.wav")
     self:destroy()
@@ -453,11 +453,11 @@ What scripts can use:
 | Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setShininess(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `layer` (collision layer, by name); `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; tags: `:addTag(t)`, `:removeTag(t)`, `:hasTag(t)`, `:tags()`; its `AudioSource`: `:playAudio()`, `:stopAudio()`, `:pauseAudio()`, `audioPlaying`, `audioVolume`, `audioPitch`, `audioLoop`; `:color()`; `:run(fn)` (a coroutine that ends with the entity); any other field is the entity's own (`other.health`) |
 | `engine` | `find(name)`, `findAll(name)`, `findTagged(tag)`, `findWithComponent(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script, tags, layer, character, components })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)`, `quit()`, `setSkyColor(c)`, `skyColor()`, `setFog({...})`, `fog()`, `setAmbient(c, intensity)`, `ambient()`, `run(fn)` and `stop(handle)` (coroutines) |
 | `wait(seconds)` | inside `engine.run` / `self:run`: suspends the coroutine for game time; `wait()` until the next frame |
-| `tween` | `to(entity, "position" \| "rotation" \| "scale" \| "color", value, seconds, easing, onComplete)`, `value(from, to, seconds, easing, fn, onComplete)`, `cancel(handle)`; easings `linear`, `easeInQuad`, `easeOutQuad`, `easeInOutQuad`, `easeInCubic`, `easeOutCubic`, `easeInOutCubic` |
+| `tween` | `to(entity, "position" \| "rotation" \| "scale" \| "color" \| "emission" \| "intensity", value, seconds, easing, onComplete)`, `value(from, to, seconds, easing, fn, onComplete)`, `cancel(handle)`; easings `linear`, and `easeIn`, `easeOut` and `easeInOut` followed by `Quad`, `Cubic`, `Sine`, `Back`, `Elastic` or `Bounce` (`easeOutBack`, `easeInOutElastic`...) |
 | `input` | `axis(name)`, `down(name)`, `pressed(name)`, `released(name)` (the actions and axes of `input.json`), `key("Space")`, `keyPressed("Space")`, `mouse()`, `mouseDown(button)`, `wheel()`, `click(button)`, `bindings(path)`; `mouseDelta()`, `captureMouse(b)`, `isMouseCaptured()`, `showCursor(b)`; text entry: `startText(initial, maxLength)`, `text()`, `typed()`, `stopText()`; `rumble(low, high, seconds)`, `stopRumble()` |
 | `camera` | `lookAt(from, target)`, `position()`, `forward()`, `fov()`, `setFov(degrees)`, `follow(entity, { offset, lookAhead, smoothing, orbit... })`, `stopFollow()`, `isFollowing()` |
 | `time` | `scale()`, `setScale(n)` (slow motion), `isPaused()`, `setPaused(b)`, `elapsed()`, `delta()`, `after(seconds, fn)` and `every(seconds, fn)` (timers on game time, return a handle), `cancel(handle)` |
-| `physics` | `raycast(origin, direction, distance, { layers = {"enemy"} })` (a table with `entity`, `point`, `normal`, `distance`; `layers` is optional), `gravity()`, `setGravity(v)`; collision layers: `addLayer(name)`, `layers()`, `setLayersCollide(a, b, bool)`, `layersCollide(a, b)` |
+| `physics` | `raycast(origin, direction, distance, { layers = {"enemy"}, ignore = self, characters = true })` (a table with `entity`, `point`, `normal`, `distance`; every option is optional: `ignore` is an entity or a list of them, and rays pass through character controllers unless `characters` is set), `overlapSphere(center, radius, options)` and `overlapBox(center, halfExtents, rotation, options)` (the entities whose bodies overlap the shape), `gravity()`, `setGravity(v)`; collision layers: `addLayer(name)`, `layers()`, `setLayersCollide(a, b, bool)`, `layersCollide(a, b)` |
 | `nav` | `build({ min, max, cellSize, agentRadius, agentHeight, maxSlope, stepHeight })` (all optional; without `min` and `max` it covers the static bodies), `path(from, to)` (a table of `vec3` on the ground, or `nil` if there is no way), `walkable(point)` |
 | `sound` | `play(path, volume, pitch)` and `playAt(path, position, volume)` (return a handle for `stop(handle)`, `setVolume(handle, v)`, `isPlaying(handle)`), `preload(path)`, `music(path, volume, loop)` (returns a handle), `setMusicVolume(v, handle)`, `stopMusic(handle)`, `isMusicPlaying(handle)` |
 | `ui` | `load(path)` (an RmlUi document), `text(id, value)`, `show(id, visible)`, `class(id, name, on)`, `style(id, property, value)`, `attribute(id, name, value)`, `onClick(id, function)`; the pause menu: `pauseMenu(enabled or options)` (returns its `Menu`: `ui.pauseMenu():open(screen)`, `:close()`, `:isOpen()`) |
@@ -545,8 +545,9 @@ Properties panel.
 
 ### Tweens and coroutines
 
-`engine.tween()` ([`GameTween`](src/systems/gameTween.h)) animates an entity's position, rotation, scale or color, or any
-number, over some seconds with an easing curve (`Linear`, `EaseIn/Out/InOutQuad`, `EaseIn/Out/InOutCubic`), ending
+`engine.tween()` ([`GameTween`](src/systems/gameTween.h)) animates an entity's position, rotation, scale, color or emission (the glow
+color), its light's intensity, or any number, over some seconds with an easing curve (`Linear`, and `EaseIn`, `EaseOut`
+or `EaseInOut` with `Quad`, `Cubic`, `Sine`, `Back`, `Elastic` or `Bounce`: `Ease::EaseOutBack`), ending
 exactly on the value and then calling a completion callback. Tweens run on game time like timers: a pause or a slow
 motion holds them, a destroyed entity's tween stops, a new tween of the same property replaces the old one.
 
@@ -710,7 +711,19 @@ if (jumpPressed && character.onGround)
 engine.physics().addImpulse(crate, {0, 200, 0});  // also velocities, forces, gravity
 if (auto hit = engine.physics().raycast(origin, direction, 50.0f)) { /* hit->entity, point, normal */ }
 engine.forEachContact<Bullet, Enemy>([&](Entity bullet, Bullet &, Entity enemy, Enemy &) { /* ... */ });
+engine.forEachContactEnd<Bullet, Enemy>([&](Entity bullet, Bullet &, Entity enemy, Enemy &) { /* stopped touching */ });
+
+// Queries take QueryOptions: layers, entities to ignore, and `characters` (rays pass through characters by default)
+QueryOptions options;
+options.ignore = {hero};
+options.characters = true;
+auto hitAnything = engine.physics().raycast(origin, direction, 50.0f, options);
+std::vector<Entity> near = engine.physics().overlapSphere(center, 2.0f, options);  // also overlapBox(center, half, degrees)
 ```
+
+A contact starts once per pair of bodies, however many parts of their shapes touch, and ends when the last part lets go
+(`onContactEnd(self, other)` in a Lua script, `forEachContactEnd` in C++). Bodies that rest long enough fall asleep, and
+that is not the end of a contact; a body that is destroyed (or rebuilt) while touching ends without a report.
 
 The simulation steps at a fixed 60 Hz, writes dynamic bodies' and characters' Transforms, and takes Transforms moved
 by game code or the editor's gizmo as teleports; changing a `RigidBody` (or the entity's scale) rebuilds its body. Both

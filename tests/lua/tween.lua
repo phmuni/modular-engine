@@ -119,4 +119,34 @@ test.run(function()
   engine.run(function() tween.to(e, "position", vec3(0, 0, 0), 0.5, "wobble") end) -- in its own routine, which it ends
   wait(0.1)
   test.near(e.position, vec3(4, 2, 0), 0.0001, "nothing was tweened")
+
+  -- Every easing by name ends exactly on the value, however far the curve strays from it on the way (back, elastic)
+  local last, strayed = {}, {}
+  local names = { "linear" }
+  for _, kind in ipairs({ "Quad", "Cubic", "Sine", "Back", "Elastic", "Bounce" }) do
+    for _, direction in ipairs({ "easeIn", "easeOut", "easeInOut" }) do
+      names[#names + 1] = direction .. kind
+    end
+  end
+  for _, name in ipairs(names) do
+    tween.value(0, 10, 0.3, name, function(v)
+      last[name] = v
+      if v < 0 or v > 10 then
+        strayed[name] = true
+      end
+    end)
+  end
+  wait(0.5)
+  for _, name in ipairs(names) do
+    test.eq(last[name], 10, name .. " ends exactly on the value")
+  end
+  test.ok(strayed.easeOutBack and strayed.easeInBack and strayed.easeOutElastic, "back and elastic overshoot on the way")
+  test.ok(not strayed.easeInOutCubic and not strayed.easeOutBounce, "the others stay between the ends")
+
+  -- Emission takes a color (it needs a model); intensity needs a light, and starts nothing without one
+  local lamp = engine.create("Lamp", { model = "box" })
+  test.ok(tween.to(lamp, "emission", vec3(1, 0.5, 0), 0.2, "easeOutBack") > 0)
+  test.eq(tween.to(lamp, "intensity", 3, 0.2), 0, "no Light on it")
+  test.eq(tween.to(engine.create("Bare", {}), "emission", vec3(1, 0, 0), 0.2), 0, "no model")
+  wait(0.3)
 end)

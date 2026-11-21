@@ -73,6 +73,7 @@ public:
   // The same by SDL's key name ("Space", "Left Shift", "W"); false for a name SDL does not know
   bool isKeyDown(const std::string &keyName) const;
   bool wasKeyPressed(const std::string &keyName) const;
+  bool wasKeyReleased(const std::string &keyName) const;
   bool isActionPressed(Action action) const;
 
   // Mouse, for the game: clicks the game UI or the editor handled are left out

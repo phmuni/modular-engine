@@ -350,6 +350,11 @@ struct ScriptSystem::Impl : LuaHost {
       notify(contact.a, contact.b, "onContact", contact.point, contact.normal);
       notify(contact.b, contact.a, "onContact", contact.point, -contact.normal);
     }
+    const std::vector<PhysicsContactEnd> ends = engine.physics().getContactEnds();
+    for (const PhysicsContactEnd &end : ends) {
+      notify(end.a, end.b, "onContactEnd");
+      notify(end.b, end.a, "onContactEnd");
+    }
     if (!instances.empty()) {
       const std::vector<CollisionEvent> overlaps = engine.findCollisions();
       for (const CollisionEvent &pair : overlaps) {

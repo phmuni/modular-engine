@@ -321,11 +321,32 @@ public:
           fn(contact.b, *a, contact.a, *b);
     }
   }
+  // Pairs of bodies that stopped touching during the last update, one of them with component A and the other with B
+  // (each pair once, A's first), e.g. forEachContactEnd<Player, Coin>. See PhysicsSystem::getContactEnds: nothing is
+  // reported for an entity destroyed while touching.
+  template <typename A, typename B, typename Fn> void forEachContactEnd(Fn &&fn) {
+    const std::vector<PhysicsContactEnd> ends = physics().getContactEnds();
+    for (const PhysicsContactEnd &end : ends) {
+      if (A *a = tryGet<A>(end.a)) {
+        if (B *b = tryGet<B>(end.b)) {
+          fn(end.a, *a, end.b, *b);
+          continue;
+        }
+      }
+      if (A *a = tryGet<A>(end.b))
+        if (B *b = tryGet<B>(end.a))
+          fn(end.b, *a, end.a, *b);
+    }
+  }
   // The nearest Collision box along a ray, within maxDistance, on the layers in `layerMask` (all by default); see
   // CollisionSystem::raycast
   std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
                                 const std::function<bool(Entity)> &accept = nullptr,
                                 uint32_t layerMask = CollisionLayers::kAllLayers);
+  // The same with options: the layers and entities to ignore (`characters` is for physics queries, and does nothing
+  // here)
+  std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
+                                const QueryOptions &options);
   // Only entities that have component T, e.g. raycast<Enemy>(muzzle, forward, 100.0f)
   template <typename T>
   std::optional<RayHit> raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance) {

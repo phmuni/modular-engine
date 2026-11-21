@@ -181,9 +181,39 @@ TEST_CASE(input_mouse) {
   steps.step(1, [&input]() {
     CHECK(!input.wasMouseButtonPressed(MouseButton::Left)); // pressed is one frame
     CHECK(input.wasMouseButtonReleased(MouseButton::Left));
+    CHECK(!input.wasMouseButtonReleased(MouseButton::Right));
     CHECK(!input.isMouseButtonDown(MouseButton::Left));
     CHECK_NEAR(input.getMouseWheel(), 0.0f, 1e-6f);
   });
+  steps.step(1, [&input]() { CHECK(!input.wasMouseButtonReleased(MouseButton::Left)); }); // released is one frame
+}
+
+TEST_CASE(input_key_pressed_and_released_by_name) {
+  InputSystem &input = engine.input();
+  auto key = [](SDL_Scancode scancode, bool down) {
+    SDL_Event event{};
+    event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+    event.key.windowID = windowId();
+    event.key.scancode = scancode;
+    event.key.down = down;
+    push(event);
+  };
+  steps.step(1, [&input, key]() {
+    CHECK(!input.wasKeyReleased("Space"));
+    CHECK(!input.wasKeyReleased("No Such Key")); // a name SDL does not know
+    key(SDL_SCANCODE_SPACE, true);
+  });
+  steps.step(1, [&input, key]() {
+    CHECK(input.wasKeyPressed("Space"));
+    CHECK(!input.wasKeyReleased("Space")); // down is not up
+    key(SDL_SCANCODE_SPACE, false);
+  });
+  steps.step(1, [&input]() {
+    CHECK(input.wasKeyReleased("Space"));
+    CHECK(!input.wasKeyPressed("Space"));
+    CHECK(!input.isKeyDown("Space"));
+  });
+  steps.step(1, [&input]() { CHECK(!input.wasKeyReleased("Space")); }); // one frame, like a press
 }
 
 TEST_CASE(input_mouse_capture_and_cursor) {

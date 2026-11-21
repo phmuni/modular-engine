@@ -27,21 +27,36 @@ enum class Ease {
   EaseInCubic,
   EaseOutCubic,
   EaseInOutCubic,
+  EaseInSine,
+  EaseOutSine,
+  EaseInOutSine,
+  EaseInBack, // pulls back first, then goes
+  EaseOutBack, // overshoots the end, then settles
+  EaseInOutBack,
+  EaseInElastic, // swings like a spring
+  EaseOutElastic,
+  EaseInOutElastic,
+  EaseInBounce, // bounces like a ball dropped
+  EaseOutBounce,
+  EaseInOutBounce,
 };
 
-// Progress t (0 to 1) through the curve; 0 and 1 map to themselves
+// Progress t (0 to 1) through the curve; 0 and 1 map to themselves (also for the curves that leave the 0-1 range
+// between them: back, elastic)
 float applyEase(Ease ease, float t);
 
-enum class TweenProperty { Position, Rotation, Scale, Color };
+// Emission is the glow color of the model (its strength stays as it is, or 1 if it did not glow); Intensity is the
+// entity's Light (a number: the first component of the target)
+enum class TweenProperty { Position, Rotation, Scale, Color, Emission, Intensity };
 
 class GameTween {
 public:
   explicit GameTween(Engine &engine) : m_engine(engine) {}
 
   // Moves a property of the entity from what it is now to `target` over `seconds`, ending exactly on it, then calls
-  // `onComplete`. Rotation is in degrees (turned the way given, not the short way), Color needs a model. A tween
-  // already running on the same property of the entity is replaced. Returns a handle for cancel (0: nothing started,
-  // for a missing entity or a color on an entity without a model).
+  // `onComplete`. Rotation is in degrees (turned the way given, not the short way), Color and Emission need a model,
+  // Intensity a Light. A tween already running on the same property of the entity is replaced. Returns a handle for
+  // cancel (0: nothing started, for a missing entity or a property its components do not have).
   int to(const GameEntity &entity, TweenProperty property, const glm::vec3 &target, float seconds,
          Ease ease = Ease::Linear, std::function<void()> onComplete = nullptr);
   // Calls `onValue` each frame with a number going from `from` to `to`, ending exactly on `to`

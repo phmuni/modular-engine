@@ -45,29 +45,35 @@
 void LuaBindings::bindPhysics() {
   // physics
   sol::table physics = lua.create_named_table("physics");
-  // physics.raycast(origin, direction, distance, { layers = {"enemy", "static"} }): the nearest body, or nil. Only bodies on
-  // the listed layers count (all of them without `layers`); a name that is no layer is an error.
+  // physics.raycast(origin, direction, distance, { layers = {"enemy", "static"}, ignore = self, characters = true }): the
+  // nearest body, or nil. Only bodies on the listed layers count (all of them without `layers`; a name that is no layer
+  // is an error), the entity or list of entities in `ignore` are skipped, and character controllers are hit only with
+  // `characters` (the hit's entity is the character's).
   physics.set_function("raycast", [this](const glm::vec3 &origin, const glm::vec3 &direction,
                                          sol::optional<float> distance, sol::optional<sol::table> options) -> sol::object {
-    uint32_t layerMask = CollisionLayers::kAllLayers;
-    if (options)
-      if (const sol::optional<sol::table> layers = (*options)["layers"])
-        layerMask = layerMaskOf(*layers);
-    const auto hit = engine.physics().raycast(origin, direction, distance.value_or(1000.0f), nullptr, layerMask);
+    const auto hit = engine.physics().raycast(origin, direction, distance.value_or(1000.0f), queryOptions(options));
     if (!hit)
       return sol::lua_nil;
     return hitTable(*hit);
   });
-  // physics.raycastBoxes(origin, direction, distance, { layers = {...} }): the same for the Collision boxes (the ones
-  // engine.create makes with collision = true, and isTouching tests), which are not physics bodies
+  // physics.raycastBoxes(origin, direction, distance, { layers = {...}, ignore = ... }): the same for the Collision
+  // boxes (the ones engine.create makes with collision = true, and isTouching tests), which are not physics bodies
   physics.set_function("raycastBoxes", [this](const glm::vec3 &origin, const glm::vec3 &direction,
                                               sol::optional<float> distance, sol::optional<sol::table> options) -> sol::object {
-    uint32_t layerMask = CollisionLayers::kAllLayers;
-    if (options)
-      if (const sol::optional<sol::table> layers = (*options)["layers"])
-        layerMask = layerMaskOf(*layers);
-    const auto hit = engine.raycast(origin, direction, distance.value_or(1000.0f), nullptr, layerMask);
+    const auto hit = engine.raycast(origin, direction, distance.value_or(1000.0f), queryOptions(options));
     return hit ? sol::object(hitTable(*hit)) : sol::object(sol::lua_nil);
+  });
+  // physics.overlapSphere(center, radius, options) and physics.overlapBox(center, halfExtents, rotation, options): the
+  // entities whose physics bodies overlap the shape, as a list; the options are the raycast's (layers, ignore,
+  // characters), rotation is in degrees like an entity's
+  physics.set_function("overlapSphere", [this](const glm::vec3 &center, float radius,
+                                               sol::optional<sol::table> options) {
+    return entityList(engine.physics().overlapSphere(center, radius, queryOptions(options)));
+  });
+  physics.set_function("overlapBox", [this](const glm::vec3 &center, const glm::vec3 &halfExtents,
+                                            sol::optional<glm::vec3> rotation, sol::optional<sol::table> options) {
+    return entityList(engine.physics().overlapBox(center, halfExtents, rotation.value_or(glm::vec3(0.0f)),
+                                                  queryOptions(options)));
   });
   // physics.raycastModels(origin, direction, distance): the nearest triangle of a visible model, with the surface
   // normal there (physics.raycast stops at the body's shape); distance is unlimited without one

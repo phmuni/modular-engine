@@ -159,6 +159,7 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "removeComponent": "template over C++ component types",
     "forEachCollision": "template over C++ component types; entity:isTouching",
     "forEachContact": "template over C++ component types; the onContact callback",
+    "forEachContactEnd": "template over C++ component types; the onContactEnd callback",
     "onAnimationStateChanged": "C++ listener; Lua scripts define onStateChanged(self, old, new)",
     "findCollisions": "C++ iteration of Collision pairs; entity:isTouching asks about one pair",
     # Raw entity creation: Lua has engine.create, which does the same from a description

@@ -17,6 +17,12 @@
 ---is flipped for the other entity's call). Called on both entities' scripts.
 ---@alias OnContact fun(self: Entity, other: Entity, point: vec3, normal: vec3)
 
+---Entity script: when a physics body of this entity stops touching another one (called on both entities' scripts, once
+---per pair of bodies when the last part of their shapes lets go, like onContact's start). Not called when either entity is
+---destroyed (or its body rebuilt by changing its RigidBody or scale) while they touch. Character controllers count, as for
+---onContact.
+---@alias OnContactEnd fun(self: Entity, other: Entity)
+
 ---Entity script: every frame two collision shapes overlap (called on both entities' scripts).
 ---@alias OnOverlap fun(self: Entity, other: Entity)
 
@@ -42,6 +48,8 @@ onStart = nil
 onUpdate = nil
 ---@type fun(self: Entity, other: Entity, point: vec3, normal: vec3)
 onContact = nil
+---@type fun(self: Entity, other: Entity)
+onContactEnd = nil
 ---@type fun(self: Entity, other: Entity)
 onOverlap = nil
 ---@type fun(self: Entity)
@@ -756,7 +764,9 @@ function time.cancel(handle) end
 -- tween --------------------------------------------------------------------------------------------------------------
 
 ---Easing curves for tweens: how the speed changes from start to end.
----@alias Easing "linear"|"easeInQuad"|"easeOutQuad"|"easeInOutQuad"|"easeInCubic"|"easeOutCubic"|"easeInOutCubic"
+---"Back" pulls back first (in) or overshoots the end and settles (out), "Elastic" swings like a spring and "Bounce"
+---bounces like a ball; they leave the start-to-end range on the way, and still end exactly on the value.
+---@alias Easing "linear"|"easeInQuad"|"easeOutQuad"|"easeInOutQuad"|"easeInCubic"|"easeOutCubic"|"easeInOutCubic"|"easeInSine"|"easeOutSine"|"easeInOutSine"|"easeInBack"|"easeOutBack"|"easeInOutBack"|"easeInElastic"|"easeOutElastic"|"easeInOutElastic"|"easeInBounce"|"easeOutBounce"|"easeInOutBounce"
 
 ---Animates an entity's properties or a number over time, on game time (a paused game holds them). The end value is
 ---reached exactly.
@@ -764,14 +774,15 @@ function time.cancel(handle) end
 tween = {}
 
 ---Moves a property of the entity from what it is now to a value: "position", "rotation" (degrees) or "scale" take a
----vec3 (a number for all three axes), "color" a vec3 (the entity needs a model). A tween of the same property that is
----running is replaced; one whose entity is destroyed stops without calling onComplete. Tweening the position of a
+---vec3 (a number for all three axes), "color" a vec3 (the entity needs a model), "emission" a vec3 glow color (needs a
+---model; its strength stays as it is, or 1 if it did not glow), "intensity" a number for the entity's Light (needs one).
+---A tween of the same property that is running is replaced; one whose entity is destroyed stops without calling onComplete. Tweening the position of a
 ---dynamic body fights the physics.
 ---```lua
 ---tween.to(self, "position", vec3(0, 5, 0), 0.5, "easeOutQuad", function() self:destroy() end)
 ---```
 ---@param entity Entity
----@param property "position"|"rotation"|"scale"|"color"
+---@param property "position"|"rotation"|"scale"|"color"|"emission"|"intensity"
 ---@param value vec3|number
 ---@param seconds number
 ---@param easing? Easing Defaults to "linear"
@@ -829,6 +840,11 @@ function input.key(name) end
 ---@return boolean
 function input.keyPressed(name) end
 
+---Whether a key came up this frame.
+---@param name string
+---@return boolean
+function input.keyReleased(name) end
+
 ---The cursor's position in window pixels (top-left origin).
 ---@return number x
 ---@return number y
@@ -838,6 +854,11 @@ function input.mouse() end
 ---@param button? integer 1 left, 2 middle, 3 right. Defaults to 1
 ---@return boolean
 function input.click(button) end
+
+---Whether a mouse button came up this frame.
+---@param button? integer 1 left, 2 middle, 3 right. Defaults to 1
+---@return boolean
+function input.mouseReleased(button) end
 
 ---Whether a mouse button is held down.
 ---@param button? integer 1 left, 2 middle, 3 right. Defaults to 1
@@ -929,9 +950,11 @@ function input.bindings(path) end
 ---@class physics
 physics = {}
 
----Options for physics.raycast.
+---Options for the physics queries: physics.raycast, physics.raycastBoxes, physics.overlapSphere and physics.overlapBox.
 ---@class RaycastOptions
 ---@field layers? string[] Only bodies on these collision layers count, e.g. {"enemy", "static"}; a name that is no layer is an error. Every layer without it
+---@field ignore? Entity|Entity[] An entity (or a list of them) the query skips, e.g. `self` for a ray cast from the entity's own body
+---@field characters? boolean Physics bodies only: let it hit character controllers too, as the character's entity. Defaults to false: rays pass through characters (and overlap queries leave them out)
 
 ---Casts a ray and returns the first thing it hits, or nil.
 ---@param origin vec3
@@ -941,13 +964,30 @@ physics = {}
 ---@return RaycastHit|nil
 function physics.raycast(origin, direction, distance, options) end
 
----Like physics.raycast, for Collision boxes (`collision = true` in engine.create) instead of physics bodies.
+---Like physics.raycast, for Collision boxes (`collision = true` in engine.create) instead of physics bodies. Takes `layers` and
+---`ignore` (`characters` does nothing here).
 ---@param origin vec3
 ---@param direction vec3
 ---@param distance? number Defaults to 1000
 ---@param options? RaycastOptions
 ---@return RaycastHit|nil
 function physics.raycastBoxes(origin, direction, distance, options) end
+
+---The entities whose physics bodies overlap a sphere (sensors count), each once. The options are the raycast's: `layers`,
+---`ignore`, and `characters` (character controllers are left out by default).
+---@param center vec3
+---@param radius number
+---@param options? RaycastOptions
+---@return Entity[]
+function physics.overlapSphere(center, radius, options) end
+
+---The entities whose physics bodies overlap a box (sensors count), each once. The options are the raycast's.
+---@param center vec3
+---@param halfExtents vec3 Half the box's size on each axis
+---@param rotation? vec3 Euler angles in degrees, like an entity's `rotation`. Defaults to no rotation
+---@param options? RaycastOptions
+---@return Entity[]
+function physics.overlapBox(center, halfExtents, rotation, options) end
 
 ---Casts a ray against the triangles of visible models, and returns the nearest hit with the surface normal there, or nil.
 ---@param origin vec3

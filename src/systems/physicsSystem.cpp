@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
+#include <functional>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <mutex>
@@ -108,20 +109,131 @@ private:
   uint32_t m_mask;
 };
 
-// Collects new contacts; Jolt calls it from its worker threads
+// Collects the contacts that began and ended; Jolt calls it from its worker threads. Jolt reports a contact per pair of
+// sub-shapes (a box on a mesh touches many triangles), so the touching sub-shapes of each pair of bodies are counted:
+// the pair begins with the first and ends with the last. OnContactRemoved gives only body IDs, and the bodies may be
+// gone by then (it cannot lock them), so what the pair needs to be reported is kept from when it began.
+//
+// Jolt also drops the contacts of bodies that fall asleep, though they still rest on each other: those pairs are kept
+// as dormant instead of ending, and begin again silently when Jolt reports the contact again (something woke them).
+// A dormant pair with a body that is awake and no contact back is a pair that really separated (a body lifted away
+// while asleep), and ends.
 class ContactCollector final : public JPH::ContactListener {
 public:
+  struct Pair {
+    int count = 0; // touching sub-shapes
+    Entity a = 0, b = 0;
+    JPH::BodyID idA, idB;
+    int awakeUpdates = 0; // dormant pairs: updates with a body awake and no contact back
+  };
+
   void OnContactAdded(const JPH::Body &a, const JPH::Body &b, const JPH::ContactManifold &manifold,
                       JPH::ContactSettings &) override {
     const JPH::RVec3 point = manifold.GetWorldSpaceContactPointOn1(0);
     const JPH::Vec3 normal = manifold.mWorldSpaceNormal;
+    const uint64_t key = keyOf(a.GetID(), b.GetID());
     std::lock_guard<std::mutex> lock(mutex);
-    contacts.push_back({static_cast<Entity>(a.GetUserData()), static_cast<Entity>(b.GetUserData()),
-                        glm::vec3(point.GetX(), point.GetY(), point.GetZ()),
+    Pair &pair = pairs[key];
+    if (pair.count++ > 0)
+      return; // these bodies already touch somewhere else
+    pair.a = static_cast<Entity>(a.GetUserData());
+    pair.b = static_cast<Entity>(b.GetUserData());
+    pair.idA = a.GetID();
+    pair.idB = b.GetID();
+    if (dormant.erase(key) > 0)
+      return; // they were only asleep, not new
+    contacts.push_back({pair.a, pair.b, glm::vec3(point.GetX(), point.GetY(), point.GetZ()),
                         glm::vec3(normal.GetX(), normal.GetY(), normal.GetZ())});
   }
+
+  void OnContactRemoved(const JPH::SubShapeIDPair &subShapes) override {
+    const uint64_t key = keyOf(subShapes.GetBody1ID(), subShapes.GetBody2ID());
+    std::lock_guard<std::mutex> lock(mutex);
+    const auto it = pairs.find(key);
+    if (it == pairs.end() || --it->second.count > 0)
+      return;
+    ended.push_back({key, it->second});
+    pairs.erase(it);
+  }
+
+  // After an update, on the main thread: hands over the contacts that began and the pairs that stopped touching.
+  // `owns` says whether an entity still has that very body; a pair of bodies that no longer exist is not reported (the
+  // entity number may already belong to another entity). `stepped` is whether the simulation advanced.
+  void collect(const JPH::BodyInterface &bodyInterface, bool stepped,
+               const std::function<bool(Entity, JPH::BodyID)> &owns, std::vector<PhysicsContact> &began,
+               std::vector<PhysicsContactEnd> &ends) {
+    std::lock_guard<std::mutex> lock(mutex);
+    began.swap(contacts);
+    contacts.clear();
+    auto asleep = [&](const Pair &pair) { return !bodyInterface.IsActive(pair.idA) && !bodyInterface.IsActive(pair.idB); };
+    for (const Ended &end : ended) {
+      if (!owns(end.pair.a, end.pair.idA) || !owns(end.pair.b, end.pair.idB))
+        continue;
+      if (asleep(end.pair))
+        dormant[end.key] = end.pair;
+      else
+        ends.push_back({end.pair.a, end.pair.b});
+    }
+    ended.clear();
+    if (!stepped)
+      return;
+    for (auto it = dormant.begin(); it != dormant.end();) {
+      Pair &pair = it->second;
+      if (!owns(pair.a, pair.idA) || !owns(pair.b, pair.idB)) {
+        it = dormant.erase(it);
+      } else if (!asleep(pair) && ++pair.awakeUpdates >= 2) { // a step may wake it before its contact is found again
+        ends.push_back({pair.a, pair.b});
+        it = dormant.erase(it);
+      } else {
+        if (asleep(pair))
+          pair.awakeUpdates = 0;
+        ++it;
+      }
+    }
+  }
+
+  // Forgets everything (the bodies were all removed)
+  void clear() {
+    std::lock_guard<std::mutex> lock(mutex);
+    pairs.clear();
+    dormant.clear();
+    contacts.clear();
+    ended.clear();
+  }
+
+private:
+  struct Ended {
+    uint64_t key;
+    Pair pair;
+  };
+  // The pair of bodies, the same whichever order Jolt names them in
+  static uint64_t keyOf(JPH::BodyID a, JPH::BodyID b) {
+    const uint32_t first = std::min(a.GetIndexAndSequenceNumber(), b.GetIndexAndSequenceNumber());
+    const uint32_t second = std::max(a.GetIndexAndSequenceNumber(), b.GetIndexAndSequenceNumber());
+    return (static_cast<uint64_t>(first) << 32) | second;
+  }
+
   std::mutex mutex;
   std::vector<PhysicsContact> contacts;
+  std::vector<Ended> ended;
+  std::unordered_map<uint64_t, Pair> pairs;   // touching, in Jolt's contact list
+  std::unordered_map<uint64_t, Pair> dormant; // touching, asleep: not in Jolt's list
+};
+
+// Skips what a query's options leave out; the character controllers' inner bodies unless `characters` is set
+class QueryFilter final : public JPH::BodyFilter {
+public:
+  QueryFilter(const QueryOptions &options, const std::function<bool(const JPH::Body &)> &isCharacter)
+      : m_options(options), m_isCharacter(isCharacter) {}
+  bool ShouldCollideLocked(const JPH::Body &body) const override {
+    if (!m_options.characters && m_isCharacter(body))
+      return false;
+    return m_options.accepts(static_cast<Entity>(body.GetUserData()));
+  }
+
+private:
+  const QueryOptions &m_options;
+  const std::function<bool(const JPH::Body &)> &m_isCharacter;
 };
 
 JPH::Vec3 toJolt(const glm::vec3 &v) { return JPH::Vec3(v.x, v.y, v.z); }
@@ -130,11 +242,12 @@ JPH::Quat toJolt(const glm::quat &q) { return JPH::Quat(q.x, q.y, q.z, q.w); }
 glm::quat toGlm(const JPH::Quat &q) { return glm::quat(q.GetW(), q.GetX(), q.GetY(), q.GetZ()); }
 
 // The same order as TransformSystem::calculateModelMatrix: Y, then X, then Z
-glm::quat rotationOf(const Transform &transform) {
-  const glm::vec3 radians = glm::radians(transform.rotation);
+glm::quat rotationOf(const glm::vec3 &degrees) {
+  const glm::vec3 radians = glm::radians(degrees);
   return glm::angleAxis(radians.y, glm::vec3(0, 1, 0)) * glm::angleAxis(radians.x, glm::vec3(1, 0, 0)) *
          glm::angleAxis(radians.z, glm::vec3(0, 0, 1));
 }
+glm::quat rotationOf(const Transform &transform) { return rotationOf(transform.rotation); }
 
 void trace(const char *format, ...) {
   char message[1024];
@@ -220,7 +333,8 @@ struct PhysicsSystem::Impl {
   };
   std::unordered_map<Entity, CharacterRecord> characters;
 
-  std::vector<PhysicsContact> contacts; // from the last update
+  std::vector<PhysicsContact> contacts;       // from the last update
+  std::vector<PhysicsContactEnd> contactEnds; // from the last update
   float accumulator = 0.0f;
 
   Impl(ComponentManager &cm, ResourceSystem &rs, TransformSystem &ts, const CollisionLayers &collisionLayers)
@@ -244,6 +358,40 @@ struct PhysicsSystem::Impl {
   bool isCharacter(const JPH::Body &body) const {
     const auto it = characters.find(static_cast<Entity>(body.GetUserData()));
     return it != characters.end() && it->second.character->GetInnerBodyID() == body.GetID();
+  }
+
+  // The entities whose bodies overlap a shape at a place, each once (an entity with several parts is one)
+  std::vector<Entity> overlapping(const JPH::Shape &shape, const glm::vec3 &center, const glm::quat &rotation,
+                                  const QueryOptions &options) const {
+    const std::function<bool(const JPH::Body &)> isCharacterBody = [this](const JPH::Body &body) {
+      return isCharacter(body);
+    };
+    const QueryFilter filter(options, isCharacterBody);
+    const LayerMaskFilter layerFilter(options.layerMask);
+    JPH::AllHitCollisionCollector<JPH::CollideShapeCollector> collector;
+    system->GetNarrowPhaseQuery().CollideShape(
+        &shape, JPH::Vec3::sReplicate(1.0f),
+        JPH::RMat44::sRotationTranslation(toJolt(rotation), JPH::RVec3(toJolt(center))), JPH::CollideShapeSettings(),
+        JPH::RVec3::sZero(), collector, {}, layerFilter, filter);
+    std::vector<Entity> found;
+    for (const JPH::CollideShapeResult &hit : collector.mHits) {
+      JPH::BodyLockRead lock(system->GetBodyLockInterface(), hit.mBodyID2);
+      if (!lock.Succeeded())
+        continue;
+      const Entity entity = static_cast<Entity>(lock.GetBody().GetUserData());
+      if (std::find(found.begin(), found.end(), entity) == found.end())
+        found.push_back(entity);
+    }
+    return found;
+  }
+
+  // Whether the entity still has this very body (not destroyed, nor rebuilt as another since)
+  bool hasBody(Entity entity, JPH::BodyID id) const {
+    if (const auto it = bodies.find(entity); it != bodies.end())
+      return it->second.id == id;
+    if (const auto it = characters.find(entity); it != characters.end())
+      return it->second.character->GetInnerBodyID() == id;
+    return false;
   }
 
   void removeAll() {
@@ -572,21 +720,24 @@ PhysicsSystem::~PhysicsSystem() = default;
 void PhysicsSystem::update(float deltaTime) {
   Impl &impl = *m_impl;
   impl.contacts.clear();
+  impl.contactEnds.clear();
   if (deltaTime <= 0.0f) {
     impl.sync(kStep); // paused: bodies still follow edits, nothing simulates
     return;
   }
   impl.accumulator = std::min(impl.accumulator + deltaTime, kStep * kMaxStepsPerUpdate);
+  bool stepped = false;
   while (impl.accumulator >= kStep) {
+    stepped = true;
     impl.accumulator -= kStep;
     impl.sync(kStep);
     impl.updateCharacters(kStep);
     impl.system->Update(kStep, 1, impl.tempAllocator.get(), impl.jobSystem.get());
     impl.writeBack();
   }
-  std::lock_guard<std::mutex> lock(impl.contactCollector.mutex);
-  impl.contacts.swap(impl.contactCollector.contacts);
-  impl.contactCollector.contacts.clear();
+  impl.contactCollector.collect(
+      impl.system->GetBodyInterface(), stepped, [&impl](Entity entity, JPH::BodyID id) { return impl.hasBody(entity, id); },
+      impl.contacts, impl.contactEnds);
 }
 
 void PhysicsSystem::syncBodies() { m_impl->sync(kStep); }
@@ -595,6 +746,8 @@ void PhysicsSystem::reset() {
   m_impl->removeAll();
   m_impl->accumulator = 0.0f;
   m_impl->contacts.clear();
+  m_impl->contactEnds.clear();
+  m_impl->contactCollector.clear();
 }
 
 glm::vec3 PhysicsSystem::getGravity() const { return toGlm(m_impl->system->GetGravity()); }
@@ -646,26 +799,26 @@ void PhysicsSystem::addForce(Entity entity, const glm::vec3 &force) {
 
 std::optional<RayHit> PhysicsSystem::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
                                              const std::function<bool(Entity)> &accept, uint32_t layerMask) const {
+  QueryOptions options;
+  options.accept = accept;
+  options.layerMask = layerMask;
+  return raycast(origin, direction, maxDistance, options);
+}
+
+std::optional<RayHit> PhysicsSystem::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
+                                             const QueryOptions &options) const {
   if (glm::length(direction) <= 0.0f || maxDistance <= 0.0f)
     return std::nullopt;
   const glm::vec3 dir = glm::normalize(direction);
   const JPH::RRayCast ray(JPH::RVec3(toJolt(origin)), toJolt(dir * maxDistance));
 
-  // Skips bodies `accept` turns down
-  class Filter final : public JPH::BodyFilter {
-  public:
-    Filter(const std::function<bool(Entity)> &accept, const Impl &impl) : m_accept(accept), m_impl(impl) {}
-    bool ShouldCollideLocked(const JPH::Body &body) const override {
-      return !m_impl.isCharacter(body) && (!m_accept || m_accept(static_cast<Entity>(body.GetUserData())));
-    }
-
-  private:
-    const std::function<bool(Entity)> &m_accept;
-    const Impl &m_impl;
-  } filter(accept, *m_impl);
+  const std::function<bool(const JPH::Body &)> isCharacter = [this](const JPH::Body &body) {
+    return m_impl->isCharacter(body);
+  };
+  const QueryFilter filter(options, isCharacter);
 
   JPH::RayCastResult hit;
-  const LayerMaskFilter layerFilter(layerMask);
+  const LayerMaskFilter layerFilter(options.layerMask);
   if (!m_impl->system->GetNarrowPhaseQuery().CastRay(ray, hit, {}, layerFilter, filter))
     return std::nullopt;
   JPH::BodyLockRead lock(m_impl->system->GetBodyLockInterface(), hit.mBodyID);
@@ -675,6 +828,19 @@ std::optional<RayHit> PhysicsSystem::raycast(const glm::vec3 &origin, const glm:
   const JPH::RVec3 point = ray.GetPointOnRay(hit.mFraction);
   return RayHit{static_cast<Entity>(body.GetUserData()), hit.mFraction * maxDistance, toGlm(JPH::Vec3(point)),
                 toGlm(body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, point))};
+}
+
+std::vector<Entity> PhysicsSystem::overlapSphere(const glm::vec3 &center, float radius,
+                                                 const QueryOptions &options) const {
+  const JPH::SphereShape shape(std::max(radius, 0.001f));
+  return m_impl->overlapping(shape, center, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), options);
+}
+
+std::vector<Entity> PhysicsSystem::overlapBox(const glm::vec3 &center, const glm::vec3 &halfExtents,
+                                              const glm::vec3 &rotation, const QueryOptions &options) const {
+  const glm::vec3 half = glm::max(glm::abs(halfExtents), glm::vec3(0.001f));
+  const JPH::BoxShape shape(toJolt(half), 0.0f); // no rounding: the box is exactly the size asked for
+  return m_impl->overlapping(shape, center, rotationOf(rotation), options);
 }
 
 bool PhysicsSystem::isCapsuleBlocked(const glm::vec3 &base, float height, float radius) const {
@@ -717,5 +883,6 @@ bool PhysicsSystem::getStaticBounds(glm::vec3 &min, glm::vec3 &max) const {
 }
 
 const std::vector<PhysicsContact> &PhysicsSystem::getContacts() const { return m_impl->contacts; }
+const std::vector<PhysicsContactEnd> &PhysicsSystem::getContactEnds() const { return m_impl->contactEnds; }
 
 size_t PhysicsSystem::getBodyCount() const { return m_impl->bodies.size(); }

@@ -8,7 +8,7 @@ A game on [modular-engine](https://github.com/phmuni/modular-engine), written in
 
 - `assets/scripts/` holds the game's behavior. `game.lua` runs for the whole game; an entity's script (its Script
   component) runs for that entity: `onStart(self)`, `onUpdate(self, dt)`, `onContact(self, other, point, normal)`,
-  `onOverlap(self, other)`. Save a script while the game runs and it reloads, keeping each entity's state. Its
+  `onContactEnd(self, other)`, `onOverlap(self, other)`. Save a script while the game runs and it reloads, keeping each entity's state. Its
   `properties` table (speed, jumpSpeed...) is what the Properties panel lets you tune, per entity.
 - The camera follows the player with one call, `camera.follow(self, { offset = vec3(0, 4, 7), lookAhead = 2, smoothing = 0.1 })`
   in `player.lua`: the engine moves it after the physics and the scripts, so it does not jitter. `coin.lua` shrinks a

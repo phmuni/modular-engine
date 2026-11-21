@@ -51,6 +51,7 @@ void LuaBindings::bindInput() {
   input.set_function("released", [this](const std::string &name) { return engine.input().wasActionReleased(name); });
   input.set_function("key", [this](const std::string &name) { return engine.input().isKeyDown(name); });
   input.set_function("keyPressed", [this](const std::string &name) { return engine.input().wasKeyPressed(name); });
+  input.set_function("keyReleased", [this](const std::string &name) { return engine.input().wasKeyReleased(name); });
   input.set_function("mouse", [this]() {
     const glm::vec2 position = engine.input().getMousePosition();
     return std::make_tuple(position.x, position.y);
@@ -58,6 +59,9 @@ void LuaBindings::bindInput() {
   // Buttons: 1 left (the default), 2 middle, 3 right
   input.set_function("click", [this](sol::optional<int> button) {
     return engine.input().wasMouseButtonPressed(static_cast<MouseButton>(button.value_or(1)));
+  });
+  input.set_function("mouseReleased", [this](sol::optional<int> button) {
+    return engine.input().wasMouseButtonReleased(static_cast<MouseButton>(button.value_or(1)));
   });
   input.set_function("mouseDown", [this](sol::optional<int> button) {
     return engine.input().isMouseButtonDown(static_cast<MouseButton>(button.value_or(1)));

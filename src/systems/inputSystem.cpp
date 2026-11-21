@@ -580,6 +580,11 @@ bool InputSystem::wasKeyPressed(const std::string &keyName) const {
   return key != SDL_SCANCODE_UNKNOWN && wasKeyPressed(key);
 }
 
+bool InputSystem::wasKeyReleased(const std::string &keyName) const {
+  const SDL_Scancode key = SDL_GetScancodeFromName(keyName.c_str());
+  return key != SDL_SCANCODE_UNKNOWN && wasKeyReleased(key);
+}
+
 bool InputSystem::isMouseButtonDown(MouseButton button) const {
   return !gameBlocked() && m_mouseDown[static_cast<int>(button)];
 }

@@ -1,7 +1,10 @@
 // GameTime, GameTween and GameCamera through the C++ API (the Lua side of each is in tests/lua).
 
 #include "describe.h"
+#include "components/model.h"
 #include "foundation/core/engine.h"
+#include "rendering/resources/material.h"
+#include "systems/resourceSystem.h"
 #include "testing.h"
 #include <memory>
 
@@ -87,14 +90,52 @@ TEST_CASE(tween_easings) {
       {Ease::EaseInCubic, 0.015625f, 0.125f, 0.421875f},
       {Ease::EaseOutCubic, 0.578125f, 0.875f, 0.984375f},
       {Ease::EaseInOutCubic, 0.0625f, 0.5f, 0.9375f},
+      // Penner's curves as easings.net gives them (back and elastic leave the 0-1 range between the ends)
+      {Ease::EaseInSine, 0.076120f, 0.292893f, 0.617317f},
+      {Ease::EaseOutSine, 0.382683f, 0.707107f, 0.923880f},
+      {Ease::EaseInOutSine, 0.146447f, 0.5f, 0.853553f},
+      {Ease::EaseInBack, -0.064137f, -0.087698f, 0.182590f},
+      {Ease::EaseOutBack, 0.817410f, 1.087697f, 1.064137f},
+      {Ease::EaseInOutBack, -0.099682f, 0.5f, 1.099682f},
+      {Ease::EaseInElastic, -0.005524f, -0.015625f, 0.088388f},
+      {Ease::EaseOutElastic, 0.911612f, 1.015625f, 1.005524f},
+      {Ease::EaseInOutElastic, 0.011969f, 0.5f, 0.988031f},
+      {Ease::EaseInBounce, 0.027344f, 0.234375f, 0.527344f},
+      {Ease::EaseOutBounce, 0.472656f, 0.765625f, 0.972656f},
+      {Ease::EaseInOutBounce, 0.117188f, 0.5f, 0.882812f},
   };
   for (const Sample &sample : samples) {
-    CHECK_NEAR(applyEase(sample.ease, 0.0f), 0.0f, 1e-6f);
+    CHECK_EQ(applyEase(sample.ease, 0.0f), 0.0f); // the ends are exact, for every curve
     CHECK_NEAR(applyEase(sample.ease, 0.25f), sample.quarter, 1e-5f);
     CHECK_NEAR(applyEase(sample.ease, 0.5f), sample.half, 1e-5f);
     CHECK_NEAR(applyEase(sample.ease, 0.75f), sample.threeQuarters, 1e-5f);
-    CHECK_NEAR(applyEase(sample.ease, 1.0f), 1.0f, 1e-6f);
+    CHECK_EQ(applyEase(sample.ease, 1.0f), 1.0f);
   }
+}
+
+TEST_CASE(tween_emission_and_light_intensity) {
+  // "emission" tweens the glow color and keeps its strength (1 when the model did not glow); "intensity" is the light's
+  GameEntity glow = engine.create("Glow", Desc("box").at(0, 0, 0));
+  GameEntity bare = engine.create("Bare", Desc());
+  GameEntity lamp = engine.entity(engine.entities().create("Lamp").withTransform(glm::vec3(0, 3, 0)).withLight(Light::point()).build());
+  glow.setEmission(glm::vec3(1, 0, 0), 2.0f);
+  CHECK(engine.tween().to(glow, TweenProperty::Emission, glm::vec3(0, 0, 1), 0.5f, Ease::EaseOutBack) > 0);
+  CHECK_EQ(engine.tween().to(bare, TweenProperty::Emission, glm::vec3(0, 0, 1), 0.5f), 0); // no model
+  CHECK_EQ(engine.tween().to(glow, TweenProperty::Intensity, glm::vec3(3.0f), 0.5f), 0);    // no light
+  CHECK_EQ(engine.tween().to(bare, TweenProperty::Intensity, glm::vec3(3.0f), 0.5f), 0);
+  const float start = lamp.light()->intensity;
+  CHECK(engine.tween().to(lamp, TweenProperty::Intensity, glm::vec3(5.0f), 0.5f) > 0);
+  steps.seconds(0.25f, [lamp, start]() {
+    CHECK(lamp.light()->intensity > start && lamp.light()->intensity < 5.0f);
+  });
+  steps.seconds(0.4f, [&engine, glow, lamp]() {
+    CHECK_EQ(lamp.light()->intensity, 5.0f);
+    const Model *model = engine.tryGet<Model>(glow.id());
+    const Material &material =
+        engine.getSystemManager().getSystem<ResourceSystem>().getMaterial(model->materialHandles[0]);
+    CHECK_NEAR(material.getEmissionColor(), glm::vec3(0, 0, 1), 1e-5f);
+    CHECK_NEAR(material.getEmissionStrength(), 2.0f, 1e-5f);
+  });
 }
 
 TEST_CASE(tween_entities_and_values) {

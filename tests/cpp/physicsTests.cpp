@@ -217,3 +217,45 @@ TEST_CASE(physics_body_falls_when_character_walks_away) {
     CHECK_NEAR(box.position().y, 0.1f, 0.15f); // on the floor
   });
 }
+
+TEST_CASE(physics_contact_end) {
+  // Two bodies that stop touching are listed once, by physics().getContactEnds() and forEachContactEnd (the C++ side of
+  // onContactEnd); a body destroyed while touching is not listed
+  engine.registerComponent<Ball>("Ball").field("touched", &Ball::touched);
+  engine.registerComponent<Ground>("Ground").field("unused", &Ground::unused);
+  GameEntity floor = engine.create("Floor", Desc("box").at(0, -0.5f, 0).size(30, 1, 30).body(BodyType::Static).components({"Ground"}));
+  GameEntity ball = engine.create("Ball", Desc("sphere").at(0, 2, 0).body(BodyType::Dynamic, BodyShape::Sphere).components({"Ball"}));
+  auto began = std::make_shared<int>(0);
+  auto ended = std::make_shared<int>(0);
+  auto lastSeen = std::make_shared<float>(-1.0f);
+  auto listing = [&engine, began, ended, lastSeen]() {
+    const float now = engine.time().elapsed();
+    if (now == *lastSeen)
+      return; // two steps in one frame count it once
+    *lastSeen = now;
+    engine.forEachContact<Ball, Ground>([began](Entity, Ball &, Entity, Ground &) { ++*began; });
+    engine.forEachContactEnd<Ball, Ground>([ended](Entity, Ball &, Entity, Ground &) { ++*ended; });
+  };
+  // The lists hold one update's contacts, so every frame is looked at: a few frames of watching after each change
+  auto watch = [&steps, listing](int frames) {
+    auto count = std::make_shared<int>(0);
+    steps.until([listing, count, frames]() { listing(); return ++*count >= frames; }, "the frames to pass", frames + 5);
+  };
+  steps.until([began, listing]() { listing(); return *began > 0; }, "the ball to land", 120);
+  watch(30);
+  steps.step(1, [ball, began, ended]() mutable {
+    CHECK_EQ(*began, 1);
+    CHECK_EQ(*ended, 0); // still on the floor (or asleep on it)
+    ball.setPosition(glm::vec3(0, 6, 0));
+  });
+  watch(5);
+  steps.step(1, [ended]() { CHECK_EQ(*ended, 1); }); // lifted away: one end
+  // Falls and lands again; destroyed while touching, it ends without a report
+  steps.until([ball, began, listing]() { listing(); return *began >= 2; }, "the ball to land again", 200,
+              [ball]() mutable { ball.destroy(); });
+  watch(10);
+  steps.step(1, [ended, began]() {
+    CHECK_EQ(*ended, 1);
+    CHECK_EQ(*began, 2);
+  });
+}

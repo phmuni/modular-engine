@@ -148,6 +148,29 @@ uint32_t LuaBindings::layerMaskOf(const sol::table &names) {
   return mask;
 }
 
+// The options of a raycast or an overlap query: { layers = {"enemy"}, ignore = entity or {entities}, characters = true }
+QueryOptions LuaBindings::queryOptions(const sol::optional<sol::table> &table) {
+  QueryOptions options;
+  if (!table)
+    return options;
+  if (const sol::optional<sol::table> layers = (*table)["layers"])
+    options.layerMask = layerMaskOf(*layers);
+  options.characters = table->get_or("characters", options.characters);
+  const sol::object ignore = (*table)["ignore"];
+  if (ignore.is<GameEntity>()) {
+    options.ignore.push_back(ignore.as<GameEntity>().id());
+  } else if (ignore.is<sol::table>()) {
+    for (const auto &entry : ignore.as<sol::table>()) {
+      if (!entry.second.is<GameEntity>())
+        throw std::runtime_error("physics queries: ignore is an entity or a list of entities");
+      options.ignore.push_back(entry.second.as<GameEntity>().id());
+    }
+  } else if (ignore.valid() && ignore.get_type() != sol::type::lua_nil) {
+    throw std::runtime_error("physics queries: ignore is an entity or a list of entities");
+  }
+  return options;
+}
+
 // A ray hit as Lua sees it: { entity, point, normal, distance }
 sol::table LuaBindings::hitTable(const RayHit &hit) {
   sol::table result = lua.create_table();
@@ -155,6 +178,14 @@ sol::table LuaBindings::hitTable(const RayHit &hit) {
   result["point"] = hit.point;
   result["normal"] = hit.normal;
   result["distance"] = hit.distance;
+  return result;
+}
+
+// A Lua list of entity handles
+sol::table LuaBindings::entityList(const std::vector<Entity> &entities) {
+  sol::table result = lua.create_table();
+  for (Entity entity : entities)
+    result.add(entityObject(engine.entity(entity)));
   return result;
 }
 
@@ -168,13 +199,18 @@ Ease LuaBindings::easeNamed(const std::string &name) {
   static const std::pair<const char *, Ease> names[] = {
       {"linear", Ease::Linear},          {"easeInQuad", Ease::EaseInQuad},   {"easeOutQuad", Ease::EaseOutQuad},
       {"easeInOutQuad", Ease::EaseInOutQuad}, {"easeInCubic", Ease::EaseInCubic}, {"easeOutCubic", Ease::EaseOutCubic},
-      {"easeInOutCubic", Ease::EaseInOutCubic}};
+      {"easeInOutCubic", Ease::EaseInOutCubic}, {"easeInSine", Ease::EaseInSine}, {"easeOutSine", Ease::EaseOutSine},
+      {"easeInOutSine", Ease::EaseInOutSine}, {"easeInBack", Ease::EaseInBack}, {"easeOutBack", Ease::EaseOutBack},
+      {"easeInOutBack", Ease::EaseInOutBack}, {"easeInElastic", Ease::EaseInElastic},
+      {"easeOutElastic", Ease::EaseOutElastic}, {"easeInOutElastic", Ease::EaseInOutElastic},
+      {"easeInBounce", Ease::EaseInBounce}, {"easeOutBounce", Ease::EaseOutBounce},
+      {"easeInOutBounce", Ease::EaseInOutBounce}};
   for (const auto &entry : names)
     if (name == entry.first)
       return entry.second;
   throw std::runtime_error("unknown easing \"" + name +
-                           "\" (linear, easeInQuad, easeOutQuad, easeInOutQuad, easeInCubic, easeOutCubic, "
-                           "easeInOutCubic)");
+                           "\" (linear, then easeIn, easeOut and easeInOut plus Quad, Cubic, Sine, Back, Elastic or "
+                           "Bounce: easeOutBack...)");
 }
 
 TweenProperty LuaBindings::tweenProperty(const std::string &name) {
@@ -186,7 +222,12 @@ TweenProperty LuaBindings::tweenProperty(const std::string &name) {
     return TweenProperty::Scale;
   if (name == "color")
     return TweenProperty::Color;
-  throw std::runtime_error("tween.to: unknown property \"" + name + "\" (position, rotation, scale, color)");
+  if (name == "emission")
+    return TweenProperty::Emission;
+  if (name == "intensity")
+    return TweenProperty::Intensity;
+  throw std::runtime_error("tween.to: unknown property \"" + name +
+                           "\" (position, rotation, scale, color, emission, intensity)");
 }
 
 // camera.follow's options table as the CameraRig the C++ side takes (see components/cameraRig.h for the fields)

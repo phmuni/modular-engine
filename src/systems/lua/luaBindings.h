@@ -81,7 +81,9 @@ private:
   static std::optional<glm::vec3> vectorField(const sol::table &table, const char *key);
   static EntityDesc entityDesc(const sol::optional<sol::table> &options);
   uint32_t layerMaskOf(const sol::table &names);
+  QueryOptions queryOptions(const sol::optional<sol::table> &options);
   sol::table hitTable(const RayHit &hit);
+  sol::table entityList(const std::vector<Entity> &entities);
   void requireLayer(const char *function, const std::string &name);
   static Ease easeNamed(const std::string &name);
   static TweenProperty tweenProperty(const std::string &name);

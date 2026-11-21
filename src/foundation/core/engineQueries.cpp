@@ -57,6 +57,12 @@ std::optional<RayHit> Engine::raycast(const glm::vec3 &origin, const glm::vec3 &
                                                              accept, layerMask);
 }
 
+std::optional<RayHit> Engine::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,
+                                      const QueryOptions &options) {
+  return raycast(origin, direction, maxDistance, [&options](Entity entity) { return options.accepts(entity); },
+                 options.layerMask);
+}
+
 std::optional<Engine::Ray> Engine::screenRay(glm::vec2 windowPosition) {
   auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();

@@ -25,6 +25,22 @@ struct RayHit {
   glm::vec3 normal{0.0f}; // of the surface hit, facing the ray (zero when the ray starts inside)
 };
 
+// What a ray or an overlap query skips and takes: the layers it looks at, entities it leaves out, and (for physics
+// queries) whether characters count. `accept` is a test of the caller's own, applied after the others.
+struct QueryOptions {
+  uint32_t layerMask = CollisionLayers::kAllLayers; // bit n: layer n, see CollisionLayers::maskOf
+  std::vector<Entity> ignore;                       // never hit, never returned
+  bool characters = false;                          // physics queries: character controllers count too
+  std::function<bool(Entity)> accept;               // null accepts every entity
+
+  bool accepts(Entity entity) const {
+    for (Entity skipped : ignore)
+      if (skipped == entity)
+        return false;
+    return !accept || accept(entity);
+  }
+};
+
 class CollisionSystem : public BaseSystem {
 public:
   explicit CollisionSystem(const CollisionLayers &layers) : m_layers(layers) {}

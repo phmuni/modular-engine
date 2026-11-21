@@ -77,7 +77,8 @@ void LuaBindings::bindGame() {
   });
   time.set_function("cancel", &GameTime::cancel, &engine.time());
 
-  // tween: animates an entity's "position", "rotation", "scale" or "color" (a vec3), or a number, on game time
+  // tween: animates an entity's "position", "rotation", "scale", "color" or "emission" (a vec3), its light's "intensity"
+  // (a number), or a plain number, on game time
   // tween.to(self, "position", vec3(0, 5, 0), 0.5, "easeOutQuad", function() ... end), tween.value(0, 1, 2, "linear", fn)
   sol::table tween = lua.create_named_table("tween");
   tween.set_function("to", [this](sol::optional<GameEntity> entity, const std::string &property, sol::object value,
