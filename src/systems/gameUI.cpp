@@ -113,15 +113,6 @@ Menu &GameUI::pauseMenu(const PauseMenuOptions &options) {
   m_impl->engine.pauseMenu().configure(options);
   return pauseMenu();
 }
-void GameUI::onPauseMenuOpened(std::function<void()> callback) {
-  m_impl->engine.pauseMenu().onOpened(std::move(callback));
-}
-void GameUI::onPauseMenuClosed(std::function<void()> callback) {
-  m_impl->engine.pauseMenu().onClosed(std::move(callback));
-}
-void GameUI::onPauseMenuAction(std::function<void(const std::string &)> callback) {
-  m_impl->engine.pauseMenu().onAction(std::move(callback));
-}
 
 Menu &GameUI::menu(const std::string &path, const MenuOptions &options) {
   Menu &menu = m_impl->engine.menus().menu(path, options);

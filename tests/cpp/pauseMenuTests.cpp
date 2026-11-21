@@ -47,9 +47,9 @@ TEST_CASE(pause_menu_events) {
   auto actions = std::make_shared<std::string>();
   auto opened = std::make_shared<int>(0);
   auto closed = std::make_shared<int>(0);
-  engine.ui().onPauseMenuAction([actions](const std::string &name) { *actions += name; });
-  engine.ui().onPauseMenuOpened([opened]() { ++*opened; });
-  engine.ui().onPauseMenuClosed([closed]() { ++*closed; });
+  engine.ui().pauseMenu().onAction([actions](const std::string &name) { *actions += name; });
+  engine.ui().pauseMenu().onOpened([opened]() { ++*opened; });
+  engine.ui().pauseMenu().onClosed([closed]() { ++*closed; });
   engine.settings().set("fxaa", false);
   engine.settings().set("ssaoQuality", std::string("low"));
   engine.pauseMenu().open();

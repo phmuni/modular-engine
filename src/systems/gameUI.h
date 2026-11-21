@@ -48,16 +48,11 @@ public:
   // Menu (named "pause"): pauseMenu().open("options"), pauseMenu().isOpen(), close(); that works without Escape being
   // enabled. With no argument nothing about it changes. pauseMenu(true) takes the defaults; the options choose the
   // document, whether it pauses the game, frees the cursor, blocks the game's input, and whether Escape opens it.
-  // Each also returns the Menu.
+  // Each also returns the Menu, whose onOpened, onClosed and onAction take the game's callbacks for this menu
+  // (pauseMenu().onAction(...)); onMenuAction below gets it too, with "pause".
   Menu &pauseMenu();
   Menu &pauseMenu(bool enabled);
   Menu &pauseMenu(const PauseMenuOptions &options);
-  // The game's callbacks for what happens in the menu (Lua scripts define onMenuOpened(menu), onMenuClosed(menu) and
-  // onMenuAction(menu, name) instead, which are called with "pause" for this one). The action is the name a button of
-  // the document gave to action('name').
-  void onPauseMenuOpened(std::function<void()> callback);
-  void onPauseMenuClosed(std::function<void()> callback);
-  void onPauseMenuAction(std::function<void(const std::string &)> callback);
 
   // Menus (see systems/menu.h): any document of the project shown over the game, with options for pausing, the cursor,
   // the game's input and Escape. Makes the menu for that document (calling it again with other options changes them),

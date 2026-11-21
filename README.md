@@ -1665,9 +1665,9 @@ end
 ```
 
 ```cpp
-engine.ui().onPauseMenuAction([&](const std::string &name) { if (name == "restart") { /* ... */ } });
-engine.ui().onPauseMenuOpened([] { /* ... */ });
-engine.ui().onPauseMenuClosed([] { /* ... */ });
+engine.ui().pauseMenu().onAction([&](const std::string &name) { if (name == "restart") { /* ... */ } });
+engine.ui().pauseMenu().onOpened([] { /* ... */ });
+engine.ui().pauseMenu().onClosed([] { /* ... */ });
 ```
 
 **3. Your own menu.** The settings are a service of their own, so a menu you build with `ui.load` (or in RmlUi
