@@ -1066,7 +1066,7 @@ void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemM
   if (m_resizeHovered || m_resize.axis >= 0)
     return; // the click grabs a resize handle
   const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
-  const auto hit = engine.pickModel(mouse);
+  const auto hit = engine.pickModel(viewMouse());
   if (hit) {
     m_marquee.active = false;
     if (io.KeyCtrl)

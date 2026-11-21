@@ -204,3 +204,37 @@ TEST_CASE(docked_editor_reset_layout_rebuilds_the_default) {
     checkRect(editorOf(engine).gameViewRect(), *first, 0.5f);
   });
 }
+
+// A click in the middle of the Game panel selects what is drawn there: the editor measures it from the panel's corner,
+// as pickModel takes it (with the window's coordinates it would land a panel's width off). "input": run alone.
+TEST_CASE(docked_editor_click_selects_input) {
+  GameEntity target = engine.create("Target", Desc("box").at(0, 2, 0)); // at the test camera's center
+  showEditor(engine, true);
+  auto mouse = [](float x, float y, Uint32 type) {
+    SDL_Event event{};
+    event.type = type;
+    if (type == SDL_EVENT_MOUSE_MOTION) {
+      event.motion.windowID = windowId();
+      event.motion.x = x;
+      event.motion.y = y;
+    } else {
+      event.button.windowID = windowId();
+      event.button.button = SDL_BUTTON_LEFT;
+      event.button.down = type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+      event.button.clicks = 1;
+      event.button.x = x;
+      event.button.y = y;
+    }
+    SDL_PushEvent(&event);
+  };
+  auto center = std::make_shared<glm::vec2>(0.0f);
+  steps.step(6, [&engine, center, mouse]() {
+    const glm::vec4 rect = editorOf(engine).gameViewRect();
+    *center = glm::vec2(rect.x + rect.z * 0.5f, rect.y + rect.w * 0.5f);
+    CHECK(rect.x > 1.0f); // the left panel is there: the two ways of measuring differ
+    mouse(center->x, center->y, SDL_EVENT_MOUSE_MOTION);
+  });
+  steps.step(2, [center, mouse]() { mouse(center->x, center->y, SDL_EVENT_MOUSE_BUTTON_DOWN); });
+  steps.step(2, [center, mouse]() { mouse(center->x, center->y, SDL_EVENT_MOUSE_BUTTON_UP); });
+  steps.step(2, [&engine, target]() { CHECK_EQ(editorOf(engine).selectedEntity, target.id()); });
+}

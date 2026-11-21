@@ -219,18 +219,19 @@ void EditorUISystem::handleAssetDrop(Engine &engine, SystemManager &systemManage
   const std::string asset = static_cast<const char *>(payload->Data);
   const Kind kind = AssetBrowser::classify(asset);
   const bool released = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
-  const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
+  const glm::vec2 mouse(io.MousePos.x, io.MousePos.y); // where to draw
+  const glm::vec2 inView = viewMouse();                 // what to pick: from the view's corner
   ImDrawList *drawList = ImGui::GetForegroundDrawList();
 
   if (kind == Kind::Model || kind == Kind::Prefab) {
     // The surface under the cursor; off any, the ground plane, or a few units into the view
-    const auto hit = engine.pickModel(mouse);
+    const auto hit = engine.pickModel(inView);
     glm::vec3 point(0.0f);
     bool onSurface = false;
     if (hit) {
       point = hit->point;
       onSurface = true;
-    } else if (const auto ray = engine.screenRay(mouse)) {
+    } else if (const auto ray = engine.screenRay(inView)) {
       if (ray->direction.y < -1e-3f && -ray->origin.y / ray->direction.y < 200.0f) {
         point = ray->origin + ray->direction * (-ray->origin.y / ray->direction.y);
         onSurface = true;
@@ -245,7 +246,7 @@ void EditorUISystem::handleAssetDrop(Engine &engine, SystemManager &systemManage
       placeAsset(engine, systemManager, componentManager, asset, point, onSurface);
   } else if (kind == Kind::Script || kind == Kind::Sound) {
     // The entity under the cursor, outlined
-    const auto hit = engine.pickModel(mouse);
+    const auto hit = engine.pickModel(inView);
     if (hit) {
       drawBox(systemManager, componentManager, hit->entity, IM_COL32(90, 200, 255, 240), 2.0f);
       if (released) {

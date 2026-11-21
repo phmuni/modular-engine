@@ -128,6 +128,11 @@ private:
   // The view's corner and size as ImGui draws (window units), the window's own when not docked
   ImVec2 viewPos() const { return ImVec2(m_viewRect.x, m_viewRect.y); }
   ImVec2 viewSize() const { return ImVec2(m_viewRect.z, m_viewRect.w); }
+  // The mouse measured from the view's corner, as Engine::screenRay and pickModel take it (window units)
+  glm::vec2 viewMouse() const {
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    return glm::vec2(mouse.x - m_viewRect.x, mouse.y - m_viewRect.y);
+  }
   // A point in ImGui's window units to the view's normalized device coordinates (y up), and the reverse
   glm::vec2 toNdc(const ImVec2 &point) const {
     return glm::vec2((point.x - m_viewRect.x) / m_viewRect.z * 2.0f - 1.0f, 1.0f - (point.y - m_viewRect.y) / m_viewRect.w * 2.0f);
