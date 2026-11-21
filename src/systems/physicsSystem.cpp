@@ -4,6 +4,7 @@
 
 #include "components/characterController.h"
 #include "components/model.h"
+#include "components/name.h"
 #include "components/rigidBody.h"
 #include "components/transform.h"
 #include "foundation/core/collisionLayers.h"
@@ -302,6 +303,10 @@ struct PhysicsSystem::Impl {
     glm::vec3 scale;
     uint32_t meshHandle;
     Transform written;
+    // A static body that game code keeps moving (see warnIfStaticMoves)
+    uint64_t lastMovedStep = 0;
+    int movedSteps = 0;
+    bool warnedMoving = false;
   };
   std::unordered_map<Entity, BodyRecord> bodies;
 
@@ -336,6 +341,8 @@ struct PhysicsSystem::Impl {
   std::vector<PhysicsContact> contacts;       // from the last update
   std::vector<PhysicsContactEnd> contactEnds; // from the last update
   float accumulator = 0.0f;
+  uint64_t step = 0;       // simulation steps so far
+  bool simulating = false; // sync is running inside a step, not for a paused or edited scene
 
   Impl(ComponentManager &cm, ResourceSystem &rs, TransformSystem &ts, const CollisionLayers &collisionLayers)
       : componentManager(cm), resourceSystem(rs), transformSystem(ts), layers(collisionLayers),
@@ -543,6 +550,29 @@ struct PhysicsSystem::Impl {
   }
 
   // Bodies and characters for the components there are now, with Transforms moved from outside handed over
+  // A static body jumps to where game code moves it, with no velocity: what it hits is pushed out of it but gets no
+  // push, which looks like broken physics. Moving it once (a level change) is fine; moving it frame after frame (a
+  // spinning wall, a moving platform) means it should be kinematic: said once per body. Only while simulating, so
+  // dragging it in the editor does not count.
+  void warnIfStaticMoves(Entity entity, BodyRecord &record) {
+    if (!simulating || record.warnedMoving)
+      return;
+    constexpr uint64_t kGapSteps = 4; // a frame can hold several steps (two at 30 fps) and only its first sees the move
+    constexpr int kWarnAfterMoves = 15; // a quarter of a second at 60 fps
+    const bool continued = record.movedSteps > 0 && step - record.lastMovedStep <= kGapSteps;
+    record.movedSteps = continued ? record.movedSteps + 1 : 1;
+    record.lastMovedStep = step;
+    if (record.movedSteps < kWarnAfterMoves)
+      return;
+    record.warnedMoving = true;
+    const Name *name = componentManager.tryGet<Name>(entity);
+    const std::string who = name && !name->name.empty() ? "\"" + name->name + "\" (entity " + std::to_string(entity) + ")"
+                                                        : "Entity " + std::to_string(entity);
+    LOG_W("[Physics] %s is a static body that keeps being moved: it pushes what it meets without giving it any "
+          "velocity. Make its RigidBody kinematic for moving walls, platforms and doors",
+          who.c_str());
+  }
+
   void sync(float stepTime) {
     JPH::BodyInterface &bodyInterface = system->GetBodyInterface();
     // Layers renamed, removed or reconfigured since the last sync: numbers are looked up again below
@@ -612,6 +642,8 @@ struct PhysicsSystem::Impl {
                                              body.type == BodyType::Static ? JPH::EActivation::DontActivate
                                                                            : JPH::EActivation::Activate);
         record.written = *transform;
+        if (body.type == BodyType::Static)
+          warnIfStaticMoves(entity, record);
       }
     });
     pending.clear(); // for entities that never got a body (destroyed, or no longer dynamic)
@@ -730,7 +762,10 @@ void PhysicsSystem::update(float deltaTime) {
   while (impl.accumulator >= kStep) {
     stepped = true;
     impl.accumulator -= kStep;
+    ++impl.step;
+    impl.simulating = true;
     impl.sync(kStep);
+    impl.simulating = false;
     impl.updateCharacters(kStep);
     impl.system->Update(kStep, 1, impl.tempAllocator.get(), impl.jobSystem.get());
     impl.writeBack();
