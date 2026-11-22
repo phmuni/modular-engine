@@ -47,7 +47,29 @@ uniform int numLights; // lights in the scene (0: the scene is lit by a plain am
 layout(std140) uniform DirectionalLights { vec4 directionalData[MAX_DIRECTIONAL_LIGHTS * 5]; };
 layout(std140) uniform PointLights { vec4 lightData[MAX_CLUSTER_LIGHTS * 5]; };
 layout(std140) uniform ClusterGrid { uvec4 clusterGrid[CLUSTER_GRID_X * CLUSTER_GRID_Y * CLUSTER_GRID_Z / 4]; };
-layout(std140) uniform ClusterIndices { uvec4 clusterIndices[CLUSTER_INDEX_UINTS / 4]; };
+// The index list continues from block to block (CLUSTER_INDEX_BLOCKS of them, up to 8)
+layout(std140) uniform ClusterIndices0 { uvec4 clusterIndices0[CLUSTER_INDEX_BLOCK_UINTS / 4]; };
+#if CLUSTER_INDEX_BLOCKS > 1
+layout(std140) uniform ClusterIndices1 { uvec4 clusterIndices1[CLUSTER_INDEX_BLOCK_UINTS / 4]; };
+#endif
+#if CLUSTER_INDEX_BLOCKS > 2
+layout(std140) uniform ClusterIndices2 { uvec4 clusterIndices2[CLUSTER_INDEX_BLOCK_UINTS / 4]; };
+#endif
+#if CLUSTER_INDEX_BLOCKS > 3
+layout(std140) uniform ClusterIndices3 { uvec4 clusterIndices3[CLUSTER_INDEX_BLOCK_UINTS / 4]; };
+#endif
+#if CLUSTER_INDEX_BLOCKS > 4
+layout(std140) uniform ClusterIndices4 { uvec4 clusterIndices4[CLUSTER_INDEX_BLOCK_UINTS / 4]; };
+#endif
+#if CLUSTER_INDEX_BLOCKS > 5
+layout(std140) uniform ClusterIndices5 { uvec4 clusterIndices5[CLUSTER_INDEX_BLOCK_UINTS / 4]; };
+#endif
+#if CLUSTER_INDEX_BLOCKS > 6
+layout(std140) uniform ClusterIndices6 { uvec4 clusterIndices6[CLUSTER_INDEX_BLOCK_UINTS / 4]; };
+#endif
+#if CLUSTER_INDEX_BLOCKS > 7
+layout(std140) uniform ClusterIndices7 { uvec4 clusterIndices7[CLUSTER_INDEX_BLOCK_UINTS / 4]; };
+#endif
 uniform int directionalCount;
 uniform vec2 clusterTileScale; // grid tiles per pixel
 uniform vec2 clusterZ;         // log2(view depth) * x + y is the depth slice
@@ -358,6 +380,38 @@ vec3 environmentLight(vec3 N, vec3 V, vec3 albedo, float metallic, float roughne
     return diffuse * occlusion + reflected * specularColor * specularOcclusion;
 }
 
+// The 4 bytes (a uint) of the index list that hold entry `e`; the block is picked by constant-indexed branches
+uint indexWord(int e)
+{
+    int word = e >> 2;
+    int block = word / CLUSTER_INDEX_BLOCK_UINTS;
+    int local = word - block * CLUSTER_INDEX_BLOCK_UINTS;
+    int slot = local >> 2, lane = local & 3;
+    if (block == 0) return clusterIndices0[slot][lane];
+#if CLUSTER_INDEX_BLOCKS > 1
+    if (block == 1) return clusterIndices1[slot][lane];
+#endif
+#if CLUSTER_INDEX_BLOCKS > 2
+    if (block == 2) return clusterIndices2[slot][lane];
+#endif
+#if CLUSTER_INDEX_BLOCKS > 3
+    if (block == 3) return clusterIndices3[slot][lane];
+#endif
+#if CLUSTER_INDEX_BLOCKS > 4
+    if (block == 4) return clusterIndices4[slot][lane];
+#endif
+#if CLUSTER_INDEX_BLOCKS > 5
+    if (block == 5) return clusterIndices5[slot][lane];
+#endif
+#if CLUSTER_INDEX_BLOCKS > 6
+    if (block == 6) return clusterIndices6[slot][lane];
+#endif
+#if CLUSTER_INDEX_BLOCKS > 7
+    if (block == 7) return clusterIndices7[slot][lane];
+#endif
+    return 0u;
+}
+
 Light makeLight(vec4 v0, vec4 v1, vec4 v2, vec4 v3, vec4 v4)
 {
     Light light;
@@ -532,7 +586,7 @@ void main()
         clusterLights = int(entry & 511u);
         for (int k = 0; k < clusterLights; ++k) {
             int entryIndex = listStart + k;
-            uint word = clusterIndices[entryIndex >> 4][(entryIndex >> 2) & 3];
+            uint word = indexWord(entryIndex);
             int base = int((word >> uint((entryIndex & 3) * 8)) & 255u) * 5;
             Light light = makeLight(lightData[base], lightData[base + 1], lightData[base + 2], lightData[base + 3],
                                     lightData[base + 4]);

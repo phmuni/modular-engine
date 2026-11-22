@@ -8,7 +8,9 @@
 #include <cmath>
 
 namespace {
-constexpr int kDirectionalBinding = 1, kLightBinding = 2, kGridBinding = 3, kIndexBinding = 4;
+constexpr int kDirectionalBinding = 1, kLightBinding = 2, kGridBinding = 3, kIndexBinding = 4; // the index blocks take 4 and up
+constexpr int kMaxIndexBlocks = 8;                  // the most the shader declares (fragmentShader.frag)
+constexpr int kIndexEntriesTarget = 262144;         // what the index list aims to hold, in blocks of up to 64 KB
 constexpr int kVec4PerLight = 5;
 constexpr int kClusterCount = EngineConfig::CLUSTER_GRID_X * EngineConfig::CLUSTER_GRID_Y * EngineConfig::CLUSTER_GRID_Z;
 // A cluster entry holds the offset into the index list above this many bits of count (up to 256 lights: 9 bits)
@@ -31,14 +33,19 @@ const LightingLimits &lightingLimits() {
     result.lightBytes = result.maxLights * lightSize;
     result.gridBytes = kClusterCount * 4;
     // The index list takes a block of up to 64 KB (one entry per byte, 4 to a uint)
-    result.indexBytes = std::max(4096, std::min(blockSize, 65536)) & ~15;
+    result.indexBlockBytes = std::max(4096, std::min(blockSize, 65536)) & ~15;
     GLint fragmentBlocks = 0, combinedComponents = 0;
     glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_BLOCKS, &fragmentBlocks);
+    // The index list is spread over several blocks (one entry per byte): as many as hold the target, but the program
+    // also needs its 3 other blocks and a few spare
+    const int wanted = (kIndexEntriesTarget + result.indexBlockBytes - 1) / result.indexBlockBytes;
+    result.indexBlocks = std::clamp(std::min(wanted, static_cast<int>(fragmentBlocks) - 6), 1, kMaxIndexBlocks);
+    result.indexBytes = result.indexBlocks * result.indexBlockBytes;
     glGetIntegerv(GL_MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS, &combinedComponents);
     LOG_I("[Lights] Clustered lighting: GL_MAX_UNIFORM_BLOCK_SIZE %d bytes -> up to %d point/spot lights (%d bytes), "
-          "grid %dx%dx%d (%d bytes), %d index entries; %d fragment uniform blocks, %d combined fragment components",
+          "grid %dx%dx%d (%d bytes), %d index entries in %d blocks of %d bytes; %d fragment uniform blocks, %d combined fragment components",
           blockSize, result.maxLights, result.lightBytes, EngineConfig::CLUSTER_GRID_X, EngineConfig::CLUSTER_GRID_Y,
-          EngineConfig::CLUSTER_GRID_Z, result.gridBytes, result.indexBytes, fragmentBlocks, combinedComponents);
+          EngineConfig::CLUSTER_GRID_Z, result.gridBytes, result.indexBytes, result.indexBlocks, result.indexBlockBytes, fragmentBlocks, combinedComponents);
     if (blockSize < result.gridBytes)
       LOG_W("[Lights] The driver's uniform blocks (%d bytes) are smaller than the cluster grid (%d bytes)", blockSize,
             result.gridBytes);
@@ -49,8 +56,9 @@ const LightingLimits &lightingLimits() {
 
 std::string lightingShaderDefines() {
   const LightingLimits &limits = lightingLimits();
-  return "#define MAX_CLUSTER_LIGHTS " + std::to_string(limits.maxLights) + "\n#define CLUSTER_INDEX_UINTS " +
-         std::to_string(limits.indexBytes / 4) + "\n#define MAX_DIRECTIONAL_LIGHTS " +
+  return "#define MAX_CLUSTER_LIGHTS " + std::to_string(limits.maxLights) + "\n#define CLUSTER_INDEX_BLOCKS " +
+         std::to_string(limits.indexBlocks) + "\n#define CLUSTER_INDEX_BLOCK_UINTS " +
+         std::to_string(limits.indexBlockBytes / 4) + "\n#define MAX_DIRECTIONAL_LIGHTS " +
          std::to_string(EngineConfig::MAX_DIRECTIONAL_LIGHTS) + "\n#define CLUSTER_GRID_X " +
          std::to_string(EngineConfig::CLUSTER_GRID_X) + "\n#define CLUSTER_GRID_Y " +
          std::to_string(EngineConfig::CLUSTER_GRID_Y) + "\n#define CLUSTER_GRID_Z " +
@@ -63,12 +71,16 @@ void bindLightingBlocks(GLuint program) {
     int binding;
   } blocks[] = {{"DirectionalLights", kDirectionalBinding},
                 {"PointLights", kLightBinding},
-                {"ClusterGrid", kGridBinding},
-                {"ClusterIndices", kIndexBinding}};
+                {"ClusterGrid", kGridBinding}};
   for (const auto &block : blocks) {
     const GLuint index = glGetUniformBlockIndex(program, block.name);
     if (index != GL_INVALID_INDEX)
       glUniformBlockBinding(program, index, block.binding);
+  }
+  for (int i = 0; i < lightingLimits().indexBlocks; ++i) {
+    const GLuint index = glGetUniformBlockIndex(program, ("ClusterIndices" + std::to_string(i)).c_str());
+    if (index != GL_INVALID_INDEX)
+      glUniformBlockBinding(program, index, kIndexBinding + i);
   }
 }
 
@@ -106,18 +118,24 @@ void ClusteredLights::ensureBuffers() {
   make(m_directionalBuffer, kDirectionalBinding, EngineConfig::MAX_DIRECTIONAL_LIGHTS * kVec4PerLight * 16);
   make(m_lightBuffer, kLightBinding, limits.lightBytes);
   make(m_gridBuffer, kGridBinding, limits.gridBytes);
-  make(m_indexBuffer, kIndexBinding, limits.indexBytes);
+  m_indexBuffers.assign(limits.indexBlocks, 0);
+  for (int i = 0; i < limits.indexBlocks; ++i)
+    make(m_indexBuffers[i], kIndexBinding + i, limits.indexBlockBytes);
   glBindBuffer(GL_UNIFORM_BUFFER, 0);
   m_grid.assign(kClusterCount, 0);
   m_indices.assign(limits.indexBytes, 0);
 }
 
 void ClusteredLights::shutdown() {
-  for (GLuint *buffer : {&m_directionalBuffer, &m_lightBuffer, &m_gridBuffer, &m_indexBuffer})
+  for (GLuint *buffer : {&m_directionalBuffer, &m_lightBuffer, &m_gridBuffer})
     if (*buffer) {
       glDeleteBuffers(1, buffer);
       *buffer = 0;
     }
+  for (GLuint &buffer : m_indexBuffers)
+    if (buffer)
+      glDeleteBuffers(1, &buffer);
+  m_indexBuffers.clear();
 }
 
 int ClusteredLights::sliceOf(float depth) const {
@@ -277,12 +295,19 @@ void ClusteredLights::build(const glm::mat4 &view, const glm::mat4 &projection, 
   upload(m_directionalBuffer, directional.data(), static_cast<size_t>(m_directionalCount) * sizeof(GpuLight));
   upload(m_lightBuffer, lights.data(), lightCount * sizeof(GpuLight));
   upload(m_gridBuffer, m_grid.data(), m_grid.size() * sizeof(uint32_t));
-  upload(m_indexBuffer, m_indices.data(), (static_cast<size_t>(used) + 15) & ~static_cast<size_t>(15));
+  // The used part of the index list, block by block
+  for (int i = 0; i < limits.indexBlocks; ++i) {
+    const size_t first = static_cast<size_t>(i) * limits.indexBlockBytes;
+    if (used > first)
+      upload(m_indexBuffers[i], m_indices.data() + first,
+             std::min<size_t>(limits.indexBlockBytes, (used - first + 15) & ~static_cast<size_t>(15)));
+  }
   glBindBuffer(GL_UNIFORM_BUFFER, 0);
   glBindBufferBase(GL_UNIFORM_BUFFER, kDirectionalBinding, m_directionalBuffer);
   glBindBufferBase(GL_UNIFORM_BUFFER, kLightBinding, m_lightBuffer);
   glBindBufferBase(GL_UNIFORM_BUFFER, kGridBinding, m_gridBuffer);
-  glBindBufferBase(GL_UNIFORM_BUFFER, kIndexBinding, m_indexBuffer);
+  for (int i = 0; i < limits.indexBlocks; ++i)
+    glBindBufferBase(GL_UNIFORM_BUFFER, kIndexBinding + i, m_indexBuffers[i]);
   m_stats.buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 }
 

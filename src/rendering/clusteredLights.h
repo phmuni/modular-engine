@@ -8,7 +8,8 @@
 //   DirectionalLights (binding 1)  up to MAX_DIRECTIONAL_LIGHTS lights, 5 vec4 each, always applied
 //   PointLights       (binding 2)  up to lightingLimits().maxLights lights, 5 vec4 each (see GpuLight)
 //   ClusterGrid       (binding 3)  one uint per cluster: (offset into the index list << 9) | light count
-//   ClusterIndices    (binding 4)  the lights' indices as bytes, 4 to a uint, each cluster's lights one after another
+//   ClusterIndices0.. (bindings 4..) the lights' indices as bytes, 4 to a uint, each cluster's lights one after another;
+//                                  the list continues from one block into the next (up to 8 blocks, sized from the driver)
 // Light ranges are automatic (lightRange) and the attenuation is windowed to reach exactly 0 at the range.
 
 #include "foundation/core/config.h"
@@ -20,17 +21,20 @@
 class Shader;
 
 // What the driver's uniform blocks allow for the buffers above. 64 KB blocks (the usual size) give the full 256 lights
-// and 65536 index entries; the GL minimum of 16 KB gives 204 lights and 16384 entries.
+// and 262144 index entries (4 blocks); the GL minimum of 16 KB gives 204 lights and, with the fragment blocks the
+// driver must have (12), 98304 entries (6 blocks).
 struct LightingLimits {
   int maxUniformBlockSize = 0; // GL_MAX_UNIFORM_BLOCK_SIZE
   int maxLights = 0;           // point and spot lights at once: min(MAX_CLUSTERED_LIGHTS, what the block holds)
-  int indexBytes = 0;          // the light index list's size: one entry (byte) per light per cluster
+  int indexBlocks = 0;         // the light index list is spread over this many uniform blocks...
+  int indexBlockBytes = 0;     // ...of this size (one entry, a byte, per light per cluster)
+  int indexBytes = 0;          // so it holds this many entries: 262144 with 64 KB blocks, as far as the driver allows
   int gridBytes = 0;
   int lightBytes = 0;
 };
 // Queried from the GL context the first time (it must be current) and logged
 const LightingLimits &lightingLimits();
-// "#define"s for every shader's source: the grid, MAX_CLUSTER_LIGHTS and CLUSTER_INDEX_UINTS
+// "#define"s for every shader's source: the grid, MAX_CLUSTER_LIGHTS and CLUSTER_INDEX_BLOCKS and CLUSTER_INDEX_BLOCK_UINTS
 std::string lightingShaderDefines();
 // Points a linked program's light uniform blocks at the buffers' binding points
 void bindLightingBlocks(GLuint program);
@@ -79,7 +83,8 @@ private:
   void updateClusterBounds(const glm::mat4 &projection);
   int sliceOf(float depth) const;
 
-  GLuint m_directionalBuffer = 0, m_lightBuffer = 0, m_gridBuffer = 0, m_indexBuffer = 0;
+  GLuint m_directionalBuffer = 0, m_lightBuffer = 0, m_gridBuffer = 0;
+  std::vector<GLuint> m_indexBuffers;
 
   // The view-space box of every cluster, made again when the projection changes
   struct Bounds {

@@ -119,7 +119,8 @@ TEST_CASE(clustered_lights_limits_and_defines) {
     CHECK(limits.maxUniformBlockSize >= 16384); // the GL minimum
     CHECK(limits.lightBytes <= limits.maxUniformBlockSize);
     CHECK(limits.gridBytes <= limits.maxUniformBlockSize);
-    CHECK(limits.indexBytes <= limits.maxUniformBlockSize);
+    CHECK(limits.indexBlockBytes <= limits.maxUniformBlockSize);
+    CHECK_EQ(limits.indexBytes, limits.indexBlocks * limits.indexBlockBytes);
     const std::string defines = lightingShaderDefines();
     CHECK(defines.find("#define MAX_CLUSTER_LIGHTS " + std::to_string(limits.maxLights)) != std::string::npos);
     CHECK(defines.find("#define CLUSTER_GRID_Z 24") != std::string::npos);
@@ -326,7 +327,7 @@ TEST_CASE(clustered_light_shadows_off_and_cube_array_size) {
 
 TEST_CASE(clustered_lights_dungeon_scene_with_256_lights) {
   // The dungeon of the regression case (180 lights, 5 with shadows), topped up to the cap of 256, seen from inside it:
-  // the CPU cost of building the clusters, and a nearly full index list
+  // the CPU cost of building the clusters, and pairs past the first index block (65536)
   engine.loadScene("../assets/scenes/many_lights.json");
   steps.until([&engine]() { return !engine.isLoadingScene(); }, "the scene to load", 300);
   steps.step(0, [&engine]() {
@@ -342,10 +343,10 @@ TEST_CASE(clustered_lights_dungeon_scene_with_256_lights) {
     const ClusteredLights::Stats &stats = renderOf(engine).lightStats();
     const int cap = std::min(256, lightingLimits().maxLights);
     CHECK_EQ(stats.lights, cap);
-    // Where the index list is too small the pairs are cut evenly per cluster (a few percent here), never past its size
+    // The index list holds all of this scene's pairs (it spans several blocks): no light is cut
+    CHECK_EQ(stats.dropped, 0);
     CHECK(stats.indexEntries <= lightingLimits().indexBytes);
-    CHECK(stats.dropped < stats.pairs / 4);
-    CHECK(stats.pairs > 256);
+    CHECK(stats.pairs > 65536);
     CHECK(stats.buildMs < 5.0); // a generous bound: it is a fraction of a millisecond on a laptop
     CHECK_EQ(lightsOf(engine).pointShadows().size(), size_t(5));
     LOG_I("[test] dungeon: %d lights, %d pairs of %d, cluster build %.3f ms", stats.lights, stats.pairs,
