@@ -3788,6 +3788,9 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
       float roughness = matPtr ? matPtr->getRoughness() : 0.5f;
       if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f))
         resourceSystem.setRoughness(entity, static_cast<int>(i), roughness);
+      bool unlit = matPtr && matPtr->isUnlit();
+      if (ImGui::Checkbox("Unlit", &unlit))
+        resourceSystem.setUnlit(entity, static_cast<int>(i), unlit);
 
       ImGui::Separator();
       ImGui::Text("Manual Emission");

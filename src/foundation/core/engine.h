@@ -92,6 +92,8 @@ public:
 
     EntityBuilder &withEmission(const glm::vec3 &color, float strength);
     EntityBuilder &withSolidColor(const glm::vec3 &color);
+    // Shown at its color alone: no lights, shadows or reflections (KHR_materials_unlit)
+    EntityBuilder &withUnlit(bool unlit = true);
     // A light, registered with the light system: Light::directional(...), Light::point(...) or Light::spot(...).
     // Point and spot lights sit at the entity's Transform (add withTransform), plus Light::position as an offset.
     EntityBuilder &withLight(const Light &light);
@@ -721,6 +723,7 @@ public:
   void setTexture(Entity entity, TextureSlot slot, std::string_view path, int submesh = -1);
   void setMetallic(Entity entity, float metallic, int submesh = -1);
   void setRoughness(Entity entity, float roughness, int submesh = -1);
+  void setUnlit(Entity entity, bool unlit, int submesh = -1);
   void setSolidColor(Entity entity, glm::vec3 color, int submesh = -1);
 
   // Same, addressing a part by name (an OBJ object/group or glTF node); logs a warning if there is none
@@ -728,6 +731,7 @@ public:
   void setTexture(Entity entity, TextureSlot slot, std::string_view path, std::string_view part);
   void setMetallic(Entity entity, float metallic, std::string_view part);
   void setRoughness(Entity entity, float roughness, std::string_view part);
+  void setUnlit(Entity entity, bool unlit, std::string_view part);
   void setSolidColor(Entity entity, glm::vec3 color, std::string_view part);
 
 private:

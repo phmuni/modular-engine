@@ -134,7 +134,8 @@
           "parts": [
             {
               "color": [0.0, 0.0, 0.0],
-              "part": 0
+              "part": 0,
+              "unlit": true
             }
           ],
           "path": "../assets/models/sphere/sphere.obj"

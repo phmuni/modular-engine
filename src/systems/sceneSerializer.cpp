@@ -338,6 +338,9 @@ std::optional<SceneSerializer::json> SceneSerializer::saveModel(Entity entity) c
       part["metallic"] = now.getMetallic();
     if (now.getRoughness() != before.getRoughness())
       part["roughness"] = now.getRoughness();
+    // Unlit parts are written as unlit, whether the file's material or the override made them so; turning it off is kept too
+    if (now.isUnlit() || before.isUnlit())
+      part["unlit"] = now.isUnlit();
     if (!now.getShaderPath().empty()) {
       part["shader"] = now.getShaderPath();
       json params = json::object();
@@ -380,6 +383,8 @@ void SceneSerializer::loadModel(Entity entity, const json &data) {
       resources.setMetallic(entity, index, part["metallic"].get<float>());
     if (part.contains("roughness"))
       resources.setRoughness(entity, index, part["roughness"].get<float>());
+    if (part.contains("unlit"))
+      resources.setUnlit(entity, index, part["unlit"].get<bool>());
     // Scenes saved before PBR have the Blinn-Phong exponent; "roughness" wins when both are there
     else if (part.contains("shininess"))
       resources.setRoughness(entity, index, std::sqrt(2.0f / (std::max(part["shininess"].get<float>(), 0.0f) + 2.0f)));

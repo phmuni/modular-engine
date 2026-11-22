@@ -70,6 +70,7 @@ ENGINE_ALIASES = {
     "setTexture": "Entity.setTexture",
     "setMetallic": "Entity.setMetallic",
     "setRoughness": "Entity.setRoughness",
+    "setUnlit": "Entity.setUnlit",
     "setSolidColor": "Entity.setColor",
     "setMouseCaptured": "input.captureMouse",
     "isMouseCaptured": "input.isMouseCaptured",

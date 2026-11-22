@@ -183,6 +183,12 @@ void LuaBindings::bindEntity() {
         else
           e.setRoughness(roughness, part && part->is<int>() ? part->as<int>() : -1);
       },
+      "setUnlit", [](GameEntity &e, bool unlit, sol::optional<sol::object> part) {
+        if (part && part->is<std::string>())
+          e.setUnlit(unlit, part->as<std::string>());
+        else
+          e.setUnlit(unlit, part && part->is<int>() ? part->as<int>() : -1);
+      },
 
       // Collision boxes: fitCollision(fit, isStatic) sizes its box to its model; isTouching(other) tests it against another's
       "fitCollision", [](GameEntity &e, sol::optional<float> fit, sol::optional<bool> isStatic) {

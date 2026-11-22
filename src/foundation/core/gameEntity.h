@@ -98,6 +98,9 @@ public:
   void setMetallic(float metallic, const std::string &part);
   void setRoughness(float roughness, int submesh = -1);
   void setRoughness(float roughness, const std::string &part);
+  // Unlit parts are shown at their color alone: no lights, shadows or reflections (the black hole's void)
+  void setUnlit(bool unlit, int submesh = -1);
+  void setUnlit(bool unlit, const std::string &part);
 
   // Sets its Collision box (adding one if needed) to its model's bounds, as rotated and scaled now; `fit` scales the
   // box around its center (see Engine::fitCollisionToModel). Call it again after changing the rotation or scale a lot.

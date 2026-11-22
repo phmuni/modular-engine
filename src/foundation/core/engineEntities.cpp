@@ -95,6 +95,11 @@ Engine::EntityBuilder &Engine::EntityBuilder::withSolidColor(const glm::vec3 &co
   return *this;
 }
 
+Engine::EntityBuilder &Engine::EntityBuilder::withUnlit(bool unlit) {
+  m_actions.emplace_back([&engine = m_engine, unlit](Entity entity) { engine.setUnlit(entity, unlit); });
+  return *this;
+}
+
 Entity Engine::EntityBuilder::build() {
   if (!m_entity) {
     if (m_model) {
@@ -424,6 +429,10 @@ void Engine::setRoughness(Entity entity, float roughness, int submesh) {
   m_systemManager.getSystem<ResourceSystem>().setRoughness(entity, submesh, roughness);
 }
 
+void Engine::setUnlit(Entity entity, bool unlit, int submesh) {
+  m_systemManager.getSystem<ResourceSystem>().setUnlit(entity, submesh, unlit);
+}
+
 void Engine::setSolidColor(Entity entity, glm::vec3 color, int submesh) {
   m_systemManager.getSystem<ResourceSystem>().setSolidColor(entity, submesh, color);
 }
@@ -450,6 +459,12 @@ void Engine::setRoughness(Entity entity, float roughness, std::string_view part)
   auto &resources = m_systemManager.getSystem<ResourceSystem>();
   if (int submesh = resources.findSubmesh(entity, part); submesh >= 0)
     resources.setRoughness(entity, submesh, roughness);
+}
+
+void Engine::setUnlit(Entity entity, bool unlit, std::string_view part) {
+  auto &resources = m_systemManager.getSystem<ResourceSystem>();
+  if (int submesh = resources.findSubmesh(entity, part); submesh >= 0)
+    resources.setUnlit(entity, submesh, unlit);
 }
 
 void Engine::setSolidColor(Entity entity, glm::vec3 color, std::string_view part) {

@@ -211,6 +211,16 @@ void GameEntity::setRoughness(float roughness, const std::string &part) {
     m_engine->setRoughness(m_id, roughness, part);
 }
 
+void GameEntity::setUnlit(bool unlit, int submesh) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->setUnlit(m_id, unlit, submesh);
+}
+
+void GameEntity::setUnlit(bool unlit, const std::string &part) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->setUnlit(m_id, unlit, part);
+}
+
 void GameEntity::fitCollision(float fit, bool isStatic) {
   if (m_engine && m_engine->has<Model>(m_id))
     m_engine->fitCollisionToModel(m_id, fit, isStatic);

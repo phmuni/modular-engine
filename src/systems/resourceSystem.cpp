@@ -453,6 +453,25 @@ void ResourceSystem::setRoughness(Entity entity, int submesh, float roughness) {
   }
 }
 
+void ResourceSystem::setUnlit(Entity entity, int submesh, bool unlit) {
+  auto *modelPtr = m_componentManager.tryGet<Model>(entity);
+  if (!modelPtr) {
+    return;
+  }
+
+  auto &model = *modelPtr;
+  auto apply = [&](uint32_t &handle) {
+    ensureOwnMaterial(handle);
+    getMaterial(handle).setUnlit(unlit);
+  };
+  if (submesh < 0) {
+    for (auto &h : model.materialHandles)
+      apply(h);
+  } else if (submesh < static_cast<int>(model.materialHandles.size())) {
+    apply(model.materialHandles[submesh]);
+  }
+}
+
 GLuint ResourceSystem::getOrCreateSolidColorTexture(const glm::vec3 &color) {
   auto clampToU8 = [](float v) -> unsigned int {
     return static_cast<unsigned int>(glm::clamp(v, 0.0f, 1.0f) * 255.0f);

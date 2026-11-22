@@ -246,6 +246,11 @@ function Entity:setMetallic(metallic, part) end
 ---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
 function Entity:setRoughness(roughness, part) end
 
+---Shows its model (or only the part) at its color alone, with no lights, shadows or reflections: a black one is a void.
+---@param unlit boolean
+---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
+function Entity:setUnlit(unlit, part) end
+
 ---Sizes its Collision box (made if it has none) to its model, as rotated and scaled now. Call it again after changing the
 ---rotation or scale a lot: the box itself does not rotate.
 ---@param fit? number Scales the box around its center: below 1 for forgiving hitboxes, above 1 for generous ones. Defaults to 1

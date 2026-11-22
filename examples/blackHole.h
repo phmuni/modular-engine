@@ -94,6 +94,7 @@ class BlackHole : public App {
                .create("Black Hole")
                .withModel(EngineConfig::MODEL_SPHERE, glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(kShadowRadius))
                .withSolidColor(glm::vec3(0.0f))
+               .withUnlit()
                .withComponent<GravityLens>(kSchwarzschildRadius)
                .withSound("../assets/sounds/blackhole.flac", true, 1.0f)
                .build();

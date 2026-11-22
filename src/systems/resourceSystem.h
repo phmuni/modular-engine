@@ -184,6 +184,7 @@ public:
   void removeTexture(Entity entity, int submesh, TextureSlot slot);
   void setMetallic(Entity entity, int submesh, float metallic);
   void setRoughness(Entity entity, int submesh, float roughness);
+  void setUnlit(Entity entity, int submesh, bool unlit);
 
   // Solid color helpers
   GLuint getOrCreateSolidColorTexture(const glm::vec3 &color);
