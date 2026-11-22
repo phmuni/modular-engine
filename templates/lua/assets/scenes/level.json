@@ -36,7 +36,7 @@
             0.85
           ],
           "intensity": 1.0,
-          "ambient": 0.35,
+          "ambient": 0.2,
           "castShadows": true
         }
       }
@@ -45,6 +45,7 @@
       "name": "Sky",
       "components": {
         "Skybox": {
+          "environmentIntensity": 0.15,
           "color": [
             0.53,
             0.72,
