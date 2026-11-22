@@ -20,6 +20,13 @@ float supportDistance(const glm::vec3 &boundsMin, const glm::vec3 &boundsMax, co
 bool heldOrigin(const glm::vec3 &rayOrigin, const glm::vec3 &rayDirection, const glm::vec3 &hitPoint,
                 const glm::vec3 &hitNormal, float height, glm::vec3 &origin);
 
+// The same for a point of the entity grabbed with the cursor: `grab` is its offset from the origin (world axes, in the
+// entity's rotation as it will rest). The ray meets the plane `height` plus the grab's height along the normal above
+// the surface, and the origin is that point less `grab`: the grabbed point stays on the ray, the entity on the surface.
+// With a zero `grab` it is heldOrigin.
+bool grabbedOrigin(const glm::vec3 &rayOrigin, const glm::vec3 &rayDirection, const glm::vec3 &hitPoint,
+                   const glm::vec3 &hitNormal, float height, const glm::vec3 &grab, glm::vec3 &origin);
+
 // The origin nearest `held` on the way from it to `fallback` for which `supported` holds: `held` itself when it does,
 // else found by halving the way `steps` times (supported is taken to change once along it), `fallback` when nothing
 // before it is supported

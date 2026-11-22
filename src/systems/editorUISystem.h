@@ -201,8 +201,24 @@ private:
   // The rotate gizmo's result with Snap on, as angles: on the 15 degree steps when the turn changed one angle, else
   // the turn itself in 15 degree steps from where the drag started
   glm::vec3 snappedRotation(const glm::quat &dragged) const;
+  // `grab`: the point of the entity held under the cursor, an offset from its origin in its own frame (zero: the origin)
   bool alignToSurface(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
-                      bool snapped);
+                      bool snapped, const glm::vec3 &grab = glm::vec3(0.0f));
+  // Dragging by the body (Move, whatever the Align toggle says): pressing on a model and dragging it keeps the grabbed point under the cursor (not
+  // the entity's center, which for a tall one is far from the floor it should rest on)
+  struct BodyGrab {
+    bool pending = false;         // pressed on a model; a drag past a few pixels starts the grab
+    bool active = false;          // dragging
+    bool fresh = false;           // the first frame of the drag: the grab point is taken from the entity as it is
+    Entity collapseTo = -1;       // released without a drag, the selection becomes this one (a click on a selected one)
+    glm::vec2 start{0.0f};        // where the press was (window units)
+    glm::vec3 point{0.0f};        // the spot pressed, world space; then the grabbed point as last placed
+    glm::vec3 local{0.0f};        // the grab: the pressed spot from the entity's origin, in its own frame
+  } m_bodyGrab;
+  // Starts, ends and cancels the body grab from the mouse; begins the undo step of a drag
+  void updateBodyGrab(Engine &engine);
+  // Without a surface under the cursor: the grabbed point follows the cursor on the plane facing the camera
+  void moveGrabFreely(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform);
   // Applies a gizmo change to the transform: as is, or kept out of other models when m_gizmoSolid is on
   // Returns false when Solid refused a rotation or scale
   bool applyGizmoChange(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,

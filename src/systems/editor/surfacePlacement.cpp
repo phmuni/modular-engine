@@ -18,16 +18,22 @@ float supportDistance(const glm::vec3 &boundsMin, const glm::vec3 &boundsMax, co
   return most;
 }
 
-bool heldOrigin(const glm::vec3 &rayOrigin, const glm::vec3 &rayDirection, const glm::vec3 &hitPoint,
-                const glm::vec3 &hitNormal, float height, glm::vec3 &origin) {
+bool grabbedOrigin(const glm::vec3 &rayOrigin, const glm::vec3 &rayDirection, const glm::vec3 &hitPoint,
+                   const glm::vec3 &hitNormal, float height, const glm::vec3 &grab, glm::vec3 &origin) {
   const float facing = glm::dot(rayDirection, hitNormal);
   if (std::abs(facing) < 0.05f)
     return false;
-  const float along = glm::dot(hitPoint + hitNormal * height - rayOrigin, hitNormal) / facing;
+  const float grabHeight = height + glm::dot(grab, hitNormal);
+  const float along = glm::dot(hitPoint + hitNormal * grabHeight - rayOrigin, hitNormal) / facing;
   if (along <= 0.0f)
     return false;
-  origin = rayOrigin + rayDirection * along;
+  origin = rayOrigin + rayDirection * along - grab;
   return true;
+}
+
+bool heldOrigin(const glm::vec3 &rayOrigin, const glm::vec3 &rayDirection, const glm::vec3 &hitPoint,
+                const glm::vec3 &hitNormal, float height, glm::vec3 &origin) {
+  return grabbedOrigin(rayOrigin, rayDirection, hitPoint, hitNormal, height, glm::vec3(0.0f), origin);
 }
 
 glm::vec3 slideToSupport(const glm::vec3 &held, const glm::vec3 &fallback,

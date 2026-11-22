@@ -41,6 +41,40 @@ TEST_CASE(surface_placement_held_origin_on_the_cursor) {
   CHECK(!heldOrigin(glm::vec3(0, 0.2f, 0), toward, glm::vec3(0, 0, 0), kUp, 0.5f, origin));
 }
 
+TEST_CASE(surface_placement_grab_at_the_origin_is_the_held_origin) {
+  const glm::vec3 eye(0, 5, 5), toward = glm::normalize(glm::vec3(0, -1, -1));
+  glm::vec3 held, grabbed;
+  CHECK(heldOrigin(eye, toward, glm::vec3(0, 0, 0), kUp, 0.5f, held));
+  CHECK(grabbedOrigin(eye, toward, glm::vec3(0, 0, 0), kUp, 0.5f, glm::vec3(0.0f), grabbed));
+  CHECK_NEAR(grabbed, held, 1e-6f);
+}
+
+TEST_CASE(surface_placement_grab_keeps_the_grabbed_point_on_the_ray) {
+  // A pillar 3 high (origin at mid-height, 1.5 above the floor), grabbed 1.5 below its origin and 0.3 to the side:
+  // that point rests on the floor, under the ray, and the origin is 1.5 over it
+  const glm::vec3 eye(0, 5, 5), toward = glm::normalize(glm::vec3(0, -1, -1));
+  const glm::vec3 grab(0.3f, -1.5f, 0.0f);
+  glm::vec3 origin;
+  CHECK(grabbedOrigin(eye, toward, glm::vec3(0, 0, 0), kUp, 1.5f, grab, origin));
+  const glm::vec3 grabbedPoint = origin + grab;
+  CHECK_NEAR(grabbedPoint.y, 0.0f, 1e-5f);
+  CHECK_NEAR(origin.y, 1.5f, 1e-5f);
+  CHECK_NEAR(glm::normalize(grabbedPoint - eye), toward, 1e-5f); // on the ray
+}
+
+TEST_CASE(surface_placement_grab_follows_the_rotation) {
+  // The same grab point of an entity turned 90 degrees about Z: its offset in the world is the turned one, and the
+  // grabbed point is level with the origin
+  const glm::quat turned = glm::angleAxis(glm::radians(90.0f), glm::vec3(0, 0, 1));
+  const glm::vec3 grab = turned * glm::vec3(0.0f, -1.5f, 0.0f);
+  const glm::vec3 eye(0, 5, 5), toward = glm::normalize(glm::vec3(0, -1, -1));
+  glm::vec3 origin;
+  CHECK(grabbedOrigin(eye, toward, glm::vec3(0, 0, 0), kUp, 0.5f, grab, origin));
+  CHECK_NEAR(origin.y, 0.5f, 1e-4f);
+  CHECK_NEAR((origin + grab).y, 0.5f, 1e-4f);
+  CHECK_NEAR(glm::normalize(origin + grab - eye), toward, 1e-5f);
+}
+
 TEST_CASE(surface_placement_slide_to_support) {
   // A pillar whose top reaches z = 0.5: the held center at z = 2 is off it, so it slides back towards the spot the
   // cursor meets (z = -1) until it is over the top again

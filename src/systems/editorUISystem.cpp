@@ -367,7 +367,7 @@ void EditorUISystem::renderViewportHint(SystemManager &systemManager) {
     if (cameraSystem.isNavigating()) {
       ImGui::Text("Flying   speed x%.2f   Shift: faster   Q/E: down/up", cameraSystem.getFlySpeedScale());
     } else {
-      ImGui::TextDisabled("Right-drag: look  |  WASD: fly  |  Wheel: speed");
+      ImGui::TextDisabled("Right-drag: look  |  WASD: fly  |  Wheel: speed  |  Drag an object: rest it on surfaces");
     }
   }
   ImGui::End();
@@ -790,6 +790,7 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
     renderAssetPanel(engine, systemManager, componentManager);
   renderPlayToolbar(engine, systemManager);
   m_gizmoShown = false;
+  updateBodyGrab(engine);
   if (panels)
     renderPropertiesPanel(engine, systemManager, componentManager); // always there, so its dock slot is not empty
   if (selectedEntity != -1) {
@@ -1079,16 +1080,46 @@ void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemM
   const auto hit = engine.pickModel(viewMouse());
   if (hit) {
     m_marquee.active = false;
+    // With Move, a press on a model may be the start of a drag by its body (see updateBodyGrab). Pressing
+    // one of several selected models keeps the selection until the button is up without a drag, so the drag moves all.
+    const bool grabbing = m_gizmoOperation == GizmoOperation::Move;
+    Entity collapseTo = -1;
     if (io.KeyCtrl)
       toggleSelected(hit->entity); // Ctrl/Cmd adds or removes
+    else if (grabbing && isSelected(hit->entity) && m_selection.size() > 1)
+      collapseTo = hit->entity;
     else
       selectOnly(hit->entity);
     m_scrollToSelection = isSelected(hit->entity);
+    if (grabbing && isSelected(hit->entity))
+      m_bodyGrab = {true, false, false, collapseTo, mouse, hit->point, glm::vec3(0.0f)};
   } else {
     // Empty space: clears (unless adding), and may start a box
     if (!io.KeyCtrl)
       selectOnly(-1);
     m_marquee = {true, false, mouse};
+  }
+}
+
+// Dragging by the body (Move): a press on a model followed by a drag of a few pixels grabs the model at the spot
+// pressed and moves it like the gizmo's center does (alignToSurface), the grabbed spot under the cursor. Without the
+// drag it is the plain click it was (the press already selected). One undo step for the drag.
+void EditorUISystem::updateBodyGrab(Engine &engine) {
+  if (!m_bodyGrab.pending)
+    return;
+  const ImGuiIO &io = ImGui::GetIO();
+  const bool allowed = m_viewForEditor && m_gizmoOperation == GizmoOperation::Move;
+  if (!allowed || !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    if (allowed && !m_bodyGrab.active && m_bodyGrab.collapseTo != -1 && isSelected(m_bodyGrab.collapseTo))
+      selectOnly(m_bodyGrab.collapseTo);
+    m_bodyGrab = {};
+    return;
+  }
+  if (!m_bodyGrab.active && glm::distance(glm::vec2(io.MousePos.x, io.MousePos.y), m_bodyGrab.start) > 6.0f) {
+    m_bodyGrab.active = m_bodyGrab.fresh = true;
+    m_bodyGrab.collapseTo = -1;
+    engine.endCheckpoint(); // the scene as it is before the drag is the undo step's start
+    engine.beginCheckpoint();
   }
 }
 
@@ -1262,7 +1293,9 @@ void EditorUISystem::renderGizmoControls() {
                       "along a model it already cuts into, but not sink deeper.");
   ImGui::Checkbox("Align to surface##gizmo", &m_gizmoAlign);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Dragging the move gizmo's center (the white circle) slides the entity over the surfaces under the\n"
+    ImGui::SetTooltip("Dragging the object itself (by the spot you grab) always slides it over the surfaces, whatever this\n"
+                      "says. This decides what the move gizmo's center does: on, the following; off, a plain free move.\n"
+                      "Dragging the move gizmo's center (the white circle) slides the entity over the surfaces under the\n"
                       "cursor: its bottom on the one you point at, the circle on the cursor (held back at the surface's\n"
                       "edge; on a small top it follows the spot you point at). The arrows and squares still move it\n"
                       "along their axis or plane. With Snap on, its place goes to the 0.5 grid of the surface's model\n"
@@ -1272,7 +1305,8 @@ void EditorUISystem::renderGizmoControls() {
   ImGui::SameLine();
   ImGui::Checkbox("Tilt to surface##gizmo", &m_gizmoAlignTilt);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("On: its up axis follows the surface's slope, keeping its heading. Off: it keeps its rotation (a box\n"
+    ImGui::SetTooltip("For dragging the object and the gizmo's center over surfaces.\n"
+                      "On: its up axis follows the surface's slope, keeping its heading. Off: it keeps its rotation (a box\n"
                       "on its side stays on its side) and rests on whichever part of it points down.");
 }
 
@@ -1399,7 +1433,8 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   ImGuizmo::SetRect(m_viewRect.x, m_viewRect.y, m_viewRect.z, m_viewRect.w);
   m_gizmoShown = true;
   // The heading kept while aligning to surfaces is the one the entity had when the drag started
-  if (!ImGuizmo::IsUsing()) {
+  const bool bodyGrab = m_bodyGrab.active && operation == ImGuizmo::TRANSLATE;
+  if (!ImGuizmo::IsUsing() && (!bodyGrab || m_bodyGrab.fresh)) {
     m_alignHeading = headingAround(rotationOf(*transform));
     m_alignSurface = -1;
     m_alignRotation = rotationOf(*transform);
@@ -1427,6 +1462,19 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
   // plane, and following the surface there would carry the entity somewhere the handle does not point (the cursor's
   // ray passes through the entity, onto whatever is behind it). Every frame of the drag, not only those the gizmo reports a change: a snapped gizmo
   // moves in steps, and the entity would stand still between them while the cursor slid along the surface.
+  // The same by the body: the grabbed spot (not the center) stays under the cursor; off any surface, it moves on the
+  // plane facing the camera
+  if (bodyGrab && !ImGuizmo::IsUsing()) {
+    if (m_bodyGrab.fresh) {
+      m_bodyGrab.local = glm::inverse(rotationOf(*transform)) * (m_bodyGrab.point - transform->position);
+      m_bodyGrab.fresh = false;
+    }
+    cameraSystem.editorTookCamera();
+    if (!alignToSurface(systemManager, componentManager, *transform, snapping, m_bodyGrab.local))
+      moveGrabFreely(systemManager, componentManager, *transform);
+    m_bodyGrab.point = transform->position + rotationOf(*transform) * m_bodyGrab.local;
+    return;
+  }
   if (operation == ImGuizmo::TRANSLATE && m_gizmoAlign && ImGuizmo::IsUsing() &&
       ImGuizmo::GetActiveHandleType() == ImGuizmo::MT_MOVE_SCREEN &&
       alignToSurface(systemManager, componentManager, *transform, snapping))
@@ -1787,7 +1835,7 @@ glm::vec3 EditorUISystem::snappedRotation(const glm::quat &dragged) const {
 }
 
 bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManager &componentManager,
-                                    Transform &transform, bool snapped) {
+                                    Transform &transform, bool snapped, const glm::vec3 &grab) {
   const auto *model = componentManager.tryGet<Model>(m_gizmoEntity);
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();
@@ -1865,6 +1913,9 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   // towards that spot, the least that puts the center over the surface again: it always rests on the surface you
   // point at, without jumping.
   const float height = surfacePlacement::supportDistance(boundsMin, boundsMax, transform.scale, rotation, normal);
+  // The grabbed spot as the entity will rest (its own frame turned by that rotation); zero for the gizmo's center
+  const glm::vec3 grabbed = rotation * grab;
+  const glm::vec3 grabbedAlong = normal * glm::dot(grabbed, normal);
   constexpr float kLift = 0.01f; // the ray down starts a little above the center, for an entity whose base is it
   const auto onSurface = [&](const glm::vec3 &at) {
     const auto below = queries.raycast(at + normal * kLift, -normal, std::numeric_limits<float>::max(), other);
@@ -1873,12 +1924,12 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
            std::abs(below->distance - kLift - height) < 0.01f + 0.01f * height;
   };
   glm::vec3 center;
-  const bool canHold = surfacePlacement::heldOrigin(origin, direction, hit->point, normal, height, center);
+  const bool canHold = surfacePlacement::grabbedOrigin(origin, direction, hit->point, normal, height, grabbed, center);
   if (canHold && hit->entity != m_alignSurface) { // with the ray along the surface, decided once it is not
     m_alignSurface = hit->entity;
     m_alignHeld = onSurface(center);
   }
-  const glm::vec3 overHit = hit->point + normal * height;
+  const glm::vec3 overHit = hit->point + normal * height - (grabbed - grabbedAlong); // the grabbed spot over the hit
   glm::vec3 position =
       canHold && m_alignHeld ? surfacePlacement::slideToSupport(center, overHit, onSurface) : overHit;
   if (m_gizmoAlignTilt || m_alignTurned)
@@ -1899,6 +1950,33 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
   }
   transform.position = position;
   return true;
+}
+
+// No surface under the cursor: the grabbed spot goes where the cursor's ray meets the plane facing the camera through
+// where the spot was
+void EditorUISystem::moveGrabFreely(SystemManager &systemManager, ComponentManager &componentManager,
+                                    Transform &transform) {
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
+  if (!camera || m_viewRect.z <= 0.0f || m_viewRect.w <= 0.0f)
+    return;
+  const glm::mat4 cameraToWorld = glm::inverse(cameraSystem.getViewMatrix(*camera));
+  const glm::vec3 forward = -glm::normalize(glm::vec3(cameraToWorld[2]));
+  const glm::mat4 inverse = glm::inverse(cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera));
+  const glm::vec2 ndc = toNdc(ImGui::GetIO().MousePos);
+  glm::vec4 nearPoint = inverse * glm::vec4(ndc, -1.0f, 1.0f), farPoint = inverse * glm::vec4(ndc, 1.0f, 1.0f);
+  nearPoint /= nearPoint.w;
+  farPoint /= farPoint.w;
+  const glm::vec3 origin(nearPoint), direction = glm::normalize(glm::vec3(farPoint - nearPoint));
+  const float facing = glm::dot(direction, forward);
+  if (facing < 0.05f)
+    return;
+  const float along = glm::dot(m_bodyGrab.point - origin, forward) / facing;
+  if (along <= 0.0f)
+    return;
+  const glm::vec3 point = origin + direction * along;
+  transform.position = point - rotationOf(transform) * m_bodyGrab.local;
 }
 
 namespace {

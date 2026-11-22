@@ -291,3 +291,103 @@ TEST_CASE(docked_editor_gizmo_is_grabbable_input) {
     CHECK(ImGuizmo::IsOver()); // its center handle is under the cursor
   });
 }
+
+// Dragging a model by its body: the spot grabbed stays under the cursor, the model resting on the surface the cursor
+// points at (a tall pillar grabbed near its base keeps to the floor, not jumping onto the wall behind it). Works with
+// Align to surface off: that toggle is for the gizmo's center.
+namespace {
+// Where a world point is on the screen (window units), through the active camera and the Game panel
+glm::vec2 screenOf(Engine &engine, const glm::vec3 &world) {
+  auto &cameraSystem = engine.getSystemManager().getSystem<CameraSystem>();
+  const Camera *camera = engine.tryGet<Camera>(cameraSystem.getActiveCamera());
+  const glm::vec4 clip = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera) * glm::vec4(world, 1.0f);
+  const glm::vec4 rect = editorOf(engine).gameViewRect();
+  return glm::vec2(rect.x + (clip.x / clip.w * 0.5f + 0.5f) * rect.z, rect.y + (0.5f - clip.y / clip.w * 0.5f) * rect.w);
+}
+
+// A floor (top at y = 0), a wall behind it (front face at z = -2.5) and a pillar 3 high on the floor at (0, 1.5, 1)
+struct Pillar {
+  GameEntity pillar;
+};
+Pillar pillarScene(Engine &engine) {
+  engine.create("Floor", Desc("box").at(0, -0.5f, 0).size(20, 1, 20));
+  engine.create("Wall", Desc("box").at(0, 2.5f, -3).size(20, 5, 1));
+  Pillar scene{engine.create("Pillar", Desc("box").at(0, 1.5f, 1).size(1, 3, 1))};
+  // From above and in front, looking down at the floor: from the test camera's own height the floor is a few pixels
+  // of the view and a drag across it hardly moves the cursor
+  engine.tryGet<Camera>(engine.getSystemManager().getSystem<CameraSystem>().getActiveCamera())
+      ->lookAt(glm::vec3(0, 7, 7), glm::vec3(0, 0, -1));
+  showEditor(engine, true);
+  engine.time().setPaused(true);
+  return scene;
+}
+
+// Presses on `grab` (a world point of the pillar), moves the cursor in steps to where `to` is on the screen, releases
+void dragFrom(Engine &engine, testing::Steps &steps, const glm::vec3 &grab, const glm::vec3 &to) {
+  steps.step(6, [&engine, grab]() { mouseEvent(screenOf(engine, grab), SDL_EVENT_MOUSE_MOTION); });
+  steps.step(2, [&engine, grab]() { mouseEvent(screenOf(engine, grab), SDL_EVENT_MOUSE_BUTTON_DOWN); });
+  // Out to the side first: the view is small, and the way from the grab to the target alone may be under the few
+  // pixels that make a press a drag
+  const glm::vec3 aside = to + glm::vec3(2.0f, 0.0f, 1.0f);
+  for (int part = 1; part <= 3; ++part)
+    steps.step(2, [&engine, grab, aside, part]() {
+      mouseEvent(glm::mix(screenOf(engine, grab), screenOf(engine, aside), part / 3.0f), SDL_EVENT_MOUSE_MOTION);
+    });
+  for (int part = 1; part <= 3; ++part)
+    steps.step(2, [&engine, aside, to, part]() {
+      mouseEvent(glm::mix(screenOf(engine, aside), screenOf(engine, to), part / 3.0f), SDL_EVENT_MOUSE_MOTION);
+    });
+  steps.step(2, [&engine, to]() { mouseEvent(screenOf(engine, to), SDL_EVENT_MOUSE_BUTTON_UP); });
+}
+} // namespace
+
+TEST_CASE(docked_editor_body_drag_base_grab_stays_on_the_floor_input) {
+  Pillar scene = pillarScene(engine);
+  // The cursor goes to where the spot grabbed (0.3 above the floor) would be at z = -1
+  dragFrom(engine, steps, glm::vec3(0, 0.3f, 1.5f), glm::vec3(0, 0.3f, -1));
+  steps.step(3, [&engine, scene]() {
+    CHECK_EQ(editorOf(engine).selectedEntity, scene.pillar.id());
+    const glm::vec3 at = scene.pillar.position();
+    CHECK_NEAR(at.y, 1.5f, 0.05f);        // still on the floor
+    CHECK_NEAR(scene.pillar.rotation(), glm::vec3(0.0f), 0.5f); // upright
+    CHECK(at.z < 0.0f);                   // it went towards the wall
+    CHECK(at.z > -2.0f);                  // and is not on it
+    CHECK_NEAR(at.z, -1.5f, 0.15f);       // the grabbed spot (0.5 in front of the center) went to z = -1
+  });
+}
+
+TEST_CASE(docked_editor_body_drag_is_one_undo_step_input) {
+  Pillar scene = pillarScene(engine);
+  dragFrom(engine, steps, glm::vec3(0, 0.3f, 1.5f), glm::vec3(0, 0.3f, -1));
+  steps.step(3, [&engine, scene]() {
+    CHECK(scene.pillar.position().z < 0.0f);
+    engine.undo();
+  });
+  steps.step(2, [&engine]() {
+    GameEntity pillar = engine.find("Pillar");
+    CHECK_NEAR(pillar.position(), glm::vec3(0, 1.5f, 1), 1e-3f); // the whole drag undone at once
+  });
+}
+
+TEST_CASE(docked_editor_body_drag_top_grab_holds_the_spot_in_the_air_input) {
+  // The trade-off of grabbing high: the cursor holds a spot 2.8 above the floor, so for the same cursor as the base
+  // grab (over the floor at z = -1) the pillar comes out nearer the camera, where the ray is that high; still on the floor
+  Pillar scene = pillarScene(engine);
+  dragFrom(engine, steps, glm::vec3(0, 2.8f, 1.5f), glm::vec3(0, 0.3f, -1));
+  steps.step(3, [&engine, scene]() {
+    const glm::vec3 at = scene.pillar.position();
+    CHECK_NEAR(at.y, 1.5f, 0.05f);
+    CHECK(at.z > 1.4f); // it moved (it was at 1)
+  });
+}
+
+TEST_CASE(docked_editor_press_without_a_drag_only_selects_input) {
+  Pillar scene = pillarScene(engine);
+  steps.step(6, [&engine]() { mouseEvent(screenOf(engine, glm::vec3(0, 0.3f, 1.5f)), SDL_EVENT_MOUSE_MOTION); });
+  steps.step(2, [&engine]() { mouseEvent(screenOf(engine, glm::vec3(0, 0.3f, 1.5f)), SDL_EVENT_MOUSE_BUTTON_DOWN); });
+  steps.step(2, [&engine]() { mouseEvent(screenOf(engine, glm::vec3(0, 0.3f, 1.5f)), SDL_EVENT_MOUSE_BUTTON_UP); });
+  steps.step(2, [&engine, scene]() {
+    CHECK_EQ(editorOf(engine).selectedEntity, scene.pillar.id());
+    CHECK_NEAR(scene.pillar.position(), glm::vec3(0, 1.5f, 1), 1e-4f);
+  });
+}
