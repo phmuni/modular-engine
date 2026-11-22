@@ -301,7 +301,7 @@ TEST_CASE(docked_editor_gizmo_is_grabbable_input) {
 
 // Dragging a model by its body: the spot grabbed stays under the cursor, the model resting on the surface the cursor
 // points at (a tall pillar grabbed near its base keeps to the floor, not jumping onto the wall behind it). With Align to
-// surface off it moves level instead, keeping its height and rotation.
+// surface off it moves like the gizmo's center, on the screen's plane.
 namespace {
 // Where a world point is on the screen (window units), through the active camera and the Game panel
 glm::vec2 screenOf(Engine &engine, const glm::vec3 &world) {
@@ -400,35 +400,19 @@ TEST_CASE(docked_editor_press_without_a_drag_only_selects_input) {
   });
 }
 
-TEST_CASE(docked_editor_body_drag_without_align_moves_level_input) {
-  // Align off: the pillar keeps its height and rotation, the grabbed spot sliding on the level plane through it, past
-  // where the floor would have it rest: the spot goes to z = -2.2, so the pillar's center to -2.7, into the wall
+TEST_CASE(docked_editor_body_drag_without_align_moves_on_the_screen_plane_input) {
+  // Align off: like the gizmo's center, the grabbed spot moves on the plane through it facing the camera, the rotation
+  // kept: sent one unit along the camera's up (which lies in that plane), the pillar goes one unit along it too
   Pillar scene = pillarScene(engine, false);
-  dragFrom(engine, steps, glm::vec3(0, 0.3f, 1.5f), glm::vec3(0, 0.3f, -2.2f));
-  steps.step(3, [&engine, scene]() {
+  const glm::vec3 grab(0, 0.3f, 1.5f);
+  // pillarScene's camera looks from (0, 7, 7) at (0, 0, -1); its up
+  const glm::vec3 forward = glm::normalize(glm::vec3(0, 0, -1) - glm::vec3(0, 7, 7));
+  const glm::vec3 up = glm::normalize(glm::cross(glm::cross(forward, glm::vec3(0, 1, 0)), forward));
+  dragFrom(engine, steps, grab, grab + up);
+  steps.step(3, [&engine, scene, up]() {
     CHECK_EQ(editorOf(engine).selectedEntity, scene.pillar.id());
-    const glm::vec3 at = scene.pillar.position();
-    CHECK_NEAR(at.y, 1.5f, 1e-3f);                               // the same height
-    CHECK_NEAR(scene.pillar.rotation(), glm::vec3(0.0f), 1e-3f); // and rotation
-    CHECK_NEAR(at.x, 0.0f, 0.15f);
-    CHECK_NEAR(at.z, -2.7f, 0.15f);
-  });
-}
-
-// The move gizmo's center with Align off moves like dragging the object by its center: level, keeping its height (the
-// gizmo's own screen-plane move would lift it as the cursor goes up the view)
-TEST_CASE(docked_editor_gizmo_center_without_align_moves_level_input) {
-  Pillar scene = pillarScene(engine, false);
-  // Select it first with a click, so the gizmo is on it
-  steps.step(6, [&engine]() { mouseEvent(screenOf(engine, glm::vec3(0, 0.3f, 1.5f)), SDL_EVENT_MOUSE_MOTION); });
-  steps.step(2, [&engine]() { mouseEvent(screenOf(engine, glm::vec3(0, 0.3f, 1.5f)), SDL_EVENT_MOUSE_BUTTON_DOWN); });
-  steps.step(2, [&engine]() { mouseEvent(screenOf(engine, glm::vec3(0, 0.3f, 1.5f)), SDL_EVENT_MOUSE_BUTTON_UP); });
-  // Then the gizmo's center (the pillar's origin) to over the floor further back
-  dragFrom(engine, steps, glm::vec3(0, 1.5f, 1), glm::vec3(0, 1.5f, -1));
-  steps.step(3, [&engine, scene]() {
-    const glm::vec3 at = scene.pillar.position();
-    CHECK_NEAR(at.y, 1.5f, 1e-3f);  // the same height
-    CHECK(at.z < 0.5f);             // it moved back
+    CHECK_NEAR(scene.pillar.position(), glm::vec3(0, 1.5f, 1) + up, 0.1f);
+    CHECK(scene.pillar.position().y > 2.0f); // lifted, as the gizmo's center would
     CHECK_NEAR(scene.pillar.rotation(), glm::vec3(0.0f), 1e-3f);
   });
 }
