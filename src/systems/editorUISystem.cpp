@@ -1305,9 +1305,12 @@ void EditorUISystem::renderGizmoControls() {
                       "While dragging: R turns it 90 degrees around the surface's normal; T (without Tilt) tips it 90\n"
                       "degrees towards the camera's side.");
   ImGui::SameLine();
+  // Only means something with Align on: greyed out (its choice kept) while Align is off
+  ImGui::BeginDisabled(!m_gizmoAlign);
   ImGui::Checkbox("Tilt to surface##gizmo", &m_gizmoAlignTilt);
-  if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("For dragging the object and the gizmo's center over surfaces.\n"
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    ImGui::SetTooltip("Needs Align to surface on. For dragging the object and the gizmo's center over surfaces.\n"
                       "On: its up axis follows the surface's slope, keeping its heading. Off: it keeps its rotation (a box\n"
                       "on its side stays on its side) and rests on whichever part of it points down.");
 }
