@@ -125,6 +125,7 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "commandLineHelp": "the game's main() reads the command line",
     "applyCommandLine": "the game's main() reads the command line",
     "saveSceneAfter": "command line (--save-scene)",
+    "newScene": "the editor's File > New Scene; a script loads the scene it wants with loadScene",
     # Accessors of C++ objects: Lua has a table or handle for each
     "getSystemManager": "engine internals",
     "getComponentManager": "engine internals",

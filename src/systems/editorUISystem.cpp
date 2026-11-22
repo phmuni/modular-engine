@@ -25,6 +25,7 @@
 #include "foundation/core/logger.h"
 #include "systems/animationGraph.h"
 #include "systems/animationSystem.h"
+#include "systems/editor/sceneFiles.h"
 #include "systems/editor/sceneFilter.h"
 #include "systems/editor/surfacePlacement.h"
 #include "systems/modelQueries.h"
@@ -143,9 +144,12 @@ void EditorUISystem::registerSettings() {
   handler.TypeName = "ModularEditor";
   handler.TypeHash = ImHashStr("ModularEditor");
   handler.UserData = this;
-  handler.ReadOpenFn = [](ImGuiContext *, ImGuiSettingsHandler *, const char *name) -> void * {
+  handler.ReadOpenFn = [](ImGuiContext *, ImGuiSettingsHandler *handler, const char *name) -> void * {
     static int entry;
-    return std::strcmp(name, "UI") == 0 ? &entry : nullptr;
+    if (std::strcmp(name, "UI") != 0)
+      return nullptr;
+    static_cast<EditorUISystem *>(handler->UserData)->m_recentScenes.clear(); // the file's list replaces it
+    return &entry;
   };
   handler.ReadLineFn = [](ImGuiContext *, ImGuiSettingsHandler *handler, void *, const char *line) {
     float scale = 0.0f;
@@ -155,11 +159,16 @@ void EditorUISystem::registerSettings() {
       editor->m_uiScaleUser = scale > 0.0f ? std::clamp(scale, kMinUiScale, kMaxUiScale) : 0.0f;
     else if (std::sscanf(line, "MaximizeOnPlay=%d", &maximizeOnPlay) == 1)
       editor->m_maximizeOnPlay = maximizeOnPlay != 0;
+    else if (std::strncmp(line, "Recent=", 7) == 0 && line[7] != '\0' && editor->m_recentScenes.size() < sceneFiles::kMaxRecent)
+      editor->m_recentScenes.emplace_back(line + 7); // written newest first
   };
   handler.WriteAllFn = [](ImGuiContext *, ImGuiSettingsHandler *handler, ImGuiTextBuffer *out) {
     const auto *editor = static_cast<EditorUISystem *>(handler->UserData);
-    out->appendf("[%s][UI]\nScale=%.3f\nMaximizeOnPlay=%d\n\n", handler->TypeName, editor->m_uiScaleUser,
+    out->appendf("[%s][UI]\nScale=%.3f\nMaximizeOnPlay=%d\n", handler->TypeName, editor->m_uiScaleUser,
                  editor->m_maximizeOnPlay ? 1 : 0);
+    for (const std::string &scene : editor->m_recentScenes)
+      out->appendf("Recent=%s\n", scene.c_str());
+    out->append("\n");
   };
   ImGui::AddSettingsHandler(&handler);
 }
@@ -193,13 +202,13 @@ void EditorUISystem::pickFileButton(const char *id, char *buf, int /*bufSize*/, 
   }
 }
 
-void EditorUISystem::beginFrame() {
+void EditorUISystem::beginFrame(Engine &engine) {
   applyUiScale();
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
   ImGuizmo::BeginFrame();
-  beginDockSpace();
+  beginDockSpace(engine);
 }
 
 namespace {
@@ -233,7 +242,7 @@ void EditorUISystem::buildDefaultLayout(ImGuiID dockSpace, float width, float he
 // The dock space and the Game panel are submitted first in the frame, so the Game panel's rectangle (the game view)
 // is known before the scene is drawn. While the editor is closed or maximized the dock space is only kept alive
 // (never shown), so the layout is still there, as it was, when the panels come back.
-void EditorUISystem::beginDockSpace() {
+void EditorUISystem::beginDockSpace(Engine &engine) {
   const ImGuiIO &io = ImGui::GetIO();
   const ImGuiViewport *viewport = ImGui::GetMainViewport();
   const ImGuiID dockSpace = dockSpaceId();
@@ -251,9 +260,14 @@ void EditorUISystem::beginDockSpace() {
     return;
   }
 
+  // The menu bar first: it takes the top of the work area, which the dock space then fills. Maximized, it is hidden
+  // with the panels: the game gets the whole window (the shortcuts still work).
+  renderMainMenuBar(engine);
+
   // No layout yet (first run, or an imgui.ini from before docking, which has only window positions): the default one
   if (m_resetLayout || !ImGui::DockBuilderGetNode(dockSpace))
-    buildDefaultLayout(dockSpace, viewport->WorkSize.x, viewport->WorkSize.y);
+    // The bar's height is taken off by hand: in the bar's first frame the work area does not have it yet
+    buildDefaultLayout(dockSpace, viewport->Size.x, viewport->Size.y - ImGui::GetFrameHeight());
   m_resetLayout = false;
   // A passthru dock space leaves a hole in its background only while the central node is empty; with the Game panel
   // docked there it would paint WindowBg over the whole picture. The panels draw their own backgrounds, so the dock
@@ -665,44 +679,6 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     }
   }
 
-  if (ImGui::CollapsingHeader("Scene")) {
-    // Follows the engine's current scene, so Save writes back to the file that was loaded
-    static char scenePath[256] = "../assets/scenes/untitled.json";
-    static std::string followedPath;
-    if (!engine.getScenePath().empty() && engine.getScenePath() != followedPath) {
-      followedPath = engine.getScenePath();
-      std::string shown = EngineConfig::relativePath(EngineConfig::resolvePath(followedPath));
-      std::strncpy(scenePath, shown.c_str(), sizeof(scenePath) - 1);
-      scenePath[sizeof(scenePath) - 1] = '\0';
-    }
-    ImGui::InputText("File##scene", scenePath, sizeof(scenePath));
-    // Listed again every second, so files saved meanwhile show up
-    static std::vector<std::string> scenes;
-    static float listAge = 1.0f;
-    listAge += ImGui::GetIO().DeltaTime;
-    if (ImGui::Button("Save##scene")) {
-      engine.saveScene(scenePath);
-      listAge = 1.0f;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Load##scene"))
-      engine.loadScene(scenePath);
-    if (listAge >= 1.0f) {
-      scenes = systemManager.getSystem<SceneSerializer>().listScenes(EngineConfig::SCENES_DIR);
-      listAge = 0.0f;
-    }
-    if (scenes.empty())
-      ImGui::TextDisabled("No scenes in %s", EngineConfig::SCENES_DIR);
-    std::string current = engine.getScenePath().empty()
-                              ? std::string()
-                              : EngineConfig::relativePath(EngineConfig::resolvePath(engine.getScenePath()));
-    for (const std::string &scene : scenes) {
-      std::string label = std::filesystem::path(scene).filename().string();
-      if (ImGui::Selectable(label.c_str(), scene == current))
-        engine.loadScene(scene);
-    }
-  }
-
   if (ImGui::CollapsingHeader("Audio")) {
     auto &audio = systemManager.getSystem<AudioSystem>();
     if (!audio.isAvailable()) {
@@ -777,6 +753,7 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   m_altPicking = playing && io.KeyAlt;
   m_viewForEditor = !playing || io.KeyAlt;
 
+  handleSceneShortcuts(engine, systemManager);
   handleHistoryShortcuts(engine, systemManager);
   handleEditShortcuts(engine, systemManager, componentManager);
   beginEditTracking(engine);
@@ -800,6 +777,7 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   renderViewportHint(systemManager);
   handleAssetDrop(engine, systemManager, componentManager);
   renderSceneLoadDialog(engine);
+  renderSaveAsDialog(engine);
   handleClickSelection(engine, systemManager, componentManager);
   endEditTracking(engine);
 }

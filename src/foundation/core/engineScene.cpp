@@ -95,6 +95,24 @@ void Engine::saveSceneAfter(std::string path, float delaySeconds, bool quitAfter
 }
 
 void Engine::applyPendingScene() {
+  if (m_newScenePending) {
+    m_newScenePending = false;
+    m_pendingScene.reset(); // the newer request wins
+    m_pendingSceneModels.clear();
+    m_entityManager.setCreatingRuntime(false); // a scene's own entities, so Save writes them
+    m_systemManager.getSystem<SceneSerializer>().clear();
+    m_systemManager.getSystem<EditorUISystem>().pruneSelection(m_entityManager);
+    // Looks down at the origin from a bit above and behind; the light shines from above, a little slanted
+    createCameraEntity("Camera", glm::vec3(0.0f, 3.0f, 8.0f), 0.0f, -15.0f, 60.0f);
+    createLightEntity("Sun", glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(-0.4f, -1.0f, -0.3f), glm::vec3(1.0f),
+                      LightType::Directional, 1.0f, 0.0f, 0.0f);
+    m_entityManager.setCreatingRuntime(true);
+    m_scenePath.clear();
+    m_systemManager.getSystem<NavigationSystem>().clear();
+    clearHistory();
+    m_savedRevision = m_editRevision;
+    return;
+  }
   if (!m_pendingScene)
     return;
   // Waits while the scene's models are read in the background; ResourceSystem::update uploads each as it finishes.

@@ -40,7 +40,7 @@ public:
 
   EditorUISystem(SDL_Window *window, SDL_GLContext glContext);
 
-  void beginFrame();
+  void beginFrame(Engine &engine);
   void update(SystemManager &systemManager);
   void render(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
               ComponentManager &componentManager);
@@ -68,6 +68,24 @@ public:
   // Puts the docked layout back to the default one, at the next frame
   void toggleMaximized();
   void resetLayout() { m_resetLayout = true; }
+
+  // The scene menu (File in the menu bar; editor/editorScenes.cpp). A request that would lose unsaved changes asks
+  // first. None of them does anything while a test is running: the play snapshot owns the scene then.
+  struct SceneAction {
+    enum class Kind { None, New, Open } kind = Kind::None;
+    std::string path; // Open: relative to the executable, as scene lists write it
+  };
+  void requestScene(Engine &engine, SceneAction::Kind kind, const std::string &path = std::string());
+  // Save writes to the scene's file; a scene without one opens Save As
+  void requestSave(Engine &engine);
+  void openSaveAs() { m_saveAsRequest = true; }
+  // Writes assets/scenes/<name>.json (see sceneFiles::fileName); false, with the reason in `error`, when the name is
+  // not a plain file name or the write fails. The file is overwritten: the dialog asks before.
+  bool saveSceneAs(Engine &engine, const std::string &name, std::string *error = nullptr);
+  // The last scenes opened or saved, newest first (kept in imgui.ini)
+  const std::vector<std::string> &recentScenes() const { return m_recentScenes; }
+  void rememberScene(const std::string &path);
+  bool hasPendingSceneAction() const { return m_pendingScene.kind != SceneAction::Kind::None; }
 
   // Feeds the performance overlay: the whole frame, and the part spent in update + render before the buffer swap
   void recordFrame(float frameSeconds, float workSeconds);
@@ -116,7 +134,7 @@ private:
   bool m_wasPlaying = false;      // the game was in play mode last frame, to see Play and Stop
   // Docking: the panels around the Game panel. beginFrame submits the dock space and the Game panel first, so the
   // frame's game view is known before the scene is drawn.
-  void beginDockSpace();
+  void beginDockSpace(Engine &engine);
   void followPlayMode(bool playing);
   void buildDefaultLayout(ImGuiID dockSpace, float width, float height);
   bool m_docked = false;          // the editor is open with its panels: the game view is the Game panel
@@ -294,7 +312,6 @@ private:
   // --- Assets and linked prefabs (editor/editorAssets.cpp)
   AssetBrowser m_assets;
   bool m_assetsOpenRequest = false;  // bring the Assets panel to the front at the next frame (Select prefab file)
-  std::string m_pendingScene;        // a scene asked for while the current one has unsaved changes
   Entity m_overrideRoot = -1;        // the instance whose overrides are listed in Properties
   double m_overrideTime = -1000.0;
   std::vector<std::string> m_overrideList;
@@ -311,7 +328,19 @@ private:
   Entity placeAsset(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
                     const std::string &asset, const glm::vec3 &point, bool onSurface);
   void requestSceneLoad(Engine &engine, const std::string &asset);
+  // --- The File menu and its dialogs (editor/editorScenes.cpp)
+  SceneAction m_pendingScene;          // asked for while the scene has unsaved changes: the dialog decides
+  SceneAction m_afterSaveAs;           // what to do once Save As has written the file (it was "Save and ...")
+  std::vector<std::string> m_recentScenes;
+  bool m_saveAsRequest = false;        // open the Save As dialog at the next frame
+  char m_saveAsName[128] = "";
+  std::string m_saveAsOverwrite;       // the name waiting for the overwrite confirmation
+  std::string m_saveAsError;
+  void renderMainMenuBar(Engine &engine);
+  void handleSceneShortcuts(Engine &engine, SystemManager &systemManager);
+  void performScene(Engine &engine, const SceneAction &action);
   void renderSceneLoadDialog(Engine &engine);
+  void renderSaveAsDialog(Engine &engine);
   // In Properties: the prefab an entity is an instance of, its overrides, Apply / Revert / Unpack
   void renderPrefabLink(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
 

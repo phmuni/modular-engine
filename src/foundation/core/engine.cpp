@@ -359,7 +359,7 @@ void Engine::render() {
 
   renderer.beginFrame();
 
-  editorUI.beginFrame();
+  editorUI.beginFrame(*this);
   // With the editor docked the game is drawn into its Game panel: the picture, its aspect, the game UI and the mouse
   // follow that rectangle (the whole window when it is not docked)
   const ViewRect view = editorUI.gameViewPixels();

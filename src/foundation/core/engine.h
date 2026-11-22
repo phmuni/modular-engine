@@ -439,6 +439,10 @@ public:
   // Replaces all entities with the file's, then calls App::onSceneLoaded. Its models are read on worker threads
   // first, so the current scene keeps running until they are ready; the switch happens at the end of that frame.
   void loadScene(std::string_view path);
+  // Replaces all entities with a minimal starting scene (a camera and a directional light) that has no file: the
+  // scene path is empty and nothing is unsaved. Takes effect at the end of the frame, like loadScene; the editor's
+  // File > New Scene. App::onSceneLoaded is not called (there is no file).
+  void newScene() { m_newScenePending = true; }
   // Whether a loadScene is waiting for its models
   bool isLoadingScene() const { return m_pendingScene.has_value(); }
   // How far a loadScene is, from 0 to 1: the share of the scene's models that are read (1 when none is loading). The
@@ -750,6 +754,7 @@ private:
   std::optional<std::string> m_pendingScene;
   std::vector<std::string> m_pendingSceneModels;
   std::string m_scenePath;
+  bool m_newScenePending = false;
   std::deque<ReflectedComponent> m_reflectedComponents; // a deque: the builder and the serializer keep references
   ReflectedComponent &addReflectedComponent(ReflectedComponent component);
   void applyPendingScene();

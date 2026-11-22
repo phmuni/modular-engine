@@ -57,45 +57,7 @@ void EditorUISystem::renderAssetPanel(Engine &engine, SystemManager &systemManag
 
 void EditorUISystem::requestSceneLoad(Engine &engine, const std::string &asset) {
   // The path as scene lists write it, relative to the executable
-  const std::string path = std::string(EngineConfig::ASSETS_PREFIX) + asset;
-  if (engine.isSceneDirty())
-    m_pendingScene = path; // asked about first
-  else
-    engine.loadScene(path);
-}
-
-void EditorUISystem::renderSceneLoadDialog(Engine &engine) {
-  if (m_pendingScene.empty())
-    return;
-  if (!ImGui::IsPopupOpen("Load scene?"))
-    ImGui::OpenPopup("Load scene?");
-  if (!ImGui::BeginPopupModal("Load scene?", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
-    return;
-  ImGui::Text("The scene has changes that are not saved.");
-  ImGui::TextDisabled("Load %s anyway?", m_pendingScene.c_str());
-  const bool canSave = !engine.getScenePath().empty();
-  ImGui::BeginDisabled(!canSave);
-  if (ImGui::Button("Save and load")) {
-    engine.saveScene(engine.getScenePath());
-    engine.loadScene(m_pendingScene);
-    m_pendingScene.clear();
-    ImGui::CloseCurrentPopup();
-  }
-  ImGui::EndDisabled();
-  if (!canSave && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-    ImGui::SetTooltip("This scene has no file yet: save it from Settings > Scene");
-  ImGui::SameLine();
-  if (ImGui::Button("Load without saving")) {
-    engine.loadScene(m_pendingScene);
-    m_pendingScene.clear();
-    ImGui::CloseCurrentPopup();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Cancel")) {
-    m_pendingScene.clear();
-    ImGui::CloseCurrentPopup();
-  }
-  ImGui::EndPopup();
+  requestScene(engine, SceneAction::Kind::Open, std::string(EngineConfig::ASSETS_PREFIX) + asset);
 }
 
 void EditorUISystem::handleAssetEvent(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
