@@ -222,8 +222,12 @@ private:
   // Without a surface under the cursor: the grabbed point follows the cursor on the plane facing the camera
   // The grabbed spot onto the cursor's ray, on the plane through it facing the camera, or with `level` the horizontal
   // one (the camera's plane when the view is nearly edge-on to it); `snapped` puts x and z on the Snap grid
+  // `point` is the grabbed spot now (world), `local` the same in the entity's own frame
   void moveGrabFreely(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
-                      bool level = false, bool snapped = false);
+                      const glm::vec3 &point, const glm::vec3 &local, bool level = false, bool snapped = false);
+  // The move gizmo's center dragged with Align off: like a body drag grabbed at the center (level, Solid applies)
+  bool m_centerDrag = false;
+  glm::vec3 m_centerDragPoint{0.0f};
   // Applies a gizmo change to the transform: as is, or kept out of other models when m_gizmoSolid is on
   // Returns false when Solid refused a rotation or scale
   bool applyGizmoChange(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,

@@ -1476,11 +1476,14 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
     }
     cameraSystem.editorTookCamera();
     // Align on: it rests on the surfaces under the cursor. Off: it keeps its height and rotation, the grabbed spot
-    // sliding on the level plane through it
-    if (!m_gizmoAlign)
-      moveGrabFreely(systemManager, componentManager, *transform, true, snapping);
-    else if (!alignToSurface(systemManager, componentManager, *transform, snapping, m_bodyGrab.local))
-      moveGrabFreely(systemManager, componentManager, *transform);
+    // sliding on the level plane through it, stopped by other models when Solid is on (as the gizmo is)
+    if (!m_gizmoAlign) {
+      Transform wanted = *transform;
+      moveGrabFreely(systemManager, componentManager, wanted, m_bodyGrab.point, m_bodyGrab.local, true, snapping);
+      applyGizmoChange(systemManager, componentManager, *transform, wanted, true);
+    } else if (!alignToSurface(systemManager, componentManager, *transform, snapping, m_bodyGrab.local)) {
+      moveGrabFreely(systemManager, componentManager, *transform, m_bodyGrab.point, m_bodyGrab.local);
+    }
     m_bodyGrab.point = transform->position + rotationOf(*transform) * m_bodyGrab.local;
     return;
   }
@@ -1488,6 +1491,23 @@ void EditorUISystem::renderGizmoOn(SystemManager &systemManager, ComponentManage
       ImGuizmo::GetActiveHandleType() == ImGuizmo::MT_MOVE_SCREEN &&
       alignToSurface(systemManager, componentManager, *transform, snapping))
     return;
+  // Its center with Align off: the same as dragging the object by its center (level, keeping height and rotation),
+  // not the gizmo's own move on the screen's plane, which also lifts and lowers it
+  const bool centerDrag = operation == ImGuizmo::TRANSLATE && !m_gizmoAlign && ImGuizmo::IsUsing() &&
+                          ImGuizmo::GetActiveHandleType() == ImGuizmo::MT_MOVE_SCREEN;
+  if (!centerDrag)
+    m_centerDrag = false;
+  else {
+    if (!m_centerDrag) {
+      m_centerDrag = true;
+      m_centerDragPoint = transform->position;
+    }
+    Transform wanted = *transform;
+    moveGrabFreely(systemManager, componentManager, wanted, m_centerDragPoint, glm::vec3(0.0f), true, snapping);
+    m_centerDragPoint = wanted.position;
+    applyGizmoChange(systemManager, componentManager, *transform, wanted, true);
+    return;
+  }
   if (!gizmoMoved)
     return;
 
@@ -1964,7 +1984,8 @@ bool EditorUISystem::alignToSurface(SystemManager &systemManager, ComponentManag
 // No surface under the cursor: the grabbed spot goes where the cursor's ray meets the plane facing the camera through
 // where the spot was
 void EditorUISystem::moveGrabFreely(SystemManager &systemManager, ComponentManager &componentManager,
-                                    Transform &transform, bool level, bool snapped) {
+                                    Transform &transform, const glm::vec3 &point, const glm::vec3 &local, bool level,
+                                    bool snapped) {
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   const Entity cameraEntity = cameraSystem.getActiveCamera();
   const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
@@ -1985,11 +2006,10 @@ void EditorUISystem::moveGrabFreely(SystemManager &systemManager, ComponentManag
   const float facing = glm::dot(direction, normal);
   if (std::abs(facing) < 0.05f)
     return;
-  const float along = glm::dot(m_bodyGrab.point - origin, normal) / facing;
+  const float along = glm::dot(point - origin, normal) / facing;
   if (along <= 0.0f)
     return;
-  const glm::vec3 point = origin + direction * along;
-  transform.position = point - rotationOf(transform) * m_bodyGrab.local;
+  transform.position = origin + direction * along - rotationOf(transform) * local;
   if (snapped) {
     transform.position.x = std::round(transform.position.x / kSnapStep) * kSnapStep;
     transform.position.z = std::round(transform.position.z / kSnapStep) * kSnapStep;
