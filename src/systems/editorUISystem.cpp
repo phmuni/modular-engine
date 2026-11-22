@@ -367,7 +367,7 @@ void EditorUISystem::renderViewportHint(SystemManager &systemManager) {
     if (cameraSystem.isNavigating()) {
       ImGui::Text("Flying   speed x%.2f   Shift: faster   Q/E: down/up", cameraSystem.getFlySpeedScale());
     } else {
-      ImGui::TextDisabled("Right-drag: look  |  WASD: fly  |  Wheel: speed  |  Drag an object: rest it on surfaces");
+      ImGui::TextDisabled("Right-drag: look  |  WASD: fly  |  Wheel: speed  |  Align on: drag an object to rest it on surfaces");
     }
   }
   ImGui::End();
@@ -1082,7 +1082,7 @@ void EditorUISystem::handleClickSelection(Engine &engine, SystemManager &systemM
     m_marquee.active = false;
     // With Move, a press on a model may be the start of a drag by its body (see updateBodyGrab). Pressing
     // one of several selected models keeps the selection until the button is up without a drag, so the drag moves all.
-    const bool grabbing = m_gizmoOperation == GizmoOperation::Move;
+    const bool grabbing = m_gizmoAlign && m_gizmoOperation == GizmoOperation::Move;
     Entity collapseTo = -1;
     if (io.KeyCtrl)
       toggleSelected(hit->entity); // Ctrl/Cmd adds or removes
@@ -1108,7 +1108,7 @@ void EditorUISystem::updateBodyGrab(Engine &engine) {
   if (!m_bodyGrab.pending)
     return;
   const ImGuiIO &io = ImGui::GetIO();
-  const bool allowed = m_viewForEditor && m_gizmoOperation == GizmoOperation::Move;
+  const bool allowed = m_viewForEditor && m_gizmoAlign && m_gizmoOperation == GizmoOperation::Move;
   if (!allowed || !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
     if (allowed && !m_bodyGrab.active && m_bodyGrab.collapseTo != -1 && isSelected(m_bodyGrab.collapseTo))
       selectOnly(m_bodyGrab.collapseTo);
@@ -1293,8 +1293,9 @@ void EditorUISystem::renderGizmoControls() {
                       "along a model it already cuts into, but not sink deeper.");
   ImGui::Checkbox("Align to surface##gizmo", &m_gizmoAlign);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Dragging the object itself (by the spot you grab) always slides it over the surfaces, whatever this\n"
-                      "says. This decides what the move gizmo's center does: on, the following; off, a plain free move.\n"
+    ImGui::SetTooltip("Dragging the object itself (by the spot you grab, with Move) slides it over the surfaces, the\n"
+                      "grabbed spot under the cursor: grab a tall object near its base to keep it on the floor by a wall.\n"
+                      "Off, a click on an object only selects it, and the gizmo's center moves it freely.\n"
                       "Dragging the move gizmo's center (the white circle) slides the entity over the surfaces under the\n"
                       "cursor: its bottom on the one you point at, the circle on the cursor (held back at the surface's\n"
                       "edge; on a small top it follows the spot you point at). The arrows and squares still move it\n"

@@ -293,8 +293,8 @@ TEST_CASE(docked_editor_gizmo_is_grabbable_input) {
 }
 
 // Dragging a model by its body: the spot grabbed stays under the cursor, the model resting on the surface the cursor
-// points at (a tall pillar grabbed near its base keeps to the floor, not jumping onto the wall behind it). Works with
-// Align to surface off: that toggle is for the gizmo's center.
+// points at (a tall pillar grabbed near its base keeps to the floor, not jumping onto the wall behind it). Only with
+// Align to surface on: off, a press on a model only selects it.
 namespace {
 // Where a world point is on the screen (window units), through the active camera and the Game panel
 glm::vec2 screenOf(Engine &engine, const glm::vec3 &world) {
@@ -309,7 +309,7 @@ glm::vec2 screenOf(Engine &engine, const glm::vec3 &world) {
 struct Pillar {
   GameEntity pillar;
 };
-Pillar pillarScene(Engine &engine) {
+Pillar pillarScene(Engine &engine, bool align = true) {
   engine.create("Floor", Desc("box").at(0, -0.5f, 0).size(20, 1, 20));
   engine.create("Wall", Desc("box").at(0, 2.5f, -3).size(20, 5, 1));
   Pillar scene{engine.create("Pillar", Desc("box").at(0, 1.5f, 1).size(1, 3, 1))};
@@ -319,6 +319,7 @@ Pillar pillarScene(Engine &engine) {
       ->lookAt(glm::vec3(0, 7, 7), glm::vec3(0, 0, -1));
   showEditor(engine, true);
   engine.time().setPaused(true);
+  editorOf(engine).setAlignToSurface(align);
   return scene;
 }
 
@@ -389,5 +390,14 @@ TEST_CASE(docked_editor_press_without_a_drag_only_selects_input) {
   steps.step(2, [&engine, scene]() {
     CHECK_EQ(editorOf(engine).selectedEntity, scene.pillar.id());
     CHECK_NEAR(scene.pillar.position(), glm::vec3(0, 1.5f, 1), 1e-4f);
+  });
+}
+
+TEST_CASE(docked_editor_body_drag_needs_align_input) {
+  Pillar scene = pillarScene(engine, false);
+  dragFrom(engine, steps, glm::vec3(0, 0.3f, 1.5f), glm::vec3(0, 0.3f, -1));
+  steps.step(3, [&engine, scene]() {
+    CHECK_EQ(editorOf(engine).selectedEntity, scene.pillar.id()); // the press selected it
+    CHECK_NEAR(scene.pillar.position(), glm::vec3(0, 1.5f, 1), 1e-4f); // and the drag did not move it
   });
 }

@@ -54,6 +54,8 @@ public:
   const ViewRect &gameViewPixels() const { return m_viewPixels; }
   // The mouse is over the game view (nothing in front of it), or a press that began there is still held
   bool gameHasMouse() const { return m_gameMouse && !m_altPicking; }
+  // The gizmo bar's "Align to surface": dragging an object by its body, and the gizmo's center, slide it over surfaces
+  void setAlignToSurface(bool enabled) { m_gizmoAlign = enabled; }
   // The Game panel is the window ImGui has focused
   bool gameFocused() const { return m_gameFocused; }
   // Maximized: the panels are hidden and the game view fills the window, the editor staying on (toolbar, gizmo,
