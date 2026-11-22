@@ -690,6 +690,7 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
   // image that cannot be read leaves that). A black sky with no image adds nothing, and neither does an intensity of
   // 0, so those scenes light exactly as without it.
   m_ibl.update(iblImage, gammaCorrect);
+  m_probes.setSkyIrradiance(m_ibl.hasMaps() ? &m_ibl.irradianceTexels() : nullptr, m_ibl.generations());
   if (iblStrength > 0.0f) {
     if (m_ibl.hasMaps()) {
       m_environment.environmentMode = 2;
@@ -758,8 +759,6 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
     shader.setVec3("iblColor", m_environment.environmentColor);
     shader.setFloat("iblRotation", m_environment.environmentRotation);
     shader.setFloat("iblMaxLod", static_cast<float>(Ibl::kPrefilterLevels - 1));
-    if (m_ibl.hasMaps())
-      shader.setVec3Array("iblSh", m_ibl.sh().data(), 9);
     // The samplers always hold the right kinds of texture (black stand-ins when there is no environment or probe)
     shader.setTex("iblPrefiltered", m_ibl.prefiltered(), kPrefilteredUnit, GL_TEXTURE_CUBE_MAP);
     shader.setTex("probeCubes", m_probes.texture(), kProbeUnit, GL_TEXTURE_CUBE_MAP_ARRAY);

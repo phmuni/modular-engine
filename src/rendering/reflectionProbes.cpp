@@ -320,21 +320,48 @@ void ReflectionProbes::uploadLayer(int layer, const ProbeData &data) {
   glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
 }
 
+void ReflectionProbes::setSkyIrradiance(const std::vector<uint16_t> *texels, int revision) {
+  const bool had = m_sky != nullptr;
+  if ((texels != nullptr) == had && (!texels || revision == m_skyRevision))
+    return;
+  m_sky = texels;
+  m_skyRevision = revision;
+  rebuildArray();
+}
+
+void ReflectionProbes::uploadSky() {
+  glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, m_array);
+  GLint alignment = 4;
+  glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  const size_t faceHalves = static_cast<size_t>(Ibl::kIrradianceSize) * Ibl::kIrradianceSize * 3;
+  for (int face = 0; face < 6; ++face)
+    glTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, kSkyLevel, 0, 0, kSkyLayer * 6 + face, Ibl::kIrradianceSize,
+                    Ibl::kIrradianceSize, 1, GL_RGB, GL_HALF_FLOAT, m_sky->data() + face * faceHalves);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+  m_uploadedSkyRevision = m_skyRevision;
+}
+
+// Layer 0 is the sky's irradiance, layer i + 1 the i-th probe
 void ReflectionProbes::rebuildArray() {
   GLint previous = 0;
   glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP_ARRAY, &previous);
-  const int cubes = static_cast<int>(m_active.size());
+  const bool sky = m_sky != nullptr && m_sky->size() >= static_cast<size_t>(Ibl::kIrradianceSize) * Ibl::kIrradianceSize * 18;
+  const int cubes = static_cast<int>(m_active.size()) + 1;
+  const bool needed = sky || !m_active.empty();
   // The same probes in the same layers: only the ones whose data changed go up again
   bool sameLayout = m_array != 0 && m_uploaded.size() == m_active.size();
   for (size_t i = 0; sameLayout && i < m_active.size(); ++i)
     sameLayout = m_uploaded[i].first == m_active[i].entity;
-  if (cubes == 0) {
+  if (!needed) {
     if (m_array) {
       glDeleteTextures(1, &m_array);
       m_array = 0;
     }
     m_uploaded.clear();
+    m_uploadedSkyRevision = -1;
     ++m_uploads;
+    glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, static_cast<GLuint>(previous));
     return;
   }
   if (!sameLayout) {
@@ -356,11 +383,14 @@ void ReflectionProbes::rebuildArray() {
     m_uploaded.assign(m_active.size(), {Entity(-1), 0});
     for (size_t i = 0; i < m_active.size(); ++i)
       m_uploaded[i].first = m_active[i].entity;
+    m_uploadedSkyRevision = -1;
   }
+  if (sky && m_uploadedSkyRevision != m_skyRevision)
+    uploadSky();
   for (size_t i = 0; i < m_active.size(); ++i) {
     if (sameLayout && m_uploaded[i].second == m_active[i].revision)
       continue;
-    uploadLayer(static_cast<int>(i), m_active[i].slot->data);
+    uploadLayer(static_cast<int>(i) + 1, m_active[i].slot->data);
     m_uploaded[i].second = m_active[i].revision;
   }
   glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, static_cast<GLuint>(previous));
@@ -413,7 +443,7 @@ void ReflectionProbes::apply(const Shader &shader, uint32_t selection) const {
     centers[count] = slot.center;
     lows[count] = slot.lo;
     highs[count] = slot.hi;
-    info[count] = glm::vec4(slot.blend, slot.intensity, static_cast<float>(index), slot.boxProjection ? 1.0f : 0.0f);
+    info[count] = glm::vec4(slot.blend, slot.intensity, static_cast<float>(index + 1), slot.boxProjection ? 1.0f : 0.0f);
     for (int c = 0; c < 9; ++c)
       harmonics[count * 9 + c] = slot.data.sh[c];
     ++count;

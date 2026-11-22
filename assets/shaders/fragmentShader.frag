@@ -53,13 +53,12 @@ uniform vec3 viewForward;
 uniform samplerCubeArrayShadow pointShadowMaps;
 uniform float pointShadowTexel; // one texel of a cube face at distance 1 (2 / POINT_SHADOW_SIZE)
 // Image-based lighting (see ibl.h): the sky as diffuse light and reflections. iblMode 0 is none, 1 one color from every
-// direction (iblColor), 2 the sky's image (its diffuse light as spherical harmonics, its reflections as the cube map
-// below), times iblColor (the sky's intensity and the environment's).
+// direction (iblColor), 2 the sky's image (its diffuse light from layer 0, mip level 2 of probeCubes below, its
+// reflections as the cube map iblPrefiltered), times iblColor (the sky's intensity and the environment's).
 uniform int iblMode;
 uniform vec3 iblColor;
 uniform float iblRotation; // radians around +Y: the panorama's rotation, applied to the lookup vectors
 uniform float iblMaxLod;   // the pre-filtered maps' last mip level: roughness 1
-uniform vec3 iblSh[9];     // the sky's diffuse light (sphericalHarmonics.h)
 uniform samplerCube iblPrefiltered;
 uniform sampler2D iblBrdf; // split-sum scale and bias by (NdotV, roughness)
 // Reflection probes (reflectionProbes.h): up to 4 whose boxes overlap what is drawn, picked on the CPU per draw. Each
@@ -71,7 +70,7 @@ uniform vec3 probeMin[4];
 uniform vec3 probeMax[4];
 uniform vec4 probeInfo[4]; // x blend distance, y intensity, z layer in probeCubes, w 1 when reflections follow the box
 uniform vec3 probeSh[36];  // 9 per probe
-uniform samplerCubeArray probeCubes;
+uniform samplerCubeArray probeCubes; // layer 0: the sky's irradiance (32 across, at mip level 2), then the probes
 uniform int useShadows;
 uniform float opacity;
 uniform int useNormalMap;
@@ -312,12 +311,7 @@ vec3 environmentLight(vec3 N, vec3 V, vec3 albedo, float metallic, float roughne
             float c = cos(iblRotation), s = sin(iblRotation);
             vec3 rotatedN = vec3(c * N.x + s * N.z, N.y, -s * N.x + c * N.z);
             vec3 rotatedR = vec3(c * R.x + s * R.z, R.y, -s * R.x + c * R.z);
-            float basis[9];
-            shBasis(rotatedN, basis);
-            vec3 sh = vec3(0.0);
-            for (int k = 0; k < 9; ++k)
-                sh += iblSh[k] * basis[k];
-            skyIrradiance = max(sh, vec3(0.0)) * iblColor;
+            skyIrradiance = textureLod(probeCubes, vec4(rotatedN, 0.0), 2.0).rgb * iblColor;
             skyReflected = textureLod(iblPrefiltered, rotatedR, lod).rgb * iblColor;
         }
         irradiance += skyIrradiance * skyWeight;

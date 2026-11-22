@@ -13,6 +13,7 @@
 namespace {
 constexpr const char *kFullscreenVertex = "../assets/shaders/fullscreen.vert";
 constexpr const char *kEquirectFragment = "../assets/shaders/iblEquirect.frag";
+constexpr const char *kIrradianceFragment = "../assets/shaders/iblIrradiance.frag";
 constexpr const char *kPrefilterFragment = "../assets/shaders/iblPrefilter.frag";
 constexpr const char *kBrdfFragment = "../assets/shaders/iblBrdf.frag";
 
@@ -99,6 +100,7 @@ void Ibl::ensureResources() {
     return;
   const std::string vertex = EngineConfig::resolvePath(kFullscreenVertex);
   m_equirectShader.emplace(vertex, EngineConfig::resolvePath(kEquirectFragment));
+  m_irradianceShader.emplace(vertex, EngineConfig::resolvePath(kIrradianceFragment));
   m_prefilterShader.emplace(vertex, EngineConfig::resolvePath(kPrefilterFragment));
   m_brdfShader.emplace(vertex, EngineConfig::resolvePath(kBrdfFragment));
   glGenVertexArrays(1, &m_vao);
@@ -150,6 +152,7 @@ GLuint Ibl::brdfLut() const {
 }
 
 void Ibl::release() {
+  m_irradianceTexels.clear();
   for (GLuint *texture : {&m_environment, &m_prefiltered})
     if (*texture) {
       glDeleteTextures(1, texture);
@@ -173,6 +176,7 @@ void Ibl::shutdown() {
     m_vao = 0;
   }
   m_equirectShader.reset();
+  m_irradianceShader.reset();
   m_prefilterShader.reset();
   m_brdfShader.reset();
   m_image.clear();
@@ -258,7 +262,24 @@ bool Ibl::generate(const std::string &imagePath, bool gammaCorrect) {
   glDeleteTextures(1, &panorama);
 
   // 2. Diffuse light, as spherical harmonics from a small mip level; 3. pre-filtered specular
-  m_sh = irradianceSh(m_environment, kEnvironmentSize);
+  GLuint irradiance = makeCube(kIrradianceSize, 1);
+  m_irradianceShader->use();
+  m_irradianceShader->setTex("environment", m_environment, 0, GL_TEXTURE_CUBE_MAP);
+  m_irradianceShader->setFloat("environmentSize", static_cast<float>(kEnvironmentSize));
+  drawFaces(irradiance, 0, kIrradianceSize, *m_irradianceShader);
+  {
+    const size_t faceHalves = static_cast<size_t>(kIrradianceSize) * kIrradianceSize * 3;
+    m_irradianceTexels.assign(faceHalves * 6, 0);
+    GLint alignment = 4;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &alignment);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, irradiance);
+    for (int face = 0; face < 6; ++face)
+      glGetTexImage(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGB, GL_HALF_FLOAT,
+                    m_irradianceTexels.data() + face * faceHalves);
+    glPixelStorei(GL_PACK_ALIGNMENT, alignment);
+  }
+  glDeleteTextures(1, &irradiance);
   m_prefiltered = prefilterCube(m_environment, kEnvironmentSize);
 
   // The environment was only the source of the other two
@@ -325,4 +346,28 @@ GLuint Ibl::prefilterCube(GLuint environment, int size) {
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
   glBindVertexArray(0);
   return cube;
+}
+
+namespace {
+float halfToFloat(uint16_t h) {
+  const int exponent = (h >> 10) & 0x1F;
+  const float sign = (h & 0x8000) ? -1.0f : 1.0f;
+  const float mantissa = static_cast<float>(h & 0x3FF);
+  if (exponent == 0)
+    return sign * std::ldexp(mantissa, -24);
+  if (exponent == 31)
+    return sign * 65504.0f;
+  return sign * std::ldexp(1.0f + mantissa / 1024.0f, exponent - 15);
+}
+} // namespace
+
+glm::vec3 Ibl::irradianceFaceAverage(int face) const {
+  const size_t faceHalves = static_cast<size_t>(kIrradianceSize) * kIrradianceSize * 3;
+  if (m_irradianceTexels.size() < faceHalves * 6 || face < 0 || face > 5)
+    return glm::vec3(0.0f);
+  glm::vec3 sum(0.0f);
+  const uint16_t *texels = m_irradianceTexels.data() + face * faceHalves;
+  for (size_t i = 0; i < faceHalves; i += 3)
+    sum += glm::vec3(halfToFloat(texels[i]), halfToFloat(texels[i + 1]), halfToFloat(texels[i + 2]));
+  return sum / static_cast<float>(kIrradianceSize * kIrradianceSize);
 }

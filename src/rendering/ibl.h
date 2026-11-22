@@ -2,8 +2,9 @@
 // Image-based lighting (IBL): the scene's sky lights what is in it. From the Skybox's equirectangular panorama this
 // makes, with render passes (fragment shaders into framebuffers; no compute):
 //   - an environment cube map (RGBA16F, kEnvironmentSize per face, mipmapped), the panorama as a cube,
-//   - the diffuse light as spherical harmonics (see sphericalHarmonics.h), read back from a small mip level of it: the
-//     cosine-weighted average of the environment around each direction, which the lit shader multiplies by the albedo,
+//   - a diffuse irradiance cube map (kIrradianceSize per face): the cosine-weighted average of the environment around
+//     each direction, which the lit shader multiplies by the albedo. It is read back to the CPU and lives in the reflection
+//     probes' cube map array (an order-2 spherical harmonics fit loses too much next to a very bright sun),
 //   - a pre-filtered specular cube map (kPrefilterSize base, kPrefilterLevels mip levels): the environment blurred by
 //     the GGX lobe of each roughness (mip level = roughness * (kPrefilterLevels - 1)), and
 //   - the split-sum BRDF lookup table (RG16F, kBrdfSize squared; made once per run).
@@ -19,12 +20,14 @@
 #include "rendering/sphericalHarmonics.h"
 #include <glad/glad.h>
 #include <optional>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 class Ibl {
 public:
   static constexpr int kEnvironmentSize = 512;
-  static constexpr int kIrradianceSize = 32; // the mip level of the environment the spherical harmonics are read from
+  static constexpr int kIrradianceSize = 32; // the sky's diffuse cube, and the mip a probe's spherical harmonics are read from
   static constexpr int kPrefilterSize = 128;
   static constexpr int kPrefilterLevels = 5;
   static constexpr int kBrdfSize = 256;
@@ -35,8 +38,12 @@ public:
   void update(const std::string &imagePath, bool gammaCorrect);
   // Whether there are maps made from an image
   bool hasMaps() const { return m_prefiltered != 0; }
-  // The sky's diffuse light (valid while hasMaps)
-  const Sh9 &sh() const { return m_sh; }
+  // The sky's diffuse light: the cosine-weighted irradiance cube (kIrradianceSize per face) read back as RGB16F, face by
+  // face (+X -X +Y -Y +Z -Z); empty without maps. ReflectionProbes keeps it in the cube map array, so the lit shader needs
+  // no texture unit of its own for it.
+  const std::vector<uint16_t> &irradianceTexels() const { return m_irradianceTexels; }
+  // The average color of one face of it (linear), for tests
+  glm::vec3 irradianceFaceAverage(int face) const;
   // The map to bind (a black cube stands in when there is none, so a sampler never reads the wrong kind of texture)
   GLuint prefiltered() const;
   // The BRDF lookup table (a black texture until ensureBrdf made it)
@@ -63,7 +70,7 @@ private:
   bool m_gamma = true;
   bool m_failed = false; // the image could not be read: do not try again until it changes
   GLuint m_environment = 0;
-  Sh9 m_sh{};
+  std::vector<uint16_t> m_irradianceTexels;
   GLuint m_prefiltered = 0;
   GLuint m_brdf = 0;
   GLuint m_fbo = 0;
@@ -73,7 +80,7 @@ private:
   int m_generations = 0;
   double m_decodeMs = 0.0;
   double m_gpuMs = 0.0;
-  std::optional<Shader> m_equirectShader, m_prefilterShader, m_brdfShader;
+  std::optional<Shader> m_equirectShader, m_irradianceShader, m_prefilterShader, m_brdfShader;
 
   void ensureResources();
   void release();

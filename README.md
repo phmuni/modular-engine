@@ -1248,7 +1248,7 @@ editor edits all of it.
 
 The sky also lights the scene (image-based lighting): objects get diffuse light and reflections from the panorama, so
 a metal sphere shows the sky it stands under. From the image the engine makes, once and again only when the image
-changes, its diffuse light as order-2 spherical harmonics (9 colors, passed as uniforms), a GGX pre-filtered specular cube
+changes, a 32-per-face diffuse irradiance cube (kept in layer 0 of the probes' cube map array), a GGX pre-filtered specular cube
 map (128, 5 roughness levels) and a BRDF table, all with render passes (no compute shaders); `rotation` and `intensity` turn and scale the lighting without
 making them again. A `.hdr` panorama keeps its range (a very bright sun lights and reflects as bright as it is). A sky
 with only a `color` lights evenly with that color, and the default black sky adds nothing. `environmentIntensity`

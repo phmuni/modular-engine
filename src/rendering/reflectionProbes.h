@@ -69,6 +69,12 @@ public:
   // The cube map array to bind (a 1x1 black one stands in when no probe has data, so the sampler is never left with
   // another kind of texture)
   GLuint texture();
+  // The sky's irradiance cube (Ibl::irradianceTexels, or null for none) lives in layer 0 of the array, at mip level 2 (the
+  // 32 across the cube is); `revision` says when it changed. Probes follow from layer 1. Cheap when unchanged.
+  void setSkyIrradiance(const std::vector<uint16_t> *texels, int revision);
+  // The layer and mip level of the sky's irradiance in the array (the lit shader reads them as constants)
+  static constexpr int kSkyLayer = 0;
+  static constexpr int kSkyLevel = 2; // Ibl::kPrefilterSize >> 2 == Ibl::kIrradianceSize
   // Probes in the array: those with data that are not hidden
   int layerCount() const { return static_cast<int>(m_active.size()); }
   // How many probes were captured, and how many were read from files, since the start
@@ -117,6 +123,9 @@ private:
   std::vector<Active> m_active;
   std::vector<Entity> m_pending;
   GLuint m_array = 0;
+  const std::vector<uint16_t> *m_sky = nullptr;
+  int m_skyRevision = -1;
+  int m_uploadedSkyRevision = -1; // what layer 0 holds: -1 nothing
   std::vector<std::pair<Entity, uint64_t>> m_uploaded; // what is in the array: entity and revision per layer
   GLuint m_empty = 0;
   int m_captures = 0;
@@ -126,4 +135,5 @@ private:
 
   void rebuildArray();
   void uploadLayer(int layer, const ProbeData &data);
+  void uploadSky();
 };
