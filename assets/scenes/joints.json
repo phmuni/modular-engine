@@ -1,0 +1,752 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Camera",
+      "components": {
+        "Transform": {},
+        "Camera": {
+          "active": true,
+          "position": [
+            -0.5,
+            10.5,
+            22.0
+          ],
+          "pitch": -24.0,
+          "fov": 60.0,
+          "moveSpeed": 6.0
+        }
+      }
+    },
+    {
+      "name": "Sun",
+      "components": {
+        "Transform": {},
+        "Light": {
+          "type": "directional",
+          "direction": [
+            -0.45,
+            -1.0,
+            -0.35
+          ],
+          "color": [
+            1.0,
+            0.96,
+            0.88
+          ],
+          "intensity": 1.0,
+          "castShadows": true
+        }
+      }
+    },
+    {
+      "name": "Floor",
+      "components": {
+        "Transform": {
+          "position": [
+            0,
+            -0.25,
+            0
+          ],
+          "scale": [
+            40,
+            0.5,
+            26
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.36,
+                0.38,
+                0.42
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Hinge Post",
+      "components": {
+        "Transform": {
+          "position": [
+            -14.0,
+            1.0,
+            -3.0
+          ],
+          "scale": [
+            0.3,
+            2.2,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.6,
+                0.6,
+                0.65
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Spinning Wall",
+      "components": {
+        "Transform": {
+          "position": [
+            -12.0,
+            1.0,
+            -3.0
+          ],
+          "scale": [
+            4,
+            2,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.25,
+                0.55,
+                0.9
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.3
+        },
+        "Joint": {
+          "type": "hinge",
+          "anchor": [
+            -0.5,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "motor": "velocity",
+          "motorSpeed": -50
+        }
+      }
+    },
+    {
+      "name": "Pillar",
+      "components": {
+        "Transform": {
+          "position": [
+            -12.5,
+            1.0,
+            -0.401923788646684
+          ],
+          "scale": [
+            0.6,
+            2,
+            0.6
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.85,
+                0.3,
+                0.25
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Door Frame",
+      "components": {
+        "Transform": {
+          "position": [
+            -8.1,
+            1.5,
+            0
+          ],
+          "scale": [
+            0.25,
+            3.2,
+            0.4
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.6,
+                0.6,
+                0.65
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Spring Door",
+      "components": {
+        "Transform": {
+          "position": [
+            -7.0,
+            1.5,
+            0
+          ],
+          "scale": [
+            2,
+            3,
+            0.15
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.95,
+                0.6,
+                0.2
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "mass": 30
+        },
+        "Joint": {
+          "type": "hinge",
+          "anchor": [
+            -0.5,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "motor": "position",
+          "motorTarget": 0,
+          "springFrequency": 1.2,
+          "springDamping": 0.25
+        }
+      }
+    },
+    {
+      "name": "Hammer Gantry",
+      "components": {
+        "Transform": {
+          "position": [
+            -7.0,
+            7.1,
+            4.0
+          ],
+          "scale": [
+            0.4,
+            0.2,
+            0.4
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.6,
+                0.6,
+                0.65
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Hammer",
+      "components": {
+        "Transform": {
+          "position": [
+            -7.0,
+            3.974999999999999,
+            9.239453692895854
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/sphere/sphere.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.9,
+                0.9,
+                0.95
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "shape": "sphere",
+          "mass": 60
+        },
+        "Joint": {
+          "type": "distance",
+          "targetAnchor": [
+            -7.0,
+            7.0,
+            4.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "Gantry Post A",
+      "components": {
+        "Transform": {
+          "position": [
+            0.5,
+            3.5,
+            0
+          ],
+          "scale": [
+            0.3,
+            7,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.6,
+                0.6,
+                0.65
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Gantry Post B",
+      "components": {
+        "Transform": {
+          "position": [
+            7.5,
+            3.5,
+            0
+          ],
+          "scale": [
+            0.3,
+            7,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.6,
+                0.6,
+                0.65
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Gantry Beam",
+      "components": {
+        "Transform": {
+          "position": [
+            4.0,
+            7.05,
+            0
+          ],
+          "scale": [
+            7.3,
+            0.2,
+            0.3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.6,
+                0.6,
+                0.65
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Pendulum",
+      "components": {
+        "Transform": {
+          "position": [
+            7.064177772475912,
+            4.428849561253843,
+            0
+          ],
+          "scale": [
+            0.9,
+            0.9,
+            0.9
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/sphere/sphere.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.3,
+                0.8,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "shape": "sphere",
+          "mass": 20
+        },
+        "Joint": {
+          "type": "distance",
+          "targetAnchor": [
+            4.0,
+            7.0,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "name": "Rail A",
+      "components": {
+        "Transform": {
+          "position": [
+            10.9,
+            3.0,
+            0
+          ],
+          "scale": [
+            0.25,
+            6,
+            0.25
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.6,
+                0.6,
+                0.65
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Rail B",
+      "components": {
+        "Transform": {
+          "position": [
+            15.1,
+            3.0,
+            0
+          ],
+          "scale": [
+            0.25,
+            6,
+            0.25
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.6,
+                0.6,
+                0.65
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Elevator",
+      "components": {
+        "Transform": {
+          "position": [
+            13.0,
+            0.4,
+            0
+          ],
+          "scale": [
+            3,
+            0.4,
+            3
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.7,
+                0.7,
+                0.2
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "mass": 500
+        },
+        "Joint": {
+          "type": "slider",
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "limits": true,
+          "min": 0,
+          "max": 4.5,
+          "motor": "velocity",
+          "motorSpeed": 1.2,
+          "maxMotorForce": 200000
+        }
+      }
+    },
+    {
+      "name": "Elevator Crate",
+      "components": {
+        "Transform": {
+          "position": [
+            13.0,
+            1.1,
+            0
+          ],
+          "scale": [
+            0.9,
+            0.9,
+            0.9
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.85,
+                0.3,
+                0.25
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.8
+        }
+      }
+    },
+    {
+      "name": "Wedge",
+      "components": {
+        "Transform": {
+          "position": [
+            3.5,
+            0.9,
+            8.0
+          ],
+          "scale": [
+            5,
+            0.3,
+            3
+          ],
+          "rotation": [
+            0,
+            0,
+            22
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.5,
+                0.5,
+                0.55
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "name": "Weld A",
+      "components": {
+        "Transform": {
+          "position": [
+            2.4,
+            4.0,
+            8.0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.3,
+                0.55,
+                0.9
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.4
+        }
+      }
+    },
+    {
+      "name": "Weld B",
+      "components": {
+        "Transform": {
+          "position": [
+            3.9,
+            4.0,
+            8.0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Model": {
+          "path": "../assets/models/box/box.obj",
+          "parts": [
+            {
+              "part": 0,
+              "color": [
+                0.3,
+                0.8,
+                0.45
+              ]
+            }
+          ]
+        },
+        "RigidBody": {
+          "type": "dynamic",
+          "friction": 0.4
+        },
+        "Joint": {
+          "type": "fixed",
+          "target": "Weld A"
+        }
+      }
+    }
+  ]
+}
