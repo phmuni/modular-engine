@@ -194,6 +194,19 @@
           ]
         }
       }
+    },
+    {
+      "name": "Sky",
+      "components": {
+        "Skybox": {
+          "ambientColor": [
+            1.0,
+            0.92,
+            0.8
+          ],
+          "ambientIntensity": 0.03
+        }
+      }
     }
   ]
 }
