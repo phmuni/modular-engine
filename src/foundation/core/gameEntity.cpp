@@ -174,10 +174,11 @@ void GameEntity::setVisible(bool visible) {
 bool GameEntity::isVisible() const { return !(m_engine && m_engine->has<Hidden>(m_id)); }
 
 static TextureSlot textureSlotNamed(const std::string &slot) {
-  return slot == "specular"   ? TextureSlot::Specular
-         : slot == "normal"   ? TextureSlot::Normal
-         : slot == "emission" ? TextureSlot::Emission
-                              : TextureSlot::Diffuse;
+  return slot == "normal"              ? TextureSlot::Normal
+         : slot == "emission"          ? TextureSlot::Emission
+         : slot == "metallicRoughness" ? TextureSlot::MetallicRoughness
+         : slot == "occlusion"         ? TextureSlot::Occlusion
+                                       : TextureSlot::Diffuse;
 }
 
 void GameEntity::setTexture(const std::string &slot, const std::string &path, int submesh) {
@@ -190,14 +191,24 @@ void GameEntity::setTexture(const std::string &slot, const std::string &path, co
     m_engine->setTexture(m_id, textureSlotNamed(slot), path, part);
 }
 
-void GameEntity::setShininess(float shininess, int submesh) {
+void GameEntity::setMetallic(float metallic, int submesh) {
   if (m_engine && m_engine->has<Model>(m_id))
-    m_engine->setShininess(m_id, shininess, submesh);
+    m_engine->setMetallic(m_id, metallic, submesh);
 }
 
-void GameEntity::setShininess(float shininess, const std::string &part) {
+void GameEntity::setMetallic(float metallic, const std::string &part) {
   if (m_engine && m_engine->has<Model>(m_id))
-    m_engine->setShininess(m_id, shininess, part);
+    m_engine->setMetallic(m_id, metallic, part);
+}
+
+void GameEntity::setRoughness(float roughness, int submesh) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->setRoughness(m_id, roughness, submesh);
+}
+
+void GameEntity::setRoughness(float roughness, const std::string &part) {
+  if (m_engine && m_engine->has<Model>(m_id))
+    m_engine->setRoughness(m_id, roughness, part);
 }
 
 void GameEntity::fitCollision(float fit, bool isStatic) {

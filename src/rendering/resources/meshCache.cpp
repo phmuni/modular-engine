@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 
 constexpr char kMagic[8] = {'M', 'E', 'S', 'H', 'C', 'A', 'C', 'H'};
 // Bump when the layout below or what a loader produces changes, so old entries are parsed again
-constexpr uint32_t kVersion = 3; // 3: animated models are no longer cached, so older entries of them are dropped
+constexpr uint32_t kVersion = 4; // 4: PBR materials (metallic, roughness, occlusion) instead of specular and shininess
 // The cache is binary-identical only for this layout of Vertex
 constexpr uint32_t kVertexSize = sizeof(Vertex);
 
@@ -44,9 +44,9 @@ std::string entryPath(const std::string &sourcePath) {
 
 // Material fields that are plain values, in one block
 struct MaterialValues {
-  int32_t diffuseImage, specularImage, normalImage, emissionImage;
-  glm::vec3 diffuseColor, specularColor, emissionColor;
-  float shininess;
+  int32_t diffuseImage, normalImage, emissionImage, metallicRoughnessImage, occlusionImage;
+  glm::vec3 diffuseColor, emissionColor;
+  float metallic, roughness, occlusionStrength, emissionStrength;
   glm::vec4 baseColorFactor;
   int32_t alphaMode;
   float alphaCutoff;
@@ -99,16 +99,20 @@ bool read(const std::string &sourcePath, MeshData &data) {
     MtlMaterialData material;
     MaterialValues v{};
     ok = reader.string(material.name) && reader.string(material.diffuseTexPath) &&
-         reader.string(material.specularTexPath) && reader.string(material.normalTexPath) &&
-         reader.string(material.emissionTexPath) && reader.value(v);
+         reader.string(material.normalTexPath) && reader.string(material.emissionTexPath) &&
+         reader.string(material.metallicRoughnessTexPath) && reader.string(material.occlusionTexPath) &&
+         reader.value(v);
     material.diffuseImage = v.diffuseImage;
-    material.specularImage = v.specularImage;
     material.normalImage = v.normalImage;
     material.emissionImage = v.emissionImage;
+    material.metallicRoughnessImage = v.metallicRoughnessImage;
+    material.occlusionImage = v.occlusionImage;
     material.diffuseColor = v.diffuseColor;
-    material.specularColor = v.specularColor;
     material.emissionColor = v.emissionColor;
-    material.shininess = v.shininess;
+    material.metallic = v.metallic;
+    material.roughness = v.roughness;
+    material.occlusionStrength = v.occlusionStrength;
+    material.emissionStrength = v.emissionStrength;
     material.baseColorFactor = v.baseColorFactor;
     material.alphaMode = static_cast<AlphaMode>(v.alphaMode);
     material.alphaCutoff = v.alphaCutoff;
@@ -155,18 +159,22 @@ void write(const std::string &sourcePath, const MeshData &data) {
   for (const MtlMaterialData &m : data.materials) {
     writer.string(m.name);
     writer.string(m.diffuseTexPath);
-    writer.string(m.specularTexPath);
     writer.string(m.normalTexPath);
     writer.string(m.emissionTexPath);
+    writer.string(m.metallicRoughnessTexPath);
+    writer.string(m.occlusionTexPath);
     MaterialValues v{};
     v.diffuseImage = m.diffuseImage;
-    v.specularImage = m.specularImage;
     v.normalImage = m.normalImage;
     v.emissionImage = m.emissionImage;
+    v.metallicRoughnessImage = m.metallicRoughnessImage;
+    v.occlusionImage = m.occlusionImage;
     v.diffuseColor = m.diffuseColor;
-    v.specularColor = m.specularColor;
     v.emissionColor = m.emissionColor;
-    v.shininess = m.shininess;
+    v.metallic = m.metallic;
+    v.roughness = m.roughness;
+    v.occlusionStrength = m.occlusionStrength;
+    v.emissionStrength = m.emissionStrength;
     v.baseColorFactor = m.baseColorFactor;
     v.alphaMode = static_cast<int32_t>(m.alphaMode);
     v.alphaCutoff = m.alphaCutoff;

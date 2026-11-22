@@ -13,13 +13,13 @@ static const std::vector<std::string> kSupportedExtensions = {".png", ".jpg", ".
 
 namespace {
 struct DefaultTextures {
-  GLuint diffuse, specular, emission;
+  GLuint diffuse, white, emission;
 };
 
 // Created once and shared by every material; each Material used to create three new 1x1 textures
 const DefaultTextures &defaultTextures() {
   static const DefaultTextures textures{Material::createSolidColorTexture({128, 128, 128}),
-                                        Material::createSolidColorTexture({64, 64, 64}),
+                                        Material::createSolidColorTexture({255, 255, 255}),
                                         Material::createSolidColorTexture({255, 255, 255})};
   return textures;
 }
@@ -28,23 +28,18 @@ const DefaultTextures &defaultTextures() {
 Material::Material() {
   const DefaultTextures &defaults = defaultTextures();
   m_diffuse = defaults.diffuse;
-  m_specular = defaults.specular;
+  m_metallicRoughness = defaults.white; // factors alone decide
+  m_occlusion = defaults.white;
   m_normal = 0; // no normal map
   m_emission = defaults.emission;
-  m_shininess = 16.0f;
   m_shaderHandle = 0;
   m_hasDiffuseTexture = false;
   m_diffuseColor = glm::vec3(0.8f);
 }
 
-Material::Material(GLuint diffuse, GLuint specular, GLuint normal, GLuint emission, float shininess)
-    : m_diffuse(diffuse), m_specular(specular), m_normal(normal), m_emission(emission), m_shininess(shininess) {}
-
 GLuint Material::getDiffuse() const { return m_diffuse; }
-GLuint Material::getSpecular() const { return m_specular; }
 GLuint Material::getNormal() const { return m_normal; }
 GLuint Material::getEmission() const { return m_emission; }
-float Material::getShininess() const { return m_shininess; }
 uint32_t Material::getShaderHandle() const { return m_shaderHandle; }
 bool Material::hasDiffuseTexture() const { return m_hasDiffuseTexture; }
 glm::vec3 Material::getDiffuseColor() const { return m_diffuseColor; }
@@ -53,11 +48,9 @@ void Material::setDiffuseTexture(GLuint texture) {
   m_diffuse = texture;
   m_hasDiffuseTexture = true;
 }
-void Material::setSpecularTexture(GLuint texture) { m_specular = texture; }
 void Material::setNormalTexture(GLuint texture) { m_normal = texture; }
 void Material::setEmissionTexture(GLuint texture) { m_emission = texture; }
 
-void Material::setShininess(float shine) { m_shininess = shine; }
 void Material::setShaderHandle(uint32_t handle) { m_shaderHandle = handle; }
 void Material::setDiffuseColor(const glm::vec3 &color) { m_diffuseColor = color; }
 void Material::setHasDiffuseTexture(bool value) { m_hasDiffuseTexture = value; }
@@ -112,12 +105,15 @@ DecodedImage decodeFile(const std::string &foundPath, TextureKind kind) {
   stbi_set_flip_vertically_on_load_thread(1);
 
   // Grayscale color images are expanded: uploading 1 or 2 channels as RGB read past each row. Normal maps keep a
-  // grayscale source as one channel, so TextureProcessing can tell a height map from a normal map.
+  // grayscale source as one channel, so TextureProcessing can tell a height map from a normal map. Data textures
+  // (occlusion, metallic-roughness) are always RGB: the shader reads R, G and B whatever the file had.
   int width = 0, height = 0, sourceChannels = 0;
   stbi_info(foundPath.c_str(), &width, &height, &sourceChannels);
   int wanted = (sourceChannels == 2 || sourceChannels == 4) ? 4 : 3;
   if (kind == TextureKind::Normal)
     wanted = sourceChannels < 3 ? 1 : 3;
+  else if (kind == TextureKind::Data)
+    wanted = 3;
 
   int channels = 0;
   unsigned char *data = stbi_load(foundPath.c_str(), &width, &height, &channels, wanted);

@@ -50,7 +50,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **OpenGL Rendering**       | Modern graphics API integration with full shader support                       |
 | **Instanced Rendering**    | Models sharing mesh and material are drawn in one call, in the main and shadow passes |
 | **Frustum Culling**        | Models outside the camera are skipped using their mesh's bounding sphere       |
-| **PBR Material System**    | Per-submesh materials with diffuse, specular, normal, and emission maps        |
+| **PBR Material System**    | Per-submesh metallic-roughness materials (Cook-Torrance GGX) with base color, metallic-roughness, occlusion, normal, and emission maps        |
 | **Solid Color Fallback**   | Centralized solid color texture generation and caching for simple rendering    |
 | **Resource Caching**       | Automatic texture caching with handle-based resource management                |
 | **Shadow Mapping**         | Cascaded sun shadows that follow the camera (3 cascades out to 80 units) and cube-map shadows for up to 4 point/spot lights (`Light::castShadows`), re-rendered only when something within the light's range moves; hardware-filtered PCF |
@@ -452,7 +452,7 @@ What scripts can use:
 | | |
 | --- | --- |
 | `vec3(x, y, z)` | `+ - * /`, `:length()`, `:normalized()`, `:dot(v)`, `:cross(v)`, `:distance(v)`, `:lerp(v, t)` |
-| Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setShininess(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `layer` (collision layer, by name); `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; tags: `:addTag(t)`, `:removeTag(t)`, `:hasTag(t)`, `:tags()`; its `AudioSource`: `:playAudio()`, `:stopAudio()`, `:pauseAudio()`, `audioPlaying`, `audioVolume`, `audioPitch`, `audioLoop`; `:color()`; `:run(fn)` (a coroutine that ends with the entity); any other field is the entity's own (`other.health`) |
+| Entities (`self`, `other`) | `name`, `position`, `rotation`, `scale`, `forward`, `right`, `transform`, `light`, `valid`, `visible`, `:destroy()`, `:has("RigidBody")` (or a game component's name), `:parent()`, `:setParent(e)`, `:children()`, `:setColor(c)`, `:setEmission(c, strength)`, `:setVisible(b)`, `:setTexture(slot, path)`, `:setMetallic(n)`, `:setRoughness(n)`; bodies: `velocity`, `:impulse(v)`, `:force(v)`; characters: `:move(v)`, `:jump(speed)`, `onGround`; `layer` (collision layer, by name); `:play(clip, fade, loop)`, `:clips()`, `:sound(path, volume)`; tags: `:addTag(t)`, `:removeTag(t)`, `:hasTag(t)`, `:tags()`; its `AudioSource`: `:playAudio()`, `:stopAudio()`, `:pauseAudio()`, `audioPlaying`, `audioVolume`, `audioPitch`, `audioLoop`; `:color()`; `:run(fn)` (a coroutine that ends with the entity); any other field is the entity's own (`other.health`) |
 | `engine` | `find(name)`, `findAll(name)`, `findTagged(tag)`, `findWithComponent(name)`, `create(name, { model, position, rotation, scale, color, emission, body, shape, mass, collision, script, tags, layer, character, components })`, `spawn(prefab, position, rotation)`, `destroy(e)`, `loadScene(path)`, `setTitle(text)`, `quit()`, `setSkyColor(c)`, `skyColor()`, `setFog({...})`, `fog()`, `setAmbient(c, intensity)`, `ambient()`, `run(fn)` and `stop(handle)` (coroutines) |
 | `wait(seconds)` | inside `engine.run` / `self:run`: suspends the coroutine for game time; `wait()` until the next frame |
 | `tween` | `to(entity, "position" \| "rotation" \| "scale" \| "color" \| "emission" \| "intensity", value, seconds, easing, onComplete)`, `value(from, to, seconds, easing, fn, onComplete)`, `cancel(handle)`; easings `linear`, and `easeIn`, `easeOut` and `easeInOut` followed by `Quad`, `Cubic`, `Sine`, `Back`, `Elastic` or `Bounce` (`easeOutBack`, `easeInOutElastic`...) |
@@ -1114,8 +1114,13 @@ engine.setTexture(entity, TextureSlot::Diffuse, "path/to/texture.png", 0);
 // Tangent-space normal map (OpenGL convention: green points up the image)
 engine.setTexture(entity, TextureSlot::Normal, "path/to/normal.png");
 
-// Set shininess
-engine.setShininess(entity, 32.0f);
+// glTF-style maps: metallic-roughness (G = roughness, B = metallic) and occlusion (R); an ORM map can be both
+engine.setTexture(entity, TextureSlot::MetallicRoughness, "path/to/orm.png");
+engine.setTexture(entity, TextureSlot::Occlusion, "path/to/orm.png");
+
+// Metallic and roughness, 0 to 1 (they multiply the metallic-roughness map); the defaults are 0 and 0.5
+engine.setMetallic(entity, 1.0f);
+engine.setRoughness(entity, 0.3f);
 
 // Address a part by name: an OBJ object/group or a glTF node, as named in the file
 engine.setSolidColor(car, glm::vec3(0.9f, 0.1f, 0.1f), "wheel_2");
@@ -1185,7 +1190,7 @@ void surface(inout Surface s) {        // after base color and textures, before 
 |---|---|
 | `albedo` (vec3), `alpha` | the base color after the texture and tint, and its opacity (alpha only shows with `#pragma blend`, or as `discard` and alpha-masked materials) |
 | `emission` (vec3) | starts at zero and is added to the material's own emission; HDR values glow (and bloom) |
-| `specular` (vec3), `shininess` | the specular map and the material's shininess |
+| `metallic`, `roughness`, `occlusion` | the PBR values after the material's factors and textures (`metallic` 0 dielectric to 1 metal, `roughness` 0 mirror to 1 matte, `occlusion` 1 unoccluded; it darkens the ambient light only) |
 | `normal` | world space, after the normal map; changing it changes the lighting |
 | `uv`, `worldPos`, `viewDir` | read-only in practice: texture coordinates, world position, the direction to the camera |
 
@@ -1346,7 +1351,7 @@ engine.loadScene("../assets/scenes/level2.json");  // reads its models in the ba
 void onSceneLoaded(Engine& engine, const std::string& path) override { /* ... */ }
 ```
 
-Saved: `Transform`, `Model` (the file plus per-part color, textures, emission and shininess changes), `Light`, `Camera` (and which one is active), `Collision`, `ParticleEmitter`, `GravityLens`, `AudioSource`, `Skybox`, `Hidden` and the links of prefab instances (see Hierarchy and prefabs). Runtime state such as live particles is not. Game components are saved once registered; plain data only needs `to_json`/`from_json`:
+Saved: `Transform`, `Model` (the file plus per-part color, textures, emission, metallic and roughness changes), `Light`, `Camera` (and which one is active), `Collision`, `ParticleEmitter`, `GravityLens`, `AudioSource`, `Skybox`, `Hidden` and the links of prefab instances (see Hierarchy and prefabs). Runtime state such as live particles is not. Game components are saved once registered; plain data only needs `to_json`/`from_json`:
 
 ```cpp
 #include "systems/sceneSerializer.h"
@@ -1451,7 +1456,7 @@ on, and its quality, are the player's: `project.json` sets the game's defaults, 
 "ssaoQuality": "medium" }` (both optional), and the pause menu's Options has an **Ambient occlusion** Off / Low /
 Medium / High selector, kept in the save data (`engine.ssao`, `engine.ssaoQuality`), which wins over the project's. In
 the editor, Settings > Interface has the same controls plus **Show AO only**, to tune the radius and intensity.
-Custom surface shaders keep texture units 9 to 14 for their texture parameters (6 per material); unit 15 holds the AO.
+Custom surface shaders keep texture units 10 to 14 for their texture parameters (5 per material); unit 15 holds the AO.
 
 ### Window and render resolution
 

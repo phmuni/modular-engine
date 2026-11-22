@@ -46,21 +46,6 @@ const tg3_value *findObjectValue(const tg3_value &value, const char *key) {
   return nullptr;
 }
 
-int32_t readNestedTextureIndex(const tg3_value *value, const char *key, int32_t fallback = -1) {
-  if (!value)
-    return fallback;
-
-  const tg3_value *member = findObjectValue(*value, key);
-  if (!member || member->type != TG3_VALUE_OBJECT)
-    return fallback;
-
-  const tg3_value *indexValue = findObjectValue(*member, "index");
-  if (!indexValue || indexValue->type != TG3_VALUE_INT)
-    return fallback;
-
-  return static_cast<int32_t>(indexValue->int_val);
-}
-
 template <typename T> T readPod(const uint8_t *data) {
   T value{};
   std::memcpy(&value, data, sizeof(T));
@@ -479,7 +464,8 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
 
   // Extensions this loader understands; anything else in extensionsRequired would load as broken geometry or
   // materials (e.g. Draco- or meshopt-compressed buffers), so refuse those files with a clear message.
-  static constexpr const char *kSupportedExtensions[] = {"KHR_materials_specular", "KHR_materials_unlit",
+  static constexpr const char *kSupportedExtensions[] = {"KHR_materials_emissive_strength",
+                                                         "KHR_materials_specular", "KHR_materials_unlit",
                                                          "KHR_mesh_quantization"};
   auto isSupported = [](const tg3_str &name) {
     for (const char *supported : kSupportedExtensions)
@@ -499,16 +485,22 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
       LOG_W("[Mesh] %s uses the glTF extension %s, which is ignored", normalized.c_str(),
             toStdString(gltf->extensions_used[i]).c_str());
   }
-  // Images used as normal maps are processed as normals (BC5), the rest as colors
+  // Images used as normal maps are processed as normals (BC5); metallic-roughness and occlusion images hold values,
+  // not colors (Data: never compressed); the rest are colors
   std::vector<TextureKind> imageKinds(gltf->images_count, TextureKind::Color);
+  auto markImage = [&](int32_t textureIndex, TextureKind kind) {
+    if (textureIndex < 0 || textureIndex >= static_cast<int32_t>(gltf->textures_count))
+      return;
+    const int32_t source = gltf->textures[textureIndex].source;
+    if (source >= 0 && source < static_cast<int32_t>(gltf->images_count))
+      imageKinds[static_cast<size_t>(source)] = kind;
+  };
   for (uint32_t i = 0; i < gltf->materials_count; ++i) {
-    const int32_t normal = gltf->materials[i].normal_texture.index;
-    if (normal >= 0 && normal < static_cast<int32_t>(gltf->textures_count)) {
-      const int32_t source = gltf->textures[normal].source;
-      if (source >= 0 && source < static_cast<int32_t>(gltf->images_count))
-        imageKinds[static_cast<size_t>(source)] = TextureKind::Normal;
-    }
+    markImage(gltf->materials[i].pbr_metallic_roughness.metallic_roughness_texture.index, TextureKind::Data);
+    markImage(gltf->materials[i].occlusion_texture.index, TextureKind::Data);
   }
+  for (uint32_t i = 0; i < gltf->materials_count; ++i)
+    markImage(gltf->materials[i].normal_texture.index, TextureKind::Normal);
 
   // Each image is decoded (or read from the texture cache) on its own thread
   std::vector<std::future<DecodedImage>> decoding;
@@ -529,10 +521,19 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
     material.diffuseColor = {static_cast<float>(source.pbr_metallic_roughness.base_color_factor[0]),
                              static_cast<float>(source.pbr_metallic_roughness.base_color_factor[1]),
                              static_cast<float>(source.pbr_metallic_roughness.base_color_factor[2])};
-    material.specularColor = {0.0f, 0.0f, 0.0f};
     material.emissionColor = {static_cast<float>(source.emissive_factor[0]), static_cast<float>(source.emissive_factor[1]),
                               static_cast<float>(source.emissive_factor[2])};
-    material.shininess = 16.0f;
+    material.metallic = static_cast<float>(source.pbr_metallic_roughness.metallic_factor);
+    material.roughness = static_cast<float>(source.pbr_metallic_roughness.roughness_factor);
+    material.occlusionStrength = static_cast<float>(source.occlusion_texture.strength);
+    // KHR_materials_emissive_strength scales the emissive factor beyond 1 (the factor itself is clamped to 0-1)
+    if (const tg3_extension *strengthExt = findExtension(source.ext, "KHR_materials_emissive_strength"))
+      if (const tg3_value *value = findObjectValue(strengthExt->value, "emissiveStrength")) {
+        const float strength = value->type == TG3_VALUE_INT    ? static_cast<float>(value->int_val)
+                               : value->type == TG3_VALUE_REAL ? static_cast<float>(value->real_val)
+                                                               : 1.0f;
+        material.emissionStrength = strength;
+      }
     const double *factor = source.pbr_metallic_roughness.base_color_factor;
     material.baseColorFactor = {static_cast<float>(factor[0]), static_cast<float>(factor[1]),
                                 static_cast<float>(factor[2]), static_cast<float>(factor[3])};
@@ -543,44 +544,22 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
     material.alphaCutoff = static_cast<float>(source.alpha_cutoff);
     material.doubleSided = source.double_sided != 0;
     material.unlit = findExtension(source.ext, "KHR_materials_unlit") != nullptr;
-    if (source.pbr_metallic_roughness.base_color_texture.index >= 0 &&
-        source.pbr_metallic_roughness.base_color_texture.index < static_cast<int32_t>(gltf->textures_count)) {
-      const tg3_texture &texture = gltf->textures[source.pbr_metallic_roughness.base_color_texture.index];
-      if (texture.source >= 0 && texture.source < static_cast<int32_t>(data.images.size()) && !data.images[texture.source].empty()) {
-        material.diffuseImage = texture.source;
-      } else {
-        material.diffuseTexPath = textureFileUri(*gltf, source.pbr_metallic_roughness.base_color_texture.index);
-      }
-    }
-    if (source.normal_texture.index >= 0 && source.normal_texture.index < static_cast<int32_t>(gltf->textures_count)) {
-      const tg3_texture &texture = gltf->textures[source.normal_texture.index];
-      if (texture.source >= 0 && texture.source < static_cast<int32_t>(data.images.size()) && !data.images[texture.source].empty()) {
-        material.normalImage = texture.source;
-      } else {
-        material.normalTexPath = textureFileUri(*gltf, source.normal_texture.index);
-      }
-    }
-    if (source.emissive_texture.index >= 0 && source.emissive_texture.index < static_cast<int32_t>(gltf->textures_count)) {
-      const tg3_texture &texture = gltf->textures[source.emissive_texture.index];
-      if (texture.source >= 0 && texture.source < static_cast<int32_t>(data.images.size()) && !data.images[texture.source].empty()) {
-        material.emissionImage = texture.source;
-      } else {
-        material.emissionTexPath = textureFileUri(*gltf, source.emissive_texture.index);
-      }
-    }
-
-    if (const tg3_extension *specularExt = findExtension(source.ext, "KHR_materials_specular")) {
-      const tg3_value *specularValue = &specularExt->value;
-      int32_t specularTextureIndex = readNestedTextureIndex(specularValue, "specularTexture", -1);
-      if (specularTextureIndex >= 0 && specularTextureIndex < static_cast<int32_t>(gltf->textures_count)) {
-        const tg3_texture &texture = gltf->textures[specularTextureIndex];
-        if (texture.source >= 0 && texture.source < static_cast<int32_t>(data.images.size()) && !data.images[texture.source].empty()) {
-          material.specularImage = texture.source;
-        } else {
-          material.specularTexPath = textureFileUri(*gltf, specularTextureIndex);
-        }
-      }
-    }
+    // A texture is an embedded image of the file or, when there is none, a file next to it
+    auto bind = [&](int32_t textureIndex, int &image, std::string &path) {
+      if (textureIndex < 0 || textureIndex >= static_cast<int32_t>(gltf->textures_count))
+        return;
+      const tg3_texture &texture = gltf->textures[textureIndex];
+      if (texture.source >= 0 && texture.source < static_cast<int32_t>(data.images.size()) && !data.images[texture.source].empty())
+        image = texture.source;
+      else
+        path = textureFileUri(*gltf, textureIndex);
+    };
+    bind(source.pbr_metallic_roughness.base_color_texture.index, material.diffuseImage, material.diffuseTexPath);
+    bind(source.normal_texture.index, material.normalImage, material.normalTexPath);
+    bind(source.emissive_texture.index, material.emissionImage, material.emissionTexPath);
+    bind(source.pbr_metallic_roughness.metallic_roughness_texture.index, material.metallicRoughnessImage,
+         material.metallicRoughnessTexPath);
+    bind(source.occlusion_texture.index, material.occlusionImage, material.occlusionTexPath);
 
     data.materials.push_back(std::move(material));
   }

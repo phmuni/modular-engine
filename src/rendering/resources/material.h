@@ -1,5 +1,5 @@
 #pragma once
-// PBR material with diffuse, specular, normal, and emission textures.
+// PBR metallic-roughness material: base color (diffuse), metallic-roughness, occlusion, normal and emission textures.
 
 #include "rendering/resources/alphaMode.h"
 #include "rendering/resources/customShader.h"
@@ -21,12 +21,12 @@ struct ShaderParam {
 class Material {
 public:
   Material();
-  Material(GLuint diffuse, GLuint specular, GLuint normal, GLuint emission, float shininess = 16.0f);
 
   static GLuint createSolidColorTexture(const std::array<unsigned char, 3> &color);
   static GLuint loadTexture(const std::filesystem::path &path, TextureKind kind = TextureKind::Color);
   // loadTexture in two steps: decoding is thread-safe, uploading needs the GL context (main thread).
-  // Decoding also builds mipmaps and converts to BC1/BC3, or BC5 for normal maps (cached; see TextureProcessing).
+  // Decoding also builds mipmaps and converts to BC1/BC3, or BC5 for normal maps (cached; see TextureProcessing);
+  // TextureKind::Data (metallic-roughness, occlusion) stays uncompressed, so its channels keep their values.
   // Uploading returns at once; large textures finish over the next frames (TextureUploader).
   // An empty color image uploads as a 1x1 magenta texture, so missing textures stand out; an empty normal map
   // uploads as nothing (0).
@@ -35,10 +35,14 @@ public:
   static bool hasAlphaTexture(const std::filesystem::path &path);
 
   GLuint getDiffuse() const;
-  GLuint getSpecular() const;
   GLuint getNormal() const;
   GLuint getEmission() const;
-  float getShininess() const;
+  GLuint getMetallicRoughness() const { return m_metallicRoughness; }
+  GLuint getOcclusion() const { return m_occlusion; }
+  // Multiply the metallic-roughness texture's B and G (glTF); a plain material has no texture, so they are the values
+  float getMetallic() const { return m_metallic; }
+  float getRoughness() const { return m_roughness; }
+  float getOcclusionStrength() const { return m_occlusionStrength; }
   uint32_t getShaderHandle() const;
   bool hasDiffuseTexture() const;
   glm::vec3 getDiffuseColor() const;
@@ -54,11 +58,14 @@ public:
   bool isUnlit() const { return m_unlit; }
 
   void setDiffuseTexture(GLuint texture);
-  void setSpecularTexture(GLuint texture);
+  void setMetallicRoughnessTexture(GLuint texture) { m_metallicRoughness = texture; }
+  void setOcclusionTexture(GLuint texture) { m_occlusion = texture; }
   void setNormalTexture(GLuint texture);
   void setEmissionTexture(GLuint texture);
 
-  void setShininess(float shine);
+  void setMetallic(float metallic) { m_metallic = metallic; }
+  void setRoughness(float roughness) { m_roughness = roughness; }
+  void setOcclusionStrength(float strength) { m_occlusionStrength = strength; }
   void setShaderHandle(uint32_t handle);
   void setDiffuseColor(const glm::vec3 &color);
   void setHasDiffuseTexture(bool value);
@@ -81,10 +88,13 @@ public:
 
 private:
   GLuint m_diffuse = 0;
-  GLuint m_specular = 0;
+  GLuint m_metallicRoughness = 0; // G = roughness, B = metallic (glTF)
+  GLuint m_occlusion = 0;         // R = ambient occlusion (glTF; an ORM texture can be both)
   GLuint m_normal = 0;
   GLuint m_emission = 0;
-  float m_shininess = 16.0f;
+  float m_metallic = 0.0f;
+  float m_roughness = 0.5f;
+  float m_occlusionStrength = 1.0f;
   uint32_t m_shaderHandle = 0;
   bool m_hasDiffuseTexture = false;
   glm::vec3 m_diffuseColor{0.8f};

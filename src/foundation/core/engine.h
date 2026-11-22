@@ -693,13 +693,15 @@ public:
   // `submesh` of -1 applies to every submesh of the entity.
   void setEmission(Entity entity, glm::vec3 color, float strength, int submesh = -1);
   void setTexture(Entity entity, TextureSlot slot, std::string_view path, int submesh = -1);
-  void setShininess(Entity entity, float shininess, int submesh = -1);
+  void setMetallic(Entity entity, float metallic, int submesh = -1);
+  void setRoughness(Entity entity, float roughness, int submesh = -1);
   void setSolidColor(Entity entity, glm::vec3 color, int submesh = -1);
 
   // Same, addressing a part by name (an OBJ object/group or glTF node); logs a warning if there is none
   void setEmission(Entity entity, glm::vec3 color, float strength, std::string_view part);
   void setTexture(Entity entity, TextureSlot slot, std::string_view path, std::string_view part);
-  void setShininess(Entity entity, float shininess, std::string_view part);
+  void setMetallic(Entity entity, float metallic, std::string_view part);
+  void setRoughness(Entity entity, float roughness, std::string_view part);
   void setSolidColor(Entity entity, glm::vec3 color, std::string_view part);
 
 private:

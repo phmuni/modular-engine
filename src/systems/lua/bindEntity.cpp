@@ -171,11 +171,17 @@ void LuaBindings::bindEntity() {
         else
           e.setTexture(slot, path, part && part->is<int>() ? part->as<int>() : -1);
       },
-      "setShininess", [](GameEntity &e, float shininess, sol::optional<sol::object> part) {
+      "setMetallic", [](GameEntity &e, float metallic, sol::optional<sol::object> part) {
         if (part && part->is<std::string>())
-          e.setShininess(shininess, part->as<std::string>());
+          e.setMetallic(metallic, part->as<std::string>());
         else
-          e.setShininess(shininess, part && part->is<int>() ? part->as<int>() : -1);
+          e.setMetallic(metallic, part && part->is<int>() ? part->as<int>() : -1);
+      },
+      "setRoughness", [](GameEntity &e, float roughness, sol::optional<sol::object> part) {
+        if (part && part->is<std::string>())
+          e.setRoughness(roughness, part->as<std::string>());
+        else
+          e.setRoughness(roughness, part && part->is<int>() ? part->as<int>() : -1);
       },
 
       // Collision boxes: fitCollision(fit, isStatic) sizes its box to its model; isTouching(other) tests it against another's

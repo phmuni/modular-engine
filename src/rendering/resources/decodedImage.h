@@ -8,9 +8,10 @@
 #include <cstdint>
 #include <vector>
 
-// What a texture holds: colors (diffuse, specular, emission), or tangent-space normals, which are compressed
-// differently (BC5 keeps X and Y precisely; Z is rebuilt in the shader) and must never be stood in for by a color
-enum class TextureKind { Color, Normal };
+// What a texture holds: colors (diffuse, emission), tangent-space normals, which are compressed differently (BC5
+// keeps X and Y precisely; Z is rebuilt in the shader) and must never be stood in for by a color, or Data: values
+// read per channel (occlusion, metallic-roughness), which are not colors and are kept uncompressed
+enum class TextureKind { Color, Normal, Data };
 
 struct DecodedImage {
   int width = 0;

@@ -90,11 +90,14 @@ public:
   void setEmission(const glm::vec3 &color, float strength, const std::string &part);
   void setVisible(bool visible);
   bool isVisible() const;
-  // slot: "diffuse", "specular", "normal" or "emission"; path relative to assets/ like every asset path
+  // slot: "diffuse", "normal", "emission", "metallicRoughness" (G roughness, B metallic) or "occlusion" (R); path relative to assets/ like every asset path
   void setTexture(const std::string &slot, const std::string &path, int submesh = -1);
   void setTexture(const std::string &slot, const std::string &path, const std::string &part);
-  void setShininess(float shininess, int submesh = -1);
-  void setShininess(float shininess, const std::string &part);
+  // PBR material values, 0 to 1 (they multiply the metallicRoughness texture, when there is one)
+  void setMetallic(float metallic, int submesh = -1);
+  void setMetallic(float metallic, const std::string &part);
+  void setRoughness(float roughness, int submesh = -1);
+  void setRoughness(float roughness, const std::string &part);
 
   // Sets its Collision box (adding one if needed) to its model's bounds, as rotated and scaled now; `fit` scales the
   // box around its center (see Engine::fitCollisionToModel). Call it again after changing the rotation or scale a lot.

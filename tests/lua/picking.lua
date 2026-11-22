@@ -63,7 +63,7 @@ test.run(function()
   -- The part argument is accepted (by number) and the whole-model form still works
   target:setColor(vec3(1, 0, 0), 0)
   target:setEmission(vec3(1, 0, 0), 2, 0)
-  target:setShininess(8, 0)
+  target:setRoughness(0.5, 0)
   target:setColor(vec3(0, 1, 0))
   test.near(target:color(), vec3(0, 1, 0), 0.001)
 end)

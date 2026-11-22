@@ -1,12 +1,16 @@
 #version 330 core
 out vec4 FragColor;
 
+// PBR metallic-roughness (glTF): the base color is `diffuse`, times baseColorFactor below
 struct Material {
     sampler2D diffuse;
-    sampler2D specular;
+    sampler2D metallicRoughness; // G = roughness, B = metallic; white (so the factors alone decide) when a material has none
     sampler2D normal; // tangent-space normal map (BC5 or RGB); only X and Y are read
     sampler2D emission;
-    float shininess;
+    sampler2D occlusionMap; // R = ambient occlusion; white when a material has none
+    float metallic;  // multiplies the map's B
+    float roughness; // multiplies the map's G
+    float occlusionStrength;
     vec3 emissionColor;
     float emissionStrength;
 }; 
@@ -114,8 +118,9 @@ struct Surface {
     vec3 albedo;
     float alpha;
     vec3 emission;   // added to the material's own emission
-    vec3 specular;   // the specular map
-    float shininess;
+    float metallic;  // 0 dielectric, 1 metal (the material's value and map)
+    float roughness; // 0 mirror, 1 matte
+    float occlusion; // 1 unoccluded; darkens the ambient light only
     vec3 normal;     // world space, after the normal map
     vec2 uv;
     vec3 worldPos;
@@ -204,6 +209,53 @@ float calculatePointShadow(Light light, vec3 normal)
     return 1.0 - lit / 5.0;
 }
 
+// ---- PBR (Cook-Torrance: GGX distribution, Smith-GGX visibility, Schlick Fresnel) ----
+const float PI = 3.14159265359;
+const float MIN_ROUGHNESS = 0.045; // a perfectly smooth surface would have a highlight smaller than a pixel
+
+float distributionGGX(float NdotH, float a2)
+{
+    float d = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    return a2 / (PI * d * d);
+}
+
+// Height-correlated Smith-GGX, already divided by 4 NdotL NdotV
+float visibilitySmithGGX(float NdotL, float NdotV, float a2)
+{
+    float gv = NdotL * sqrt(NdotV * NdotV * (1.0 - a2) + a2);
+    float gl = NdotV * sqrt(NdotL * NdotL * (1.0 - a2) + a2);
+    return 0.5 / max(gv + gl, 1e-5);
+}
+
+vec3 fresnelSchlick(float cosTheta, vec3 F0)
+{
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// The scale and bias of the split-sum environment BRDF, as an analytic fit (Karis, "Physically Based Shading on
+// Mobile"): the specular reflectance of F0 under a uniform environment is F0 * x + y
+vec2 environmentBrdf(float roughness, float NdotV)
+{
+    const vec4 c0 = vec4(-1.0, -0.0275, -0.572, 0.022);
+    const vec4 c1 = vec4(1.0, 0.0425, 1.04, -0.04);
+    vec4 r = roughness * c0 + c1;
+    float a004 = min(r.x * r.x, exp2(-9.28 * NdotV)) * r.x + r.y;
+    return vec2(-1.04, 1.04) * a004 + r.zw;
+}
+
+// Ambient light of one color, on a surface. THE PLACE FOR IMAGE-BASED LIGHTING (Phase B): the sky's diffuse
+// irradiance replaces `ambientColor` in the diffuse term and its pre-filtered reflection (by roughness and the
+// reflection vector) replaces it in the specular term. Until then the environment is one color from every direction:
+// the diffuse term is the old one (albedo * ambient, none for a metal) and the specular term is that color
+// reflected by the surface's F0, so metals are not black.
+vec3 ambientLight(vec3 ambientColor, vec3 albedo, float metallic, float roughness, vec3 F0, float NdotV, float occlusion)
+{
+    vec3 diffuse = albedo * (1.0 - metallic) * ambientColor;
+    vec2 brdf = environmentBrdf(roughness, NdotV);
+    vec3 specular = ambientColor * (F0 * brdf.x + brdf.y);
+    return (diffuse + specular) * occlusion;
+}
+
 void main()
 {
     vec3 normal = normalize(Normal);
@@ -227,6 +279,10 @@ void main()
 
     // Sampled unconditionally: texture lookups in a branch get unreliable derivatives at triangle edges
     vec4 diffuseTexel = texture(material.diffuse, TexCoords);
+    vec3 metallicRoughnessTexel = texture(material.metallicRoughness, TexCoords).rgb;
+    float metallic = clamp(material.metallic * metallicRoughnessTexel.b, 0.0, 1.0);
+    float roughness = clamp(material.roughness * metallicRoughnessTexel.g, 0.0, 1.0);
+    float materialOcclusion = 1.0 + material.occlusionStrength * (texture(material.occlusionMap, TexCoords).r - 1.0);
     vec4 diffuseSample = useSolidDiffuseColor == 1 ? vec4(solidDiffuseColor, 1.0)
                                                    : diffuseTexel * vec4(baseColorFactor.rgb, 1.0);
     diffuseSample.a *= baseColorFactor.a;
@@ -235,8 +291,9 @@ void main()
     surf.albedo = diffuseSample.rgb;
     surf.alpha = diffuseSample.a;
     surf.emission = vec3(0.0);
-    surf.specular = texture(material.specular, TexCoords).rgb;
-    surf.shininess = material.shininess;
+    surf.metallic = metallic;
+    surf.roughness = roughness;
+    surf.occlusion = materialOcclusion;
     surf.normal = normal;
     surf.uv = TexCoords;
     surf.worldPos = FragPos;
@@ -246,6 +303,9 @@ void main()
 #endif
     diffuseSample = vec4(surf.albedo, surf.alpha);
     normal = normalize(surf.normal);
+    metallic = clamp(surf.metallic, 0.0, 1.0);
+    roughness = clamp(surf.roughness, 0.0, 1.0);
+    materialOcclusion = clamp(surf.occlusion, 0.0, 1.0);
 #endif
 #ifdef ALPHA_MASK
     // Only in the mask variant: any discard in a shader turns off hidden surface removal on tile-based GPUs,
@@ -259,13 +319,12 @@ void main()
         FragColor = vec4(0.0);
         return;
     }
-    float occlusion = useAmbientOcclusion == 1 ? texture(aoTexture, gl_FragCoord.xy * aoTexel).r : 1.0;
-    vec3 diffuseTex  = toLinear(diffuseSample.rgb);
-    vec3 specularTex = texture(material.specular, TexCoords).rgb;
+    // SSAO and the material's occlusion map darken the ambient light only
+    float occlusion = (useAmbientOcclusion == 1 ? texture(aoTexture, gl_FragCoord.xy * aoTexel).r : 1.0) * materialOcclusion;
+    vec3 albedo = toLinear(diffuseSample.rgb);
     vec3 emissionTex = texture(material.emission, TexCoords).rgb;
     vec3 emissionResult = toLinear(material.emissionColor) * material.emissionStrength * toLinear(emissionTex);
 #ifdef CUSTOM_SURFACE
-    specularTex = surf.specular;
     emissionResult += toLinear(surf.emission);
 #endif
 
@@ -273,12 +332,19 @@ void main()
 
     vec3 result = emissionResult;
 
+    // F0: what a dielectric reflects head-on (4%) and a metal reflects of its base color
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+    roughness = max(roughness, MIN_ROUGHNESS);
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotV = max(dot(normal, viewDir), 1e-4);
+
     if (unlit == 1) {
-        result += diffuseTex;
+        result += albedo;
     } else if (numLights == 0) {
-        result += diffuseTex * 0.7 * occlusion;
+        result += ambientLight(vec3(0.7), albedo, metallic, roughness, F0, NdotV, occlusion);
     } else {
-        result += sceneAmbient * diffuseTex * occlusion;
+        result += ambientLight(sceneAmbient, albedo, metallic, roughness, F0, NdotV, occlusion);
         for (int i = 0; i < numLights; ++i) {
 
             Light light = lights[i];
@@ -290,19 +356,18 @@ void main()
             else
                 lightDir = normalize(light.position - FragPos);
 
-            vec3 ambient = light.color * light.ambient * diffuseTex * occlusion;
+            vec3 ambient = ambientLight(light.color * light.ambient, albedo, metallic, roughness, F0, NdotV, occlusion);
 
-            float diff = max(dot(normal, lightDir), 0.0);
-            vec3 diffuse = light.color * light.intensity * diff * diffuseTex;
-
-#ifdef CUSTOM_SURFACE
-            float shininess = max(surf.shininess, 1.0);
-#else
-            float shininess = max(material.shininess, 1.0);
-#endif
-            vec3 reflectDir = reflect(-lightDir, normal);
-            float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
-            vec3 specular = light.color * light.intensity * spec * specularTex;
+            // The light's color * intensity is the radiance times PI: the Lambert term albedo / PI then gives
+            // albedo * color * intensity * NdotL, the brightness the Blinn-Phong shading had, so scenes keep their exposure
+            vec3 radiance = light.color * light.intensity * PI;
+            float NdotL = max(dot(normal, lightDir), 0.0);
+            vec3 halfDir = normalize(lightDir + viewDir);
+            float NdotH = max(dot(normal, halfDir), 0.0);
+            vec3 F = fresnelSchlick(max(dot(halfDir, viewDir), 0.0), F0);
+            vec3 specular = distributionGGX(NdotH, a2) * visibilitySmithGGX(NdotL, NdotV, a2) * F;
+            vec3 diffuse = (vec3(1.0) - F) * (1.0 - metallic) * albedo / PI;
+            vec3 direct = (diffuse + specular) * radiance * NdotL;
 
             float attenuation = 1.0;
             if (light.type == 1 || light.type == 2) {
@@ -322,7 +387,7 @@ void main()
 
             vec3 lightResult =
                 ambient +
-                (1.0 - shadowFactor) * (diffuse + specular);
+                (1.0 - shadowFactor) * direct;
 
             lightResult *= attenuation * spotFactor;
 

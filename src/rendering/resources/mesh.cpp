@@ -117,9 +117,10 @@ MeshData Mesh::parse(std::string filename) {
   };
   for (const auto &material : data.materials) {
     collect(material.diffuseTexPath, material.diffuseImage, TextureKind::Color);
-    collect(material.specularTexPath, material.specularImage, TextureKind::Color);
     collect(material.normalTexPath, material.normalImage, TextureKind::Normal);
     collect(material.emissionTexPath, material.emissionImage, TextureKind::Color);
+    collect(material.metallicRoughnessTexPath, material.metallicRoughnessImage, TextureKind::Data);
+    collect(material.occlusionTexPath, material.occlusionImage, TextureKind::Data);
   }
   std::vector<std::future<DecodedImage>> decoding;
   for (size_t i = 1; i < textures.size(); ++i)
@@ -148,9 +149,10 @@ void Mesh::upload(MeshData &data) {
   auto textureFor = [&](int image) { return image >= 0 && image < static_cast<int>(imageTextures.size()) ? imageTextures[image] : 0; };
   for (auto &material : data.materials) {
     material.diffuseTextureId = textureFor(material.diffuseImage);
-    material.specularTextureId = textureFor(material.specularImage);
     material.normalTextureId = textureFor(material.normalImage);
     material.emissionTextureId = textureFor(material.emissionImage);
+    material.metallicRoughnessTextureId = textureFor(material.metallicRoughnessImage);
+    material.occlusionTextureId = textureFor(material.occlusionImage);
   }
   data.images.clear();
 

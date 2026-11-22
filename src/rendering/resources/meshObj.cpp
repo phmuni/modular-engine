@@ -4,6 +4,7 @@
 #include "foundation/core/logger.h"
 #include "rendering/resources/mesh.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <tiny_obj_loader/tiny_obj_loader.h>
@@ -60,13 +61,13 @@ bool Mesh::parseOBJ(std::string filename, MeshData &data) {
     MtlMaterialData mtl;
     mtl.name = mat.name;
     mtl.diffuseTexPath = mat.diffuse_texname;
-    mtl.specularTexPath = mat.specular_texname;
     mtl.normalTexPath = mat.normal_texname.empty() ? mat.bump_texname : mat.normal_texname;
     mtl.emissionTexPath = mat.emissive_texname;
     mtl.diffuseColor = {mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]};
-    mtl.specularColor = {mat.specular[0], mat.specular[1], mat.specular[2]};
     mtl.emissionColor = {mat.emission[0], mat.emission[1], mat.emission[2]};
-    mtl.shininess = mat.shininess > 0.0f ? mat.shininess : 16.0f;
+    // Ns (the Phong exponent) becomes a roughness with the usual Blinn-Phong to GGX mapping; Ks and map_Ks are
+    // ignored: a PBR material is dielectric unless a glTF says otherwise
+    mtl.roughness = glm::clamp(std::sqrt(2.0f / (std::max(mat.shininess, 0.0f) + 2.0f)), 0.04f, 1.0f);
     // d (dissolve) below 1 makes the material translucent
     if (mat.dissolve < 1.0f) {
       mtl.alphaMode = AlphaMode::Blend;

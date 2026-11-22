@@ -3414,18 +3414,19 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
   const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
   const auto &submeshes = mesh.getSubmeshes();
 
-  const char *labels[4] = {"Diffuse", "Specular", "Normal", "Emission"};
-  const TextureSlot slots[4] = {TextureSlot::Diffuse, TextureSlot::Specular, TextureSlot::Normal,
-                                TextureSlot::Emission};
+  const char *labels[5] = {"Diffuse", "Normal", "Emission", "Metal/Rough", "Occlusion"};
+  const TextureSlot slots[5] = {TextureSlot::Diffuse, TextureSlot::Normal, TextureSlot::Emission,
+                                TextureSlot::MetallicRoughness, TextureSlot::Occlusion};
   // The texture a part has in a slot, as an asset path (empty: none, or a solid color)
   const auto texturePath = [&](size_t part, int slot) -> std::string {
     if (part >= model.materialHandles.size() || model.materialHandles[part] == 0)
       return {};
     const Material &material = resourceSystem.getMaterial(model.materialHandles[part]);
     const GLuint texture = slot == 0 ? material.getDiffuse()
-                           : slot == 1 ? material.getSpecular()
-                           : slot == 2 ? material.getNormal()
-                                       : material.getEmission();
+                           : slot == 1 ? material.getNormal()
+                           : slot == 2 ? material.getEmission()
+                           : slot == 3 ? material.getMetallicRoughness()
+                                       : material.getOcclusion();
     const std::string path = texture ? resourceSystem.getTexturePath(texture) : std::string();
     if (path.empty() || path.rfind("solid_", 0) == 0)
       return {};
@@ -3436,11 +3437,11 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
   };
   // The text fields show the texture each part has; what is typed stays until the texture changes (another entity
   // selected, Set, X, undo), when they show the new one. The "all" fields show a texture all the parts share.
-  static char globalPaths[4][256] = {};
-  static std::array<std::string, 4> globalShown{};
-  static std::array<std::string, 4> globalTried{}; // the last path applied from an "all" field, not tried again
-  static std::vector<std::array<char[256], 4>> paths;
-  static std::vector<std::array<std::string, 4>> shown;
+  static char globalPaths[5][256] = {};
+  static std::array<std::string, 5> globalShown{};
+  static std::array<std::string, 5> globalTried{}; // the last path applied from an "all" field, not tried again
+  static std::vector<std::array<char[256], 5>> paths;
+  static std::vector<std::array<std::string, 5>> shown;
   static Entity textureEntity = -1;
   if (textureEntity != entity || paths.size() != model.materialHandles.size()) {
     textureEntity = entity;
@@ -3461,9 +3462,9 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
     return true;
   };
   for (size_t i = 0; i < paths.size(); ++i)
-    for (int t = 0; t < 4; ++t)
+    for (int t = 0; t < 5; ++t)
       show(paths[i][t], shown[i][t], texturePath(i, t));
-  for (int t = 0; t < 4; ++t) {
+  for (int t = 0; t < 5; ++t) {
     std::string shared = texturePath(0, t);
     for (size_t i = 1; i < model.materialHandles.size() && !shared.empty(); ++i)
       if (texturePath(i, t) != shared)
@@ -3480,7 +3481,7 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
       renderSystem.markBatchesDirty();
     }
 
-    for (int t = 0; t < 4; t++) {
+    for (int t = 0; t < 5; t++) {
       ImGui::Text("%s", labels[t]);
       ImGui::SetNextItemWidth(140.0f);
       ImGui::InputText((std::string("##global_") + labels[t]).c_str(), globalPaths[t], 256);
@@ -3558,7 +3559,7 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
       Material *matPtr = (handle != 0) ? &resourceSystem.getMaterial(handle) : nullptr;
       ImGui::Text("Material Handle: %u", handle);
 
-      for (int t = 0; t < 4; t++) {
+      for (int t = 0; t < 5; t++) {
         ImGui::Text("%s", labels[t]);
         ImGui::SetNextItemWidth(140.0f);
         ImGui::InputText((std::string("##sub") + std::to_string(i) + "_" + labels[t]).c_str(), paths[i][t], 256);
@@ -3662,10 +3663,12 @@ bool EditorUISystem::renderMaterialInspector(Engine &engine, Entity entity, Comp
       }
 
       ImGui::Separator();
-      float shininess = matPtr ? matPtr->getShininess() : 16.0f;
-      if (ImGui::DragFloat("Shininess", &shininess, 1.0f, 1.0f, 256.0f)) {
-        resourceSystem.setShininess(entity, static_cast<int>(i), shininess);
-      }
+      float metallic = matPtr ? matPtr->getMetallic() : 0.0f;
+      if (ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f))
+        resourceSystem.setMetallic(entity, static_cast<int>(i), metallic);
+      float roughness = matPtr ? matPtr->getRoughness() : 0.5f;
+      if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f))
+        resourceSystem.setRoughness(entity, static_cast<int>(i), roughness);
 
       ImGui::Separator();
       ImGui::Text("Manual Emission");

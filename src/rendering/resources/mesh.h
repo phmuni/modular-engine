@@ -29,22 +29,27 @@ struct Vertex {
 struct MtlMaterialData {
   std::string name;
   std::string diffuseTexPath;
-  std::string specularTexPath;
   std::string normalTexPath;
   std::string emissionTexPath;
+  std::string metallicRoughnessTexPath;
+  std::string occlusionTexPath;
   // Embedded images (glTF), as indices into MeshData::images; Mesh::upload turns them into the texture ids below
   int diffuseImage = -1;
-  int specularImage = -1;
   int normalImage = -1;
   int emissionImage = -1;
+  int metallicRoughnessImage = -1;
+  int occlusionImage = -1;
   GLuint diffuseTextureId = 0;
-  GLuint specularTextureId = 0;
   GLuint normalTextureId = 0;
   GLuint emissionTextureId = 0;
+  GLuint metallicRoughnessTextureId = 0;
+  GLuint occlusionTextureId = 0;
   glm::vec3 diffuseColor{0.8f};
-  glm::vec3 specularColor{0.0f};
   glm::vec3 emissionColor{0.0f};
-  float shininess = 16.0f;
+  float metallic = 0.0f;  // glTF: metallicFactor; OBJ: 0
+  float roughness = 0.5f; // glTF: roughnessFactor; OBJ: from Ns
+  float occlusionStrength = 1.0f;
+  float emissionStrength = 1.0f; // KHR_materials_emissive_strength; scales the emission color
   glm::vec4 baseColorFactor{1.0f}; // multiplies the diffuse texture (glTF); alpha multiplies its alpha
   AlphaMode alphaMode = AlphaMode::Opaque;
   float alphaCutoff = 0.5f;

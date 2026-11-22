@@ -140,8 +140,11 @@ static_assert(std::size(kPointShadowSamplers) == EngineConfig::MAX_POINT_SHADOWS
               "one sampler name (and one sampler in fragmentShader.frag) per point shadow slot");
 // The ambient occlusion texture takes the last of the 16 units a fragment shader is guaranteed
 constexpr int kAmbientOcclusionUnit = 15;
+// The material's occlusion map takes the unit after the point shadows (0 to 4: diffuse, metallic-roughness, emission,
+// normal, the sun's shadow map)
+constexpr int kOcclusionUnit = kFirstPointShadowUnit + EngineConfig::MAX_POINT_SHADOWS;
 // Custom shaders' texture parameters take the units after those, up to the AO's
-constexpr int kFirstCustomTextureUnit = kFirstPointShadowUnit + EngineConfig::MAX_POINT_SHADOWS;
+constexpr int kFirstCustomTextureUnit = kOcclusionUnit + 1;
 constexpr int kMaxCustomTextures = kAmbientOcclusionUnit - kFirstCustomTextureUnit;
 
 // The values a material gives its custom shader's uniforms; the ones it did not set get the file's defaults, since
@@ -685,11 +688,14 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   bool coverageOn = false;
   auto applyMaterial = [&](Shader &shader, const Material &material, float opacity) {
     shader.setTex("material.diffuse", material.getDiffuse(), 0);
-    shader.setTex("material.specular", material.getSpecular(), 1);
+    shader.setTex("material.metallicRoughness", material.getMetallicRoughness(), 1);
+    shader.setTex("material.occlusionMap", material.getOcclusion(), kOcclusionUnit);
     shader.setTex("material.normal", material.getNormal(), 3);
     shader.setInt("useNormalMap", material.getNormal() != 0 ? 1 : 0);
     shader.setTex("material.emission", material.getEmission(), 2);
-    shader.setFloat("material.shininess", material.getShininess());
+    shader.setFloat("material.metallic", material.getMetallic());
+    shader.setFloat("material.roughness", material.getRoughness());
+    shader.setFloat("material.occlusionStrength", material.getOcclusionStrength());
     shader.setVec3("material.emissionColor", material.getEmissionColor());
     shader.setFloat("material.emissionStrength", material.getEmissionStrength());
     shader.setInt("useSolidDiffuseColor", material.hasDiffuseTexture() ? 0 : 1);

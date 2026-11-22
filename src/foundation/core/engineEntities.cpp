@@ -415,8 +415,12 @@ void Engine::setTexture(Entity entity, TextureSlot slot, std::string_view path, 
   m_systemManager.getSystem<ResourceSystem>().setTexture(entity, submesh, slot, path);
 }
 
-void Engine::setShininess(Entity entity, float shininess, int submesh) {
-  m_systemManager.getSystem<ResourceSystem>().setShininess(entity, submesh, shininess);
+void Engine::setMetallic(Entity entity, float metallic, int submesh) {
+  m_systemManager.getSystem<ResourceSystem>().setMetallic(entity, submesh, metallic);
+}
+
+void Engine::setRoughness(Entity entity, float roughness, int submesh) {
+  m_systemManager.getSystem<ResourceSystem>().setRoughness(entity, submesh, roughness);
 }
 
 void Engine::setSolidColor(Entity entity, glm::vec3 color, int submesh) {
@@ -435,10 +439,16 @@ void Engine::setTexture(Entity entity, TextureSlot slot, std::string_view path, 
     resources.setTexture(entity, submesh, slot, path);
 }
 
-void Engine::setShininess(Entity entity, float shininess, std::string_view part) {
+void Engine::setMetallic(Entity entity, float metallic, std::string_view part) {
   auto &resources = m_systemManager.getSystem<ResourceSystem>();
   if (int submesh = resources.findSubmesh(entity, part); submesh >= 0)
-    resources.setShininess(entity, submesh, shininess);
+    resources.setMetallic(entity, submesh, metallic);
+}
+
+void Engine::setRoughness(Entity entity, float roughness, std::string_view part) {
+  auto &resources = m_systemManager.getSystem<ResourceSystem>();
+  if (int submesh = resources.findSubmesh(entity, part); submesh >= 0)
+    resources.setRoughness(entity, submesh, roughness);
 }
 
 void Engine::setSolidColor(Entity entity, glm::vec3 color, std::string_view part) {

@@ -14,8 +14,9 @@ struct Surface {
     vec3 albedo;
     float alpha;
     vec3 emission;
-    vec3 specular;
-    float shininess;
+    float metallic;
+    float roughness;
+    float occlusion;
     vec3 normal;
     vec2 uv;
     vec3 worldPos;
@@ -35,8 +36,9 @@ void main() {
     surf.albedo = vec3(1.0);
     surf.alpha = 1.0;
     surf.emission = vec3(0.0);
-    surf.specular = vec3(0.0);
-    surf.shininess = 16.0;
+    surf.metallic = 0.0;
+    surf.roughness = 0.5;
+    surf.occlusion = 1.0;
     surf.normal = normalize(Normal);
     surf.uv = TexCoords;
     surf.worldPos = FragPos;

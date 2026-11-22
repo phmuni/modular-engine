@@ -20,7 +20,7 @@ class Shader;
 struct MtlMaterialData;
 using GLuint = unsigned int;
 
-enum class TextureSlot { Diffuse = 0, Specular = 1, Normal = 2, Emission = 3 };
+enum class TextureSlot { Diffuse = 0, Normal = 1, Emission = 2, MetallicRoughness = 3, Occlusion = 4 };
 
 struct ModelLoadResult {
   uint32_t meshHandle;
@@ -164,13 +164,14 @@ public:
   void setPinnedMaterials(std::vector<uint32_t> handles) { m_pinnedMaterials = std::move(handles); }
 
   // Material helpers
-  void setMaterialShininess(uint32_t &handle, float shininess);
+  void setMaterialMetallic(uint32_t &handle, float metallic);
+  void setMaterialRoughness(uint32_t &handle, float roughness);
   void setMaterialTexture(uint32_t &handle, TextureSlot slot, GLuint tex);
   void setMaterialEmission(uint32_t &handle, const glm::vec3 &color, float strength);
   void removeMaterialTexture(uint32_t &handle, TextureSlot slot);
 
   // Texture
-  // Normal maps load as TextureKind::Normal; one that cannot be used (missing, or a grayscale height map) gives 0
+  // Normal maps load as TextureKind::Normal, metallic-roughness and occlusion maps as TextureKind::Data; one that cannot be used (missing, or a grayscale height map) gives 0
   GLuint loadTexture(std::string_view path, TextureKind kind = TextureKind::Color);
   // Path a texture was loaded from ("solid_r_g_b" for solid colors), empty if unknown
   std::string getTexturePath(GLuint texture) const;
@@ -181,7 +182,8 @@ public:
   void setEmission(Entity entity, int submesh, const glm::vec3 &color, float strength);
   void setTexture(Entity entity, int submesh, TextureSlot slot, std::string_view path);
   void removeTexture(Entity entity, int submesh, TextureSlot slot);
-  void setShininess(Entity entity, int submesh, float shininess);
+  void setMetallic(Entity entity, int submesh, float metallic);
+  void setRoughness(Entity entity, int submesh, float roughness);
 
   // Solid color helpers
   GLuint getOrCreateSolidColorTexture(const glm::vec3 &color);

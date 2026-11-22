@@ -30,9 +30,10 @@ constexpr const char *kFormat = "modular-engine-scene";
 constexpr int kVersion = 1;
 
 constexpr std::pair<TextureSlot, const char *> kTextureSlots[] = {{TextureSlot::Diffuse, "diffuse"},
-                                                                  {TextureSlot::Specular, "specular"},
                                                                   {TextureSlot::Normal, "normal"},
-                                                                  {TextureSlot::Emission, "emission"}};
+                                                                  {TextureSlot::Emission, "emission"},
+                                                                  {TextureSlot::MetallicRoughness, "metallicRoughness"},
+                                                                  {TextureSlot::Occlusion, "occlusion"}};
 
 // Vectors on one line: "position": [0.0, 1.5, -2.0] instead of five
 std::string compactNumberArrays(const std::string &text) {
@@ -88,12 +89,14 @@ GLuint textureIn(const Material &material, TextureSlot slot) {
   switch (slot) {
   case TextureSlot::Diffuse:
     return material.getDiffuse();
-  case TextureSlot::Specular:
-    return material.getSpecular();
   case TextureSlot::Normal:
     return material.getNormal();
   case TextureSlot::Emission:
     return material.getEmission();
+  case TextureSlot::MetallicRoughness:
+    return material.getMetallicRoughness();
+  case TextureSlot::Occlusion:
+    return material.getOcclusion();
   }
   return 0;
 }
@@ -330,8 +333,10 @@ std::optional<SceneSerializer::json> SceneSerializer::saveModel(Entity entity) c
     if (now.getEmissionColor() != before.getEmissionColor() ||
         now.getEmissionStrength() != before.getEmissionStrength())
       part["emission"] = {{"color", now.getEmissionColor()}, {"strength", now.getEmissionStrength()}};
-    if (now.getShininess() != before.getShininess())
-      part["shininess"] = now.getShininess();
+    if (now.getMetallic() != before.getMetallic())
+      part["metallic"] = now.getMetallic();
+    if (now.getRoughness() != before.getRoughness())
+      part["roughness"] = now.getRoughness();
     if (!now.getShaderPath().empty()) {
       part["shader"] = now.getShaderPath();
       json params = json::object();
@@ -370,8 +375,13 @@ void SceneSerializer::loadModel(Entity entity, const json &data) {
     if (part.contains("emission"))
       resources.setEmission(entity, index, part["emission"].value("color", glm::vec3(0.0f)),
                             part["emission"].value("strength", 0.0f));
-    if (part.contains("shininess"))
-      resources.setShininess(entity, index, part["shininess"].get<float>());
+    if (part.contains("metallic"))
+      resources.setMetallic(entity, index, part["metallic"].get<float>());
+    if (part.contains("roughness"))
+      resources.setRoughness(entity, index, part["roughness"].get<float>());
+    // Scenes saved before PBR have the Blinn-Phong exponent; "roughness" wins when both are there
+    else if (part.contains("shininess"))
+      resources.setRoughness(entity, index, std::sqrt(2.0f / (std::max(part["shininess"].get<float>(), 0.0f) + 2.0f)));
     // The shader before its values; a shader that does not compile still keeps its path and values (see
     // ResourceSystem::setMaterialShader), so the scene saves again as it was
     if (part.contains("shader") && part["shader"].is_string()) {

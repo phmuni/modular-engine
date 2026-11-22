@@ -231,15 +231,20 @@ function Entity:setEmission(color, strength, part) end
 function Entity:setVisible(visible) end
 
 ---Puts an image on its model (a part of the material).
----@param slot "diffuse"|"specular"|"normal"|"emission"
+---@param slot "diffuse"|"normal"|"emission"|"metallicRoughness"|"occlusion" "metallicRoughness" is a glTF-style map (G = roughness, B = metallic; they multiply setRoughness / setMetallic); "occlusion" reads R (an ORM map can be both)
 ---@param path string Relative to assets/ ("textures/brick.png")
 ---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
 function Entity:setTexture(slot, path, part) end
 
----How shiny its model is (the specular exponent).
----@param shininess number
+---How metallic its model is, from 0 (a dielectric, the default) to 1 (a metal, which tints its reflections with the base color).
+---@param metallic number 0 to 1
 ---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
-function Entity:setShininess(shininess, part) end
+function Entity:setMetallic(metallic, part) end
+
+---How rough its model's surface is, from 0 (a mirror) to 1 (completely matte). Defaults to 0.5.
+---@param roughness number 0 to 1
+---@param part? integer|string Only this part of the model: a submesh number (from 0, as the editor lists them) or the name of an OBJ object/group or glTF node; every part without it
+function Entity:setRoughness(roughness, part) end
 
 ---Sizes its Collision box (made if it has none) to its model, as rotated and scaled now. Call it again after changing the
 ---rotation or scale a lot: the box itself does not rotate.

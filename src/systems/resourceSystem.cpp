@@ -143,11 +143,6 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
       mat.setHasDiffuseTexture(false);
     }
 
-    if (mtl.specularTextureId != 0)
-      mat.setSpecularTexture(mtl.specularTextureId);
-    else if (!mtl.specularTexPath.empty())
-      mat.setSpecularTexture(loadTexture(resolve(mtl.specularTexPath)));
-
     if (mtl.normalTextureId != 0)
       mat.setNormalTexture(mtl.normalTextureId);
     else if (!mtl.normalTexPath.empty())
@@ -158,7 +153,19 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
     else if (!mtl.emissionTexPath.empty())
       mat.setEmissionTexture(loadTexture(resolve(mtl.emissionTexPath)));
 
-    mat.setShininess(mtl.shininess);
+    if (mtl.metallicRoughnessTextureId != 0)
+      mat.setMetallicRoughnessTexture(mtl.metallicRoughnessTextureId);
+    else if (!mtl.metallicRoughnessTexPath.empty())
+      mat.setMetallicRoughnessTexture(loadTexture(resolve(mtl.metallicRoughnessTexPath), TextureKind::Data));
+
+    if (mtl.occlusionTextureId != 0)
+      mat.setOcclusionTexture(mtl.occlusionTextureId);
+    else if (!mtl.occlusionTexPath.empty())
+      mat.setOcclusionTexture(loadTexture(resolve(mtl.occlusionTexPath), TextureKind::Data));
+
+    mat.setMetallic(mtl.metallic);
+    mat.setRoughness(mtl.roughness);
+    mat.setOcclusionStrength(mtl.occlusionStrength);
     mat.setEmissionColor(mtl.emissionColor);
     mat.setBaseColorFactor(mtl.baseColorFactor);
     mat.setAlphaMode(mtl.alphaMode);
@@ -171,7 +178,7 @@ ModelLoadResult ResourceSystem::loadModel(std::string_view path, uint32_t shader
     m_hasBlendMaterials = m_hasBlendMaterials || mtl.alphaMode == AlphaMode::Blend;
 
     if (glm::length(mtl.emissionColor) > 0.0f)
-      mat.setEmissionStrength(1.0f);
+      mat.setEmissionStrength(mtl.emissionStrength);
 
     result.materialHandles.push_back(matHandle);
   }
@@ -294,11 +301,14 @@ void ResourceSystem::setMaterialTexture(uint32_t &handle, TextureSlot slot,
   case TextureSlot::Diffuse:
     mat.setDiffuseTexture(tex);
     break;
-  case TextureSlot::Specular:
-    mat.setSpecularTexture(tex);
-    break;
   case TextureSlot::Normal:
     mat.setNormalTexture(tex);
+    break;
+  case TextureSlot::MetallicRoughness:
+    mat.setMetallicRoughnessTexture(tex);
+    break;
+  case TextureSlot::Occlusion:
+    mat.setOcclusionTexture(tex);
     break;
   case TextureSlot::Emission:
     mat.setEmissionTexture(tex);
@@ -321,11 +331,14 @@ void ResourceSystem::removeMaterialTexture(uint32_t &handle, TextureSlot slot) {
     mat.setDiffuseTexture(def.getDiffuse());
     mat.setHasDiffuseTexture(false);
     break;
-  case TextureSlot::Specular:
-    mat.setSpecularTexture(def.getSpecular());
-    break;
   case TextureSlot::Normal:
     mat.setNormalTexture(def.getNormal());
+    break;
+  case TextureSlot::MetallicRoughness:
+    mat.setMetallicRoughnessTexture(def.getMetallicRoughness());
+    break;
+  case TextureSlot::Occlusion:
+    mat.setOcclusionTexture(def.getOcclusion());
     break;
   case TextureSlot::Emission:
     mat.setEmissionTexture(def.getEmission());
@@ -342,9 +355,14 @@ void ResourceSystem::setMaterialEmission(uint32_t &handle, const glm::vec3 &colo
   mat.setEmissionStrength(strength);
 }
 
-void ResourceSystem::setMaterialShininess(uint32_t &handle, float shininess) {
+void ResourceSystem::setMaterialMetallic(uint32_t &handle, float metallic) {
   ensureOwnMaterial(handle);
-  getMaterial(handle).setShininess(shininess);
+  getMaterial(handle).setMetallic(glm::clamp(metallic, 0.0f, 1.0f));
+}
+
+void ResourceSystem::setMaterialRoughness(uint32_t &handle, float roughness) {
+  ensureOwnMaterial(handle);
+  getMaterial(handle).setRoughness(glm::clamp(roughness, 0.0f, 1.0f));
 }
 
 int ResourceSystem::findSubmesh(Entity entity, std::string_view part) {
@@ -377,8 +395,11 @@ void ResourceSystem::setTexture(Entity entity, int submesh, TextureSlot slot, st
   }
 
   auto &model = *modelPtr;
+  const bool isData = slot == TextureSlot::MetallicRoughness || slot == TextureSlot::Occlusion;
   GLuint tex = loadTexture(EngineConfig::resolveAsset(path),
-                           slot == TextureSlot::Normal ? TextureKind::Normal : TextureKind::Color);
+                           slot == TextureSlot::Normal ? TextureKind::Normal
+                           : isData                    ? TextureKind::Data
+                                                       : TextureKind::Color);
   if (submesh < 0) {
     for (auto &h : model.materialHandles)
       setMaterialTexture(h, slot, tex);
@@ -402,7 +423,7 @@ void ResourceSystem::removeTexture(Entity entity, int submesh, TextureSlot slot)
   }
 }
 
-void ResourceSystem::setShininess(Entity entity, int submesh, float shininess) {
+void ResourceSystem::setMetallic(Entity entity, int submesh, float metallic) {
   auto *modelPtr = m_componentManager.tryGet<Model>(entity);
   if (!modelPtr) {
     return;
@@ -411,9 +432,24 @@ void ResourceSystem::setShininess(Entity entity, int submesh, float shininess) {
   auto &model = *modelPtr;
   if (submesh < 0) {
     for (auto &h : model.materialHandles)
-      setMaterialShininess(h, shininess);
+      setMaterialMetallic(h, metallic);
   } else if (submesh < static_cast<int>(model.materialHandles.size())) {
-    setMaterialShininess(model.materialHandles[submesh], shininess);
+    setMaterialMetallic(model.materialHandles[submesh], metallic);
+  }
+}
+
+void ResourceSystem::setRoughness(Entity entity, int submesh, float roughness) {
+  auto *modelPtr = m_componentManager.tryGet<Model>(entity);
+  if (!modelPtr) {
+    return;
+  }
+
+  auto &model = *modelPtr;
+  if (submesh < 0) {
+    for (auto &h : model.materialHandles)
+      setMaterialRoughness(h, roughness);
+  } else if (submesh < static_cast<int>(model.materialHandles.size())) {
+    setMaterialRoughness(model.materialHandles[submesh], roughness);
   }
 }
 

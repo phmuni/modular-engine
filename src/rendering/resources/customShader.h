@@ -35,7 +35,7 @@ struct CustomShaderCode {
 
 // The file's text is GLSL 330 with these additions, all optional but at least one of the two functions:
 //   uniform float speed = 1.0;            // parameters: float, vec2, vec3, vec4 and sampler2D, one per declaration
-//                                         // (up to 6 textures per material: unit 15 is the ambient occlusion's)
+//                                         // (up to 5 textures per material: unit 15 is the ambient occlusion's)
 //   void surface(inout Surface s) { }     // after base color and textures, before lighting
 //   void vertex(inout VertexData v) { }   // moves the vertex (world space) before projection
 //   cutBelow(value, threshold);           // in surface(): cuts the surface away where value < threshold; a discard, or a

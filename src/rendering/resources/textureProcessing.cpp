@@ -177,7 +177,9 @@ void detectSupport() {
 namespace {
 // The format an image is compressed to, or 0 to leave it uncompressed
 GLenum compressedFormatFor(const DecodedImage &image) {
-  if (!EngineConfig::COMPRESS_TEXTURES || (image.channels != 3 && image.channels != 4))
+  // Data textures keep every channel exact: BC1/BC3 quantize each block's colors and mix the channels
+  if (!EngineConfig::COMPRESS_TEXTURES || image.kind == TextureKind::Data ||
+      (image.channels != 3 && image.channels != 4))
     return 0;
   if (image.kind == TextureKind::Normal)
     return GL_COMPRESSED_RG_RGTC2; // RGTC is core OpenGL 3.0
@@ -187,7 +189,7 @@ GLenum compressedFormatFor(const DecodedImage &image) {
 }
 
 std::string cacheKey(const std::string &key, TextureKind kind) {
-  return kind == TextureKind::Normal ? key + "#normal" : key;
+  return kind == TextureKind::Normal ? key + "#normal" : kind == TextureKind::Data ? key + "#data" : key;
 }
 } // namespace
 

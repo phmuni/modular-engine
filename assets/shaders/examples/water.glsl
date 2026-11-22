@@ -31,6 +31,5 @@ void surface(inout Surface s) {
     s.albedo = mix(deepColor, shallowColor, edge);
     s.emission = shallowColor * edge * 0.35;
     s.alpha = mix(waterAlpha, 1.0, edge);
-    s.shininess = 96.0;
-    s.specular = vec3(0.9);
+    s.roughness = 0.1;                 // smooth: sharp highlights
 }
