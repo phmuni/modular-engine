@@ -1,0 +1,67 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    {
+      "name": "Turned Spot",
+      "components": {
+        "Transform": {
+          "position": [1.0, 2.0, 3.0],
+          "rotation": [20.0, 90.0, -35.0]
+        },
+        "Light": {
+          "type": "spot",
+          "position": [0.5, 1.0, -2.0],
+          "direction": [0.2, -1.0, 0.5],
+          "color": [1.0, 0.5, 0.25],
+          "intensity": 2.0,
+          "ambient": 0.1,
+          "constant": 1.0,
+          "linear": 0.14,
+          "quadratic": 0.07,
+          "castShadows": false
+        }
+      }
+    },
+    {
+      "name": "Turned Sun",
+      "components": {
+        "Transform": {
+          "rotation": [0.0, 45.0, 0.0]
+        },
+        "Light": {
+          "type": "directional",
+          "direction": [-0.4, -1.0, -0.6],
+          "color": [1.0, 0.8, 0.6],
+          "intensity": 1.0,
+          "ambient": 0.3
+        }
+      }
+    },
+    {
+      "name": "Plain Sun",
+      "components": {
+        "Transform": {},
+        "Light": {
+          "type": "directional",
+          "direction": [0.5, -1.0, 0.1],
+          "color": [0.6, 0.7, 1.0],
+          "intensity": 0.5,
+          "ambient": 0.1
+        }
+      }
+    },
+    {
+      "name": "Lamp",
+      "components": {
+        "Transform": {
+          "position": [4.0, 1.0, 0.0]
+        },
+        "Light": {
+          "type": "point",
+          "intensity": 3.0
+        }
+      }
+    }
+  ]
+}

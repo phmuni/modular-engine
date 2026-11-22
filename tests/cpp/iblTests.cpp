@@ -58,8 +58,7 @@ float brightness(const glm::vec3 &color) { return color.x + color.y + color.z; }
 
 // A metal ball in front of the camera, lit by a light that gives nothing (so the sky is the only light)
 void makeMetalBall(Engine &engine) {
-  Light none = Light::directional(glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(1.0f), 0.0f);
-  none.ambient = 0.0f;
+  const Light none = Light::directional(glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(1.0f), 0.0f);
   engine.entities().create("NoLight").withTransform(glm::vec3(0.0f, 10.0f, 0.0f)).withLight(none).build();
   GameEntity ball = engine.create("Ball", Desc("sphere").at(0, 2, 0).size(4));
   ball.setMetallic(1.0f);

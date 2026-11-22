@@ -112,6 +112,31 @@ TEST_CASE(clustered_light_range_and_window) {
   }
 }
 
+TEST_CASE(light_attenuation_curve) {
+  // Inverse-square-like and soft at the light: 1 there, 1/2 at the core radius (1/25 of the range, inside the
+  // window), exactly 0 at the range; the shape scales with the range
+  for (float range : {4.0f, 40.0f, 400.0f}) {
+    const float core = range * EngineConfig::LIGHT_CORE_FRACTION;
+    CHECK_NEAR(lightAttenuation(0.0f, range), 1.0f, 1e-7f);
+    CHECK_NEAR(lightAttenuation(core, range), lightWindow(core, range) * 0.5f, 1e-6f);
+    CHECK_NEAR(lightAttenuation(range * 0.2f, range), lightWindow(range * 0.2f, range) / 26.0f, 1e-6f); // 5 cores out: 1 / (1 + 25)
+    CHECK_EQ(lightAttenuation(range, range), 0.0f);
+    CHECK_EQ(lightAttenuation(range + 1.0f, range), 0.0f);
+    CHECK(lightAttenuation(0.999f * range, range) < 1e-5f);
+    float previous = 1.0f;
+    for (int i = 1; i <= 100; ++i) {
+      const float value = lightAttenuation(range * i / 100.0f, range);
+      CHECK(value <= previous);
+      previous = value;
+    }
+  }
+  CHECK_EQ(lightAttenuation(1.0f, 0.0f), 0.0f);
+  // Near the light it is inverse-square: 1 / (1 + (d / core)^2) of the window, a quarter as bright at 1.73 cores
+  const float far = 40.0f;
+  const float d = std::sqrt(3.0f) * far * EngineConfig::LIGHT_CORE_FRACTION;
+  CHECK_NEAR(lightAttenuation(d, far), lightWindow(d, far) * 0.25f, 1e-6f);
+}
+
 TEST_CASE(clustered_lights_limits_and_defines) {
   steps.step(2, [&engine]() {
     const LightingLimits &limits = lightingLimits();
@@ -135,12 +160,9 @@ TEST_CASE(clustered_lights_pixels_and_range) {
   steps.step(0, [&engine]() {
     makeFloor(engine);
     // 180 lights on a grid over x 0..38, z -16..16 (created first), then one alone far to the -x side: the 181st, which
-    // the old 10-light limit never reached. Strong falloff: each reaches 11.7 units.
-    Light light = Light::point(glm::vec3(1.0f), 1.0f);
-    light.ambient = 0.0f;
-    light.constant = 1.0f;
-    light.linear = 0.7f;
-    light.quadratic = 1.8f;
+    // the old 10-light limit never reached. Short range (12 units), so the grid does not blow out and bloom
+    // into the dark floor around it.
+    const Light light = Light::point(glm::vec3(1.0f), 2.0f).withRange(12.0f);
     for (int ix = 0; ix < 20; ++ix)
       for (int iz = 0; iz < 9; ++iz)
         makeLight(engine, "Grid", glm::vec3(ix * 2.0f, 1.5f, -16.0f + iz * 4.0f), light);
@@ -170,7 +192,7 @@ TEST_CASE(clustered_lights_pixels_and_range) {
     // Under a grid light, and under the lonely 181st (a light of the 11th or later is lit now): lit
     CHECK(brightness(shot->at(glm::vec3(20.0f, 0.0f, 0.0f))) > 60.0f);
     CHECK(brightness(shot->at(glm::vec3(-40.0f, 0.0f, 0.0f))) > 60.0f);
-    // Far from every light (the nearest is more than its 11.7 units away): exactly dark
+    // Far from every light (the nearest is more than its 12 units away): exactly dark
     CHECK(brightness(shot->at(glm::vec3(-40.0f, 0.0f, 30.0f))) < 3.0f);
     CHECK(brightness(shot->at(glm::vec3(46.0f, 0.0f, 30.0f))) < 3.0f);
     CHECK(brightness(shot->at(glm::vec3(-20.0f, 0.0f, 0.0f))) < 3.0f); // between the lonely light and the grid
@@ -193,12 +215,8 @@ TEST_CASE(clustered_light_beyond_its_range_adds_nothing) {
   const auto range = std::make_shared<float>(0.0f);
   steps.step(0, [&engine, range]() {
     makeFloor(engine);
-    Light light = Light::point(glm::vec3(1.0f), 1.0f);
-    light.ambient = 0.0f;
-    light.constant = 1.0f;
-    light.linear = 0.0f;
-    light.quadratic = 1.0f; // range: sqrt(255) = 16 units
-    *range = lightRange(light.constant, light.linear, light.quadratic, 1.0f);
+    const Light light = Light::point(glm::vec3(1.0f), 1.0f).withRange(16.0f);
+    *range = light.range;
     makeLight(engine, "Lamp", glm::vec3(0.0f, 0.5f, 0.0f), light);
     aimCamera(engine, glm::vec3(0.0f, 45.0f, 25.0f), glm::vec3(0.0f, 0.0f, 0.0f));
   });
@@ -208,7 +226,7 @@ TEST_CASE(clustered_light_beyond_its_range_adds_nothing) {
     CHECK(!shot->pixels.empty());
     if (shot->pixels.empty())
       return;
-    CHECK_NEAR(*range, 15.97f, 0.05f);
+    CHECK_NEAR(*range, 16.0f, 0.05f);
     // The floor is 0.5 below the light: a point 5 units out is lit, one 0.5 inside the range is faint at most, and
     // beyond the range the light adds exactly nothing (the floor has no other light, no ambient, no sky)
     CHECK(brightness(shot->at(glm::vec3(0.0f, 0.0f, 0.0f))) > 100.0f);
@@ -331,11 +349,7 @@ TEST_CASE(clustered_lights_dungeon_scene_with_256_lights) {
   engine.loadScene("../assets/scenes/many_lights.json");
   steps.until([&engine]() { return !engine.isLoadingScene(); }, "the scene to load", 300);
   steps.step(0, [&engine]() {
-    Light light = Light::point(glm::vec3(1.0f, 0.8f, 0.6f), 2.0f);
-    light.ambient = 0.0f;
-    light.constant = 1.0f;
-    light.linear = 1.0f;
-    light.quadratic = 6.0f;
+    const Light light = Light::point(glm::vec3(1.0f, 0.8f, 0.6f), 2.0f).withRange(9.1f);
     for (int i = 0; i < 76; ++i)
       makeLight(engine, "Extra", glm::vec3(-27.0f + i * 0.75f, 2.0f, (i % 5 - 2) * 4.0f), light);
   });

@@ -50,8 +50,7 @@ float brightness(const glm::vec3 &color) { return color.x + color.y + color.z; }
 // A closed room, 25 across and 10 high, of near-black slabs, around the test camera (0, 2, 8), under the blue sky and a
 // light that gives nothing: the sky is the only light, and it cannot get in but through the walls' own lighting
 void makeRoom(Engine &engine) {
-  Light none = Light::directional(glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(1.0f), 0.0f);
-  none.ambient = 0.0f;
+  const Light none = Light::directional(glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(1.0f), 0.0f);
   engine.entities().create("NoLight").withTransform(glm::vec3(0.0f, 10.0f, 0.0f)).withLight(none).build();
   engine.entities().create("Sky").withSkybox(kBlueSky, 1.0f).build();
   const float dark = 0.05f;

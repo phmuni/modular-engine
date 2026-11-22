@@ -132,7 +132,7 @@ TEST_CASE(scene_new_scene_has_a_camera_and_no_file) {
     }
     CHECK_EQ(cameras, size_t(1));
     CHECK_EQ(directional, size_t(1));
-    CHECK_EQ(all, size_t(2));
+    CHECK_EQ(all, size_t(3)); // the camera, the sun and a Sky holding the scene ambient (lights have none of their own)
     // The scene's own entities, so saving it keeps them
     CHECK(!engine.isRuntime(*engine.getEntityManager().entities().begin()));
   });
