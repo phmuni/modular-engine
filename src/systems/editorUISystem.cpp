@@ -9,6 +9,7 @@
 #include "components/cameraRig.h"
 #include "components/collision.h"
 #include "components/hidden.h"
+#include "components/joint.h"
 #include "components/light.h"
 #include "components/model.h"
 #include "components/name.h"
@@ -1174,6 +1175,7 @@ void EditorUISystem::drawSelectionBoxes(SystemManager &systemManager, ComponentM
     drawBox(systemManager, componentManager, entity, primary ? IM_COL32(255, 200, 60, 230) : IM_COL32(255, 140, 40, 170),
             primary ? 1.8f : 1.2f);
     drawProbeBox(systemManager, componentManager, entity);
+    drawJointGizmo(systemManager, componentManager, entity);
   }
 }
 
@@ -1257,6 +1259,195 @@ void EditorUISystem::drawReflectionProbe(Engine &engine, Entity entity, Reflecti
     engine.refreshReflectionProbe(entity);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Captures it again into memory only, to preview; the baked file is not touched");
+}
+
+// A selected joint: the anchor as a dot, the axis through it, the limits (an arc around a hinge's axis, a segment along
+// a slider's) and a line to the other end (the target's origin, or the distance joint's far point). Where the limits
+// are drawn assumes the joint was built where the bodies are now, which is so in the editor (moving a body builds it again).
+void EditorUISystem::drawJointGizmo(SystemManager &systemManager, ComponentManager &componentManager, Entity entity) {
+  const auto *joint = componentManager.tryGet<Joint>(entity);
+  const auto *transform = componentManager.tryGet<Transform>(entity);
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
+  if (!joint || !transform || !camera)
+    return;
+  auto &transformSystem = systemManager.getSystem<TransformSystem>();
+  const glm::mat4 toClip = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
+  ImDrawList *drawList = ImGui::GetBackgroundDrawList();
+  auto line = [&](const glm::vec3 &from, const glm::vec3 &to, unsigned color, float thickness) {
+    const glm::vec4 a = toClip * glm::vec4(from, 1.0f), b = toClip * glm::vec4(to, 1.0f);
+    if (a.w > 0.01f && b.w > 0.01f)
+      drawList->AddLine(fromClip(a), fromClip(b), color, thickness);
+  };
+  const glm::mat4 model = transformSystem.calculateModelMatrix(*transform);
+  const glm::vec3 scale = glm::max(glm::abs(transform->scale), glm::vec3(1e-4f));
+  const glm::mat3 rotation(glm::vec3(model[0]) / scale.x, glm::vec3(model[1]) / scale.y, glm::vec3(model[2]) / scale.z);
+  const glm::vec3 anchor = glm::vec3(model * glm::vec4(joint->anchor, 1.0f));
+  glm::vec3 axis = rotation * joint->axis;
+  axis = glm::length(axis) > 1e-6f ? glm::normalize(axis) : glm::vec3(0, 1, 0);
+
+  // The dot
+  const glm::vec4 clip = toClip * glm::vec4(anchor, 1.0f);
+  if (clip.w > 0.01f)
+    drawList->AddCircleFilled(fromClip(clip), 5.0f, IM_COL32(255, 160, 40, 240));
+
+  // What it holds on to
+  glm::vec3 other = anchor; // the world
+  bool hasOther = false;
+  if (!joint->target.empty()) {
+    Entity found = -1;
+    componentManager.forEachComponent<Name>([&](Entity candidate, Name &name) {
+      if (name.name == joint->target && (found == -1 || candidate < found) && componentManager.has<Transform>(candidate))
+        found = candidate;
+    });
+    if (found != -1) {
+      const Transform &target = componentManager.get<Transform>(found);
+      other = joint->type == JointType::Distance
+                  ? glm::vec3(transformSystem.calculateModelMatrix(target) * glm::vec4(joint->targetAnchor, 1.0f))
+                  : target.position;
+      hasOther = true;
+    }
+  } else if (joint->type == JointType::Distance) {
+    other = joint->targetAnchor;
+    hasOther = true;
+  }
+  if (hasOther)
+    line(anchor, other, IM_COL32(255, 160, 40, 200), 1.5f);
+
+  if (joint->type != JointType::Hinge && joint->type != JointType::Slider)
+    return;
+  const float length = 0.8f;
+  line(anchor - axis * length, anchor + axis * length, IM_COL32(80, 220, 255, 230), 2.0f);
+  if (!joint->limits)
+    return;
+  if (joint->type == JointType::Slider) {
+    line(anchor + axis * std::min(joint->min, 0.0f), anchor + axis * std::max(joint->max, 0.0f),
+         IM_COL32(120, 255, 120, 230), 3.0f);
+    return;
+  }
+  // The same normal axis as the physics uses, so the arc starts where the hinge's 0 is
+  const glm::vec3 zero = std::fabs(axis.x) > std::fabs(axis.y) ? glm::normalize(glm::vec3(-axis.z, 0.0f, axis.x))
+                                                               : glm::normalize(glm::vec3(0.0f, axis.z, -axis.y));
+  const float low = glm::radians(std::clamp(joint->min, -180.0f, 0.0f));
+  const float high = glm::radians(std::clamp(joint->max, 0.0f, 180.0f));
+  const int segments = 24;
+  glm::vec3 previous = anchor + glm::angleAxis(low, axis) * zero * length;
+  line(anchor, previous, IM_COL32(120, 255, 120, 200), 1.2f);
+  for (int i = 1; i <= segments; ++i) {
+    const float angle = low + (high - low) * static_cast<float>(i) / segments;
+    const glm::vec3 point = anchor + glm::angleAxis(angle, axis) * zero * length;
+    line(previous, point, IM_COL32(120, 255, 120, 230), 2.0f);
+    previous = point;
+  }
+  line(anchor, previous, IM_COL32(120, 255, 120, 200), 1.2f);
+  line(anchor, anchor + zero * length, IM_COL32(120, 255, 120, 90), 1.0f); // where it was built: 0
+}
+
+// The Joint section of the Properties panel
+void EditorUISystem::drawJoint(Engine &engine, Entity entity, Joint &joint) {
+  auto &componentManager = engine.getComponentManager();
+  int type = static_cast<int>(joint.type);
+  ImGui::Combo("Type##joint", &type, "Hinge\0Fixed\0Distance\0Slider\0");
+  joint.type = static_cast<JointType>(type);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Hinge: turns about an axis (door, wheel). Slider: moves along an axis (drawer, elevator).\n"
+                      "Fixed: welded in the current pose. Distance: keeps two points apart (rod, rope, bungee).");
+
+  // The target: the world, or an entity with a body, picked by name
+  const std::string shown = joint.target.empty() ? "World" : joint.target;
+  if (ImGui::BeginCombo("Target##joint", shown.c_str())) {
+    if (ImGui::Selectable("World", joint.target.empty()))
+      joint.target.clear();
+    componentManager.forEachComponent<RigidBody>([&](Entity candidate, RigidBody &) {
+      const Name *name = componentManager.tryGet<Name>(candidate);
+      if (candidate != entity && name && !name->name.empty() &&
+          ImGui::Selectable((name->name + "##" + std::to_string(candidate)).c_str(), name->name == joint.target))
+        joint.target = name->name;
+    });
+    ImGui::EndCombo();
+  }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("What it is joined to: the world (a fixed point) or another entity with a Rigid Body, by name.\n"
+                      "The joint holds this entity's body, so it is normally a dynamic one.");
+
+  ImGui::DragFloat3("Anchor##joint", &joint.anchor.x, 0.02f, -100.0f, 100.0f, "%.2f");
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("The pivot (or attach point), in this entity's own space: a unit box has its faces at +-0.5.\n"
+                      "Scaled with the entity.");
+  if (joint.type == JointType::Distance) {
+    ImGui::DragFloat3("Target anchor##joint", &joint.targetAnchor.x, 0.02f, -1000.0f, 1000.0f, "%.2f");
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("The other end: in the target's own space, or a point in the world when the target is World");
+    ImGui::DragFloat("Min distance##joint", &joint.minDistance, 0.02f, 0.0f, 1000.0f, "%.2f");
+    ImGui::DragFloat("Max distance##joint", &joint.maxDistance, 0.02f, 0.0f, 1000.0f, "%.2f");
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Both 0: the distance the points are at when the joint is built. Equal: a rod; min 0: a rope.");
+  }
+  const bool moves = joint.type == JointType::Hinge || joint.type == JointType::Slider;
+  if (moves) {
+    ImGui::DragFloat3("Axis##joint", &joint.axis.x, 0.01f, -1.0f, 1.0f, "%.2f");
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("The hinge's turning axis or the slider's direction, in this entity's own space");
+    const bool hinge = joint.type == JointType::Hinge;
+    ImGui::Checkbox("Limits##joint", &joint.limits);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Stops at min and max, measured from the pose the joint is built in (when the scene loads or\n"
+                        "the joint changes)");
+    if (joint.limits) {
+      ImGui::DragFloat("Min##joint", &joint.min, hinge ? 1.0f : 0.02f, hinge ? -180.0f : -1000.0f, 0.0f,
+                       hinge ? "%.0f deg" : "%.2f");
+      ImGui::DragFloat("Max##joint", &joint.max, hinge ? 1.0f : 0.02f, 0.0f, hinge ? 180.0f : 1000.0f,
+                       hinge ? "%.0f deg" : "%.2f");
+    }
+    int motor = static_cast<int>(joint.motor);
+    ImGui::Combo("Motor##joint", &motor, "Off\0Velocity\0Position\0");
+    joint.motor = static_cast<JointMotor>(motor);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Velocity: keeps a speed up. Position: goes to a target and holds it like a spring\n"
+                        "(a door that swings back shut: Position, target 0, a low frequency).");
+    if (joint.motor == JointMotor::Velocity)
+      ImGui::DragFloat("Speed##joint", &joint.motorSpeed, hinge ? 1.0f : 0.05f, -10000.0f, 10000.0f,
+                       hinge ? "%.1f deg/s" : "%.2f /s");
+    if (joint.motor == JointMotor::Position)
+      ImGui::DragFloat("Target pose##joint", &joint.motorTarget, hinge ? 1.0f : 0.02f, -10000.0f, 10000.0f,
+                       hinge ? "%.1f deg" : "%.2f");
+    if (joint.motor != JointMotor::Off) {
+      ImGui::DragFloat("Max force##joint", &joint.maxMotorForce, 100.0f, 0.0f, 1.0e9f, hinge ? "%.0f N*m" : "%.0f N");
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("The most the motor pushes. Finite so that a motor blocked by something stalls instead of\n"
+                          "forcing its way through (a wall turned into a pillar stops there).");
+    }
+  }
+  if ((moves && joint.motor == JointMotor::Position) || joint.type == JointType::Distance) {
+    ImGui::DragFloat("Spring frequency##joint", &joint.springFrequency, 0.05f, 0.0f, 30.0f,
+                     joint.springFrequency > 0.0f ? "%.2f Hz" : (moves ? "stiff (10 Hz)" : "hard"));
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip(moves ? "How stiffly the position motor pulls to its target; low values make a soft door that\n"
+                                "gives way to pushes"
+                              : "0: hard limits. Above 0 the limits are a spring: a rope that stretches, a bungee.");
+    ImGui::DragFloat("Spring damping##joint", &joint.springDamping, 0.01f, 0.0f, 2.0f, "%.2f");
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("0 keeps oscillating, 1 settles without overshoot");
+  }
+  ImGui::Checkbox("Collide connected##joint", &joint.collideConnected);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Whether the two joined bodies collide with each other (off: a door and its frame ignore each other)");
+
+  ImGui::Separator();
+  if (!componentManager.has<RigidBody>(entity)) {
+    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "Needs a Rigid Body on this entity");
+  } else if (engine.physics().isJointBuilt(entity)) {
+    if (joint.type == JointType::Hinge)
+      ImGui::TextDisabled("Angle: %.1f deg", engine.physics().getJointAngle(entity));
+    else if (joint.type == JointType::Slider)
+      ImGui::TextDisabled("Position: %.2f", engine.physics().getJointPosition(entity));
+    else
+      ImGui::TextDisabled("Built");
+  } else {
+    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "Not built: %s",
+                       joint.target.empty() ? "waiting for the bodies" : "the target needs to exist and have a Rigid Body");
+  }
 }
 
 void EditorUISystem::drawBox(SystemManager &systemManager, ComponentManager &componentManager, Entity entity,
@@ -3005,6 +3196,23 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
     }
   }
 
+  // Joint
+  if (!earlyOut && componentManager.has<Joint>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Joint", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##joint")) {
+        componentManager.removeComponent<Joint>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut) {
+        ImGui::Separator();
+        // Edited on a copy, like the body: the constraint is built again only when what it is made of changes
+        Joint joint = componentManager.get<Joint>(selectedEntity);
+        drawJoint(engine, selectedEntity, joint);
+        componentManager.get<Joint>(selectedEntity) = joint;
+      }
+    }
+  }
+
   // Script
   if (!earlyOut && componentManager.has<Script>(selectedEntity)) {
     if (ImGui::CollapsingHeader("Script", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -3262,6 +3470,10 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
           componentManager.addInPlace<RigidBody>(selectedEntity);
         if (ImGui::Button("+ Character Controller", ImVec2(-1, 0)))
           componentManager.addInPlace<CharacterController>(selectedEntity);
+      }
+      if (!componentManager.has<Joint>(selectedEntity) && componentManager.has<RigidBody>(selectedEntity)) {
+        if (ImGui::Button("+ Joint", ImVec2(-1, 0)))
+          componentManager.addInPlace<Joint>(selectedEntity);
       }
       if (!componentManager.has<Script>(selectedEntity)) {
         if (ImGui::Button("+ Script", ImVec2(-1, 0))) {
