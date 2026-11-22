@@ -606,3 +606,10 @@ float Engine::ambientIntensity() {
   const Skybox *sky = findSceneSky();
   return sky ? sky->ambientIntensity : 0.0f;
 }
+
+void Engine::setEnvironmentIntensity(float intensity) { sceneSky().environmentIntensity = std::max(intensity, 0.0f); }
+
+float Engine::environmentIntensity() {
+  const Skybox *sky = findSceneSky();
+  return sky ? sky->environmentIntensity : 1.0f;
+}

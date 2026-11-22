@@ -5,6 +5,7 @@
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "rendering/renderer.h"
+#include "rendering/ibl.h"
 #include "rendering/ssao.h"
 #include <glm/glm.hpp>
 #include <string>
@@ -26,6 +27,10 @@ struct SceneEnvironment {
   float fogFinish = 1.0f;
   float fogDensity = 0.0f;
   glm::vec3 ambient{0.0f}; // added to every lit surface, times its color
+  // Image-based lighting (see ibl.h): 0 none, 1 one color from every direction, 2 the cube maps of the sky's image
+  int environmentMode = 0;
+  glm::vec3 environmentColor{0.0f}; // mode 1: the color; mode 2: the factor the maps are multiplied by
+  float environmentRotation = 0.0f; // radians around +Y, the panorama's rotation
 };
 
 class RenderSystem : public BaseSystem {
@@ -68,6 +73,8 @@ public:
   void setSsaoDebugView(bool enabled) { m_ssaoDebugView = enabled; }
   bool ssaoDebugView() const { return m_ssaoDebugView; }
   void shutdownSsao() { m_ssao.shutdown(); }
+  void shutdownIbl() { m_ibl.shutdown(); }
+  const Ibl &ibl() const { return m_ibl; }
   // Models skipped by frustum culling in the last rendered frame
   int getCulledCount() const { return m_culledCount; }
   // Point lights with a cube shadow map, and how many of them had to render it again in the last frame
@@ -112,6 +119,7 @@ private:
   Renderer m_renderer;
   // The first Skybox component's panorama, behind the opaque geometry
   SceneEnvironment m_environment;
+  Ibl m_ibl;
   uint32_t m_skyboxShader = 0;
   std::string m_skyboxPath; // what m_skyboxTexture shows
   GLuint m_skyboxTexture = 0;

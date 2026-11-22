@@ -1203,7 +1203,7 @@ Paths are relative to `assets/` like any asset path. Files shipped with the engi
 - **Caching.** One program is compiled per file and variant (normal, and alpha mask when a cut-out part uses it); every part using the file shares it, with its own parameter values, and parts are grouped by program for drawing.
 - **Editor.** Each part's Material section has a Shader field (type a path, or drop a `.glsl` from the asset browser), a Reset button, and a widget per parameter read from the `uniform` lines (a drag field per float or vector, a color picker for names with "color", a path field and drop target for textures). "Apply to All Submeshes" has one for the whole model. Changes are one undo step each. Scenes and prefabs save the shader and its values with the part, and a linked prefab instance's change of them counts as an override.
 - **Shadows.** Parts with a custom shader are drawn into the shadow maps (the sun's cascades and the point lights' cube maps) through a variant of the depth shaders with your file injected: `vertex()` moves the vertices as in the lit pass, so waves show in the shadow, and `surface()` runs only for its alpha, so a `discard` leaves a hole in it (a dissolve casts a dissolving shadow). A low `alpha` cuts the shadow below 0.5 too, except in files with `#pragma blend`, whose see-through surfaces keep their shadow. In the shadow pass the surface starts with a white albedo and an alpha of 1 (the material's textures are not read), `viewDir` points at the camera and `time` and your parameters are the same. `#pragma noshadow` takes the part out of the shadow maps, which suits water (the example has it); the other parts of a model still cast theirs, and parts without a custom shader cast exactly as before. A file that only the lit shader can compile (it uses something from it, such as `numLights`) keeps working, and its parts cast the shadow of their original geometry, with a warning in the log. A point light's cube map is drawn again every frame while such a part is in its range (the shader's clock moves).
-- **Limits.** Frustum culling uses the original mesh bounds, so a large `vertex()` offset can make a model vanish at the screen's edge. Parts with `#pragma blend` are sorted per entity like other transparent draws, not per triangle. Texture parameters use texture units 9 to 14 (6 per material; unit 15 holds the ambient occlusion); `int` and `bool` uniforms are not parameters (they keep the shader's own value).
+- **Limits.** Frustum culling uses the original mesh bounds, so a large `vertex()` offset can make a model vanish at the screen's edge. Parts with `#pragma blend` are sorted per entity like other transparent draws, not per triangle. Texture parameters use texture units 10 to 14 (5 per material; unit 15 holds the ambient occlusion); `int` and `bool` uniforms are not parameters (they keep the shader's own value).
 
 ### Skybox
 
@@ -1245,6 +1245,14 @@ The fog is in the lit shader behind one uniform branch (nothing to pay while it 
 and particles fade out with distance instead of mixing toward the fog color, as they are drawn after tone mapping.
 Ambient is a scene-wide term next to each light's own `ambient`; 0, the default, adds nothing. The Skybox panel in the
 editor edits all of it.
+
+The sky also lights the scene (image-based lighting): objects get diffuse light and reflections from the panorama, so
+a metal sphere shows the sky it stands under. From the image the engine makes, once and again only when the image
+changes, an irradiance cube map (32 per face), a GGX pre-filtered specular cube map (128, 5 roughness levels) and a
+BRDF table, all with render passes (no compute shaders); `rotation` and `intensity` turn and scale the lighting without
+making them again. A `.hdr` panorama keeps its range (a very bright sun lights and reflects as bright as it is). A sky
+with only a `color` lights evenly with that color, and the default black sky adds nothing. `environmentIntensity`
+(1 by default, `engine.setEnvironmentIntensity(x)`) scales it; 0 turns it off.
 
 The image goes through the same texture cache and streaming as model textures. Its center column is straight ahead (-Z); `intensity` above 1 lets bright stars reach the bloom. [`tools/generateSpaceSkybox.c`](tools/generateSpaceSkybox.c) generated the space panorama used by Space Aliens.
 

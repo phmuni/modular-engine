@@ -52,6 +52,15 @@ uniform vec3 viewForward;
 // Point light shadows: one cube map array, a cube per slot (EngineConfig::MAX_POINT_SHADOWS)
 uniform samplerCubeArrayShadow pointShadowMaps;
 uniform float pointShadowTexel; // one texel of a cube face at distance 1 (2 / POINT_SHADOW_SIZE)
+// Image-based lighting (see ibl.h): the sky as diffuse light and reflections. iblMode 0 is none, 1 one color from every
+// direction (iblColor), 2 the cube maps below, times iblColor (the sky's intensity and the environment's).
+uniform int iblMode;
+uniform vec3 iblColor;
+uniform float iblRotation; // radians around +Y: the panorama's rotation, applied to the lookup vectors
+uniform float iblMaxLod;   // the pre-filtered map's last mip level: roughness 1
+uniform samplerCube iblIrradiance;
+uniform samplerCube iblPrefiltered;
+uniform sampler2D iblBrdf; // split-sum scale and bias by (NdotV, roughness)
 uniform int useShadows;
 uniform float opacity;
 uniform int useNormalMap;
@@ -231,17 +240,40 @@ vec2 environmentBrdf(float roughness, float NdotV)
     return vec2(-1.04, 1.04) * a004 + r.zw;
 }
 
-// Ambient light of one color, on a surface. THE PLACE FOR IMAGE-BASED LIGHTING (Phase B): the sky's diffuse
-// irradiance replaces `ambientColor` in the diffuse term and its pre-filtered reflection (by roughness and the
-// reflection vector) replaces it in the specular term. Until then the environment is one color from every direction:
-// the diffuse term is the old one (albedo * ambient, none for a metal) and the specular term is that color
-// reflected by the surface's F0, so metals are not black.
+// Ambient light of one color, on a surface: the old diffuse term (albedo * ambient, none for a metal) and that color
+// reflected by the surface's F0, so metals are not black. The scene's `ambient` and each light's `ambient` go through
+// here; the sky's lighting is environmentLight.
 vec3 ambientLight(vec3 ambientColor, vec3 albedo, float metallic, float roughness, vec3 F0, float NdotV, float occlusion)
 {
     vec3 diffuse = albedo * (1.0 - metallic) * ambientColor;
     vec2 brdf = environmentBrdf(roughness, NdotV);
     vec3 specular = ambientColor * (F0 * brdf.x + brdf.y);
     return (diffuse + specular) * occlusion;
+}
+
+// Image-based lighting: the sky's irradiance (diffuse) and its pre-filtered reflection by roughness (specular, split-sum
+// with the BRDF table). Occlusion darkens both: the specular one with a cheaper, weaker term (Lagarde).
+vec3 environmentLight(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float NdotV, float occlusion)
+{
+    if (iblMode == 0)
+        return vec3(0.0);
+    vec2 brdf = textureLod(iblBrdf, vec2(NdotV, roughness), 0.0).rg;
+    vec3 specularColor = F0 * brdf.x + brdf.y;
+    vec3 irradiance = iblColor;
+    vec3 reflected = iblColor;
+    if (iblMode == 2) {
+        // Rough surfaces reflect a direction nearer the normal than the mirror one
+        vec3 R = reflect(-V, N);
+        R = normalize(mix(N, R, (1.0 - roughness) * (sqrt(1.0 - roughness) + roughness)));
+        float c = cos(iblRotation), s = sin(iblRotation);
+        vec3 rotatedN = vec3(c * N.x + s * N.z, N.y, -s * N.x + c * N.z);
+        vec3 rotatedR = vec3(c * R.x + s * R.z, R.y, -s * R.x + c * R.z);
+        irradiance = textureLod(iblIrradiance, rotatedN, 0.0).rgb * iblColor;
+        reflected = textureLod(iblPrefiltered, rotatedR, roughness * iblMaxLod).rgb * iblColor;
+    }
+    vec3 diffuse = irradiance * albedo * (1.0 - metallic) * (vec3(1.0) - specularColor);
+    float specularOcclusion = clamp(pow(NdotV + occlusion, exp2(-16.0 * roughness - 1.0)) - 1.0 + occlusion, 0.0, 1.0);
+    return diffuse * occlusion + reflected * specularColor * specularOcclusion;
 }
 
 void main()
@@ -382,6 +414,9 @@ void main()
             result += lightResult;
         }
     }
+
+    if (unlit != 1)
+        result += environmentLight(normal, viewDir, albedo, metallic, roughness, F0, NdotV, occlusion);
 
     if (fogMode != 0) {
         float dist = length(viewPos - FragPos);

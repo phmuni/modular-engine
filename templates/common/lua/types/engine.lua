@@ -689,6 +689,16 @@ function engine.setAmbient(color, intensity) end
 ---@return number intensity
 function engine.ambient() end
 
+---How strongly the sky lights the scene: objects get diffuse light and reflections from the skybox panorama (or evenly from
+---the sky color when there is no image, so a black sky adds nothing). 1 by default; 0 turns it off. Kept in the scene
+---file with the sky.
+---@param intensity number
+function engine.setEnvironmentIntensity(intensity) end
+
+---The sky's lighting intensity.
+---@return number
+function engine.environmentIntensity() end
+
 -- game ---------------------------------------------------------------------------------------------------------------
 
 ---State shared by every script; it starts empty again when the game stops and plays again.

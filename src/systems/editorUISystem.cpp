@@ -3085,6 +3085,10 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("How far geometry shades a point (world units) and how dark; saved with the scene. "
                             "Whether it is on is the player's setting.");
+        ImGui::DragFloat("Sky lighting##environment", &sky.environmentIntensity, 0.01f, 0.0f, 10.0f, "%.2f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("How strongly the sky lights things: diffuse light and reflections from the panorama "
+                            "(evenly from the sky color without one); 0 turns it off");
         ImGui::Text("Ambient light");
         ImGui::ColorEdit3("Color##ambient", &sky.ambientColor.x);
         ImGui::DragFloat("Intensity##ambient", &sky.ambientIntensity, 0.01f, 0.0f, 5.0f, "%.2f");

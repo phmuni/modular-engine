@@ -235,6 +235,10 @@ public:
   void setAmbient(const glm::vec3 &color, float intensity);
   glm::vec3 ambientColor();
   float ambientIntensity();
+  // How strongly the sky lights the scene (the Skybox's image-based lighting: diffuse light and reflections from the
+  // panorama, or evenly from the sky color without one); 1 by default, 0 turns it off
+  void setEnvironmentIntensity(float intensity);
+  float environmentIntensity();
 
   // Component access. get throws, with a message saying whether the entity lacks the component or no longer
   // exists; tryGet returns null instead.

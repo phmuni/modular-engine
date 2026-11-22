@@ -140,8 +140,12 @@ constexpr int kAmbientOcclusionUnit = 15;
 // The material's occlusion map takes the unit after the point shadows (0 to 4: diffuse, metallic-roughness, emission,
 // normal, the sun's shadow map)
 constexpr int kOcclusionUnit = kPointShadowUnit + 1;
+// Image-based lighting: the irradiance and pre-filtered cube maps, and the BRDF table
+constexpr int kIrradianceUnit = kOcclusionUnit + 1;
+constexpr int kPrefilteredUnit = kIrradianceUnit + 1;
+constexpr int kBrdfUnit = kPrefilteredUnit + 1;
 // Custom shaders' texture parameters take the units after those, up to the AO's
-constexpr int kFirstCustomTextureUnit = kOcclusionUnit + 1;
+constexpr int kFirstCustomTextureUnit = kBrdfUnit + 1;
 constexpr int kMaxCustomTextures = kAmbientOcclusionUnit - kFirstCustomTextureUnit;
 
 // The values a material gives its custom shader's uniforms; the ones it did not set get the file's defaults, since
@@ -599,6 +603,9 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   // The first Skybox's color is the sky behind everything (shown as written: the scene target is linear). The
   // panorama, if it has one, draws over it.
   glm::vec3 skyColor(0.0f);
+  std::string iblImage; // the sky's panorama, when it lights the scene
+  glm::vec3 iblColor(0.0f);
+  float iblStrength = 0.0f, iblSkyIntensity = 1.0f, iblRotation = 0.0f;
   SsaoSettings ssao = m_ssaoSettings; // the scene's Skybox, if it has one, sets radius and intensity below
   m_environment = SceneEnvironment();
   bool skyFound = false;
@@ -620,7 +627,33 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     m_environment.ambient = toScene(skybox.ambientColor) * std::max(skybox.ambientIntensity, 0.0f);
     ssao.radius = skybox.ssaoRadius;
     ssao.intensity = skybox.ssaoIntensity;
+
+    // Image-based lighting (see below): what the sky gives the scene's lighting
+    iblStrength = std::max(skybox.environmentIntensity, 0.0f);
+    if (iblStrength > 0.0f) {
+      if (!skybox.path.empty())
+        iblImage = EngineConfig::resolveAsset(skybox.path);
+      iblSkyIntensity = skybox.intensity;
+      iblRotation = glm::radians(skybox.rotation);
+      iblColor = toScene(skybox.color);
+    }
   });
+  // The sky lights the scene: from its image as cube maps (mode 2), or with its color from every direction (mode 1; an
+  // image that cannot be read leaves that). A black sky with no image adds nothing, and neither does an intensity of
+  // 0, so those scenes light exactly as without it.
+  m_ibl.update(iblImage, gammaCorrect);
+  if (iblStrength > 0.0f) {
+    if (m_ibl.hasMaps()) {
+      m_environment.environmentMode = 2;
+      m_environment.environmentColor = glm::vec3(iblSkyIntensity * iblStrength);
+      m_environment.environmentRotation = iblRotation;
+    } else if (iblColor.x > 0.0f || iblColor.y > 0.0f || iblColor.z > 0.0f) {
+      m_environment.environmentMode = 1;
+      m_environment.environmentColor = iblColor * iblStrength;
+    }
+  }
+  if (m_environment.environmentMode != 0)
+    m_ibl.ensureBrdf();
   if (gammaCorrect)
     skyColor = glm::pow(skyColor, glm::vec3(2.2f));
 
@@ -671,6 +704,14 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       shader.setFloat("fogDensity", m_environment.fogDensity);
     }
     shader.setVec3("sceneAmbient", m_environment.ambient);
+    shader.setInt("iblMode", m_environment.environmentMode);
+    shader.setVec3("iblColor", m_environment.environmentColor);
+    shader.setFloat("iblRotation", m_environment.environmentRotation);
+    shader.setFloat("iblMaxLod", static_cast<float>(Ibl::kPrefilterLevels - 1));
+    // The three samplers always hold the right kinds of texture (black stand-ins when there is no environment)
+    shader.setTex("iblIrradiance", m_ibl.irradiance(), kIrradianceUnit, GL_TEXTURE_CUBE_MAP);
+    shader.setTex("iblPrefiltered", m_ibl.prefiltered(), kPrefilteredUnit, GL_TEXTURE_CUBE_MAP);
+    shader.setTex("iblBrdf", m_ibl.brdfLut(), kBrdfUnit, GL_TEXTURE_2D);
     shader.setFloat("time", m_shaderTime); // only custom surface shaders have it
 
     lightSystem.uploadLightsToShader(shader, componentManager);

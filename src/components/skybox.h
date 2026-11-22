@@ -45,6 +45,10 @@ struct Skybox {
   // the surface's color. 0 (the default) adds nothing.
   glm::vec3 ambientColor{1.0f};
   float ambientIntensity = 0.0f;
+  // Image-based lighting: the sky itself lights what is in the scene (diffuse light and reflections), from the
+  // panorama, or from `color` evenly when there is no image (so a black sky adds nothing). This scales it; 0 turns it
+  // off.
+  float environmentIntensity = 1.0f;
   // Ambient occlusion of this scene (see Ssao): how far geometry shades a point (world units) and how dark it makes
   // it. Whether it is on at all is the player's and quality setting (Engine::setSsao), not the scene's.
   float ssaoRadius = 0.5f;

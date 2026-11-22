@@ -67,7 +67,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Collision, min, max, isStatic, l
 NLOHMANN_JSON_SERIALIZE_ENUM(FogMode, {{FogMode::Linear, "linear"}, {FogMode::Exponential, "exponential"}})
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Fog, enabled, mode, matchSky, color, start, finish, density)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation, color, fog, ambientColor,
-                                                ambientIntensity, ssaoRadius, ssaoIntensity)
+                                                ambientIntensity, environmentIntensity, ssaoRadius, ssaoIntensity)
 
 NLOHMANN_JSON_SERIALIZE_ENUM(BodyType, {{BodyType::Static, "static"},
                                         {BodyType::Dynamic, "dynamic"},

@@ -258,4 +258,7 @@ void LuaBindings::bindEngine() {
     engine.setAmbient(color, intensity.value_or(1.0f));
   });
   api.set_function("ambient", [this]() { return std::make_tuple(engine.ambientColor(), engine.ambientIntensity()); });
+  // How strongly the sky lights the scene (image-based lighting); 1 by default, 0 is off
+  api.set_function("setEnvironmentIntensity", [this](float intensity) { engine.setEnvironmentIntensity(intensity); });
+  api.set_function("environmentIntensity", [this]() { return engine.environmentIntensity(); });
 }
