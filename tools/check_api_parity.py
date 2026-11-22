@@ -89,6 +89,8 @@ ENGINE_ALIASES = {
     "stopMusic": "sound.stopMusic",
     "setMusicVolume": "sound.setMusicVolume",
     "isMusicPlaying": "sound.isMusicPlaying",
+    "setMusicPausesWithGame": "sound.setMusicPausesWithGame",
+    "musicPausesWithGame": "sound.musicPausesWithGame",
     "getScenePath": "scenePath",
     "getActiveScene": "activeScene",
     "loadUIDocument": "ui.load",

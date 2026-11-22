@@ -1,8 +1,10 @@
 #pragma once
 // Audio system: plays AudioSource components, one-shot effects and streamed music through miniaudio.
 //
-// The listener follows the active camera. Effects (sources and one-shots) pause with Toggle::Paused and follow the
-// time scale; music keeps playing. Without an audio device every call does nothing.
+// The listener follows the active camera. Effects (sources and one-shots) pause with the game (the pause menu, the
+// editor's freeze) and follow the time scale. Music keeps playing through a pause, unless setMusicPausesWithGame is on
+// (then it pauses where it is, and resumes); the time scale never touches it. Without an audio device every call does
+// nothing.
 
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/systemManager.h"
@@ -27,6 +29,7 @@ public:
   bool isAvailable() const;
 
   // Syncs listener, sources and pause state; frees finished one-shots and sounds of removed sources. Once per frame.
+  // `paused`: the game is paused (the pause menu or the editor's freeze). Effects also pause at a time scale of 0.
   void update(SystemManager &systemManager, bool paused, float timeScale);
 
   // Decodes a sound in the background so its first play does not wait for the file
@@ -46,6 +49,17 @@ public:
   // False once music that does not loop has ended, and for a handle that is no longer the current music
   bool isMusicPlaying(uint32_t music = 0) const;
 
+  // Whether music pauses together with the game (off by default: music plays through a pause). Takes effect at the
+  // next update; music started while paused then waits for the game to resume.
+  void setMusicPausesWithGame(bool enabled) { m_musicPausesWithGame = enabled; }
+  bool musicPausesWithGame() const { return m_musicPausesWithGame; }
+
+  // Read-only state, for tests: whether a bus pulls audio from its sounds (false while paused), and where a sound is in
+  // its file, in PCM frames (0 for a handle that is not found; voice 0 or music 0 means the music playing now)
+  bool isBusRunning(Bus bus) const;
+  uint64_t voiceCursor(uint32_t voice) const;
+  uint64_t musicCursor(uint32_t music = 0) const;
+
   void setMasterVolume(float volume);
   float getMasterVolume() const;
   void setBusVolume(Bus bus, float volume);
@@ -58,5 +72,6 @@ private:
   struct Impl;
   std::unique_ptr<Impl> m_impl;
   ComponentManager &m_componentManager;
+  bool m_musicPausesWithGame = false;
   bool isCurrentMusic(uint32_t music) const;
 };

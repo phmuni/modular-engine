@@ -440,7 +440,8 @@ public:
   void setState(Toggle toggle, bool value);
   bool getState(Toggle toggle);
 
-  // Audio (WAV, MP3, FLAC). Effects pause with the game and follow the time scale; music does not.
+  // Audio (WAV, MP3, FLAC). Effects pause with the game (the pause menu, the editor's freeze) and follow the time
+  // scale; music plays through a pause unless setMusicPausesWithGame is on, and ignores the time scale.
   // Decodes a sound in the background, so its first play does not wait for the file
   void preloadSound(std::string_view path);
   // Fire-and-forget effect, heard the same anywhere
@@ -459,6 +460,9 @@ public:
   void setMusicVolume(float volume, uint32_t music = 0);
   // False once music that does not loop has ended
   bool isMusicPlaying(uint32_t music = 0);
+  // Music pauses (where it is) whenever the game is paused, and resumes with it. Off by default.
+  void setMusicPausesWithGame(bool enabled);
+  bool musicPausesWithGame() const;
 
   // Scenes (JSON). Saving writes every entity of the scene (not the ones the game created, see isRuntime) with
   // components that have a serializer; see SceneSerializer.

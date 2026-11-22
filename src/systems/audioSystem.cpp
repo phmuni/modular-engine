@@ -48,7 +48,8 @@ struct AudioSystem::Impl {
   float masterVolume = 1.0f;
   float effectsVolume = 1.0f;
   float musicVolume = 1.0f;
-  bool paused = false;
+  bool paused = false;      // the effects group is stopped
+  bool musicPaused = false; // the music group is stopped
 
   ~Impl() {
     if (!ready) {
@@ -145,6 +146,7 @@ void AudioSystem::update(SystemManager &systemManager, bool paused, float timeSc
   ++impl.frame;
 
   // A stopped group stops pulling audio from its sounds, which pauses them where they are
+  const bool musicPaused = paused && m_musicPausesWithGame; // the time scale does not pause music
   paused = paused || timeScale <= 0.0f;
   if (paused != impl.paused) {
     impl.paused = paused;
@@ -152,6 +154,13 @@ void AudioSystem::update(SystemManager &systemManager, bool paused, float timeSc
       ma_sound_group_stop(&impl.effects);
     else
       ma_sound_group_start(&impl.effects);
+  }
+  if (musicPaused != impl.musicPaused) {
+    impl.musicPaused = musicPaused;
+    if (musicPaused)
+      ma_sound_group_stop(&impl.music);
+    else
+      ma_sound_group_start(&impl.music);
   }
   ma_sound_group_set_pitch(&impl.effects, std::max(timeScale, 0.01f));
 
@@ -320,6 +329,27 @@ void AudioSystem::setMusicVolume(float volume, uint32_t music) {
 
 bool AudioSystem::isMusicPlaying(uint32_t music) const {
   return isCurrentMusic(music) && !ma_sound_at_end(m_impl->currentMusic.get());
+}
+
+bool AudioSystem::isBusRunning(Bus bus) const {
+  return m_impl->ready && ma_sound_group_is_playing(bus == Bus::Music ? &m_impl->music : &m_impl->effects);
+}
+
+uint64_t AudioSystem::voiceCursor(uint32_t voice) const {
+  if (voice == 0)
+    return musicCursor();
+  auto it = m_impl->voices.find(voice);
+  ma_uint64 cursor = 0;
+  if (it != m_impl->voices.end())
+    ma_sound_get_cursor_in_pcm_frames(it->second.sound.get(), &cursor);
+  return cursor;
+}
+
+uint64_t AudioSystem::musicCursor(uint32_t music) const {
+  ma_uint64 cursor = 0;
+  if (isCurrentMusic(music))
+    ma_sound_get_cursor_in_pcm_frames(m_impl->currentMusic.get(), &cursor);
+  return cursor;
 }
 
 void AudioSystem::setMasterVolume(float volume) {

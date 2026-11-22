@@ -67,4 +67,6 @@ void LuaBindings::bindAudio() {
   sound.set_function("isMusicPlaying", [this](sol::optional<uint32_t> handle) {
     return engine.isMusicPlaying(handle.value_or(0));
   });
+  sound.set_function("setMusicPausesWithGame", [this](bool enabled) { engine.setMusicPausesWithGame(enabled); });
+  sound.set_function("musicPausesWithGame", [this]() { return engine.musicPausesWithGame(); });
 }

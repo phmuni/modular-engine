@@ -1201,6 +1201,15 @@ function sound.setMusicVolume(volume, handle) end
 ---@return boolean
 function sound.isMusicPlaying(handle) end
 
+---Whether music pauses together with the game (the pause menu, the editor's freeze) and resumes where it was. Off by
+---default: music plays through a pause; effects always pause. The time scale never pauses or bends music.
+---@param enabled boolean
+function sound.setMusicPausesWithGame(enabled) end
+
+---Whether music pauses together with the game (see setMusicPausesWithGame).
+---@return boolean
+function sound.musicPausesWithGame() end
+
 -- save ---------------------------------------------------------------------------------------------------------------
 
 ---Progress and settings that stay between runs. Values are numbers, strings, booleans or tables of those, nested.

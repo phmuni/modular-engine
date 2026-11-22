@@ -337,7 +337,7 @@ void Engine::update(bool &isRunning, bool pollInput) {
 
   // After the app had its chance to destroy entities this frame
   m_systemManager.getSystem<ResourceSystem>().collectUnusedMaterials();
-  m_systemManager.getSystem<AudioSystem>().update(m_systemManager, state.isToggled(Toggle::Paused),
+  m_systemManager.getSystem<AudioSystem>().update(m_systemManager, state.isToggled(Toggle::Paused) || isFrozen(),
                                                   timeSystem.getTimeScale());
   // After the app, so data models it changed this frame are shown this frame
   m_systemManager.getSystem<GameUISystem>().update(state.isToggled(Toggle::UIDebugger),
@@ -447,6 +447,12 @@ void Engine::setMusicVolume(float volume, uint32_t music) {
 uint32_t Engine::playMusic(std::string_view path, float volume, bool loop) {
   return m_systemManager.getSystem<AudioSystem>().playMusic(std::string(path), volume, loop);
 }
+
+void Engine::setMusicPausesWithGame(bool enabled) {
+  m_systemManager.getSystem<AudioSystem>().setMusicPausesWithGame(enabled);
+}
+
+bool Engine::musicPausesWithGame() const { return m_systemManager.getSystem<AudioSystem>().musicPausesWithGame(); }
 
 bool Engine::isMusicPlaying(uint32_t music) { return m_systemManager.getSystem<AudioSystem>().isMusicPlaying(music); }
 
