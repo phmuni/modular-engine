@@ -53,14 +53,25 @@ uniform vec3 viewForward;
 uniform samplerCubeArrayShadow pointShadowMaps;
 uniform float pointShadowTexel; // one texel of a cube face at distance 1 (2 / POINT_SHADOW_SIZE)
 // Image-based lighting (see ibl.h): the sky as diffuse light and reflections. iblMode 0 is none, 1 one color from every
-// direction (iblColor), 2 the cube maps below, times iblColor (the sky's intensity and the environment's).
+// direction (iblColor), 2 the sky's image (its diffuse light as spherical harmonics, its reflections as the cube map
+// below), times iblColor (the sky's intensity and the environment's).
 uniform int iblMode;
 uniform vec3 iblColor;
 uniform float iblRotation; // radians around +Y: the panorama's rotation, applied to the lookup vectors
-uniform float iblMaxLod;   // the pre-filtered map's last mip level: roughness 1
-uniform samplerCube iblIrradiance;
+uniform float iblMaxLod;   // the pre-filtered maps' last mip level: roughness 1
+uniform vec3 iblSh[9];     // the sky's diffuse light (sphericalHarmonics.h)
 uniform samplerCube iblPrefiltered;
 uniform sampler2D iblBrdf; // split-sum scale and bias by (NdotV, roughness)
+// Reflection probes (reflectionProbes.h): up to 4 whose boxes overlap what is drawn, picked on the CPU per draw. Each
+// brings its box, its diffuse light as spherical harmonics and a layer of the cube map array (reflections, pre-filtered
+// like the sky's). Inside a box a probe replaces the sky, fading in over its blend distance from the box's edges.
+uniform int probeCount;
+uniform vec3 probeCenter[4];
+uniform vec3 probeMin[4];
+uniform vec3 probeMax[4];
+uniform vec4 probeInfo[4]; // x blend distance, y intensity, z layer in probeCubes, w 1 when reflections follow the box
+uniform vec3 probeSh[36];  // 9 per probe
+uniform samplerCubeArray probeCubes;
 uniform int useShadows;
 uniform float opacity;
 uniform int useNormalMap;
@@ -251,25 +262,90 @@ vec3 ambientLight(vec3 ambientColor, vec3 albedo, float metallic, float roughnes
     return (diffuse + specular) * occlusion;
 }
 
-// Image-based lighting: the sky's irradiance (diffuse) and its pre-filtered reflection by roughness (specular, split-sum
-// with the BRDF table). Occlusion darkens both: the specular one with a cheaper, weaker term (Lagarde).
+// The polynomials of the spherical harmonics' basis (sphericalHarmonics.h) of a unit direction
+void shBasis(vec3 n, out float b[9])
+{
+    b[0] = 1.0;
+    b[1] = n.y;
+    b[2] = n.z;
+    b[3] = n.x;
+    b[4] = n.x * n.y;
+    b[5] = n.y * n.z;
+    b[6] = 3.0 * n.z * n.z - 1.0;
+    b[7] = n.x * n.z;
+    b[8] = n.x * n.x - n.y * n.y;
+}
+
+// Image-based lighting: the diffuse light (irradiance as spherical harmonics) and the reflections (pre-filtered by
+// roughness, split-sum with the BRDF table) of the sky and of the reflection probes around, blended: a probe's weight
+// is how far inside its box the point is (0 at the edge, 1 from its blend distance in), and the sky fills what the
+// weights leave of 1. Occlusion darkens both: the specular one with a cheaper, weaker term (Lagarde).
 vec3 environmentLight(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float NdotV, float occlusion)
 {
-    if (iblMode == 0)
+    if (iblMode == 0 && probeCount == 0)
         return vec3(0.0);
     vec2 brdf = textureLod(iblBrdf, vec2(NdotV, roughness), 0.0).rg;
     vec3 specularColor = F0 * brdf.x + brdf.y;
-    vec3 irradiance = iblColor;
-    vec3 reflected = iblColor;
-    if (iblMode == 2) {
-        // Rough surfaces reflect a direction nearer the normal than the mirror one
-        vec3 R = reflect(-V, N);
-        R = normalize(mix(N, R, (1.0 - roughness) * (sqrt(1.0 - roughness) + roughness)));
-        float c = cos(iblRotation), s = sin(iblRotation);
-        vec3 rotatedN = vec3(c * N.x + s * N.z, N.y, -s * N.x + c * N.z);
-        vec3 rotatedR = vec3(c * R.x + s * R.z, R.y, -s * R.x + c * R.z);
-        irradiance = textureLod(iblIrradiance, rotatedN, 0.0).rgb * iblColor;
-        reflected = textureLod(iblPrefiltered, rotatedR, roughness * iblMaxLod).rgb * iblColor;
+    // Rough surfaces reflect a direction nearer the normal than the mirror one
+    vec3 R = reflect(-V, N);
+    R = normalize(mix(N, R, (1.0 - roughness) * (sqrt(1.0 - roughness) + roughness)));
+    float lod = roughness * iblMaxLod;
+
+    float weights[4];
+    float total = 0.0;
+    for (int i = 0; i < probeCount; ++i) {
+        vec3 inside = min(FragPos - probeMin[i], probeMax[i] - FragPos);
+        float depth = min(inside.x, min(inside.y, inside.z));
+        float blend = probeInfo[i].x;
+        weights[i] = blend > 1e-4 ? clamp(depth / blend, 0.0, 1.0) : (depth >= 0.0 ? 1.0 : 0.0);
+        total += weights[i];
+    }
+    float scale = total > 1.0 ? 1.0 / total : 1.0;
+    float skyWeight = 1.0 - min(total, 1.0);
+
+    vec3 irradiance = vec3(0.0);
+    vec3 reflected = vec3(0.0);
+    if (iblMode != 0 && skyWeight > 0.0) {
+        vec3 skyIrradiance = iblColor;
+        vec3 skyReflected = iblColor;
+        if (iblMode == 2) {
+            float c = cos(iblRotation), s = sin(iblRotation);
+            vec3 rotatedN = vec3(c * N.x + s * N.z, N.y, -s * N.x + c * N.z);
+            vec3 rotatedR = vec3(c * R.x + s * R.z, R.y, -s * R.x + c * R.z);
+            float basis[9];
+            shBasis(rotatedN, basis);
+            vec3 sh = vec3(0.0);
+            for (int k = 0; k < 9; ++k)
+                sh += iblSh[k] * basis[k];
+            skyIrradiance = max(sh, vec3(0.0)) * iblColor;
+            skyReflected = textureLod(iblPrefiltered, rotatedR, lod).rgb * iblColor;
+        }
+        irradiance += skyIrradiance * skyWeight;
+        reflected += skyReflected * skyWeight;
+    }
+    if (probeCount > 0) {
+        float basis[9];
+        shBasis(N, basis);
+        for (int i = 0; i < probeCount; ++i) {
+            float w = weights[i] * scale * probeInfo[i].y;
+            if (w <= 0.0)
+                continue;
+            vec3 sh = vec3(0.0);
+            for (int k = 0; k < 9; ++k)
+                sh += probeSh[i * 9 + k] * basis[k];
+            irradiance += max(sh, vec3(0.0)) * w;
+            vec3 dir = R;
+            if (probeInfo[i].w > 0.5) {
+                // Where the reflection ray leaves the box, seen from the probe's center: a wall appears where it is
+                vec3 safeR = mix(R, vec3(1e-5), lessThan(abs(R), vec3(1e-5)));
+                vec3 toMax = (probeMax[i] - FragPos) / safeR;
+                vec3 toMin = (probeMin[i] - FragPos) / safeR;
+                vec3 far = max(toMax, toMin);
+                float t = max(min(far.x, min(far.y, far.z)), 0.0);
+                dir = FragPos + R * t - probeCenter[i];
+            }
+            reflected += textureLod(probeCubes, vec4(dir, probeInfo[i].z), lod).rgb * w;
+        }
     }
     vec3 diffuse = irradiance * albedo * (1.0 - metallic) * (vec3(1.0) - specularColor);
     float specularOcclusion = clamp(pow(NdotV + occlusion, exp2(-16.0 * roughness - 1.0)) - 1.0 + occlusion, 0.0, 1.0);

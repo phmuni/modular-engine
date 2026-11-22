@@ -349,6 +349,12 @@ std::vector<std::string> GameEntity::clips() const {
   return m_engine ? m_engine->getAnimationClips(m_id) : std::vector<std::string>();
 }
 
+bool GameEntity::bakeReflectionProbe() { return m_engine && m_engine->bakeReflectionProbe(m_id); }
+
+bool GameEntity::refreshReflectionProbe() { return m_engine && m_engine->refreshReflectionProbe(m_id); }
+
+bool GameEntity::isReflectionProbeStale() const { return m_engine && m_engine->isReflectionProbeStale(m_id); }
+
 void GameEntity::setAnimator(const std::string &path) {
   if (m_engine)
     m_engine->setAnimator(m_id, path);

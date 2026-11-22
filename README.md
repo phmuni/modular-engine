@@ -1248,11 +1248,33 @@ editor edits all of it.
 
 The sky also lights the scene (image-based lighting): objects get diffuse light and reflections from the panorama, so
 a metal sphere shows the sky it stands under. From the image the engine makes, once and again only when the image
-changes, an irradiance cube map (32 per face), a GGX pre-filtered specular cube map (128, 5 roughness levels) and a
-BRDF table, all with render passes (no compute shaders); `rotation` and `intensity` turn and scale the lighting without
+changes, its diffuse light as order-2 spherical harmonics (9 colors, passed as uniforms), a GGX pre-filtered specular cube
+map (128, 5 roughness levels) and a BRDF table, all with render passes (no compute shaders); `rotation` and `intensity` turn and scale the lighting without
 making them again. A `.hdr` panorama keeps its range (a very bright sun lights and reflects as bright as it is). A sky
 with only a `color` lights evenly with that color, and the default black sky adds nothing. `environmentIntensity`
 (1 by default, `engine.setEnvironmentIntensity(x)`) scales it; 0 turns it off.
+
+#### Reflection probes
+
+Indoors the sky should not light things: add a **Reflection Probe** component (Add Entity or Add Component in the
+editor) to an entity in the room. It is a static capture of what is around its position, lit as the game lights it
+(the sun's and the lights' shadows, the sky, transparent surfaces; no ambient occlusion, particles or other probes:
+first bounce only), turned into pre-filtered reflections and spherical-harmonics diffuse light the same way as the sky.
+Things whose bounds overlap its box (`size`, centered on the entity, aligned to the world axes; make it reach a little
+past the walls) are lit by it instead of the sky, fading in over `blendDistance` from the box's faces; up to 4 probes
+light one thing (smallest box first) and the sky fills what their weights leave. `boxProjection` corrects reflections
+for the box so walls appear where they are; `intensity` scales the probe (the Skybox's `environmentIntensity` scales the
+sky's light, which a capture already contains). `resolution` (64, 128 or 256) is the capture's face size; the stored
+reflections are always 128 across, in one cube map array for all probes (one texture unit).
+
+Probes are static: captured when their scene loads (or read from the file below), again only on request. The editor's
+Lighting > Bake Reflection Probes (or Bake in the probe's section) writes `assets/probes/<scene file name>/<entity
+name>.probe` (about 0.8 MB each) and sets `bakedPath`; save the scene to keep it. The file carries a hash of the
+probe's position, size and resolution, and the inspector says "Stale" when it no longer matches. A missing, unreadable
+or other-version file is logged and the probe captured at load instead. From code: `engine.bakeReflectionProbes()`,
+`entity:bakeReflectionProbe()`, `entity:refreshReflectionProbe()` (memory only, for when the room changed),
+`entity:isReflectionProbeStale()`; C++ has the same on `Engine`. Probes belong to their scene: unloading it removes
+them. Not baked while the editor is testing (Play).
 
 The image goes through the same texture cache and streaming as model textures. Its center column is straight ahead (-Z); `intensity` above 1 lets bright stars reach the bloom. [`tools/generateSpaceSkybox.c`](tools/generateSpaceSkybox.c) generated the space panorama used by Space Aliens.
 

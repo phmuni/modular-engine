@@ -13,6 +13,7 @@
 #include "components/gravityLens.h"
 #include "components/light.h"
 #include "components/particleEmitter.h"
+#include "components/reflectionProbe.h"
 #include "components/skybox.h"
 #include "components/tags.h"
 #include "components/characterController.h"
@@ -68,6 +69,9 @@ NLOHMANN_JSON_SERIALIZE_ENUM(FogMode, {{FogMode::Linear, "linear"}, {FogMode::Ex
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Fog, enabled, mode, matchSky, color, start, finish, density)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Skybox, path, intensity, rotation, color, fog, ambientColor,
                                                 ambientIntensity, environmentIntensity, ssaoRadius, ssaoIntensity)
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ReflectionProbe, size, blendDistance, intensity, boxProjection,
+                                                resolution, bakedPath)
 
 NLOHMANN_JSON_SERIALIZE_ENUM(BodyType, {{BodyType::Static, "static"},
                                         {BodyType::Dynamic, "dynamic"},

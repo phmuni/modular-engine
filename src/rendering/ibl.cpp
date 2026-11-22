@@ -1,4 +1,4 @@
-// Image-based lighting: the environment, irradiance and pre-filtered cube maps and the BRDF table (see ibl.h).
+// Image-based lighting: the environment, its diffuse spherical harmonics and the pre-filtered cube map and the BRDF table (see ibl.h).
 
 #include "rendering/ibl.h"
 
@@ -13,7 +13,6 @@
 namespace {
 constexpr const char *kFullscreenVertex = "../assets/shaders/fullscreen.vert";
 constexpr const char *kEquirectFragment = "../assets/shaders/iblEquirect.frag";
-constexpr const char *kIrradianceFragment = "../assets/shaders/iblIrradiance.frag";
 constexpr const char *kPrefilterFragment = "../assets/shaders/iblPrefilter.frag";
 constexpr const char *kBrdfFragment = "../assets/shaders/iblBrdf.frag";
 
@@ -100,16 +99,15 @@ void Ibl::ensureResources() {
     return;
   const std::string vertex = EngineConfig::resolvePath(kFullscreenVertex);
   m_equirectShader.emplace(vertex, EngineConfig::resolvePath(kEquirectFragment));
-  m_irradianceShader.emplace(vertex, EngineConfig::resolvePath(kIrradianceFragment));
   m_prefilterShader.emplace(vertex, EngineConfig::resolvePath(kPrefilterFragment));
   m_brdfShader.emplace(vertex, EngineConfig::resolvePath(kBrdfFragment));
   glGenVertexArrays(1, &m_vao);
   glGenFramebuffers(1, &m_fbo);
 }
 
-GLuint Ibl::irradiance() const {
-  if (m_irradiance)
-    return m_irradiance;
+GLuint Ibl::prefiltered() const {
+  if (m_prefiltered)
+    return m_prefiltered;
   if (!m_blackCube) {
     m_blackCube = makeCube(1, 1);
     const float black[4] = {0, 0, 0, 1};
@@ -118,8 +116,6 @@ GLuint Ibl::irradiance() const {
   }
   return m_blackCube;
 }
-
-GLuint Ibl::prefiltered() const { return m_prefiltered ? m_prefiltered : irradiance(); }
 
 void Ibl::ensureBrdf() {
   if (m_brdf)
@@ -154,7 +150,7 @@ GLuint Ibl::brdfLut() const {
 }
 
 void Ibl::release() {
-  for (GLuint *texture : {&m_environment, &m_irradiance, &m_prefiltered})
+  for (GLuint *texture : {&m_environment, &m_prefiltered})
     if (*texture) {
       glDeleteTextures(1, texture);
       *texture = 0;
@@ -177,7 +173,6 @@ void Ibl::shutdown() {
     m_vao = 0;
   }
   m_equirectShader.reset();
-  m_irradianceShader.reset();
   m_prefilterShader.reset();
   m_brdfShader.reset();
   m_image.clear();
@@ -250,44 +245,21 @@ bool Ibl::generate(const std::string &imagePath, bool gammaCorrect) {
   glBindVertexArray(m_vao);
   glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
 
-  auto drawFaces = [&](GLuint cube, int level, int size, Shader &shader) {
-    glViewport(0, 0, size, size);
-    for (int face = 0; face < 6; ++face) {
-      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, cube, level);
-      shader.setInt("face", face);
-      glDrawArrays(GL_TRIANGLES, 0, 3);
-    }
-  };
-
   // 1. The environment: the panorama as a cube, with its mip chain (the blurs below sample those levels)
   m_environment = makeCube(kEnvironmentSize, static_cast<int>(std::log2(kEnvironmentSize)) + 1);
   m_equirectShader->use();
   m_equirectShader->setTex("panorama", panorama, 0, GL_TEXTURE_2D);
   // 0: already linear light (.hdr), 1: 8-bit used as written (gamma-correct lighting off), 2: 8-bit to linear light
   m_equirectShader->setInt("sourceEncoding", hdr ? 0 : (gammaCorrect ? 2 : 1));
+  glBindVertexArray(m_vao);
   drawFaces(m_environment, 0, kEnvironmentSize, *m_equirectShader);
   glBindTexture(GL_TEXTURE_CUBE_MAP, m_environment);
   glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
   glDeleteTextures(1, &panorama);
 
-  // 2. Diffuse irradiance
-  m_irradiance = makeCube(kIrradianceSize, 1);
-  m_irradianceShader->use();
-  m_irradianceShader->setTex("environment", m_environment, 0, GL_TEXTURE_CUBE_MAP);
-  m_irradianceShader->setFloat("environmentSize", static_cast<float>(kEnvironmentSize));
-  drawFaces(m_irradiance, 0, kIrradianceSize, *m_irradianceShader);
-
-  // 3. Pre-filtered specular: level i is roughness i / (levels - 1)
-  m_prefiltered = makeCube(kPrefilterSize, kPrefilterLevels);
-  m_prefilterShader->use();
-  m_prefilterShader->setTex("environment", m_environment, 0, GL_TEXTURE_CUBE_MAP);
-  m_prefilterShader->setFloat("environmentSize", static_cast<float>(kEnvironmentSize));
-  for (int level = 0; level < kPrefilterLevels; ++level) {
-    const int size = std::max(kPrefilterSize >> level, 1);
-    m_prefilterShader->setFloat("targetSize", static_cast<float>(size));
-    m_prefilterShader->setFloat("roughness", static_cast<float>(level) / static_cast<float>(kPrefilterLevels - 1));
-    drawFaces(m_prefiltered, level, size, *m_prefilterShader);
-  }
+  // 2. Diffuse light, as spherical harmonics from a small mip level; 3. pre-filtered specular
+  m_sh = irradianceSh(m_environment, kEnvironmentSize);
+  m_prefiltered = prefilterCube(m_environment, kEnvironmentSize);
 
   // The environment was only the source of the other two
   glDeleteTextures(1, &m_environment);
@@ -302,4 +274,55 @@ bool Ibl::generate(const std::string &imagePath, bool gammaCorrect) {
   LOG_I("[Ibl] Sky lighting from %s: decoded %dx%d in %.1f ms, maps made in %.1f ms", imagePath.c_str(), width, height,
         m_decodeMs, m_gpuMs);
   return true;
+}
+
+void Ibl::drawFaces(GLuint cube, int level, int size, Shader &shader) {
+  glViewport(0, 0, size, size);
+  for (int face = 0; face < 6; ++face) {
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, cube, level);
+    shader.setInt("face", face);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+  }
+}
+
+Sh9 Ibl::irradianceSh(GLuint environment, int size) {
+  // The mip level of about kIrradianceSize: a box-filtered average keeps the energy, and is all a smooth function of
+  // order 2 can follow anyway
+  int level = 0;
+  while ((size >> level) > kIrradianceSize)
+    ++level;
+  const int levelSize = std::max(size >> level, 1);
+  std::vector<float> texels(static_cast<size_t>(levelSize) * levelSize * 4 * 6);
+  GLint previous = 0;
+  glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &previous);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, environment);
+  const size_t faceFloats = static_cast<size_t>(levelSize) * levelSize * 4;
+  const float *faces[6];
+  for (int face = 0; face < 6; ++face) {
+    glGetTexImage(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, level, GL_RGBA, GL_FLOAT, texels.data() + face * faceFloats);
+    faces[face] = texels.data() + face * faceFloats;
+  }
+  glBindTexture(GL_TEXTURE_CUBE_MAP, static_cast<GLuint>(previous));
+  return sh::fromCubeFaces(faces, levelSize);
+}
+
+GLuint Ibl::prefilterCube(GLuint environment, int size) {
+  ensureResources();
+  PassState state;
+  glBindVertexArray(m_vao);
+  glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
+  GLuint cube = makeCube(kPrefilterSize, kPrefilterLevels);
+  m_prefilterShader->use();
+  m_prefilterShader->setTex("environment", environment, 0, GL_TEXTURE_CUBE_MAP);
+  m_prefilterShader->setFloat("environmentSize", static_cast<float>(size));
+  // Level i is roughness i / (levels - 1)
+  for (int level = 0; level < kPrefilterLevels; ++level) {
+    const int levelSize = std::max(kPrefilterSize >> level, 1);
+    m_prefilterShader->setFloat("targetSize", static_cast<float>(levelSize));
+    m_prefilterShader->setFloat("roughness", static_cast<float>(level) / static_cast<float>(kPrefilterLevels - 1));
+    drawFaces(cube, level, levelSize, *m_prefilterShader);
+  }
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+  glBindVertexArray(0);
+  return cube;
 }

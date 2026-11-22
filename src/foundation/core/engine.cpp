@@ -112,6 +112,7 @@ void Engine::shutdown() {
   auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
   renderSystem.shutdownSsao();
   renderSystem.shutdownIbl();
+  renderSystem.shutdownProbes();
   renderSystem.getRenderer().shutdown();
   SDL_Quit();
 }

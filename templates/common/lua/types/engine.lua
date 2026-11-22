@@ -184,7 +184,7 @@ function Entity:hasTag(tag) end
 function Entity:tags() end
 
 ---Whether it has an engine component: "Model", "RigidBody", "CharacterController", "Light", "Camera", "Animator",
----"Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter" or "Hidden", or a game component
+---"Script", "Transform", "AudioSource", "Skybox", "ReflectionProbe", "Collision", "ParticleEmitter" or "Hidden", or a game component
 ---registered in C++ (by the name it was registered with).
 ---@param component string
 ---@return boolean
@@ -319,6 +319,22 @@ function Entity:clips() end
 ---Entity:play on an entity with a machine takes over until the machine changes state.
 ---@param path string
 function Entity:setAnimator(path) end
+
+---Reflection probe (the "ReflectionProbe" component, made in the editor): captures what is around the entity and writes it to
+---the probe's file under assets/probes/, setting its bakedPath, so saving the scene keeps it. Returns false when the
+---entity is not a probe, the capture failed or the file could not be written. Does nothing while the editor is testing.
+---@return boolean
+function Entity:bakeReflectionProbe() end
+
+---Reflection probe: captures it again into memory only (nothing is written, the baked file stays as it is): for when
+---something in the room changed. The result lasts until the scene is loaded again. Returns false if the entity is not a probe.
+---@return boolean
+function Entity:refreshReflectionProbe() end
+
+---Reflection probe: whether what it holds (the baked file or a capture) is of another position, box size or resolution
+---than the probe has now, so it needs baking or refreshing.
+---@return boolean
+function Entity:isReflectionProbeStale() end
 
 ---Sets a parameter of its animation state machine: a number for a float, a boolean for a bool. A name the machine's
 ---file does not declare is a warning.
@@ -698,6 +714,20 @@ function engine.setEnvironmentIntensity(intensity) end
 ---The sky's lighting intensity.
 ---@return number
 function engine.environmentIntensity() end
+
+---Captures every reflection probe of the open scenes and writes each one's file (assets/probes/<scene file name>/<entity
+---name>.probe), setting its bakedPath; saving the scene then keeps the paths. Returns how many were baked. Writes nothing
+---(returns 0) while the editor is testing. See also Entity:refreshReflectionProbe.
+---@return integer
+function engine.bakeReflectionProbes() end
+
+---How many reflection probes are lighting the scene now (those with data that are not hidden).
+---@return integer
+function engine.reflectionProbeCount() end
+
+---How many reflection probe captures were made since the game started (when scenes load, and refresh and bake calls).
+---@return integer
+function engine.reflectionProbeCaptures() end
 
 -- game ---------------------------------------------------------------------------------------------------------------
 

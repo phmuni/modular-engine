@@ -319,6 +319,7 @@ bool Engine::hasComponent(Entity entity, std::string_view component) {
   if (component == "Transform") return has<Transform>(entity);
   if (component == "AudioSource") return has<AudioSource>(entity);
   if (component == "Skybox") return has<Skybox>(entity);
+  if (component == "ReflectionProbe") return has<ReflectionProbe>(entity);
   if (component == "Collision") return has<Collision>(entity);
   if (component == "ParticleEmitter") return has<ParticleEmitter>(entity);
   if (component == "Hidden") return has<Hidden>(entity);

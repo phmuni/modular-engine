@@ -2,16 +2,20 @@
 #include "components/hidden.h"
 #include "components/light.h"
 #include "components/model.h"
+#include "components/reflectionProbe.h"
 #include "components/skybox.h"
 #include "rendering/resources/material.h"
 #include "rendering/resources/mesh.h"
+#include "rendering/resources/textureUploader.h"
 #include "systems/animationSystem.h"
 #include "systems/cameraSystem.h"
 #include "systems/lightSystem.h"
 #include "systems/particleSystem.h"
 #include "systems/resourceSystem.h"
 #include "systems/transformSystem.h"
+#include "foundation/core/logger.h"
 #include <algorithm>
+#include <chrono>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <cmath>
@@ -140,10 +144,11 @@ constexpr int kAmbientOcclusionUnit = 15;
 // The material's occlusion map takes the unit after the point shadows (0 to 4: diffuse, metallic-roughness, emission,
 // normal, the sun's shadow map)
 constexpr int kOcclusionUnit = kPointShadowUnit + 1;
-// Image-based lighting: the irradiance and pre-filtered cube maps, and the BRDF table
-constexpr int kIrradianceUnit = kOcclusionUnit + 1;
-constexpr int kPrefilteredUnit = kIrradianceUnit + 1;
-constexpr int kBrdfUnit = kPrefilteredUnit + 1;
+// Image-based lighting: the sky's pre-filtered cube map, the reflection probes' cube map array and the BRDF table (the
+// sky's diffuse light is uniforms, spherical harmonics)
+constexpr int kPrefilteredUnit = kOcclusionUnit + 1;
+constexpr int kProbeUnit = kPrefilteredUnit + 1;
+constexpr int kBrdfUnit = kProbeUnit + 1;
 // Custom shaders' texture parameters take the units after those, up to the AO's
 constexpr int kFirstCustomTextureUnit = kBrdfUnit + 1;
 constexpr int kMaxCustomTextures = kAmbientOcclusionUnit - kFirstCustomTextureUnit;
@@ -182,8 +187,8 @@ void RenderSystem::setShadowShaderHandle(uint32_t handle) { m_shadowShaderHandle
 
 template <typename SameRun, typename DrawRun> void RenderSystem::drawInstanceRuns(SameRun sameRun, DrawRun drawRun) {
   auto byKey = [](const InstanceItem &a, const InstanceItem &b) {
-    return std::tie(a.meshHandle, a.indexStart, a.indexCount, a.materialHandle) <
-           std::tie(b.meshHandle, b.indexStart, b.indexCount, b.materialHandle);
+    return std::tie(a.meshHandle, a.indexStart, a.indexCount, a.materialHandle, a.probes) <
+           std::tie(b.meshHandle, b.indexStart, b.indexCount, b.materialHandle, b.probes);
   };
   std::sort(m_instanceItems.begin(), m_instanceItems.end(), byKey);
 
@@ -566,23 +571,66 @@ void RenderSystem::rebuildRenderBatches(ComponentManager &componentManager, Reso
 }
 
 void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager &componentManager) {
+  // The probes of the open scenes: their baked files are read now, and those with none are captured before this frame
+  // is drawn (the capture draws the scene itself, see drawPipeline)
+  m_probes.update(componentManager);
+  for (Entity entity : m_probes.takePendingCaptures()) {
+    if (std::optional<ProbeData> data = captureProbe(systemManager, componentManager, entity)) {
+      const ReflectionProbe *probe = componentManager.tryGet<ReflectionProbe>(entity);
+      m_probes.setData(entity, std::move(*data), probe ? probe->bakedPath : std::string(), true);
+    }
+  }
+  m_probes.update(componentManager); // the array, with what was captured
+  drawPipeline(systemManager, componentManager, nullptr);
+}
+
+std::optional<ProbeData> RenderSystem::captureProbe(SystemManager &systemManager, ComponentManager &componentManager,
+                                                    Entity entity) {
+  const ReflectionProbe *probe = componentManager.tryGet<ReflectionProbe>(entity);
+  const Transform *transform = componentManager.tryGet<Transform>(entity);
+  if (!probe || !transform || m_capturing)
+    return std::nullopt;
+  ProbeCapture capture;
+  capture.position = transform->position;
+  capture.resolution = ReflectionProbe::clampResolution(probe->resolution);
+  capture.result.hash = probeHash(transform->position, *probe);
+  capture.result.resolution = capture.resolution;
+  m_capturing = true;
+  drawPipeline(systemManager, componentManager, &capture);
+  m_capturing = false;
+  if (!capture.ok)
+    return std::nullopt;
+  return std::move(capture.result);
+}
+
+void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &componentManager,
+                                ProbeCapture *capture) {
   auto &renderer = getRenderer();
   auto &transformSystem = systemManager.getSystem<TransformSystem>();
   auto &lightSystem = systemManager.getSystem<LightSystem>();
   auto &cameraSystem = systemManager.getSystem<CameraSystem>();
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
 
-  Entity cameraEntity = cameraSystem.getActiveCamera();
-  if (cameraEntity == -1)
+  // A probe's capture sees from its own camera: 90 degrees, one face of the cube at a time (set below)
+  const Entity cameraEntity = capture ? Entity(-1) : cameraSystem.getActiveCamera();
+  if (cameraEntity == -1 && !capture)
     return;
   m_animation = systemManager.hasSystem<AnimationSystem>() ? &systemManager.getSystem<AnimationSystem>() : nullptr;
 
-  const auto &camera = componentManager.get<Camera>(cameraEntity);
-  glm::mat4 view = cameraSystem.getViewMatrix(camera);
-  glm::mat4 projection = cameraSystem.getProjectionMatrix(camera);
+  Camera camera;
+  glm::mat4 view(1.0f), projection(1.0f);
+  if (capture) {
+    camera.position = capture->position;
+    camera.fov = 90.0f;
+    camera.aspectRatio = 1.0f;
+  } else {
+    camera = componentManager.get<Camera>(cameraEntity);
+    view = cameraSystem.getViewMatrix(camera);
+    projection = cameraSystem.getProjectionMatrix(camera);
+  }
   // From the view matrix rather than Camera::position, which a relative camera offsets by its Transform
-  const glm::vec3 viewPos = glm::vec3(glm::inverse(view)[3]);
-  const Frustum frustum(projection * view);
+  glm::vec3 viewPos = glm::vec3(glm::inverse(view)[3]);
+  Frustum frustum(projection * view);
   m_culledCount = 0;
 
   auto &state = systemManager.getSystem<StateSystem>();
@@ -593,7 +641,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   m_shadowCastersGathered = false;
   m_shadowViewPos = viewPos;
   DirectionalShadow sunShadow;
-  if (shadowsEnabled)
+  if (shadowsEnabled && !capture) // a capture fits the cascades to each of its faces, below
     sunShadow = renderDirectionalShadow(componentManager, resourceSystem, transformSystem, lightSystem, camera, view,
                                          cameraSystem.viewAspect() > 0.0f ? cameraSystem.viewAspect() : camera.aspectRatio);
   const auto &pointShadows =
@@ -652,7 +700,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       m_environment.environmentColor = iblColor * iblStrength;
     }
   }
-  if (m_environment.environmentMode != 0)
+  if (m_environment.environmentMode != 0 || !m_probes.empty())
     m_ibl.ensureBrdf();
   if (gammaCorrect)
     skyColor = glm::pow(skyColor, glm::vec3(2.2f));
@@ -672,6 +720,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   const float renderWidth = static_cast<float>(renderer.getRenderWidth());
   const float renderHeight = static_cast<float>(renderer.getRenderHeight());
 
+  // The probes the program in use has set (kNone: none), so a run of draws with the same ones sets them once
+  uint32_t appliedProbes = ReflectionProbes::kNone;
   auto configureShader = [&](Shader &shader, bool receiveAo = false) {
     shader.setInt("depthOnly", 0);
     shader.setInt("aoTexture", kAmbientOcclusionUnit);
@@ -708,10 +758,15 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     shader.setVec3("iblColor", m_environment.environmentColor);
     shader.setFloat("iblRotation", m_environment.environmentRotation);
     shader.setFloat("iblMaxLod", static_cast<float>(Ibl::kPrefilterLevels - 1));
-    // The three samplers always hold the right kinds of texture (black stand-ins when there is no environment)
-    shader.setTex("iblIrradiance", m_ibl.irradiance(), kIrradianceUnit, GL_TEXTURE_CUBE_MAP);
+    if (m_ibl.hasMaps())
+      shader.setVec3Array("iblSh", m_ibl.sh().data(), 9);
+    // The samplers always hold the right kinds of texture (black stand-ins when there is no environment or probe)
     shader.setTex("iblPrefiltered", m_ibl.prefiltered(), kPrefilteredUnit, GL_TEXTURE_CUBE_MAP);
+    shader.setTex("probeCubes", m_probes.texture(), kProbeUnit, GL_TEXTURE_CUBE_MAP_ARRAY);
     shader.setTex("iblBrdf", m_ibl.brdfLut(), kBrdfUnit, GL_TEXTURE_2D);
+    // No probe until a draw says which light it (applyProbes)
+    shader.setInt("probeCount", 0);
+    appliedProbes = ReflectionProbes::kNone;
     shader.setFloat("time", m_shaderTime); // only custom surface shaders have it
 
     lightSystem.uploadLightsToShader(shader, componentManager);
@@ -747,7 +802,8 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
         applyShaderParams(shader, material, *custom, resourceSystem.getMaterial(0).getEmission());
         cutout = cutout || custom->code.cutout;
       }
-    const bool coverage = cutout && opaquePass && opacity >= 1.0f && renderer.alphaToCoverageAvailable();
+    const bool coverage =
+        cutout && opaquePass && opacity >= 1.0f && renderer.alphaToCoverageAvailable() && !capture;
     shader.setInt("alphaToCoverage", coverage ? 1 : 0);
     if (coverage != coverageOn) {
       coverageOn = coverage;
@@ -783,6 +839,22 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     applyMaterial(shader, material, opacity);
   };
 
+  // The probes that light a thing, by its world bounds: none in the depth prepass and in a probe's own capture (first
+  // bounce only), and the walk is skipped when the scene has no probes
+  const bool probesWanted = !capture && !m_probes.empty();
+  auto selectProbes = [&](const Mesh &mesh, const glm::mat4 &modelMatrix) -> uint32_t {
+    if (!probesWanted || depthPass)
+      return ReflectionProbes::kNone;
+    const glm::vec3 center = glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f));
+    return m_probes.select(center, mesh.getBoundsRadius() * maxScaleOf(modelMatrix));
+  };
+  auto applyProbes = [&](const Shader &shader, uint32_t selection) {
+    if (selection == appliedProbes)
+      return;
+    appliedProbes = selection;
+    m_probes.apply(shader, selection);
+  };
+
   // Per-draw path: shaders without instancing support and transparent models
   auto drawRange = [&](Shader &shader, Entity entity, uint32_t indexStart, uint32_t indexCount,
                        uint32_t materialHandle, float opacity) {
@@ -799,6 +871,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       return;
     }
 
+    applyProbes(shader, selectProbes(mesh, modelMatrix));
     shader.setInt("useInstancing", 0);
     shader.setMat4("MVP", projection * view * modelMatrix);
     shader.setMat4("model", modelMatrix);
@@ -865,9 +938,10 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
         }
 
         const InstanceData instance{modelMatrix, calculateNormalMatrix(modelMatrix)};
+        const uint32_t probes = selectProbes(mesh, modelMatrix);
         forEachDrawRange(mesh, *model, !anyBlend, includeOpaque,
                          [&](uint32_t start, uint32_t count, uint32_t material) {
-                           m_instanceItems.push_back({model->meshHandle, start, count, material, instance});
+                           m_instanceItems.push_back({model->meshHandle, start, count, material, probes, instance});
                          });
       }
 
@@ -875,9 +949,10 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       drawInstanceRuns(
           [](const InstanceItem &a, const InstanceItem &b) {
             return a.meshHandle == b.meshHandle && a.indexStart == b.indexStart && a.indexCount == b.indexCount &&
-                   a.materialHandle == b.materialHandle;
+                   a.materialHandle == b.materialHandle && a.probes == b.probes;
           },
           [&](const InstanceItem &first, int count) {
+            applyProbes(shader, first.probes);
             bindMaterial(shader, resourceSystem.getMaterial(first.materialHandle), 1.0f);
             renderer.drawIndexRangeInstanced(resourceSystem.getMesh(first.meshHandle), first.indexStart,
                                              first.indexCount, count);
@@ -895,7 +970,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   // Ambient occlusion: the opaque geometry's depth into the AO's own target, then the AO from it. The lit pass then
   // reads the AO for its ambient light. Skipped (and the lit pass unchanged) when off.
   ssao = ssao.clamped();
-  if (m_ssaoEnabled && ssao.intensity > 0.0f) {
+  if (m_ssaoEnabled && ssao.intensity > 0.0f && !capture) {
     m_ssao.beginDepthPrepass(renderer.getRenderWidth(), renderer.getRenderHeight());
     depthPass = true;
     // The prepass's depth is single-sample: cut-out edges are cut hard there, not smoothed by alpha-to-coverage
@@ -907,8 +982,10 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
     aoActive = true;
   }
 
-  // Everything from here draws into the HDR scene target
-  renderer.beginScene(skyColor);
+  // The lit passes: opaque, the sky, then transparent surfaces blended over it. Into the HDR scene target, or for a
+  // probe's capture one face of its cube.
+  auto drawLit = [&] {
+  opaquePass = true;
   drawOpaque();
   opaquePass = false;
   if (coverageOn) {
@@ -962,6 +1039,103 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
   renderSorted(softDraws, &Renderer::beginSoftTransparentPass, &Renderer::endSoftTransparentPass);
   renderSorted(transparentDraws, &Renderer::beginTransparentPass, &Renderer::endTransparentPass);
   renderer.setFaceCulling(true); // a double-sided material may have turned it off
+  };
+
+  if (capture) {
+    // The six faces of the cube around the probe, lit as the main view is (shadows, sky, transparency) but with no
+    // ambient occlusion, no post-processing, no particles and no probes: first bounce only, in linear HDR
+    const auto start = std::chrono::steady_clock::now();
+    TextureUploader::pump(static_cast<size_t>(-1)); // streamed textures complete: the capture is of the sharp scene
+    const int size = capture->resolution;
+    GLint previousFramebuffer = 0, previousViewport[4] = {};
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_VIEWPORT, previousViewport);
+    GLboolean wasDepthTest = glIsEnabled(GL_DEPTH_TEST), wasBlend = glIsEnabled(GL_BLEND),
+              wasScissor = glIsEnabled(GL_SCISSOR_TEST);
+    GLint previousCube = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &previousCube);
+
+    GLuint cube = 0, depth = 0, framebuffer = 0;
+    const int levels = static_cast<int>(std::log2(static_cast<float>(size))) + 1;
+    glGenTextures(1, &cube);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cube);
+    for (int level = 0; level < levels; ++level)
+      for (int face = 0; face < 6; ++face)
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, level, GL_RGBA16F, std::max(size >> level, 1),
+                     std::max(size >> level, 1), 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, levels - 1);
+    glGenRenderbuffers(1, &depth);
+    glBindRenderbuffer(GL_RENDERBUFFER, depth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, size, size);
+    glGenFramebuffers(1, &framebuffer);
+
+    const glm::mat4 faceProjection = glm::perspective(glm::radians(90.0f), 1.0f, EngineConfig::CAMERA_NEAR, EngineConfig::CAMERA_FAR);
+    bool complete = true;
+    for (int face = 0; face < 6; ++face) {
+      camera.front = kCubeFaceDirections[face];
+      view = glm::lookAt(capture->position, capture->position + kCubeFaceDirections[face], kCubeFaceUps[face]);
+      projection = faceProjection;
+      viewPos = capture->position;
+      frustum = Frustum(projection * view);
+      sunShadow = DirectionalShadow();
+      if (shadowsEnabled)
+        sunShadow = renderDirectionalShadow(componentManager, resourceSystem, transformSystem, lightSystem, camera, view, 1.0f);
+
+      glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, cube, 0);
+      glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
+      if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        complete = false;
+        break;
+      }
+      glViewport(0, 0, size, size);
+      glEnable(GL_DEPTH_TEST);
+      glDepthMask(GL_TRUE);
+      glDepthFunc(GL_LESS);
+      glDisable(GL_BLEND);
+      glDisable(GL_SCISSOR_TEST);
+      glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+      glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      drawLit();
+    }
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+    if (!wasDepthTest)
+      glDisable(GL_DEPTH_TEST);
+    if (wasBlend)
+      glEnable(GL_BLEND);
+    if (wasScissor)
+      glEnable(GL_SCISSOR_TEST);
+    glDeleteFramebuffers(1, &framebuffer);
+    glDeleteRenderbuffers(1, &depth);
+
+    if (complete) {
+      // The same two steps as the sky's: its diffuse light as spherical harmonics, its reflections pre-filtered
+      glBindTexture(GL_TEXTURE_CUBE_MAP, cube);
+      glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+      capture->result.sh = m_ibl.irradianceSh(cube, size);
+      const GLuint prefiltered = m_ibl.prefilterCube(cube, size);
+      capture->result.texels = ReflectionProbes::readCube(prefiltered);
+      glDeleteTextures(1, &prefiltered);
+      capture->ok = capture->result.valid();
+    } else {
+      LOG_W("[Probes] The capture target is incomplete (%d x %d): no probe data", size, size);
+    }
+    glDeleteTextures(1, &cube);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, static_cast<GLuint>(previousCube));
+    m_lastCaptureMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    return;
+  }
+  renderer.beginScene(skyColor);
+  drawLit();
 
   // Lit geometry is done: tone mapped into the display target, where particles draw in display space
   PostProcess::Settings post;

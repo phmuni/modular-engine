@@ -15,6 +15,7 @@
 #include "components/parent.h"
 #include "components/prefabInstance.h"
 #include "components/particleEmitter.h"
+#include "components/reflectionProbe.h"
 #include "components/skybox.h"
 #include "components/characterController.h"
 #include "components/rigidBody.h"
@@ -1160,7 +1161,90 @@ void EditorUISystem::drawSelectionBoxes(SystemManager &systemManager, ComponentM
     const bool primary = entity == selectedEntity;
     drawBox(systemManager, componentManager, entity, primary ? IM_COL32(255, 200, 60, 230) : IM_COL32(255, 140, 40, 170),
             primary ? 1.8f : 1.2f);
+    drawProbeBox(systemManager, componentManager, entity);
   }
+}
+
+// A selected reflection probe's influence box (the world-aligned one the lit shader uses) in cyan, and inside it the
+// box where the probe is at full strength (the blend distance in from each face) in a dimmer one
+void EditorUISystem::drawProbeBox(SystemManager &systemManager, ComponentManager &componentManager, Entity entity) {
+  const auto *probe = componentManager.tryGet<ReflectionProbe>(entity);
+  const auto *transform = componentManager.tryGet<Transform>(entity);
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
+  if (!probe || !transform || !camera)
+    return;
+  const glm::mat4 toClip = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
+  ImDrawList *drawList = ImGui::GetBackgroundDrawList();
+  auto drawWire = [&](const glm::vec3 &half, unsigned color, float thickness) {
+    glm::vec4 corners[8];
+    for (int i = 0; i < 8; ++i)
+      corners[i] = toClip * glm::vec4(transform->position + glm::vec3(i & 1 ? half.x : -half.x, i & 2 ? half.y : -half.y,
+                                                                      i & 4 ? half.z : -half.z),
+                                      1.0f);
+    for (int a = 0; a < 8; ++a)
+      for (int bit = 1; bit < 8; bit <<= 1) {
+        const int b = a | bit;
+        if (b == a || corners[a].w <= 0.01f || corners[b].w <= 0.01f)
+          continue;
+        drawList->AddLine(fromClip(corners[a]), fromClip(corners[b]), color, thickness);
+      }
+  };
+  const glm::vec3 half = glm::max(probe->size, glm::vec3(0.0f)) * 0.5f;
+  drawWire(half, IM_COL32(80, 220, 255, 230), 1.6f);
+  const glm::vec3 inner = glm::max(half - glm::vec3(std::max(probe->blendDistance, 0.0f)), glm::vec3(0.0f));
+  if (probe->blendDistance > 0.0f && inner != half)
+    drawWire(inner, IM_COL32(80, 220, 255, 110), 1.0f);
+}
+
+// The Reflection Probe section of the Properties panel
+void EditorUISystem::drawReflectionProbe(Engine &engine, Entity entity, ReflectionProbe &probe) {
+  const bool testing = engine.isTesting();
+  ImGui::DragFloat3("Size##probe", &probe.size.x, 0.1f, 0.1f, 1000.0f, "%.1f");
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("The influence box, centered on the entity and aligned to the world axes. Things inside it are lit\n"
+                      "by this probe instead of the sky: make it reach a little past the walls of the room.");
+  ImGui::DragFloat("Blend distance##probe", &probe.blendDistance, 0.05f, 0.0f, 100.0f, "%.2f");
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("How far in from the box's faces the probe fades from nothing to full strength (into the sky or\n"
+                      "the next probe)");
+  ImGui::DragFloat("Intensity##probe", &probe.intensity, 0.01f, 0.0f, 10.0f, "%.2f");
+  ImGui::Checkbox("Box projection##probe", &probe.boxProjection);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Reflections are corrected for the box, so a wall appears where it is. Right for a room that\n"
+                      "fills its box; off for open spaces.");
+  int choice = probe.resolution <= 64 ? 0 : (probe.resolution >= 256 ? 2 : 1);
+  if (ImGui::Combo("Resolution##probe", &choice, "64\0" "128\0" "256\0"))
+    probe.resolution = 64 << choice;
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Size of a face of the capture; the stored reflections are 128 across whatever this is");
+
+  ImGui::Separator();
+  const bool stale = engine.isReflectionProbeStale(entity);
+  if (probe.bakedPath.empty())
+    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "Not baked: captured when the scene loads");
+  else if (stale)
+    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.3f, 1.0f), "Stale: moved or resized since it was baked");
+  else
+    ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.5f, 1.0f), "Baked");
+  if (!probe.bakedPath.empty())
+    ImGui::TextDisabled("%s", probe.bakedPath.c_str());
+  if (testing)
+    ImGui::BeginDisabled();
+  if (ImGui::Button("Bake##probe"))
+    engine.bakeReflectionProbe(entity);
+  if (testing)
+    ImGui::EndDisabled();
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    ImGui::SetTooltip("%s", testing ? "Stop the game to bake"
+                                    : "Captures the room from here and writes assets/probes/<scene>/<name>.probe; "
+                                      "save the scene to keep the path");
+  ImGui::SameLine();
+  if (ImGui::Button("Capture (no file)##probe"))
+    engine.refreshReflectionProbe(entity);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Captures it again into memory only, to preview; the baked file is not touched");
 }
 
 void EditorUISystem::drawBox(SystemManager &systemManager, ComponentManager &componentManager, Entity entity,
@@ -3098,6 +3182,18 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
     }
   }
 
+  // Reflection probe
+  if (!earlyOut && componentManager.has<ReflectionProbe>(selectedEntity)) {
+    if (ImGui::CollapsingHeader("Reflection Probe", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::SmallButton("Remove##probe")) {
+        componentManager.removeComponent<ReflectionProbe>(selectedEntity);
+        earlyOut = true;
+      }
+      if (!earlyOut)
+        drawReflectionProbe(engine, selectedEntity, componentManager.get<ReflectionProbe>(selectedEntity));
+    }
+  }
+
   // The game's own components, registered with Engine::registerComponent
   for (const ReflectedComponent &reflected : engine.getReflectedComponents()) {
     void *component = earlyOut ? nullptr : reflected.get(componentManager, selectedEntity);
@@ -3180,6 +3276,13 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
       if (!componentManager.has<Skybox>(selectedEntity)) {
         if (ImGui::Button("+ Skybox / Environment", ImVec2(-1, 0))) {
           componentManager.addInPlace<Skybox>(selectedEntity);
+        }
+      }
+      if (!componentManager.has<ReflectionProbe>(selectedEntity)) {
+        if (ImGui::Button("+ Reflection Probe", ImVec2(-1, 0))) {
+          if (!componentManager.has<Transform>(selectedEntity))
+            componentManager.addInPlace<Transform>(selectedEntity);
+          componentManager.addInPlace<ReflectionProbe>(selectedEntity);
         }
       }
       if (!componentManager.has<Model>(selectedEntity)) {
@@ -3731,6 +3834,7 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
   static bool addParticle = false;
   static bool addCamera = false;
   static bool addCollision = false;
+  static bool addProbe = false;
 
   // Transform defaults
   static float tpos[3] = {0, 0, 0};
@@ -3781,6 +3885,8 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
   ImGui::SameLine();
   ImGui::Checkbox("Camera", &addCamera);
   ImGui::Checkbox("Collision (AABB)", &addCollision);
+  ImGui::SameLine();
+  ImGui::Checkbox("Reflection Probe", &addProbe);
 
   // Transform is mandatory
   ImGui::Text("Transform");
@@ -3873,6 +3979,11 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
     // Camera
     if (addCamera) {
       builder.withComponent<Camera>();
+    }
+
+    // Reflection probe: its box is the default size, around the entity
+    if (addProbe) {
+      builder.withComponent<ReflectionProbe>();
     }
 
     Entity e = builder.build();

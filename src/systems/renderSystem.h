@@ -6,8 +6,10 @@
 #include "foundation/ecs/systemManager.h"
 #include "rendering/renderer.h"
 #include "rendering/ibl.h"
+#include "rendering/reflectionProbes.h"
 #include "rendering/ssao.h"
 #include <glm/glm.hpp>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -75,6 +77,18 @@ public:
   void shutdownSsao() { m_ssao.shutdown(); }
   void shutdownIbl() { m_ibl.shutdown(); }
   const Ibl &ibl() const { return m_ibl; }
+  // Reflection probes (see reflectionProbes.h): their data, array and per-draw choice
+  ReflectionProbes &probes() { return m_probes; }
+  const ReflectionProbes &probes() const { return m_probes; }
+  void shutdownProbes() { m_probes.shutdown(); }
+  // Draws the scene from the probe entity's position into a cube (a face at a time, with the sun's and the lights'
+  // shadows, the sky, transparent surfaces; no ambient occlusion, post-processing, particles or other probes) and turns
+  // it into the probe's reflections and diffuse light. Does not store the result (ReflectionProbes::setData does).
+  // Needs the GL context and may be called between frames; it restores the framebuffer and viewport it found. Empty
+  // when the entity is not a probe with a Transform.
+  std::optional<ProbeData> captureProbe(SystemManager &systemManager, ComponentManager &componentManager, Entity entity);
+  // How long the last capture took, in milliseconds (the faces, the pre-filtering and reading it back)
+  double lastCaptureMs() const { return m_lastCaptureMs; }
   // Models skipped by frustum culling in the last rendered frame
   int getCulledCount() const { return m_culledCount; }
   // Point lights with a cube shadow map, and how many of them had to render it again in the last frame
@@ -92,6 +106,7 @@ private:
     uint32_t indexStart; // a range of parts merged by material, see forEachDrawRange
     uint32_t indexCount;
     uint32_t materialHandle;
+    uint32_t probes; // the reflection probes that light it (ReflectionProbes::select): draws with others cannot share a call
     InstanceData instance;
   };
 
@@ -120,6 +135,9 @@ private:
   // The first Skybox component's panorama, behind the opaque geometry
   SceneEnvironment m_environment;
   Ibl m_ibl;
+  ReflectionProbes m_probes;
+  bool m_capturing = false; // a probe's capture is being drawn
+  double m_lastCaptureMs = 0.0;
   uint32_t m_skyboxShader = 0;
   std::string m_skyboxPath; // what m_skyboxTexture shows
   GLuint m_skyboxTexture = 0;
@@ -127,6 +145,16 @@ private:
                   const glm::mat4 &projection, bool gammaCorrect);
 
   void rebuildRenderBatches(ComponentManager &componentManager, ResourceSystem &resourceSystem);
+
+  // A probe's capture in progress (see captureProbe): where from, how big, and what it made
+  struct ProbeCapture {
+    glm::vec3 position{0.0f};
+    int resolution = 128;
+    ProbeData result;
+    bool ok = false;
+  };
+  // The whole frame, or with `capture` the six faces of a probe's cube instead of the camera's view
+  void drawPipeline(SystemManager &systemManager, ComponentManager &componentManager, ProbeCapture *capture);
 
   // What the main pass needs from the sun's shadow cascades
   struct DirectionalShadow {

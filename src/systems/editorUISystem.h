@@ -262,6 +262,9 @@ private:
   // unlocked, not over a panel or the gizmo). The selected model's box is outlined.
   void handleClickSelection(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
   void drawSelectionBoxes(SystemManager &systemManager, ComponentManager &componentManager);
+  void drawProbeBox(SystemManager &systemManager, ComponentManager &componentManager, Entity entity);
+  // The Reflection Probe section of the Properties panel (its fields, whether the baked file is up to date, Bake)
+  void drawReflectionProbe(Engine &engine, Entity entity, struct ReflectionProbe &probe);
   void drawBox(SystemManager &systemManager, ComponentManager &componentManager, Entity entity, unsigned color,
                float thickness);
   // The navigation map's walkable cells and the last path found, over the scene (Settings: Show navigation)

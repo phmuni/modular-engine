@@ -235,6 +235,10 @@ void LuaBindings::bindEntity() {
       "clips", [](GameEntity &e) { return sol::as_table(e.clips()); },
       // Animation state machines (see the README): the JSON file, parameters (a number or a boolean), triggers and
       // the state it is in
+      // Reflection probes: bake to the file, capture again in memory, whether it is out of date
+      "bakeReflectionProbe", &GameEntity::bakeReflectionProbe,
+      "refreshReflectionProbe", &GameEntity::refreshReflectionProbe,
+      "isReflectionProbeStale", &GameEntity::isReflectionProbeStale,
       "setAnimator", &GameEntity::setAnimator,
       "setParam", [](GameEntity &e, const std::string &name, const sol::object &value) {
         if (value.is<bool>())

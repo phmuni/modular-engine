@@ -124,6 +124,12 @@ public:
   std::optional<ShaderValue> shaderParam(const std::string &name, int submesh = 0) const;
   std::optional<ShaderValue> shaderParam(const std::string &name, const std::string &part) const;
 
+  // Reflection probe (ReflectionProbe component): bakeReflectionProbe captures it and writes its file, refreshReflectionProbe
+  // captures it again into memory only, isReflectionProbeStale says whether it was moved or resized since (see Engine)
+  bool bakeReflectionProbe();
+  bool refreshReflectionProbe();
+  bool isReflectionProbeStale() const;
+
   // Physics body (RigidBody): its velocity, and a push now (impulse) or this frame (force)
   glm::vec3 velocity() const;
   void setVelocity(const glm::vec3 &velocity);

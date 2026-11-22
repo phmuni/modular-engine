@@ -83,11 +83,11 @@ TEST_CASE(ibl_maps_from_a_panorama) {
     const Ibl &ibl = renderOf(engine).ibl();
     CHECK(ibl.hasMaps());
     CHECK_EQ(ibl.generations(), 1);
-    CHECK(ibl.irradiance() != 0 && ibl.prefiltered() != 0 && ibl.brdfLut() != 0);
+    CHECK(ibl.prefiltered() != 0 && ibl.brdfLut() != 0);
     CHECK_EQ(int(glGetError()), int(GL_NO_ERROR));
-    // The irradiance is not black, and it follows the image: the sky above is blue, the ground below a dark brown
-    const glm::vec3 up = averageOfFace(ibl.irradiance(), 2, Ibl::kIrradianceSize);
-    const glm::vec3 down = averageOfFace(ibl.irradiance(), 3, Ibl::kIrradianceSize);
+    // The diffuse light (spherical harmonics) is not black, and it follows the image: the sky above is blue, the ground below a dark brown
+    const glm::vec3 up = sh::evaluate(ibl.sh(), glm::vec3(0, 1, 0));
+    const glm::vec3 down = sh::evaluate(ibl.sh(), glm::vec3(0, -1, 0));
     CHECK(up.x + up.y + up.z > 0.3f);
     CHECK(up.z > up.x);
     CHECK(down.x > down.z);
@@ -107,7 +107,7 @@ TEST_CASE(ibl_maps_from_a_panorama) {
     const Ibl &ibl = renderOf(engine).ibl();
     CHECK(ibl.hasMaps());
     CHECK_EQ(ibl.generations(), 2);
-    const glm::vec3 up = averageOfFace(ibl.irradiance(), 2, Ibl::kIrradianceSize);
+    const glm::vec3 up = sh::evaluate(ibl.sh(), glm::vec3(0, 1, 0));
     CHECK(up.x > up.z); // red now
     CHECK_EQ(int(glGetError()), int(GL_NO_ERROR));
   });

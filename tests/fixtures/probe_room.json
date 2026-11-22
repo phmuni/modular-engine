@@ -1,0 +1,11 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    { "name": "Room Floor", "components": { "Transform": { "position": [0, -0.5, 0], "scale": [8, 1, 8] } } },
+    { "name": "Room Probe", "components": {
+        "Transform": { "position": [0, 2, 0] },
+        "ReflectionProbe": { "size": [8, 6, 8], "blendDistance": 1, "intensity": 1, "boxProjection": true,
+                             "resolution": 64, "bakedPath": "../tests/fixtures/_probe_out/room.probe" } } }
+  ]
+}

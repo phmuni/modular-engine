@@ -95,6 +95,9 @@ ENGINE_ALIASES = {
     "enablePauseMenu": "ui.pauseMenu",
     "captureScreenshot": "screenshot",
     "setWindowTitle": "setTitle",
+    "bakeReflectionProbe": "Entity.bakeReflectionProbe",
+    "refreshReflectionProbe": "Entity.refreshReflectionProbe",
+    "isReflectionProbeStale": "Entity.isReflectionProbeStale",
     "ambientColor": "ambient",
     "ambientIntensity": "ambient",
 }

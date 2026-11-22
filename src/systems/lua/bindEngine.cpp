@@ -261,4 +261,8 @@ void LuaBindings::bindEngine() {
   // How strongly the sky lights the scene (image-based lighting); 1 by default, 0 is off
   api.set_function("setEnvironmentIntensity", [this](float intensity) { engine.setEnvironmentIntensity(intensity); });
   api.set_function("environmentIntensity", [this]() { return engine.environmentIntensity(); });
+  // Reflection probes (see Engine::bakeReflectionProbes): bake every probe to its file, and how many are in use
+  api.set_function("bakeReflectionProbes", [this]() { return engine.bakeReflectionProbes(); });
+  api.set_function("reflectionProbeCount", [this]() { return engine.reflectionProbeCount(); });
+  api.set_function("reflectionProbeCaptures", [this]() { return engine.reflectionProbeCaptures(); });
 }

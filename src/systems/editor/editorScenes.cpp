@@ -206,6 +206,16 @@ void EditorUISystem::renderMainMenuBar(Engine &engine) {
     ImGui::EndMenu();
   }
 
+  if (ImGui::BeginMenu("Lighting")) {
+    if (ImGui::MenuItem("Bake Reflection Probes", nullptr, false, !testing))
+      engine.bakeReflectionProbes();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip("%s", testing ? kTestingTip
+                                      : "Captures every reflection probe of the open scenes and writes their files under\n"
+                                        "assets/probes/. Save the scenes to keep the paths.");
+    ImGui::EndMenu();
+  }
+
   // The active scene's file at the right, with +N for the other scenes open and a * for changes not saved
   const bool dirty = engine.isSceneDirty();
   const std::vector<std::string> open = engine.loadedScenes();

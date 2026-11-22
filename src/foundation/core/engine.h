@@ -7,6 +7,7 @@
 #include "components/rigidBody.h"
 #include "components/script.h"
 #include "components/light.h"
+#include "components/reflectionProbe.h"
 #include "components/skybox.h"
 #include "rendering/ssao.h"
 #include "components/transform.h"
@@ -239,6 +240,24 @@ public:
   // panorama, or evenly from the sky color without one); 1 by default, 0 turns it off
   void setEnvironmentIntensity(float intensity);
   float environmentIntensity();
+
+  // Reflection probes (the ReflectionProbe component, see components/reflectionProbe.h and rendering/reflectionProbes.h):
+  // static captures of a place that light the things inside their box, taken when the scene loads or read from a baked
+  // file. Nothing happens per frame; these are the ways to take them again.
+  // Captures every probe of the open scenes and writes each one's file (assets/probes/<scene file name>/<entity
+  // name>.probe, or the probe's own bakedPath when it is an absolute path), setting its bakedPath: the scene changes, so
+  // saving it keeps the path. Returns how many were baked. Writes nothing (0) while the editor is testing (Play).
+  int bakeReflectionProbes();
+  // The same for one entity; false if it is not a probe, the capture failed or the file could not be written
+  bool bakeReflectionProbe(Entity entity);
+  // Captures one probe again into memory only (no file is written, bakedPath stays): what a game does when something
+  // in the room changed. The result lasts until the scene is loaded again. False if the entity is not a probe.
+  bool refreshReflectionProbe(Entity entity);
+  // Whether the probe's data (file or capture) is of another position, box or resolution than it has now
+  bool isReflectionProbeStale(Entity entity);
+  // Probes in use now (those with data, not hidden), and how many captures were made since the start
+  int reflectionProbeCount();
+  int reflectionProbeCaptures();
 
   // Component access. get throws, with a message saying whether the entity lacks the component or no longer
   // exists; tryGet returns null instead.
@@ -806,6 +825,9 @@ private:
   mutable std::unordered_set<int> m_dirtyScenes;
   void markSceneClean(int scene);
   void refreshDirty() const;
+  // Captures a reflection probe into memory, and with `write` to its baked file too (see bakeReflectionProbe)
+  bool captureReflectionProbe(Entity entity, bool write);
+  std::string reflectionProbeFile(Entity entity);
   static constexpr float kPrefabPollSeconds = 0.5f;
   float m_prefabPollTime = 0.0f;
   std::vector<std::function<void(const GameEntity &, const std::string &, const std::string &)>> m_animationListeners;

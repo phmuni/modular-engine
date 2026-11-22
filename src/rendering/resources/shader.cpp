@@ -198,6 +198,18 @@ void Shader::setMat4Array(std::string_view name, const glm::mat4 *values, int co
     glUniformMatrix4fv(loc, count, GL_FALSE, glm::value_ptr(values[0]));
 }
 
+void Shader::setVec3Array(std::string_view name, const glm::vec3 *values, int count) const {
+  GLint loc = getUniformLocation(name);
+  if (loc != -1 && count > 0)
+    glUniform3fv(loc, count, glm::value_ptr(values[0]));
+}
+
+void Shader::setVec4Array(std::string_view name, const glm::vec4 *values, int count) const {
+  GLint loc = getUniformLocation(name);
+  if (loc != -1 && count > 0)
+    glUniform4fv(loc, count, glm::value_ptr(values[0]));
+}
+
 void Shader::setMat4(std::string_view name, glm::mat4 value) const {
   GLint loc = getUniformLocation(name);
   if (loc != -1)
