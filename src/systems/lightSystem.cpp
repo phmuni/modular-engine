@@ -1,36 +1,42 @@
-
-// Light system implementation for managing light entities and uploading their data to shaders.
+// Light system implementation: the scene's lights, and the choice of the ones a view lights with and casts shadows from.
 
 #include "systems/lightSystem.h"
 #include "components/light.h"
 #include "components/transform.h"
 #include "foundation/core/logger.h"
 #include <algorithm>
-#include <array>
-#include <string>
 
 namespace {
-constexpr int kMaxLights = 10;
-
-struct LightUniformNames {
-  std::string type, position, direction, color, intensity, ambient, constant, linear, quadratic, cutOff, outerCutOff,
-      shadowSlot, shadowFar;
+struct Candidate {
+  Entity entity;
+  const Light *light;
+  glm::vec3 position;
+  float range;
+  float importance;
+  int slot = -1;
 };
 
-// Built once: formatting "lights[i].field" every frame allocated a string per field, light and shader.
-const std::array<LightUniformNames, kMaxLights> &lightUniformNames() {
-  static const auto names = [] {
-    std::array<LightUniformNames, kMaxLights> result;
-    for (int i = 0; i < kMaxLights; ++i) {
-      std::string prefix = "lights[" + std::to_string(i) + "].";
-      result[i] = {prefix + "type",      prefix + "position",  prefix + "direction", prefix + "color",
-                   prefix + "intensity", prefix + "ambient",   prefix + "constant",  prefix + "linear",
-                   prefix + "quadratic", prefix + "cutOff",    prefix + "outerCutOff", prefix + "shadowSlot",
-                   prefix + "shadowFar"};
-    }
-    return result;
-  }();
-  return names;
+float brightnessOf(const Light &light) {
+  return std::max(light.color.x, std::max(light.color.y, light.color.z)) * (light.intensity + light.ambient);
+}
+
+GpuLight pack(const Light &light, const glm::vec3 &position, float range, int slot) {
+  GpuLight gpu;
+  gpu.data[0] = glm::vec4(position, range);
+  gpu.data[1] = glm::vec4(light.color, light.intensity);
+  gpu.data[2] = glm::vec4(light.direction, light.ambient);
+  gpu.data[3] = glm::vec4(light.constant, light.linear, light.quadratic, static_cast<float>(light.type));
+  gpu.data[4] = glm::vec4(light.cutOff, light.outerCutOff, light.shadowRange, static_cast<float>(slot));
+  return gpu;
+}
+
+bool intersectsSphere(const glm::vec4 *planes, const glm::vec3 &center, float radius) {
+  if (!planes)
+    return true;
+  for (int i = 0; i < 6; ++i)
+    if (glm::dot(glm::vec3(planes[i]), center) + planes[i].w < -radius)
+      return false;
+  return true;
 }
 } // namespace
 
@@ -53,67 +59,110 @@ glm::vec3 LightSystem::worldPosition(const Light &light, const Transform *transf
   return transform ? light.position + transform->position : light.position;
 }
 
-const std::vector<PointShadowCaster> &LightSystem::updatePointShadows(ComponentManager &componentManager, bool enabled,
-                                                                     int maxCasters) {
+void LightSystem::collectLights(ComponentManager &componentManager, bool shadowsEnabled, int maxCasters,
+                                const glm::vec3 &viewPos, const glm::vec4 *frustumPlanes) {
+  m_directional.clear();
+  m_clustered.clear();
   m_pointShadows.clear();
-  if (!enabled)
-    return m_pointShadows;
+  maxCasters = std::min(maxCasters, static_cast<int>(EngineConfig::MAX_POINT_SHADOWS));
 
-  // Only lights the shader sees (the first kMaxLights) can use a shadow
-  const size_t visible = std::min(m_lights.size(), static_cast<size_t>(kMaxLights));
-  static bool warned = false; // once per run, not every frame
-  for (size_t i = 0; i < visible; ++i) {
-    const Light *light = componentManager.tryGet<Light>(m_lights[i]);
-    if (!light || !light->castShadows || light->type == LightType::Directional || light->shadowRange <= 0.0f)
+  static bool warnedDirectional = false, warnedLights = false, warnedShadows = false; // once per run, not every frame
+  std::vector<Candidate> candidates;
+  candidates.reserve(m_lights.size());
+  for (Entity entity : m_lights) {
+    const Light *light = componentManager.tryGet<Light>(entity);
+    if (!light)
       continue;
-    if (static_cast<int>(m_pointShadows.size()) >= maxCasters) {
-      if (!warned)
-        LOG_W("[LightSystem] More than %d lights cast shadows; the others light without them", maxCasters);
-      warned = true;
+    if (light->type == LightType::Directional) {
+      if (static_cast<int>(m_directional.size()) < EngineConfig::MAX_DIRECTIONAL_LIGHTS)
+        m_directional.push_back(pack(*light, glm::vec3(0.0f), 0.0f, -1));
+      else if (!warnedDirectional) {
+        warnedDirectional = true;
+        LOG_W("[LightSystem] More than %d directional lights; the others are ignored",
+              EngineConfig::MAX_DIRECTIONAL_LIGHTS);
+      }
       continue;
     }
-    m_pointShadows.push_back({m_lights[i], static_cast<int>(m_pointShadows.size()),
-                              worldPosition(*light, componentManager.tryGet<Transform>(m_lights[i])),
-                              light->shadowRange});
+    const float brightness = brightnessOf(*light);
+    const float range = lightRange(light->constant, light->linear, light->quadratic, brightness);
+    if (range <= 0.0f)
+      continue; // too dim to see anywhere
+    const glm::vec3 position = worldPosition(*light, componentManager.tryGet<Transform>(entity));
+    if (!intersectsSphere(frustumPlanes, position, range))
+      continue;
+    const glm::vec3 toLight = position - viewPos;
+    candidates.push_back({entity, light, position, range, brightness / std::max(glm::dot(toLight, toLight), 1.0f)});
   }
-  return m_pointShadows;
-}
+  m_candidates = static_cast<int>(candidates.size());
 
-void LightSystem::uploadLightsToShader(Shader &shader, ComponentManager &componentManager) {
-  int index = 0;
-  const auto &allNames = lightUniformNames();
-
-  for (const Entity &lightEntity : m_lights) {
-    if (index >= kMaxLights) {
-      LOG_W("[LightSystem] Too many lights; max supported is %d - skipping remaining.", kMaxLights);
-      break;
+  // Most important first, so that the cap (and a full index list) drop the least important
+  std::stable_sort(candidates.begin(), candidates.end(),
+                   [](const Candidate &a, const Candidate &b) { return a.importance > b.importance; });
+  const size_t cap = static_cast<size_t>(lightingLimits().maxLights);
+  if (candidates.size() > cap) {
+    if (!warnedLights) {
+      warnedLights = true;
+      LOG_W("[LightSystem] %zu point and spot lights reach the view; the %zu most important are used", candidates.size(),
+            cap);
     }
-
-    const auto &light = componentManager.get<Light>(lightEntity);
-
-    const glm::vec3 worldPos = worldPosition(light, componentManager.tryGet<Transform>(lightEntity));
-    int shadowSlot = -1;
-    for (const PointShadowCaster &caster : m_pointShadows)
-      if (caster.entity == lightEntity)
-        shadowSlot = caster.slot;
-
-    const auto &names = allNames[index];
-    shader.setInt(names.type, static_cast<int>(light.type));
-    shader.setVec3(names.position, worldPos);
-    shader.setVec3(names.direction, light.direction);
-    shader.setVec3(names.color, light.color);
-    shader.setFloat(names.intensity, light.intensity);
-    shader.setFloat(names.ambient, light.ambient);
-    shader.setFloat(names.constant, light.constant);
-    shader.setFloat(names.linear, light.linear);
-    shader.setFloat(names.quadratic, light.quadratic);
-    shader.setFloat(names.cutOff, light.cutOff);
-    shader.setFloat(names.outerCutOff, light.outerCutOff);
-    shader.setInt(names.shadowSlot, shadowSlot);
-    shader.setFloat(names.shadowFar, light.shadowRange);
-
-    index++;
+    candidates.resize(cap);
   }
 
-  shader.setInt("numLights", index);
+  // Shadows: the best of the shadowed lights among those used. A light that has a slot is favored (see the header).
+  if (shadowsEnabled && maxCasters > 0) {
+    std::vector<Candidate *> wanting;
+    for (Candidate &candidate : candidates) {
+      const Light &light = *candidate.light;
+      if (!light.castShadows || light.shadowRange <= 0.0f)
+        continue;
+      if (!intersectsSphere(frustumPlanes, candidate.position, std::min(candidate.range, light.shadowRange)))
+        continue;
+      wanting.push_back(&candidate);
+    }
+    auto score = [&](const Candidate *candidate) {
+      const bool has = std::find(std::begin(m_slotOwners), std::end(m_slotOwners), candidate->entity) !=
+                       std::end(m_slotOwners);
+      return candidate->importance * (has ? 1.5f : 1.0f);
+    };
+    std::stable_sort(wanting.begin(), wanting.end(),
+                     [&](const Candidate *a, const Candidate *b) { return score(a) > score(b); });
+    if (static_cast<int>(wanting.size()) > maxCasters) {
+      if (!warnedShadows) {
+        warnedShadows = true;
+        LOG_W("[LightSystem] More than %d lights cast shadows; the most important ones at the time get them, the others "
+              "light without",
+              maxCasters);
+      }
+      wanting.resize(static_cast<size_t>(maxCasters));
+    }
+    // Slots: a chosen light keeps its own; the others take the free ones
+    for (int slot = 0; slot < maxCasters; ++slot) {
+      const bool kept = std::any_of(wanting.begin(), wanting.end(),
+                                    [&](const Candidate *candidate) { return candidate->entity == m_slotOwners[slot]; });
+      if (!kept)
+        m_slotOwners[slot] = -1;
+    }
+    for (int slot = static_cast<int>(maxCasters); slot < EngineConfig::MAX_POINT_SHADOWS; ++slot)
+      m_slotOwners[slot] = -1;
+    for (Candidate *candidate : wanting) {
+      int slot = -1;
+      for (int i = 0; i < maxCasters; ++i)
+        if (m_slotOwners[i] == candidate->entity)
+          slot = i;
+      if (slot < 0)
+        for (int i = 0; i < maxCasters && slot < 0; ++i)
+          if (m_slotOwners[i] == -1)
+            slot = i;
+      m_slotOwners[slot] = candidate->entity;
+      candidate->slot = slot;
+      m_pointShadows.push_back({candidate->entity, slot, candidate->position, candidate->light->shadowRange});
+    }
+  } else {
+    for (Entity &owner : m_slotOwners)
+      owner = -1;
+  }
+
+  m_clustered.reserve(candidates.size());
+  for (const Candidate &candidate : candidates)
+    m_clustered.push_back(pack(*candidate.light, candidate.position, candidate.range, candidate.slot));
 }

@@ -195,6 +195,8 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "saveScene": "tooling: writes scene files, which games author in the editor (save is for player data)",
     "setSsaoDebugView": "editor tuning aid (Settings > Interface); games do not show the raw AO",
     "ssaoDebugView": "editor tuning aid (Settings > Interface); games do not show the raw AO",
+    "setLightHeatMap": "editor tuning aid (Settings > Interface); games do not show the lights per pixel",
+    "lightHeatMap": "editor tuning aid (Settings > Interface); games do not show the lights per pixel",
     "savePrefab": "tooling: writes prefab files, which games author in the editor",
 }
 

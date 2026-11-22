@@ -4,6 +4,7 @@
 #include "foundation/ecs/componentManager.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
+#include "rendering/clusteredLights.h"
 #include "rendering/renderer.h"
 #include "rendering/ibl.h"
 #include "rendering/reflectionProbes.h"
@@ -75,6 +76,12 @@ public:
   void setSsaoDebugView(bool enabled) { m_ssaoDebugView = enabled; }
   bool ssaoDebugView() const { return m_ssaoDebugView; }
   void shutdownSsao() { m_ssao.shutdown(); }
+  // Clustered lighting (see clusteredLights.h): the light buffers and what the last view put in them. The heat map
+  // colors the scene by how many lights each pixel's cluster has (an editor aid).
+  void setLightHeatMap(bool enabled) { m_lightHeatMap = enabled; }
+  bool lightHeatMap() const { return m_lightHeatMap; }
+  const ClusteredLights::Stats &lightStats() const { return m_clusters.stats(); }
+  void shutdownLights() { m_clusters.shutdown(); }
   void shutdownIbl() { m_ibl.shutdown(); }
   const Ibl &ibl() const { return m_ibl; }
   // Reflection probes (see reflectionProbes.h): their data, array and per-draw choice
@@ -115,6 +122,9 @@ private:
   SsaoSettings m_ssaoSettings;
   bool m_ssaoEnabled = true;
   bool m_ssaoDebugView = false;
+
+  ClusteredLights m_clusters;
+  bool m_lightHeatMap = false;
 
   std::unordered_map<uint32_t, RenderBatch> m_renderBatches;
   std::vector<InstanceItem> m_instanceItems;

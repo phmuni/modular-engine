@@ -17,8 +17,9 @@ struct Material {
 
 struct Light {
     vec3 position;
+    float range;     // point and spot: where the attenuation window reaches 0 (clusteredLights.h, lightRange)
     vec3 direction;
-    vec3 color; 
+    vec3 color;
     float intensity;
     float ambient;
     float constant;
@@ -26,20 +27,31 @@ struct Light {
     float quadratic;
     float cutOff;
     float outerCutOff;
-    int type;
+    int type;        // 0 directional, 1 point, 2 spot
     int shadowSlot;  // point shadow cube map, -1 for none
     float shadowFar; // its far plane (Light::shadowRange)
 };
 
-in vec3 FragPos;  
-in vec3 Normal;  
+in vec3 FragPos;
+in vec3 Normal;
 in vec2 TexCoords;
 in vec4 Tangent;
 
 uniform vec3 viewPos;
 uniform Material material;
-uniform int numLights;
-uniform Light lights[10];
+uniform int numLights; // lights in the scene (0: the scene is lit by a plain ambient)
+
+// Lights, in uniform blocks (see clusteredLights.h; the sizes are defines). Directional lights are always applied; point
+// and spot lights come from the pixel's cluster: the grid has per cluster (offset into the index list << 9) | count, and
+// the list holds each cluster's light indices as bytes, 4 to a uint. A light is 5 vec4, see GpuLight.
+layout(std140) uniform DirectionalLights { vec4 directionalData[MAX_DIRECTIONAL_LIGHTS * 5]; };
+layout(std140) uniform PointLights { vec4 lightData[MAX_CLUSTER_LIGHTS * 5]; };
+layout(std140) uniform ClusterGrid { uvec4 clusterGrid[CLUSTER_GRID_X * CLUSTER_GRID_Y * CLUSTER_GRID_Z / 4]; };
+layout(std140) uniform ClusterIndices { uvec4 clusterIndices[CLUSTER_INDEX_UINTS / 4]; };
+uniform int directionalCount;
+uniform vec2 clusterTileScale; // grid tiles per pixel
+uniform vec2 clusterZ;         // log2(view depth) * x + y is the depth slice
+uniform int lightHeatMap;      // debug: color the scene by how many lights its cluster has
 
 // Sun shadow: cascades fitted to the view (EngineConfig::SHADOW_CASCADES layers), compared and filtered in hardware
 uniform sampler2DArrayShadow shadowMap;
@@ -346,6 +358,74 @@ vec3 environmentLight(vec3 N, vec3 V, vec3 albedo, float metallic, float roughne
     return diffuse * occlusion + reflected * specularColor * specularOcclusion;
 }
 
+Light makeLight(vec4 v0, vec4 v1, vec4 v2, vec4 v3, vec4 v4)
+{
+    Light light;
+    light.position = v0.xyz;
+    light.range = v0.w;
+    light.color = v1.xyz;
+    light.intensity = v1.w;
+    light.direction = v2.xyz;
+    light.ambient = v2.w;
+    light.constant = v3.x;
+    light.linear = v3.y;
+    light.quadratic = v3.z;
+    light.type = int(v3.w + 0.5);
+    light.cutOff = v4.x;
+    light.outerCutOff = v4.y;
+    light.shadowFar = v4.z;
+    light.shadowSlot = int(floor(v4.w + 0.5));
+    return light;
+}
+
+// What one light adds to a surface: the light's ambient and its PBR direct light, shadowed, attenuated (point and spot
+// lights: 1 / (constant + linear d + quadratic d^2) times a window, (1 - (d / range)^4)^2, that is exactly 0 at the
+// range) and cut by the spot cone. `sunShadow` is the shadow of the first directional light's cascades.
+vec3 shadeLight(Light light, vec3 normal, vec3 surfaceNormal, vec3 viewDir, vec3 albedo, float metallic, float roughness,
+                vec3 F0, float NdotV, float a2, float occlusion, float sunShadow)
+{
+    float attenuation = 1.0;
+    vec3 lightDir;
+    if (light.type == 0) {
+        lightDir = normalize(-light.direction);
+    } else {
+        vec3 toLight = light.position - FragPos;
+        float dist = length(toLight);
+        if (dist >= light.range)
+            return vec3(0.0);
+        lightDir = toLight / max(dist, 1e-6);
+        float ratio = dist / light.range;
+        float ratio2 = ratio * ratio;
+        float window = 1.0 - ratio2 * ratio2;
+        attenuation = window * window / (light.constant + light.linear * dist + light.quadratic * (dist * dist));
+    }
+
+    light.color = toLinear(light.color);
+    vec3 ambient = ambientLight(light.color * light.ambient, albedo, metallic, roughness, F0, NdotV, occlusion);
+
+    // The light's color * intensity is the radiance times PI: the Lambert term albedo / PI then gives
+    // albedo * color * intensity * NdotL, the brightness the Blinn-Phong shading had, so scenes keep their exposure
+    vec3 radiance = light.color * light.intensity * PI;
+    float NdotL = max(dot(normal, lightDir), 0.0);
+    vec3 halfDir = normalize(lightDir + viewDir);
+    float NdotH = max(dot(normal, halfDir), 0.0);
+    vec3 F = fresnelSchlick(max(dot(halfDir, viewDir), 0.0), F0);
+    vec3 specular = distributionGGX(NdotH, a2) * visibilitySmithGGX(NdotL, NdotV, a2) * F;
+    vec3 diffuse = (vec3(1.0) - F) * (1.0 - metallic) * albedo / PI;
+    vec3 direct = (diffuse + specular) * radiance * NdotL;
+
+    float spotFactor = 1.0;
+    if (light.type == 2) {
+        float theta = dot(lightDir, normalize(-light.direction));
+        float epsilon = max(light.cutOff - light.outerCutOff, 1e-5);
+        spotFactor = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
+    }
+
+    float shadowFactor = (light.type == 0) ? sunShadow : calculatePointShadow(light, surfaceNormal);
+
+    return (ambient + (1.0 - shadowFactor) * direct) * (attenuation * spotFactor);
+}
+
 void main()
 {
     vec3 normal = normalize(Normal);
@@ -429,64 +509,47 @@ void main()
     float a2 = a * a;
     float NdotV = max(dot(normal, viewDir), 1e-4);
 
+    int clusterLights = 0; // the lights of this pixel's cluster, for the heat map
     if (unlit == 1) {
         result += albedo;
     } else if (numLights == 0) {
         result += ambientLight(vec3(0.7), albedo, metallic, roughness, F0, NdotV, occlusion);
     } else {
         result += ambientLight(sceneAmbient, albedo, metallic, roughness, F0, NdotV, occlusion);
-        for (int i = 0; i < numLights; ++i) {
-
-            Light light = lights[i];
-            light.color = toLinear(light.color);
-
-            vec3 lightDir;
-            if (light.type == 0)
-                lightDir = normalize(-light.direction);
-            else
-                lightDir = normalize(light.position - FragPos);
-
-            vec3 ambient = ambientLight(light.color * light.ambient, albedo, metallic, roughness, F0, NdotV, occlusion);
-
-            // The light's color * intensity is the radiance times PI: the Lambert term albedo / PI then gives
-            // albedo * color * intensity * NdotL, the brightness the Blinn-Phong shading had, so scenes keep their exposure
-            vec3 radiance = light.color * light.intensity * PI;
-            float NdotL = max(dot(normal, lightDir), 0.0);
-            vec3 halfDir = normalize(lightDir + viewDir);
-            float NdotH = max(dot(normal, halfDir), 0.0);
-            vec3 F = fresnelSchlick(max(dot(halfDir, viewDir), 0.0), F0);
-            vec3 specular = distributionGGX(NdotH, a2) * visibilitySmithGGX(NdotL, NdotV, a2) * F;
-            vec3 diffuse = (vec3(1.0) - F) * (1.0 - metallic) * albedo / PI;
-            vec3 direct = (diffuse + specular) * radiance * NdotL;
-
-            float attenuation = 1.0;
-            if (light.type == 1 || light.type == 2) {
-                float dist = length(light.position - FragPos);
-                attenuation = 1.0 /
-                    (light.constant + light.linear * dist + light.quadratic * (dist * dist));
-            }
-
-            float spotFactor = 1.0;
-            if (light.type == 2) {
-                float theta = dot(lightDir, normalize(-light.direction));
-                float epsilon = max(light.cutOff - light.outerCutOff, 1e-5);
-                spotFactor = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
-            }
-
-            float shadowFactor = (light.type == 0) ? shadow : calculatePointShadow(light, surfaceNormal);
-
-            vec3 lightResult =
-                ambient +
-                (1.0 - shadowFactor) * direct;
-
-            lightResult *= attenuation * spotFactor;
-
-            result += lightResult;
+        // Directional lights: always applied
+        for (int i = 0; i < directionalCount; ++i) {
+            Light light = makeLight(directionalData[i * 5], directionalData[i * 5 + 1], directionalData[i * 5 + 2],
+                                    directionalData[i * 5 + 3], directionalData[i * 5 + 4]);
+            result += shadeLight(light, normal, surfaceNormal, viewDir, albedo, metallic, roughness, F0, NdotV, a2,
+                                 occlusion, shadow);
+        }
+        // Point and spot lights: the ones of this pixel's cluster (screen tile, depth slice from 1 / gl_FragCoord.w)
+        ivec2 tile = min(ivec2(gl_FragCoord.xy * clusterTileScale), ivec2(CLUSTER_GRID_X - 1, CLUSTER_GRID_Y - 1));
+        int slice = clamp(int(floor(-log2(gl_FragCoord.w) * clusterZ.x + clusterZ.y)), 0, CLUSTER_GRID_Z - 1);
+        int cluster = (slice * CLUSTER_GRID_Y + tile.y) * CLUSTER_GRID_X + tile.x;
+        uint entry = clusterGrid[cluster >> 2][cluster & 3];
+        int listStart = int(entry >> 9u);
+        clusterLights = int(entry & 511u);
+        for (int k = 0; k < clusterLights; ++k) {
+            int entryIndex = listStart + k;
+            uint word = clusterIndices[entryIndex >> 4][(entryIndex >> 2) & 3];
+            int base = int((word >> uint((entryIndex & 3) * 8)) & 255u) * 5;
+            Light light = makeLight(lightData[base], lightData[base + 1], lightData[base + 2], lightData[base + 3],
+                                    lightData[base + 4]);
+            result += shadeLight(light, normal, surfaceNormal, viewDir, albedo, metallic, roughness, F0, NdotV, a2,
+                                 occlusion, shadow);
         }
     }
 
     if (unlit != 1)
         result += environmentLight(normal, viewDir, albedo, metallic, roughness, F0, NdotV, occlusion);
+
+    if (lightHeatMap == 1) {
+        // Lights per pixel: blue (1) through green and yellow to red (16 or more); gray where there is none
+        float t = clamp(float(clusterLights) / 16.0, 0.0, 1.0);
+        vec3 heat = clamp(vec3(1.5 - abs(4.0 * t - 3.0), 1.5 - abs(4.0 * t - 2.0), 1.5 - abs(4.0 * t - 1.0)), 0.0, 1.0);
+        result = mix(result * 0.4, clusterLights == 0 ? vec3(0.15) : heat, 0.6);
+    }
 
     if (fogMode != 0) {
         float dist = length(viewPos - FragPos);

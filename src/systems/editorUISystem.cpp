@@ -464,6 +464,11 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
                   renderSystem.getPointShadowUpdates());
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Includes the shadow pass; culled meshes were outside the camera");
+    {
+      const ClusteredLights::Stats &lights = renderSystem.lightStats();
+      ImGui::Text("Lights: %d point/spot, %d directional (cluster build %.2f ms)", lights.lights, lights.directional,
+                  lights.buildMs);
+    }
     ImGui::Text("Particles: %d", stats.particles);
     ImGui::Text("Entities: %zu", entityManager.count());
     auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
@@ -566,6 +571,13 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
       bool debugView = engine.ssaoDebugView();
       if (ImGui::Checkbox("Show AO only##ssao", &debugView))
         engine.setSsaoDebugView(debugView);
+    }
+    {
+      bool heatMap = engine.lightHeatMap();
+      if (ImGui::Checkbox("Light heat map", &heatMap))
+        engine.setLightHeatMap(heatMap);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Colors the scene by how many lights reach each pixel (blue: 1, red: 16 or more)");
     }
     if (ImGui::SmallButton("Reset scale")) {
       m_uiScaleUser = 0.0f;

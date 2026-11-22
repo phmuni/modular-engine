@@ -12,6 +12,8 @@ struct Light {
   glm::vec3 color{1.0f, 1.0f, 1.0f};
   float intensity = 1.0f;
   float ambient = 0.2f;
+  // Attenuation 1 / (constant + linear d + quadratic d^2) for point and spot lights. A light reaches as far as that
+  // leaves it visible (see lightRange in clusteredLights.h; there is no range field) and fades smoothly to exactly 0 there.
   float constant = 1.0f;
   float linear = 0.09f;
   float quadratic = 0.032f;

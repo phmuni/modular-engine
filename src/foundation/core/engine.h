@@ -708,6 +708,9 @@ public:
   // Shows the AO alone instead of the image, for tuning in the editor (off by default)
   void setSsaoDebugView(bool enabled);
   bool ssaoDebugView();
+  // Colors the scene by how many lights reach each pixel (blue few, red 16 or more), for tuning lights in the editor
+  void setLightHeatMap(bool enabled);
+  bool lightHeatMap();
   // Borderless fullscreen at the desktop's size; the window comes back at its old size
   void setFullscreen(bool enabled);
   bool isFullscreen();

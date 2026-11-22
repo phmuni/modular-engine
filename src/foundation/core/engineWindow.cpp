@@ -158,6 +158,8 @@ SsaoSettings Engine::ssaoSettings() {
 }
 void Engine::setSsaoDebugView(bool enabled) { m_systemManager.getSystem<RenderSystem>().setSsaoDebugView(enabled); }
 bool Engine::ssaoDebugView() { return m_systemManager.getSystem<RenderSystem>().ssaoDebugView(); }
+void Engine::setLightHeatMap(bool enabled) { m_systemManager.getSystem<RenderSystem>().setLightHeatMap(enabled); }
+bool Engine::lightHeatMap() { return m_systemManager.getSystem<RenderSystem>().lightHeatMap(); }
 void Engine::setFullscreen(bool enabled) { m_systemManager.getSystem<WindowSystem>().setFullscreen(enabled); }
 bool Engine::isFullscreen() { return m_systemManager.getSystem<WindowSystem>().isFullscreen(); }
 

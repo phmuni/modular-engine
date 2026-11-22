@@ -111,6 +111,7 @@ void Engine::shutdown() {
   m_systemManager.getSystem<GameUISystem>().shutdown();
   auto &renderSystem = m_systemManager.getSystem<RenderSystem>();
   renderSystem.shutdownSsao();
+  renderSystem.shutdownLights();
   renderSystem.shutdownIbl();
   renderSystem.shutdownProbes();
   renderSystem.getRenderer().shutdown();

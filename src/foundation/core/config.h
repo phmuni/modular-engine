@@ -129,10 +129,26 @@ constexpr float SHADOW_DISTANCE = 80.0f;
 constexpr float SHADOW_CASCADE_SPLIT = 0.75f;
 // How far toward the sun, beyond a cascade, objects still cast into it (tall things outside the view)
 constexpr float SHADOW_CASTER_REACH = 60.0f;
-// Point and spot lights with Light::castShadows each render a depth cube map of this size per face (4 bytes per
-// texel: 1024 is 24 MB a light). Beyond the limit, further lights light without shadows.
-constexpr int POINT_SHADOW_SIZE = 1024;
-constexpr int MAX_POINT_SHADOWS = 4; // also the number of cube samplers in fragmentShader.frag
+// Point and spot lights with Light::castShadows each render a depth cube map of this size per face into one cube
+// map array (MAX_POINT_SHADOWS cubes = 6 layers each; 4 bytes per texel, so 512 and 8 cubes are 48 MB). Each frame the
+// most important visible shadowed lights get the slots (LightSystem::updatePointShadows); the others light without.
+constexpr int POINT_SHADOW_SIZE = 512;
+constexpr int MAX_POINT_SHADOWS = 8;
+
+// Lights: up to MAX_DIRECTIONAL_LIGHTS directional lights are always applied; point and spot lights go through
+// clusters (see clusteredLights.h): the view is cut into CLUSTER_GRID_X x Y screen tiles and CLUSTER_GRID_Z exponential
+// depth slices, and each pixel loops only over the lights of its cluster. At most MAX_CLUSTERED_LIGHTS are visible at
+// once (less when the driver's uniform block size is smaller than the usual 64 KB; see lightingLimits()), the most
+// important ones when there are more. The shaders get these through defines, so there is one source for them.
+constexpr int MAX_DIRECTIONAL_LIGHTS = 4;
+constexpr int MAX_CLUSTERED_LIGHTS = 256; // at most 256: a light's index in a cluster's list is one byte
+constexpr int CLUSTER_GRID_X = 16;
+constexpr int CLUSTER_GRID_Y = 9;
+constexpr int CLUSTER_GRID_Z = 24;
+// A light reaches as far as its brightness (intensity + ambient, times its color's largest channel) times its
+// attenuation stays above this: below it (1/256, under one 8-bit step) it adds nothing visible. See lightRange().
+constexpr float LIGHT_RANGE_THRESHOLD = 1.0f / 256.0f;
+constexpr float LIGHT_MAX_RANGE = 500.0f; // lights without falloff (constant attenuation only) reach this far
 
 // Shaders
 constexpr const char *SHADER_VERTEX = "../assets/shaders/vertexShader.vert";

@@ -53,7 +53,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **PBR Material System**    | Per-submesh metallic-roughness materials (Cook-Torrance GGX) with base color, metallic-roughness, occlusion, normal, and emission maps        |
 | **Solid Color Fallback**   | Centralized solid color texture generation and caching for simple rendering    |
 | **Resource Caching**       | Automatic texture caching with handle-based resource management                |
-| **Shadow Mapping**         | Cascaded sun shadows that follow the camera (3 cascades out to 80 units) and cube-map shadows for up to 4 point/spot lights (`Light::castShadows`), re-rendered only when something within the light's range moves; hardware-filtered PCF |
+| **Shadow Mapping**         | Cascaded sun shadows that follow the camera (3 cascades out to 80 units) and cube-map shadows for up to 8 point/spot lights at a time (`Light::castShadows`; each frame the most important visible ones get them), re-rendered only when something within the light's range moves; hardware-filtered PCF |
 | **Asset Loading**          | OBJ (Tiny_Obj) and glTF/GLB (tinygltf) with named parts, shared materials, background loading (`preloadModel`) and a binary mesh cache (`bin/cache/meshes`) |
 | **Texture Streaming**      | Textures converted once to GPU-compressed BC1/BC3 (BC5 for normal maps) with mipmaps, cached in `bin/cache/textures`, and uploaded over several frames, smallest mip first |
 | **Normal Maps**            | Tangent-space normal maps on OBJ and glTF models; tangents read from glTF or generated from UVs |
@@ -65,7 +65,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Tags**                   | Labels on entities (`addTag`, `engine.findTagged`), saved in scenes and prefabs and edited in the Properties panel |
 | **Tweens & Coroutines**    | Animate position, rotation, scale or color (or a number) with easing curves in C++ and Lua; Lua also has `wait` inside coroutines (`engine.run`, `self:run`), all on game time |
 | **Input System**           | Keyboard, mouse and gamepads (SDL3), named actions and axes with bindings in code or a JSON file, gamepad rumble, text entry, mouse capture for mouse-look |
-| **Lighting System**        | Directional, point, and spotlight types with intensity and cutoff controls; gamma-correct by default |
+| **Lighting System**        | Directional (up to 4), point, and spotlight types with intensity and cutoff controls, gamma-correct by default; clustered forward lighting handles up to 256 visible point/spot lights, each reaching as far as its attenuation lets it be seen (automatic range) |
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
@@ -1194,7 +1194,7 @@ void surface(inout Surface s) {        // after base color and textures, before 
 | `normal` | world space, after the normal map; changing it changes the lighting |
 | `uv`, `worldPos`, `viewDir` | read-only in practice: texture coordinates, world position, the direction to the camera |
 
-`VertexData` has `position` and `normal` (both world space; change them), `uv`, and `localPosition` (in the model's own space, read only). `time` is the game clock in seconds (frozen with the game; in the editor with the game stopped it runs on its own, so a surface still moves); do not declare it. Colors are the authored ones, like the material's own (the engine converts them for lighting), and a vec3 or vec4 uniform whose name contains "color" gets a color picker in the editor. Other names the engine uses in its shader (`opacity`, `view`, `projection`, `model`, `material`, `lights`, ...) cannot be used for your own uniforms or functions.
+`VertexData` has `position` and `normal` (both world space; change them), `uv`, and `localPosition` (in the model's own space, read only). `time` is the game clock in seconds (frozen with the game; in the editor with the game stopped it runs on its own, so a surface still moves); do not declare it. Colors are the authored ones, like the material's own (the engine converts them for lighting), and a vec3 or vec4 uniform whose name contains "color" gets a color picker in the editor. Other names the engine uses in its shader (`opacity`, `view`, `projection`, `model`, `material`, `lightData`, `clusterGrid`, ...) cannot be used for your own uniforms or functions.
 
 Paths are relative to `assets/` like any asset path. Files shipped with the engine (the examples) resolve from any game.
 

@@ -644,9 +644,16 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
   if (shadowsEnabled && !capture) // a capture fits the cascades to each of its faces, below
     sunShadow = renderDirectionalShadow(componentManager, resourceSystem, transformSystem, lightSystem, camera, view,
                                          cameraSystem.viewAspect() > 0.0f ? cameraSystem.viewAspect() : camera.aspectRatio);
-  const auto &pointShadows =
-      lightSystem.updatePointShadows(componentManager, shadowsEnabled, EngineConfig::MAX_POINT_SHADOWS);
-  renderPointShadows(componentManager, resourceSystem, transformSystem, pointShadows);
+  // The lights this view uses and the shadowed ones among them; a capture sees from everywhere (no frustum)
+  lightSystem.collectLights(componentManager, shadowsEnabled, EngineConfig::MAX_POINT_SHADOWS, viewPos,
+                            capture ? nullptr : frustum.planes);
+  renderPointShadows(componentManager, resourceSystem, transformSystem, lightSystem.pointShadows());
+  const int sceneLightCount = static_cast<int>(lightSystem.getLights().size());
+  auto buildClusters = [&](int width, int height) {
+    m_clusters.build(view, projection, width, height, lightSystem.directionalLights(), lightSystem.clusterLights());
+  };
+  if (!capture)
+    buildClusters(renderer.getRenderWidth(), renderer.getRenderHeight()); // a capture builds them for each face
 
   // The first Skybox's color is the sky behind everything (shown as written: the scene target is linear). The
   // panorama, if it has one, draws over it.
@@ -768,7 +775,9 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
     appliedProbes = ReflectionProbes::kNone;
     shader.setFloat("time", m_shaderTime); // only custom surface shaders have it
 
-    lightSystem.uploadLightsToShader(shader, componentManager);
+    m_clusters.setUniforms(shader);
+    shader.setInt("numLights", sceneLightCount);
+    shader.setInt("lightHeatMap", m_lightHeatMap && !capture ? 1 : 0);
   };
 
   // Alpha-to-coverage smooths the edges of cut-out surfaces (alpha-mask materials, custom shaders using cutBelow) in
@@ -1102,6 +1111,7 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
       glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
       glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      buildClusters(size, size);
       drawLit();
     }
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);

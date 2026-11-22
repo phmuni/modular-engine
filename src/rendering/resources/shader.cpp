@@ -3,6 +3,7 @@
 
 #include "rendering/resources/shader.h"
 #include "foundation/core/logger.h"
+#include "rendering/clusteredLights.h"
 #include <fstream>
 #include <glm/gtc/type_ptr.hpp>
 #include <sstream>
@@ -58,9 +59,12 @@ GLuint Shader::compileShader(GLenum type, const char *filename, std::string_view
   if (source.empty())
     return 0;
 
-  if (!defines.empty()) {
+  // Every shader gets the lighting limits (the cluster grid, how many lights the driver's uniform blocks hold)
+  static const std::string lightingDefines = lightingShaderDefines();
+  const std::string allDefines = lightingDefines + std::string(defines);
+  {
     size_t afterVersion = source.find('\n', source.find("#version"));
-    source.insert(afterVersion == std::string::npos ? 0 : afterVersion + 1, defines);
+    source.insert(afterVersion == std::string::npos ? 0 : afterVersion + 1, allDefines);
   }
 
   if (injected) {
@@ -132,6 +136,7 @@ GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentF
 
   glDeleteShader(vert);
   glDeleteShader(frag);
+  bindLightingBlocks(program); // the light buffers' binding points, for programs that declare them
   return program;
 }
 
