@@ -141,6 +141,7 @@ function vec3.lerp(a, b, t) end
 ---@field [string] any
 ---@field id integer (read-only)
 ---@field valid boolean (read-only) false once the entity was destroyed
+---@field runtime boolean (read-only) true for entities the game created while it ran (create, spawn): they are not saved with the scene in the editor, and Stop discards them
 ---@field name string
 ---@field transform Transform|nil (read-only)
 ---@field position vec3 Without a Transform, setting it does nothing

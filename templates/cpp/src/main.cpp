@@ -244,6 +244,13 @@ public:
     showMainMenu(engine);
   }
 
+  // The editor's Stop puts the scene back as it was at Play and discards what the game made (the player, the coins):
+  // start over as after a load
+  void onPlayStopped(Engine &engine) override {
+    playing = false;
+    onSceneLoaded(engine, LEVEL);
+  }
+
   void update(Engine &engine, float deltaTime) override {
     if (!player.valid())
       return; // the level is still loading

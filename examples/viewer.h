@@ -54,10 +54,8 @@ class Viewer : public App {
 public:
   explicit Viewer(std::string path) : m_path(std::move(path)) {}
 
-  void setup(Engine &engine) override {
-    engine.setState(Toggle::FreeCamera, false);
-    engine.setState(Toggle::CursorLock, false);
-
+  // The viewer's world: all made while it runs, so the editor's Stop discards it (see onPlayStopped)
+  void createWorld(Engine &engine) {
     engine.entities().create("Sun").withLight(Light::directional({-0.4f, -1.0f, -0.6f})).build();
     engine.entities()
         .create("Fill")
@@ -93,6 +91,18 @@ public:
         list += (i ? ", " : "") + std::to_string(i + 1) + " " + m_clips[i];
       LOG_I("[Viewer] Animations: %s (keys 1-9 switch)", list.c_str());
     }
+  }
+
+  void setup(Engine &engine) override {
+    engine.setState(Toggle::FreeCamera, false);
+    engine.setState(Toggle::CursorLock, false);
+    createWorld(engine);
+  }
+
+  // The editor's Stop discards what the game made, which is all of it: the viewer starts over
+  void onPlayStopped(Engine &engine) override {
+    if (!sceneReplaced)
+      createWorld(engine);
   }
 
   // A loaded scene brings its own camera; stop orbiting it around this example's target

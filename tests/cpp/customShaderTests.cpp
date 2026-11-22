@@ -299,7 +299,7 @@ TEST_CASE(custom_shader_scene_round_trip) {
   a.setShaderParam("edgeColor", glm::vec3(0.1f, 0.2f, 0.3f), 0);
   b.setShader(kWater);
   b.setShaderParam("waveHeight", 0.4f);
-  CHECK(engine.saveScene(file));
+  CHECK(testing::saveWholeScene(engine, file));
 
   a.destroy();
   b.destroy();
@@ -350,7 +350,7 @@ TEST_CASE(custom_shader_prefab_overrides) {
   CHECK(serializer.instanceOverrides(first).empty());
 
   // Overrides survive a scene save and load, and the other instance still follows the prefab
-  CHECK(engine.saveScene(scene));
+  CHECK(testing::saveWholeScene(engine, scene));
   engine.loadScene(scene);
   steps.until([&engine]() { return !engine.isLoadingScene(); }, "the scene to load", 300);
   steps.step(1, [&engine]() {

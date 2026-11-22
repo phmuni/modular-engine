@@ -51,6 +51,7 @@ ENGINE_ALIASES = {
     "getChildren": "Entity.children",
     "findEntity": "find",
     "isAlive": "Entity.valid",
+    "isRuntime": "Entity.runtime",
     "hasComponent": "Entity.has",
     "instantiate": "spawn",  # spawn is the same call for the game API, returning a handle
     "playAnimation": "Entity.play",

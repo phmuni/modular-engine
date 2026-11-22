@@ -51,8 +51,10 @@
 #include <filesystem>
 #include <limits>
 
-bool Engine::saveScene(std::string_view path) {
-  if (!m_systemManager.getSystem<SceneSerializer>().save(std::string(path)))
+bool Engine::saveScene(std::string_view path) { return writeScene(path, false); }
+
+bool Engine::writeScene(std::string_view path, bool includeRuntime) {
+  if (!m_systemManager.getSystem<SceneSerializer>().save(std::string(path), includeRuntime))
     return false;
   m_scenePath = path;
   m_savedRevision = m_editRevision;
@@ -104,7 +106,11 @@ void Engine::applyPendingScene() {
   m_pendingSceneModels.clear();
   std::string path = std::move(*m_pendingScene);
   m_pendingScene.reset();
-  if (!m_systemManager.getSystem<SceneSerializer>().load(path))
+  // What a scene file holds is the scene's, even when the game loads it while it runs
+  m_entityManager.setCreatingRuntime(false);
+  const bool loaded = m_systemManager.getSystem<SceneSerializer>().load(path);
+  m_entityManager.setCreatingRuntime(true);
+  if (!loaded)
     return;
   m_scenePath = path;
   m_systemManager.getSystem<NavigationSystem>().clear(); // the map was of the old level
@@ -126,9 +132,18 @@ Engine::SceneSnapshot Engine::captureScene() {
   return snapshot;
 }
 
-void Engine::restoreScene(SceneSnapshot snapshot) {
+void Engine::restoreScene(SceneSnapshot snapshot, bool dropRuntime) {
   m_componentManager.restore(std::move(snapshot.components));
   m_entityManager.restore(snapshot.entities);
+  if (dropRuntime) {
+    // What the game had made before Play was in the snapshot (the editor was opened over a running game); it goes
+    // now, and the game makes it again when it starts over
+    const std::vector<Entity> runtime(m_entityManager.runtimeEntities().begin(), m_entityManager.runtimeEntities().end());
+    for (Entity entity : runtime) {
+      m_componentManager.removeAllComponents(entity);
+      m_entityManager.destroyEntity(entity);
+    }
+  }
   auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
   if (snapshot.activeCamera != -1 && m_entityManager.isAlive(snapshot.activeCamera))
     cameraSystem.setActiveCamera(snapshot.activeCamera);
@@ -184,7 +199,7 @@ void Engine::applyPlayModeRequest() {
     // Stop: every entity and component back as they were at Play
     SceneSnapshot snapshot = std::move(*m_playSnapshot);
     m_playSnapshot.reset();
-    restoreScene(std::move(snapshot));
+    restoreScene(std::move(snapshot), true);
     m_systemManager.getSystem<ScriptSystem>().reset();
     m_systemManager.getSystem<MenuSystem>().closeAll();
     m_systemManager.getSystem<LoadingScreen>().stop();

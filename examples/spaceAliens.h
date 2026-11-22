@@ -687,11 +687,8 @@ class SpaceAliens : public App {
     }
   }
 
-public:
-  void setup(Engine &engine) override {
-    engine.setState(Toggle::FreeCamera, false);
-    engine.setState(Toggle::CursorLock, false);
-
+  // The game's world: all made while it runs, so the editor's Stop discards it (see onPlayStopped)
+  void createWorld(Engine &engine) {
     engine.entities().create("Sky").withSkybox(SKYBOX, 1.0f).build();
 
     // A red and a blue sun from either side, and a soft white light from behind the camera on the aliens' faces
@@ -709,6 +706,20 @@ public:
         .build();
     engine.createCameraEntity("Camera", cameraPosition, 0.0f, 0.0f, 60.0f);
 
+    createGameManager(engine);
+    createStarfield(engine);
+    createPlayer(engine);
+    createReticle(engine);
+    updateCamera(engine, 0.0f, true);
+  }
+
+public:
+  void setup(Engine &engine) override {
+    engine.setState(Toggle::FreeCamera, false);
+    engine.setState(Toggle::CursorLock, false);
+
+    createWorld(engine);
+
     // The aliens spawn during play; read their model now instead of on the first spawn
     engine.preloadModel(MODEL_ALIEN);
     for (const char *sound : {SOUND_LASER, SOUND_ENEMY_SHOT, SOUND_EXPLOSION, SOUND_PLAYER_HIT})
@@ -717,12 +728,6 @@ public:
     engine.preloadSound(SOUND_UI_HOVER);
     engine.preloadSound(SOUND_UI_CLICK);
 
-    createGameManager(engine);
-    createStarfield(engine);
-    createPlayer(engine);
-    createReticle(engine);
-    updateCamera(engine, 0.0f, true);
-
     checkFormationsReachable();
     totalInvaders = 0;
     for (int wave = 0; wave < WAVE_COUNT; ++wave)
@@ -730,6 +735,12 @@ public:
 
     this->engine = &engine;
     createHud(engine);
+  }
+
+  // The editor's Stop discards what the game made, which is all of it: the game starts over
+  void onPlayStopped(Engine &engine) override {
+    if (!sceneReplaced)
+      createWorld(engine);
   }
 
   // The game's entities (player, invaders, game state) are gone, so the game steps aside and leaves the loaded scene

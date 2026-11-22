@@ -50,6 +50,8 @@ void TestHost::update(Engine &engine, float) {
     engine.quit();
 }
 
+void TestHost::onPlayStopped(Engine &engine) { engine.resume(); }
+
 namespace {
 class CppTest final : public TestHost {
 public:

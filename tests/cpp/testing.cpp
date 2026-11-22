@@ -1,6 +1,8 @@
 // The harness's state: see testing.h.
 
 #include "testing.h"
+#include "foundation/core/engine.h"
+#include "systems/sceneSerializer.h"
 #include <filesystem>
 #include <random>
 #include <system_error>
@@ -62,6 +64,10 @@ struct TempFolders {
   }
 };
 } // namespace
+
+bool saveWholeScene(Engine &engine, const std::string &path) {
+  return engine.getSceneSerializer().save(path, true);
+}
 
 std::string tempDir(const std::string &name) {
   static TempFolders folders;

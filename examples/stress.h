@@ -14,11 +14,7 @@ class Stress : public App {
   static constexpr int kGridSize = 50; // kGridSize^2 boxes
   static constexpr float kSpacing = 1.6f;
 
-public:
-  void setup(Engine &engine) override {
-    engine.setState(Toggle::FreeCamera, false);
-    engine.setState(Toggle::CursorLock, false);
-
+  void createWorld(Engine &engine) {
     engine.entities().create("Sun").withLight(Light::directional({-0.5f, -1.0f, -0.3f}, {1.0f, 0.95f, 0.9f})).build();
     for (int i = 0; i < 4; ++i) {
       float angle = glm::radians(90.0f * static_cast<float>(i));
@@ -45,6 +41,16 @@ public:
       }
     }
   }
+
+public:
+  void setup(Engine &engine) override {
+    engine.setState(Toggle::FreeCamera, false);
+    engine.setState(Toggle::CursorLock, false);
+    createWorld(engine);
+  }
+
+  // The editor's Stop discards what the game made, which is all of it: the scene is made again
+  void onPlayStopped(Engine &engine) override { createWorld(engine); }
 
   void update(Engine &engine, float deltaTime) override {
     engine.getComponentManager().forEachComponent<Spinner>([&](Entity entity, Spinner &spinner) {

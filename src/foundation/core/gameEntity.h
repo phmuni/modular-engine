@@ -32,6 +32,8 @@ public:
   Entity id() const { return m_id; }
   // Whether the entity exists now (not destroyed, not replaced by a scene load)
   bool valid() const;
+  // Whether the game created it while it ran (Engine::isRuntime): not saved with the scene, gone on Stop
+  bool isRuntime() const;
   explicit operator bool() const { return valid(); }
   friend bool operator==(const GameEntity &a, const GameEntity &b) { return a.m_id == b.m_id; }
   friend bool operator!=(const GameEntity &a, const GameEntity &b) { return a.m_id != b.m_id; }

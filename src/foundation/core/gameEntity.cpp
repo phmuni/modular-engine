@@ -21,6 +21,8 @@
 
 bool GameEntity::valid() const { return m_engine && m_id >= 0 && m_engine->isAlive(m_id); }
 
+bool GameEntity::isRuntime() const { return valid() && m_engine->isRuntime(m_id); }
+
 std::string GameEntity::describe() const {
   const Name *name = m_engine ? m_engine->tryGet<Name>(m_id) : nullptr;
   return "Entity " + std::to_string(m_id) + (name ? " (" + name->name + ")" : "");

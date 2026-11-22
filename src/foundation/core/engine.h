@@ -188,6 +188,11 @@ public:
   Entity findEntity(std::string_view name);
   // Whether the entity exists: handles of destroyed entities (or of a scene that loadScene replaced) do not
   bool isAlive(Entity entity) const;
+  // Whether the game created the entity while it ran (a script's engine.create or spawn, an App's create): it is not
+  // part of the scene, so the editor's Save Scene leaves it out and Stop discards it (the game then starts over).
+  // What the editor makes (add, duplicate, paste, drop) and what loadScene reads are the scene's; the parts of a
+  // runtime prefab are runtime too. Undo and redo keep it. Not in the scene or prefab files.
+  bool isRuntime(Entity entity) const;
 
   // The game API: what Lua scripts do, for C++ games too. The Lua bindings only convert types and call these, so
   // the two languages stay the same (tools/check_api_parity.py fails the build when one gets ahead).
@@ -428,7 +433,8 @@ public:
   // False once music that does not loop has ended
   bool isMusicPlaying(uint32_t music = 0);
 
-  // Scenes (JSON). Saving writes every entity with components that have a serializer; see SceneSerializer.
+  // Scenes (JSON). Saving writes every entity of the scene (not the ones the game created, see isRuntime) with
+  // components that have a serializer; see SceneSerializer.
   bool saveScene(std::string_view path);
   // Replaces all entities with the file's, then calls App::onSceneLoaded. Its models are read on worker threads
   // first, so the current scene keeps running until they are ready; the switch happens at the end of that frame.
@@ -450,7 +456,8 @@ public:
     return ComponentBuilder<T>(addReflectedComponent(makeReflectedComponent<T>(std::move(name))));
   }
   const std::deque<ReflectedComponent> &getReflectedComponents() const { return m_reflectedComponents; }
-  // Saves the scene after `delaySeconds` of running; `quitAfter` closes the engine
+  // Saves the scene after `delaySeconds` of running, with the entities the game created (it is a picture of what the
+  // game built); `quitAfter` closes the engine
   void saveSceneAfter(std::string path, float delaySeconds, bool quitAfter = false);
 
   // Play mode, the editor's Play and Stop. Running is the default: the app updates as usual. Editing freezes the app
@@ -708,7 +715,9 @@ private:
   };
   SceneSnapshot captureScene();
   // Replaces the scene with the snapshot's and refreshes what depends on it (camera, lights, render caches, physics)
-  void restoreScene(SceneSnapshot snapshot);
+  // `dropRuntime`: Stop, which leaves out what the game had created before Play
+  void restoreScene(SceneSnapshot snapshot, bool dropRuntime = false);
+  bool writeScene(std::string_view path, bool includeRuntime);
   // Keeps every material a snapshot (Play's, the history's, the open checkpoint's) refers to alive, and counted as
   // used, so changing one in the scene copies it first
   void refreshPinnedMaterials();

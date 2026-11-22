@@ -108,6 +108,11 @@ void fail(const char *file, int line, const std::string &message);
 // write files (scenes, saved data) write here, never to the game's own folders.
 std::string tempDir(const std::string &name);
 
+// Writes every entity to a scene file, the ones the test created as the game would included. Engine::saveScene leaves
+// those out (they are the game's, see Engine::isRuntime), and the tests that check what scene files hold build their
+// scenes in code.
+bool saveWholeScene(Engine &engine, const std::string &path);
+
 } // namespace testing
 
 // A test case: TEST_CASE(name) { ...runs in setup; use steps.step(...) for what comes later... }. `engine` and `steps`

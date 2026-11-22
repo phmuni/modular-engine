@@ -27,6 +27,10 @@ public:
     LOG_I("[MyGame] Loaded %s", scene.c_str());
   }
 
+  // After the editor's Stop: the scene is back as it was at Play and what the game made (engine.create, engine.spawn)
+  // is gone, so start over as after a load.
+  void onPlayStopped(Engine &engine) override { onSceneLoaded(engine, "scenes/level.json"); }
+
   // Every frame; deltaTime is in seconds.
   void update(Engine &engine, float deltaTime) override {
     (void)engine;

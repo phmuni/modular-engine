@@ -123,7 +123,7 @@ TEST_CASE(animator_scene_round_trip_keeps_path_and_params) {
   entity.setAnimator(kMachine);
   entity.setParam("speed", 0.25f);
   entity.setParam("grounded", false);
-  CHECK(engine.saveScene(file));
+  CHECK(testing::saveWholeScene(engine, file));
   entity.destroy();
   engine.loadScene(file);
   steps.until([&engine]() { return !engine.isLoadingScene(); }, "the scene to load", 300);
@@ -153,7 +153,7 @@ TEST_CASE(animator_prefab_round_trip_and_instance_overrides) {
   CHECK_NEAR(engine.get<AnimationStateMachine>(root).params["speed"], 0.25f, 1e-5f);
   // This instance's own value is an override of the prefab's, and survives in the scene
   engine.get<AnimationStateMachine>(root).params["speed"] = 0.4f;
-  CHECK(engine.saveScene(scene));
+  CHECK(testing::saveWholeScene(engine, scene));
   engine.loadScene(scene);
   steps.until([&engine]() { return !engine.isLoadingScene(); }, "the scene to load", 300);
   steps.step(2, [&engine]() {

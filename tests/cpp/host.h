@@ -14,6 +14,8 @@ public:
 
   void setup(Engine &engine) final;
   void update(Engine &engine, float deltaTime) final;
+  // A Stop freezes the game like Editing does, and a test has nobody to unfreeze it: it goes on at once
+  void onPlayStopped(Engine &engine) final;
 
   int frame() const { return m_frame; }
 

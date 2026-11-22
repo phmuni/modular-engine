@@ -113,6 +113,7 @@ void LuaBindings::bindEntity() {
 
       "id", sol::readonly_property(&GameEntity::id),
       "valid", sol::readonly_property(&GameEntity::valid),
+      "runtime", sol::readonly_property(&GameEntity::isRuntime),
       "name", sol::property(&GameEntity::name, &GameEntity::setName),
       "transform", sol::readonly_property(&GameEntity::transform),
       "position", sol::property(&GameEntity::position, &GameEntity::setPosition),

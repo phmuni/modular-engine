@@ -2028,11 +2028,17 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
       visible.push_back(entity);
       if (openPath.count(entity))
         ImGui::SetNextItemOpen(true);
-      if (linked)
+      // What the game created is dimmed (and wins over the prefab blue): it is not saved and Stop discards it
+      const bool runtime = engine.isRuntime(entity);
+      if (runtime)
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+      else if (linked)
         ImGui::PushStyleColor(ImGuiCol_Text, kPrefabLinkColor);
       const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
-      if (linked)
+      if (runtime || linked)
         ImGui::PopStyleColor();
+      if (runtime && ImGui::IsItemHovered())
+        ImGui::SetTooltip("Created by the game: not saved, gone on Stop");
       if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
         if (ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl)
           rangeTarget = entity;

@@ -40,7 +40,7 @@ TEST_CASE(scene_round_trip) {
   CHECK(child.setParent(parent));
   const size_t entityCount = engine.getEntityManager().entities().size();
 
-  CHECK(engine.saveScene(file));
+  CHECK(testing::saveWholeScene(engine, file));
   CHECK(std::filesystem::exists(file));
 
   // Change everything, so loading has something to put back
@@ -103,14 +103,14 @@ TEST_CASE(scene_layers_round_trip) {
 
   // A scene saved with the default layers has no "layers" key (what old files look like)
   engine.create("Box", Desc("box"));
-  CHECK(engine.saveScene(plain));
+  CHECK(testing::saveWholeScene(engine, plain));
   CHECK(readText(plain).find("\"layers\"") == std::string::npos);
 
   // A scene with its own layer and pairs
   layers.add("water");
   layers.setCollide("water", "enemy", false);
   layers.setCollide("player", "projectile", false);
-  CHECK(engine.saveScene(layered));
+  CHECK(testing::saveWholeScene(engine, layered));
   CHECK(readText(layered).find("\"layers\"") != std::string::npos);
 
   // The project's (or the game's) base: another layer and enemies passing through each other, nothing of the scene's

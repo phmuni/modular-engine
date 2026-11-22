@@ -65,7 +65,9 @@ public:
   // layer or switch a pair the base turned off back on. The next load starts again from that base (when nothing
   // changed the layers in between; changes made by code after a load become the new base), so layers do not pile up
   // from scene to scene. A file without the key leaves the base alone, as old scenes did.
-  bool save(const std::string &path) const;
+  // Entities the game created while it ran (EntityManager::isRuntime) are left out, unless `includeRuntime`: the game's
+  // own picture of what it built (--save-scene) keeps them, the editor's Save Scene does not.
+  bool save(const std::string &path, bool includeRuntime = false) const;
   // Reads the whole file first; if it cannot be read, the current scene stays
   bool load(const std::string &path);
 

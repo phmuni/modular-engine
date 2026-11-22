@@ -120,7 +120,7 @@ TEST_CASE(prefab_scene_keeps_overrides_and_survives_a_missing_file) {
   const Entity root = engine.getSceneSerializer().instantiate(prefab)[0];
   engine.get<Transform>(root).position = glm::vec3(4, 0, 0);
   engine.get<Model>(engine.getChildren(root)[0]).opacity = 0.4f;
-  CHECK(engine.saveScene(scene));
+  CHECK(testing::saveWholeScene(engine, scene));
 
   // The file changes while the scene is not loaded; loading brings the instance up to date, overrides included
   editFile(prefab, [](nlohmann::json &file) { file["entities"][0]["components"]["Model"]["opacity"] = 0.6; });
@@ -134,7 +134,7 @@ TEST_CASE(prefab_scene_keeps_overrides_and_survives_a_missing_file) {
     CHECK_NEAR(engine.get<Transform>(roots[0]).position, glm::vec3(4, 0, 0), 1e-5f);
 
     // Without the prefab file the scene's own data stands
-    CHECK(engine.saveScene(scene));
+    CHECK(testing::saveWholeScene(engine, scene));
     std::filesystem::remove(prefab);
     engine.loadScene(scene);
   });

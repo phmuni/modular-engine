@@ -266,7 +266,10 @@ void Engine::update(bool &isRunning, bool pollInput) {
 
   // UI/Cursor show detection
   auto &editorUI = m_systemManager.getSystem<EditorUISystem>();
+  // What the editor creates (add, duplicate, paste, drop) is the scene's, not the game's
+  m_entityManager.setCreatingRuntime(false);
   editorUI.update(m_systemManager);
+  m_entityManager.setCreatingRuntime(true);
 
   // Prefab files edited while the editor is open: their linked instances follow. A stat per prefab in use, a few
   // times a second, and never in a game without the editor up.
@@ -323,7 +326,7 @@ void Engine::update(bool &isRunning, bool pollInput) {
   if (m_sceneSave) {
     m_sceneSave->delay -= timeSystem.getUnscaledDeltaTime();
     if (m_sceneSave->delay <= 0.0f) {
-      saveScene(m_sceneSave->path);
+      writeScene(m_sceneSave->path, true); // --save-scene: what the game built, runtime entities included
       m_quitRequested = m_quitRequested || m_sceneSave->quitAfter;
       m_sceneSave.reset();
     }
@@ -375,7 +378,9 @@ void Engine::render() {
   // Game UI over the scene, debug panels over the game UI
   m_systemManager.getSystem<GameUISystem>().render();
 
+  m_entityManager.setCreatingRuntime(false); // the editor's edits are the scene's
   editorUI.render(*this, m_entityManager, m_systemManager, m_componentManager);
+  m_entityManager.setCreatingRuntime(true);
 
   editorUI.endFrame();
 

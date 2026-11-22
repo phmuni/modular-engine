@@ -201,7 +201,7 @@ TEST_CASE(nested_prefab_overrides_stack_in_three_layers) {
   CHECK_NEAR(opacity(engine, doorB), 0.9f, 1e-5f);
 
   // And a scene saves the layers it owns: only a's change, addressed by the nested key
-  CHECK(engine.saveScene(files.scene));
+  CHECK(testing::saveWholeScene(engine, files.scene));
   const json scene = readJson(files.scene);
 
   int withOverrides = 0;
@@ -226,7 +226,7 @@ TEST_CASE(nested_prefab_scene_round_trip) {
   engine.get<Model>(named(engine, a, "Door")).opacity = 0.2f;
   engine.get<Model>(named(engine, a, "Handle")).opacity = 0.3f;
   engine.get<Model>(named(engine, a, "Wall")).opacity = 0.7f;
-  CHECK(engine.saveScene(files.scene));
+  CHECK(testing::saveWholeScene(engine, files.scene));
 
   // The scene holds everything in full, plus the links
   const json scene = readJson(files.scene);
@@ -262,7 +262,7 @@ TEST_CASE(nested_prefab_scene_round_trip) {
     CHECK_EQ(engine.getEntityManager().entities().size(), base + 4);
 
     // Both files gone: the scene's own data stands, nested entities included
-    CHECK(engine.saveScene(files.scene));
+    CHECK(testing::saveWholeScene(engine, files.scene));
     std::filesystem::remove(files.door);
     engine.loadScene(files.scene);
   });
@@ -276,7 +276,7 @@ TEST_CASE(nested_prefab_scene_round_trip) {
     CHECK_NEAR(opacity(engine, named(engine, top, "Grip")), 0.3f, 1e-5f);
     CHECK_NEAR(opacity(engine, named(engine, top, "Wall")), 0.7f, 1e-5f);
     CHECK_EQ(engine.getSceneSerializer().instanceOverrides(top).size(), size_t(1)); // only the wall: the door is not known
-    CHECK(engine.saveScene(files.scene));
+    CHECK(testing::saveWholeScene(engine, files.scene));
     std::filesystem::remove(files.house);
     engine.loadScene(files.scene);
   });

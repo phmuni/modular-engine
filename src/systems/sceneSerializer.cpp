@@ -459,8 +459,11 @@ bool SceneSerializer::writeFile(const std::string &path, json entities, bool wit
   return static_cast<bool>(file);
 }
 
-bool SceneSerializer::save(const std::string &path) const {
-  std::vector<Entity> entities(m_entityManager.entities().begin(), m_entityManager.entities().end());
+bool SceneSerializer::save(const std::string &path, bool includeRuntime) const {
+  std::vector<Entity> entities;
+  for (Entity entity : m_entityManager.entities())
+    if (includeRuntime || !m_entityManager.isRuntime(entity))
+      entities.push_back(entity);
   std::sort(entities.begin(), entities.end()); // creation order, so saving twice gives the same file
   m_writeOverrides = true; // linked prefab instances record what they changed from their file
   json list = entitiesToJson(entities, -1);

@@ -153,15 +153,25 @@ class BlackHole : public App {
       hum->pitch = glm::mix(0.8f, 1.0f, (distance - 12.0f) / 28.0f);
   }
 
+  void createWorld(Engine &engine) {
+    engine.createCameraEntity("Camera", glm::vec3(0.0f, 0.0f, distance), 0.0f, 0.0f, 55.0f);
+
+    createStars(engine);
+    createBlackHole(engine);
+  }
+
 public:
   void setup(Engine &engine) override {
     engine.setState(Toggle::FreeCamera, false);
     engine.setState(Toggle::CursorLock, false);
 
-    engine.createCameraEntity("Camera", glm::vec3(0.0f, 0.0f, distance), 0.0f, 0.0f, 55.0f);
+    createWorld(engine);
+  }
 
-    createStars(engine);
-    createBlackHole(engine);
+  // The editor's Stop discards what the game made, which is all of it: the game starts over
+  void onPlayStopped(Engine &engine) override {
+    if (!sceneReplaced)
+      createWorld(engine);
   }
 
   // A loaded scene brings its own camera; stop orbiting it around this example's target

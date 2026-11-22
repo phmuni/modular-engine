@@ -897,6 +897,13 @@ as it is, and **Stop** puts every entity and component back as they were at Play
 snapshot copies the component storage itself), then returns to editing. Materials the game changes during play are
 copies, so the originals come back as well. **Resume** unfreezes without anything to go back to.
 
+Entities the game creates while it runs (`engine.create` and `engine.spawn` in a script, `Engine::create` and `spawn` in
+C++; `entity.runtime` in Lua, `Engine::isRuntime` in C++) are not part of the scene: the editor's **Save Scene** leaves
+them out, and **Stop** discards them, even those made before Play, and then the game starts over (Lua: `onStart` runs
+again; C++: `App::onPlayStopped` makes them again, like `onSceneLoaded` does after a load). Scene entities are the ones a
+scene file holds (a `loadScene` by the game too) and the ones the editor makes (add, duplicate, paste, drop). They are
+dimmed in the Scene Explorer. `--save-scene` is a picture of what the game built, so it keeps them.
+
 The same from code: `engine.edit()`, `engine.play()`, `engine.stop()`, `engine.resume()` and `getPlayMode()`. Entity
 handles taken before Play are valid again after Stop; state an app keeps in its own members can be reset in
 `App::onPlayStopped`.

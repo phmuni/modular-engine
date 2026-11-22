@@ -115,6 +115,13 @@ public:
     engine.scripts().runGameScript("scripts/game.lua");
   }
 
+  // The editor's Stop discards what the game made (the player here, the coins in game.lua) and starts the game script
+  // over: the player is made again
+  void onPlayStopped(Engine &engine) override {
+    celebration = 0.0f;
+    spawnPlayer(engine);
+  }
+
   void update(Engine &engine, float deltaTime) override {
     if (!player.valid())
       return; // the level is still loading

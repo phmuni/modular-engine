@@ -136,6 +136,8 @@ void Engine::destroyEntity(Entity entity) { m_systemManager.getSystem<SceneSyste
 
 bool Engine::isAlive(Entity entity) const { return m_entityManager.isAlive(entity); }
 
+bool Engine::isRuntime(Entity entity) const { return m_entityManager.isRuntime(entity); }
+
 void Engine::throwMissingComponent(Entity entity, const std::type_info &type) const {
   std::string message;
   if (!m_entityManager.isAlive(entity))

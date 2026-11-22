@@ -46,7 +46,7 @@ TEST_CASE(ssao_scene_values_round_trip) {
   settings.intensity = 2.0f;
   engine.setSsaoSettings(settings); // lands in the scene's Skybox
   CHECK_NEAR(engine.get<Skybox>(sky.id()).ssaoRadius, 1.5f, 1e-6f);
-  CHECK(engine.saveScene(file));
+  CHECK(testing::saveWholeScene(engine, file));
 
   settings.radius = 0.2f;
   settings.intensity = 0.5f;
