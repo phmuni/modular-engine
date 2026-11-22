@@ -181,6 +181,7 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "hasOpenCheckpoint": "editor undo",
     "isSceneDirty": "editor",
     "dirtyScenes": "editor",
+    "moveToScene": "editor: the Scene Explorer's drag onto a scene; a script parents the entity under one of that scene",
     "saveOpenScene": "tooling: writes scene files, which games author in the editor",
     "saveAllScenes": "tooling: writes scene files, which games author in the editor (save is for player data)",
     "undo": "editor",

@@ -4,7 +4,10 @@
 #include "foundation/core/config.h"
 #include "foundation/core/engine.h"
 #include "systems/cameraSystem.h"
+#include "components/parent.h"
+#include "systems/editorUISystem.h"
 #include "systems/sceneSerializer.h"
+#include "systems/stateSystem.h"
 #include "testing.h"
 #include <algorithm>
 #include <filesystem>
@@ -318,4 +321,66 @@ TEST_CASE(additive_scenes_play_stop_and_undo) {
     CHECK(engine.isSceneDirty(files.a) && engine.isSceneDirty(files.b));
     CHECK_EQ(engine.getScenePath(), files.a);
   });
+}
+
+// The editor's side of it: the Scene Explorer and the menu bar draw with several scenes (set MODULAR_TEST_SCREENSHOT
+// to a .bmp path to look at them), and the commands behind the menus do their job. The dialogs, the right-click menu
+// and the drags are ImGui interactions this does not drive.
+TEST_CASE(additive_scenes_editor_commands) {
+  const Files files = copies("additive_editor");
+  openBoth(engine, steps, files);
+  auto &editor = engine.getSystemManager().getSystem<EditorUISystem>();
+  engine.getSystemManager().getSystem<StateSystem>().setToggle(Toggle::ShowUI, true);
+  steps.step(0, [&engine, files] {
+    engine.create("Game made", Desc()); // in no scene: listed apart
+    if (std::getenv("MODULAR_TEST_SCREENSHOT"))
+      engine.setWindowSize(1500, 900);
+  });
+  steps.step(6, [&engine] {
+    if (const char *path = std::getenv("MODULAR_TEST_SCREENSHOT"))
+      engine.captureScreenshot(path, 0.0f, false);
+  });
+  steps.step(3, [&editor] { editor.setSceneFilter("box"); }); // a search: a flat list that names the scene
+  steps.step(3, [&editor] { editor.setSceneFilter(""); });
+
+  // Save writes every scene with changes, not only the active one
+  steps.step(0, [&engine, &editor, files] {
+    engine.beginCheckpoint();
+    engine.find("A Box").setPosition(glm::vec3(7, 0, 0));
+    engine.find("B Wall").setPosition(glm::vec3(8, 0, 0));
+    engine.endCheckpoint();
+    CHECK_EQ(engine.dirtyScenes().size(), size_t(2));
+    editor.requestSave(engine);
+    CHECK(!engine.isSceneDirty());
+    CHECK(readFile(files.b).find("8.0") != std::string::npos || readFile(files.b).find("8,") != std::string::npos);
+    // Unloading a scene with unsaved changes asks first; a clean one just goes
+    engine.beginCheckpoint();
+    engine.find("B Wall").setPosition(glm::vec3(9, 0, 0));
+    engine.endCheckpoint();
+    editor.requestScene(engine, EditorUISystem::SceneAction::Kind::Unload, files.b);
+    CHECK(editor.hasPendingSceneAction());
+    CHECK_EQ(engine.loadedScenes().size(), size_t(2));
+  });
+  steps.step(2, [&engine, &editor, files] {
+    // Answered "Unload without saving"
+    engine.unloadScene(files.b);
+  });
+  steps.step(2, [&engine, &editor, files] {
+    CHECK_EQ(engine.loadedScenes().size(), size_t(1));
+    // Add opens next to it, with nothing to ask
+    editor.requestScene(engine, EditorUISystem::SceneAction::Kind::Add, files.b);
+  });
+  steps.until([&engine] { return !engine.isLoadingScene(); }, "B to load again", 300);
+  steps.step(1, [&engine, &editor, files] {
+    CHECK_EQ(engine.loadedScenes().size(), size_t(2));
+    CHECK(!engine.isSceneDirty());
+    // Dragging an entity onto another scene's header
+    CHECK(engine.moveToScene(engine.findEntity("A Child"), files.b));
+    CHECK_EQ(sceneOfName(engine, "A Child"), sceneId(engine, files.b));
+    CHECK(!engine.getComponentManager().has<Parent>(engine.findEntity("A Child"))); // detached from A Parent
+    CHECK(engine.moveToScene(engine.findEntity("A Parent"), files.b));
+    CHECK(!engine.moveToScene(engine.findEntity("A Parent"), "nowhere.json"));
+    CHECK(!engine.moveToScene(engine.find("Game made").id(), files.b)); // the game's own belong to no scene
+  });
+  steps.step(3, [&engine] { engine.getSystemManager().getSystem<StateSystem>().setToggle(Toggle::ShowUI, false); });
 }

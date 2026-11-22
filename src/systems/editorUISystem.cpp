@@ -2130,12 +2130,46 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
         ImGui::TreePop();
       }
     };
+    // One header per open scene, its entities below it; the game's own (in no scene) after them. With no scene open the
+    // list is flat, as when only the game has made entities.
+    const auto &scenes = engine.getEntityManager().scenes();
+    for (const EntityManager::Scene &scene : scenes) {
+      if (!renderSceneHeader(engine, scene, engine.isSceneDirty(scene.path)))
+        continue;
+      bool any = false;
+      for (Entity root : roots)
+        if (engine.getEntityManager().sceneOf(root) == scene.id) {
+          any = true;
+          node(root, 0);
+        }
+      if (!any)
+        ImGui::TextDisabled("  (empty scene)");
+      ImGui::TreePop();
+    }
+    std::vector<Entity> loose;
     for (Entity root : roots)
-      node(root, 0);
+      if (engine.getEntityManager().sceneOf(root) == -1)
+        loose.push_back(root);
+    if (scenes.empty()) {
+      for (Entity root : loose)
+        node(root, 0);
+      if (roots.empty())
+        ImGui::TextDisabled("  (empty scene)");
+    } else if (!loose.empty()) {
+      ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+      const bool open = ImGui::TreeNodeEx("Created by the game##gameEntities",
+                                          ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+      ImGui::PopStyleColor();
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Not part of any scene: not saved, gone on Stop");
+      if (open) {
+        for (Entity root : loose)
+          node(root, 0);
+        ImGui::TreePop();
+      }
+    }
     if (rangeTarget != -1)
       clickInList(rangeTarget, visible, false);
-    if (roots.empty())
-      ImGui::TextDisabled("  (empty scene)");
   } else {
     // A search: the matches as a flat list, each with the names of its parents in front, dimmed
     std::unordered_map<std::string, std::string> componentNames; // lowercase -> the name Engine::hasComponent knows
@@ -2173,6 +2207,11 @@ void EditorUISystem::renderHierarchy(Engine &engine, SystemManager &systemManage
       for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
         const Entity entity = visible[row];
         std::string path;
+        if (engine.getEntityManager().scenes().size() > 1)
+          if (const EntityManager::Scene *scene =
+                  engine.getEntityManager().findScene(engine.getEntityManager().sceneOf(entity)))
+            path = (scene->path.empty() ? std::string("untitled") : std::filesystem::path(scene->path).stem().string()) +
+                   " / ";
         Entity up = transformSystem.getParent(componentManager, entity);
         for (int guard = 0; up != -1 && guard < 64; ++guard, up = transformSystem.getParent(componentManager, up))
           path = displayName(componentManager, up) + " / " + path;
@@ -2393,11 +2432,14 @@ void EditorUISystem::renderSceneExplorer(Engine &engine, SystemManager &systemMa
 
   ImVec2 avail = ImGui::GetContentRegionAvail();
   float buttonHeight = ImGui::GetFrameHeightWithSpacing();
+  const ImVec2 treeMin = ImGui::GetCursorScreenPos();
   ImGui::BeginChild("SceneTree", ImVec2(avail.x, avail.y - buttonHeight), true);
 
   renderHierarchy(engine, systemManager, componentManager);
 
   ImGui::EndChild();
+  // A scene dragged from the Assets panel onto the list is added next to the open ones
+  acceptSceneDrop(engine, treeMin, ImVec2(treeMin.x + avail.x, treeMin.y + avail.y - buttonHeight));
 
   if (ImGui::Button("+ Add Entity", ImVec2(-1, 0))) {
     ImGui::OpenPopup("AddEntityPopup");

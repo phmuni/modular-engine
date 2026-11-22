@@ -474,6 +474,10 @@ public:
   const std::string &getActiveScene() const { return getScenePath(); }
   // False if that file is not open
   bool setActiveScene(std::string_view path);
+  // Moves the entity and everything below it into an open scene (the editor's drag onto a scene in the Scene
+  // Explorer). One that has a parent in another scene is detached first (a child lives in its parent's scene), keeping
+  // its place in the world. False if the scene is not open or the entity is in none (the game's own).
+  bool moveToScene(Entity entity, std::string_view path);
   // Replaces all entities (of every open scene) with a minimal starting scene (a camera and a directional light) that
   // has no file: the scene path is empty and nothing is unsaved. Takes effect at the end of the frame, like loadScene; the editor's
   // File > New Scene. App::onSceneLoaded is not called (there is no file).

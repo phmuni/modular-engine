@@ -1,6 +1,7 @@
 #pragma once
 // ImGui-based editor UI: scene explorer, properties panel, and entity creation.
 
+#include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "rendering/viewRect.h"
 #include "systems/editor/assetBrowser.h"
@@ -71,12 +72,15 @@ public:
 
   // The scene menu (File in the menu bar; editor/editorScenes.cpp). A request that would lose unsaved changes asks
   // first. None of them does anything while a test is running: the play snapshot owns the scene then.
+  // New and Open replace every open scene; Add opens one more next to them (nothing is lost, so nothing is asked);
+  // Unload closes one open scene, asking first if it has unsaved changes.
   struct SceneAction {
-    enum class Kind { None, New, Open } kind = Kind::None;
-    std::string path; // Open: relative to the executable, as scene lists write it
+    enum class Kind { None, New, Open, Add, Unload } kind = Kind::None;
+    std::string path; // relative to the executable, as scene lists write it
   };
   void requestScene(Engine &engine, SceneAction::Kind kind, const std::string &path = std::string());
-  // Save writes to the scene's file; a scene without one opens Save As
+  // Save writes every scene with unsaved changes to its file, and the active one always; an active scene without a
+  // file opens Save As
   void requestSave(Engine &engine);
   void openSaveAs() { m_saveAsRequest = true; }
   // Writes assets/scenes/<name>.json (see sceneFiles::fileName); false, with the reason in `error`, when the name is
@@ -283,6 +287,9 @@ private:
   void renderSettingsPanel(Engine &engine, EntityManager &entityManager, SystemManager &systemManager,
                            ComponentManager &componentManager);
   void renderSceneExplorer(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);
+  // The row of an open scene in the Scene Explorer (name, * when unsaved, marked when active) with its right-click
+  // menu and the drop of an entity onto it; true when it is open, and then the caller draws what is in it and pops
+  bool renderSceneHeader(Engine &engine, const EntityManager::Scene &scene, bool dirty);
   // Undo, Redo, Edit (freeze), Play and Stop, at the top of the screen
   void renderPlayToolbar(Engine &engine, SystemManager &systemManager);
   // Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y redo (Cmd on macOS, as for ImGui's Ctrl)
@@ -339,7 +346,11 @@ private:
   void renderMainMenuBar(Engine &engine);
   void handleSceneShortcuts(Engine &engine, SystemManager &systemManager);
   void performScene(Engine &engine, const SceneAction &action);
+  // Saves every open scene with unsaved changes that has a file; false if one has no file yet, or a write failed
+  bool saveDirtyScenes(Engine &engine);
   void renderSceneLoadDialog(Engine &engine);
+  // A scene dragged from the Assets panel onto the Scene Explorer is added to the open ones
+  void acceptSceneDrop(Engine &engine, ImVec2 min, ImVec2 max);
   void renderSaveAsDialog(Engine &engine);
   // In Properties: the prefab an entity is an instance of, its overrides, Apply / Revert / Unpack
   void renderPrefabLink(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager);

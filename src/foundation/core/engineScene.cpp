@@ -75,6 +75,22 @@ bool Engine::setActiveScene(std::string_view path) {
   return true;
 }
 
+bool Engine::moveToScene(Entity entity, std::string_view path) {
+  const int scene = m_entityManager.findSceneByKey(SceneSerializer::sceneKey(std::string(path)));
+  if (scene == -1 || !m_entityManager.isAlive(entity) || m_entityManager.sceneOf(entity) == -1)
+    return false;
+  if (m_entityManager.sceneOf(entity) == scene)
+    return true;
+  auto &transformSystem = m_systemManager.getSystem<TransformSystem>();
+  if (transformSystem.getParent(m_componentManager, entity) != -1)
+    transformSystem.setParent(m_componentManager, entity, -1);
+  m_entityManager.setSceneOf(entity, scene);
+  for (Entity descendant : transformSystem.getDescendants(m_componentManager, entity))
+    if (m_entityManager.sceneOf(descendant) != -1)
+      m_entityManager.setSceneOf(descendant, scene);
+  return true;
+}
+
 bool Engine::isLoadingScene() const {
   return std::any_of(m_pendingScenes.begin(), m_pendingScenes.end(),
                      [](const PendingScene &scene) { return scene.kind != PendingScene::Kind::Unload; });

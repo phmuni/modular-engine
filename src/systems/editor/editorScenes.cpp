@@ -12,6 +12,7 @@
 #include <cstring>
 #include <filesystem>
 #include <imgui/imgui.h>
+#include <imgui/imgui_internal.h> // BeginDragDropTargetCustom
 
 namespace {
 // Scene paths come in several spellings; this is the one the lists and the recent scenes use
@@ -43,10 +44,28 @@ void EditorUISystem::requestScene(Engine &engine, SceneAction::Kind kind, const 
   if (engine.isTesting())
     return;
   const SceneAction action{kind, path};
-  if (engine.isSceneDirty())
+  // Adding loses nothing; replacing loses every scene's changes, unloading the one scene's
+  const bool unsaved = kind == SceneAction::Kind::Add      ? false
+                       : kind == SceneAction::Kind::Unload ? engine.isSceneDirty(path)
+                                                           : engine.isSceneDirty();
+  if (unsaved)
     m_pendingScene = action; // asked about first
   else
     performScene(engine, action);
+}
+
+bool EditorUISystem::saveDirtyScenes(Engine &engine) {
+  bool ok = true;
+  for (const std::string &scene : engine.dirtyScenes()) {
+    if (scene.empty()) {
+      ok = false; // no file yet: only Save As can name it
+    } else if (engine.saveOpenScene(scene)) {
+      rememberScene(scene);
+    } else {
+      ok = false;
+    }
+  }
+  return ok;
 }
 
 void EditorUISystem::performScene(Engine &engine, const SceneAction &action) {
@@ -56,18 +75,29 @@ void EditorUISystem::performScene(Engine &engine, const SceneAction &action) {
     engine.loadScene(action.path);
     if (fileExists(action.path))
       rememberScene(action.path);
+  } else if (action.kind == SceneAction::Kind::Add) {
+    engine.loadSceneAdditive(action.path);
+    if (fileExists(action.path))
+      rememberScene(action.path);
+  } else if (action.kind == SceneAction::Kind::Unload) {
+    engine.unloadScene(action.path);
   }
 }
 
 void EditorUISystem::requestSave(Engine &engine) {
   if (engine.isTesting())
     return;
-  if (engine.getScenePath().empty()) {
+  const std::string active = engine.getScenePath();
+  // The other scenes with changes first; the active one is always written
+  for (const std::string &scene : engine.dirtyScenes())
+    if (!scene.empty() && scene != active && engine.saveOpenScene(scene))
+      rememberScene(scene);
+  if (active.empty()) {
     openSaveAs();
     return;
   }
-  if (engine.saveScene(engine.getScenePath()))
-    rememberScene(engine.getScenePath());
+  if (engine.saveOpenScene(active))
+    rememberScene(active);
 }
 
 bool EditorUISystem::saveSceneAs(Engine &engine, const std::string &name, std::string *error) {
@@ -132,6 +162,24 @@ void EditorUISystem::renderMainMenuBar(Engine &engine) {
       ImGui::EndMenu();
     }
     tip();
+    if (ImGui::BeginMenu("Add Scene...", !testing)) {
+      std::vector<std::string> open;
+      for (const std::string &path : engine.loadedScenes())
+        open.push_back(SceneSerializer::sceneKey(path));
+      bool any = false;
+      for (const std::string &scene : engine.getSceneSerializer().listScenes(EngineConfig::SCENES_DIR)) {
+        if (std::find(open.begin(), open.end(), SceneSerializer::sceneKey(scene)) != open.end())
+          continue; // already open
+        any = true;
+        if (ImGui::MenuItem(displayName(scene).c_str()))
+          requestScene(engine, SceneAction::Kind::Add, scene);
+      }
+      if (!any)
+        ImGui::TextDisabled("No scene left to add");
+      ImGui::EndMenu();
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip("%s", testing ? kTestingTip : "Opens another scene next to the ones open (several at once)");
     if (ImGui::BeginMenu("Recent", !testing)) {
       bool any = false;
       for (const std::string &scene : m_recentScenes) {
@@ -149,26 +197,112 @@ void EditorUISystem::renderMainMenuBar(Engine &engine) {
     ImGui::Separator();
     if (ImGui::MenuItem("Save", "Ctrl+S", false, !testing))
       requestSave(engine);
-    tip();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip("%s", testing ? kTestingTip : "Saves every scene with unsaved changes");
     if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false, !testing))
       openSaveAs();
-    tip();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip("%s", testing ? kTestingTip : "Saves the active scene under another name");
     ImGui::EndMenu();
   }
 
-  // The scene's file at the right, with a * for changes not saved
+  // The active scene's file at the right, with +N for the other scenes open and a * for changes not saved
   const bool dirty = engine.isSceneDirty();
-  const std::string name = engine.getScenePath().empty() ? "untitled" : displayName(engine.getScenePath());
+  const std::vector<std::string> open = engine.loadedScenes();
+  std::string name = engine.getScenePath().empty() ? "untitled" : displayName(engine.getScenePath());
+  if (open.size() > 1)
+    name += " +" + std::to_string(open.size() - 1);
   const std::string label = name + (dirty ? " *" : "");
   const ImGuiStyle &style = ImGui::GetStyle();
   const float width = ImGui::CalcTextSize(label.c_str()).x;
   ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX() + style.ItemSpacing.x,
                                 ImGui::GetWindowWidth() - width - style.WindowPadding.x * 2.0f));
   ImGui::TextUnformatted(label.c_str());
-  if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("%s", engine.getScenePath().empty() ? "No file yet: Save asks for a name"
-                                                          : (dirty ? "Has changes that are not saved" : "Saved"));
+  if (ImGui::IsItemHovered()) {
+    if (open.size() > 1) {
+      ImGui::BeginTooltip();
+      for (const std::string &scene : open) {
+        const bool active = scene == engine.getScenePath();
+        ImGui::Text("%s%s%s", scene.empty() ? "untitled" : displayName(scene).c_str(), active ? " (active)" : "",
+                    engine.isSceneDirty(scene) ? " *" : "");
+      }
+      ImGui::EndTooltip();
+    } else {
+      ImGui::SetTooltip("%s", engine.getScenePath().empty() ? "No file yet: Save asks for a name"
+                                                            : (dirty ? "Has changes that are not saved" : "Saved"));
+    }
+  }
   ImGui::EndMainMenuBar();
+}
+
+bool EditorUISystem::renderSceneHeader(Engine &engine, const EntityManager::Scene &scene, bool dirty) {
+  const bool testing = engine.isTesting();
+  const bool active = engine.getEntityManager().activeScene() == scene.id;
+  const std::string name = scene.path.empty() ? "untitled" : displayName(scene.path);
+  const std::string label = name + (dirty ? " *" : "") + (active ? "  (active)" : "") + "##scene" + std::to_string(scene.id);
+  const ImVec4 accent(1.0f, 0.82f, 0.4f, 1.0f);
+  if (active)
+    ImGui::PushStyleColor(ImGuiCol_Text, accent);
+  const bool open = ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_OpenOnArrow |
+                                                         ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_Framed);
+  if (active)
+    ImGui::PopStyleColor();
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s%s\nDouble-click makes it the active scene (new entities go there). Right-click for more.\n"
+                      "Drop an entity here to move it (and what is below it) to this scene.",
+                      scene.path.empty() ? "No file yet" : scene.path.c_str(), dirty ? "  (unsaved changes)" : "");
+    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+      engine.getEntityManager().setActiveScene(scene.id);
+  }
+
+  if (ImGui::BeginPopupContextItem("##sceneMenu")) {
+    if (ImGui::MenuItem("Set Active", nullptr, false, !active))
+      engine.getEntityManager().setActiveScene(scene.id);
+    if (scene.path.empty()) {
+      if (ImGui::MenuItem("Save As...", nullptr, false, !testing)) {
+        engine.getEntityManager().setActiveScene(scene.id); // Save As names the active scene
+        openSaveAs();
+      }
+    } else if (ImGui::MenuItem("Save", nullptr, false, !testing)) {
+      if (engine.saveOpenScene(scene.path))
+        rememberScene(scene.path);
+    }
+    const bool onlyOne = engine.getEntityManager().scenes().size() <= 1;
+    if (ImGui::MenuItem("Unload", nullptr, false, !testing && !onlyOne))
+      requestScene(engine, SceneAction::Kind::Unload, scene.path);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip("%s", testing ? kTestingTip : onlyOne ? "The only open scene stays (Open Scene replaces it)"
+                                                               : "Removes the scene's entities from the editor");
+    const std::string prefix(EngineConfig::ASSETS_PREFIX);
+    const bool inAssets = scene.path.compare(0, prefix.size(), prefix) == 0;
+    if (ImGui::MenuItem("Show in Assets", nullptr, false, inAssets)) {
+      m_assets.reveal(scene.path.substr(prefix.size()));
+      m_assetsOpenRequest = true;
+    }
+    ImGui::EndPopup();
+  }
+
+  // An entity dropped on the header moves, with its children, into this scene
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY"))
+      if (!testing)
+        engine.moveToScene(*static_cast<const Entity *>(payload->Data), scene.path);
+    ImGui::EndDragDropTarget();
+  }
+  return open;
+}
+
+void EditorUISystem::acceptSceneDrop(Engine &engine, ImVec2 min, ImVec2 max) {
+  const ImGuiPayload *asset = ImGui::GetDragDropPayload();
+  if (!asset || !asset->IsDataType(AssetBrowser::kPayload) || !asset->Data ||
+      AssetBrowser::classify(static_cast<const char *>(asset->Data)) != AssetBrowser::Kind::Scene)
+    return;
+  if (ImGui::BeginDragDropTargetCustom(ImRect(min, max), ImGui::GetID("##sceneAddDrop"))) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(AssetBrowser::kPayload))
+      requestScene(engine, SceneAction::Kind::Add,
+                   std::string(EngineConfig::ASSETS_PREFIX) + static_cast<const char *>(payload->Data));
+    ImGui::EndDragDropTarget();
+  }
 }
 
 void EditorUISystem::renderSceneLoadDialog(Engine &engine) {
@@ -184,28 +318,46 @@ void EditorUISystem::renderSceneLoadDialog(Engine &engine) {
   if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
     return;
   const bool isNew = m_pendingScene.kind == SceneAction::Kind::New;
-  ImGui::Text("The scene has changes that are not saved.");
+  const bool isUnload = m_pendingScene.kind == SceneAction::Kind::Unload;
+  const size_t open = engine.loadedScenes().size();
+  if (isUnload)
+    ImGui::Text("%s has changes that are not saved.", displayName(m_pendingScene.path).c_str());
+  else
+    ImGui::Text(open > 1 ? "The scenes have changes that are not saved." : "The scene has changes that are not saved.");
   if (isNew)
     ImGui::TextDisabled("Start a new scene anyway?");
+  else if (isUnload)
+    ImGui::TextDisabled("Unload it anyway?");
   else
     ImGui::TextDisabled("Open %s anyway?", m_pendingScene.path.c_str());
-  const bool hasFile = !engine.getScenePath().empty();
-  if (ImGui::Button(isNew ? "Save and start new" : "Save and open")) {
+  // The active scene with no file yet is named by Save As; an unload of one has no file to save to
+  const bool activeUntitled = !isUnload && engine.getScenePath().empty() && engine.isSceneDirty("");
+  const char *saveLabel = isNew ? "Save and start new" : isUnload ? "Save and unload" : "Save and open";
+  ImGui::BeginDisabled(isUnload && m_pendingScene.path.empty());
+  if (ImGui::Button(saveLabel)) {
     const SceneAction action = m_pendingScene;
     m_pendingScene = SceneAction();
     ImGui::CloseCurrentPopup();
-    if (hasFile) {
-      if (engine.saveScene(engine.getScenePath()))
+    if (isUnload) {
+      if (engine.saveOpenScene(action.path))
         performScene(engine, action);
-    } else {
-      m_afterSaveAs = action; // no file yet: Save As asks for a name, then goes on
+    } else if (activeUntitled) {
+      saveDirtyScenes(engine); // the others; Save As names the active one, then goes on
+      m_afterSaveAs = action;
       openSaveAs();
+    } else if (saveDirtyScenes(engine)) {
+      performScene(engine, action);
     }
   }
-  if (!hasFile && ImGui::IsItemHovered())
-    ImGui::SetTooltip("This scene has no file yet: Save As asks for a name first");
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+    if (isUnload && m_pendingScene.path.empty())
+      ImGui::SetTooltip("This scene has no file yet: make it the active one and use Save As");
+    else if (activeUntitled)
+      ImGui::SetTooltip("The active scene has no file yet: Save As asks for a name first");
+  }
   ImGui::SameLine();
-  if (ImGui::Button(isNew ? "Start new without saving" : "Open without saving")) {
+  if (ImGui::Button(isNew ? "Start new without saving" : isUnload ? "Unload without saving" : "Open without saving")) {
     const SceneAction action = m_pendingScene;
     m_pendingScene = SceneAction();
     ImGui::CloseCurrentPopup();
@@ -241,8 +393,10 @@ void EditorUISystem::renderSaveAsDialog(Engine &engine) {
       const SceneAction after = m_afterSaveAs;
       m_afterSaveAs = SceneAction();
       ImGui::CloseCurrentPopup();
-      if (after.kind != SceneAction::Kind::None)
+      if (after.kind != SceneAction::Kind::None) {
+        saveDirtyScenes(engine);
         performScene(engine, after);
+      }
     }
   };
 
