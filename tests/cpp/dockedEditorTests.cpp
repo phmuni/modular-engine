@@ -293,8 +293,8 @@ TEST_CASE(docked_editor_gizmo_is_grabbable_input) {
 }
 
 // Dragging a model by its body: the spot grabbed stays under the cursor, the model resting on the surface the cursor
-// points at (a tall pillar grabbed near its base keeps to the floor, not jumping onto the wall behind it). Only with
-// Align to surface on: off, a press on a model only selects it.
+// points at (a tall pillar grabbed near its base keeps to the floor, not jumping onto the wall behind it). With Align to
+// surface off it moves level instead, keeping its height and rotation.
 namespace {
 // Where a world point is on the screen (window units), through the active camera and the Game panel
 glm::vec2 screenOf(Engine &engine, const glm::vec3 &world) {
@@ -393,11 +393,17 @@ TEST_CASE(docked_editor_press_without_a_drag_only_selects_input) {
   });
 }
 
-TEST_CASE(docked_editor_body_drag_needs_align_input) {
+TEST_CASE(docked_editor_body_drag_without_align_moves_level_input) {
+  // Align off: the pillar keeps its height and rotation, the grabbed spot sliding on the level plane through it, past
+  // where the floor would have it rest: the spot goes to z = -2.2, so the pillar's center to -2.7, into the wall
   Pillar scene = pillarScene(engine, false);
-  dragFrom(engine, steps, glm::vec3(0, 0.3f, 1.5f), glm::vec3(0, 0.3f, -1));
+  dragFrom(engine, steps, glm::vec3(0, 0.3f, 1.5f), glm::vec3(0, 0.3f, -2.2f));
   steps.step(3, [&engine, scene]() {
-    CHECK_EQ(editorOf(engine).selectedEntity, scene.pillar.id()); // the press selected it
-    CHECK_NEAR(scene.pillar.position(), glm::vec3(0, 1.5f, 1), 1e-4f); // and the drag did not move it
+    CHECK_EQ(editorOf(engine).selectedEntity, scene.pillar.id());
+    const glm::vec3 at = scene.pillar.position();
+    CHECK_NEAR(at.y, 1.5f, 1e-3f);                               // the same height
+    CHECK_NEAR(scene.pillar.rotation(), glm::vec3(0.0f), 1e-3f); // and rotation
+    CHECK_NEAR(at.x, 0.0f, 0.15f);
+    CHECK_NEAR(at.z, -2.7f, 0.15f);
   });
 }

@@ -220,7 +220,10 @@ private:
   // Starts, ends and cancels the body grab from the mouse; begins the undo step of a drag
   void updateBodyGrab(Engine &engine);
   // Without a surface under the cursor: the grabbed point follows the cursor on the plane facing the camera
-  void moveGrabFreely(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform);
+  // The grabbed spot onto the cursor's ray, on the plane through it facing the camera, or with `level` the horizontal
+  // one (the camera's plane when the view is nearly edge-on to it); `snapped` puts x and z on the Snap grid
+  void moveGrabFreely(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
+                      bool level = false, bool snapped = false);
   // Applies a gizmo change to the transform: as is, or kept out of other models when m_gizmoSolid is on
   // Returns false when Solid refused a rotation or scale
   bool applyGizmoChange(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
