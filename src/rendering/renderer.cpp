@@ -200,22 +200,35 @@ void Renderer::initShadowMapping() {
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-GLuint Renderer::createDepthCubeMap(int size) {
-  GLuint cubeMap = 0;
-  glGenTextures(1, &cubeMap);
-  glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap);
-  for (int face = 0; face < 6; ++face)
-    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_DEPTH_COMPONENT24, size, size, 0, GL_DEPTH_COMPONENT,
-                 GL_FLOAT, nullptr);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-  // Sampled through samplerCubeShadow, like the directional map: hardware comparison with bilinear filtering
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-  return cubeMap;
+GLuint Renderer::createDepthCubeArray(int size, int cubes) {
+  GLuint array = 0;
+  glGenTextures(1, &array);
+  glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, array);
+  // Layer = cube * 6 + face (+X, -X, +Y, -Y, +Z, -Z)
+  glTexImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, 0, GL_DEPTH_COMPONENT24, size, size, cubes * 6, 0, GL_DEPTH_COMPONENT,
+               GL_FLOAT, nullptr);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  // Sampled through samplerCubeArrayShadow, like the directional map: hardware comparison with bilinear filtering
+  glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+  // Start every layer at the far plane: every comparison passes, so nothing is shadowed
+  GLuint fbo = 0;
+  glGenFramebuffers(1, &fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glDrawBuffer(GL_NONE);
+  glReadBuffer(GL_NONE);
+  glDepthMask(GL_TRUE);
+  for (int layer = 0; layer < cubes * 6; ++layer) {
+    glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, array, 0, layer);
+    glClear(GL_DEPTH_BUFFER_BIT);
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glDeleteFramebuffers(1, &fbo);
+  return array;
 }
 
 void Renderer::beginPointShadowFace(int slot, int face) {
@@ -225,26 +238,20 @@ void Renderer::beginPointShadowFace(int slot, int face) {
     glDrawBuffer(GL_NONE);
     glReadBuffer(GL_NONE);
   }
-  GLuint &cubeMap = m_pointShadowMaps[slot];
-  if (!cubeMap)
-    cubeMap = createDepthCubeMap(EngineConfig::POINT_SHADOW_SIZE);
+  if (!m_pointShadowMaps)
+    m_pointShadowMaps = createDepthCubeArray(EngineConfig::POINT_SHADOW_SIZE, EngineConfig::MAX_POINT_SHADOWS);
 
   glViewport(0, 0, EngineConfig::POINT_SHADOW_SIZE, EngineConfig::POINT_SHADOW_SIZE);
   glBindFramebuffer(GL_FRAMEBUFFER, m_pointShadowFBO);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, cubeMap, 0);
+  glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, m_pointShadowMaps, 0, slot * 6 + face);
   glClear(GL_DEPTH_BUFFER_BIT);
 }
 
-GLuint Renderer::getPointShadowMap(int slot) const {
-  if (slot >= 0 && slot < EngineConfig::MAX_POINT_SHADOWS && m_pointShadowMaps[slot])
-    return m_pointShadowMaps[slot];
-  if (!m_emptyCubeMap) {
-    // 1x1 faces at the far plane: every comparison passes, so nothing is shadowed
-    m_emptyCubeMap = createDepthCubeMap(1);
-    const float far = 1.0f;
-    for (int face = 0; face < 6; ++face)
-      glTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, 0, 0, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &far);
-  }
+GLuint Renderer::getPointShadowMap() const {
+  if (m_pointShadowMaps)
+    return m_pointShadowMaps;
+  if (!m_emptyCubeMap)
+    m_emptyCubeMap = createDepthCubeArray(1, 1); // no light has cast a shadow yet: a 1x1 array with nothing shadowed
   return m_emptyCubeMap;
 }
 
@@ -458,11 +465,10 @@ void Renderer::shutdown() {
     glDeleteTextures(1, &m_depthMap);
     m_depthMap = 0;
   }
-  for (GLuint &cubeMap : m_pointShadowMaps)
-    if (cubeMap) {
-      glDeleteTextures(1, &cubeMap);
-      cubeMap = 0;
-    }
+  if (m_pointShadowMaps) {
+    glDeleteTextures(1, &m_pointShadowMaps);
+    m_pointShadowMaps = 0;
+  }
   if (m_emptyCubeMap) {
     glDeleteTextures(1, &m_emptyCubeMap);
     m_emptyCubeMap = 0;

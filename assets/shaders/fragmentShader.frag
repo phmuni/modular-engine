@@ -1,4 +1,4 @@
-#version 330 core
+#version 410 core
 out vec4 FragColor;
 
 // PBR metallic-roughness (glTF): the base color is `diffuse`, times baseColorFactor below
@@ -49,12 +49,8 @@ uniform float cascadeTexels[4]; // world size of one texel in each cascade
 uniform int cascadeCount;
 uniform vec3 viewForward;
 
-// Point light shadows, one cube map per slot (EngineConfig::MAX_POINT_SHADOWS). Separate samplers rather than an
-// array: GLSL 3.30 only indexes sampler arrays with constants.
-uniform samplerCubeShadow pointShadowMaps0;
-uniform samplerCubeShadow pointShadowMaps1;
-uniform samplerCubeShadow pointShadowMaps2;
-uniform samplerCubeShadow pointShadowMaps3;
+// Point light shadows: one cube map array, a cube per slot (EngineConfig::MAX_POINT_SHADOWS)
+uniform samplerCubeArrayShadow pointShadowMaps;
 uniform float pointShadowTexel; // one texel of a cube face at distance 1 (2 / POINT_SHADOW_SIZE)
 uniform int useShadows;
 uniform float opacity;
@@ -165,14 +161,6 @@ float calculateShadow(vec3 normal)
     return shadow * (1.0 - smoothstep(end * 0.9, end, depth));
 }
 
-float samplePointShadow(int slot, vec4 coord)
-{
-    if (slot == 0) return texture(pointShadowMaps0, coord);
-    if (slot == 1) return texture(pointShadowMaps1, coord);
-    if (slot == 2) return texture(pointShadowMaps2, coord);
-    return texture(pointShadowMaps3, coord);
-}
-
 // The depth the cube face facing `toFrag` stored for that point: a perspective depth along the major axis, with
 // near 0.05 (RenderSystem's kPointShadowNear) and far = shadowFar
 float cubeFaceDepth(vec3 toFrag, float far)
@@ -204,7 +192,7 @@ float calculatePointShadow(Light light, vec3 normal)
     float lit = 0.0;
     for (int i = 0; i < 5; ++i) {
         vec3 tapDir = dir + taps[i] * texel * 1.5;
-        lit += samplePointShadow(light.shadowSlot, vec4(tapDir, cubeFaceDepth(tapDir, light.shadowFar)));
+        lit += texture(pointShadowMaps, vec4(tapDir, float(light.shadowSlot)), cubeFaceDepth(tapDir, light.shadowFar));
     }
     return 1.0 - lit / 5.0;
 }

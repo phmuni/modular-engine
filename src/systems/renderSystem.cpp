@@ -132,17 +132,14 @@ const CascadeUniforms kCascadeUniforms[4] = {
 static_assert(EngineConfig::SHADOW_CASCADES >= 1 && EngineConfig::SHADOW_CASCADES <= 4,
               "the shader's cascade arrays hold 4");
 
-// Texture units 0-2 hold material textures and 4 the directional shadow map; point shadow cube maps follow
-constexpr int kFirstPointShadowUnit = 5;
-constexpr const char *kPointShadowSamplers[] = {"pointShadowMaps0", "pointShadowMaps1", "pointShadowMaps2",
-                                                "pointShadowMaps3"};
-static_assert(std::size(kPointShadowSamplers) == EngineConfig::MAX_POINT_SHADOWS,
-              "one sampler name (and one sampler in fragmentShader.frag) per point shadow slot");
+// Texture units 0-3 hold material textures and 4 the directional shadow map; the point shadows' cube map array
+// (one cube per slot) follows
+constexpr int kPointShadowUnit = 5;
 // The ambient occlusion texture takes the last of the 16 units a fragment shader is guaranteed
 constexpr int kAmbientOcclusionUnit = 15;
 // The material's occlusion map takes the unit after the point shadows (0 to 4: diffuse, metallic-roughness, emission,
 // normal, the sun's shadow map)
-constexpr int kOcclusionUnit = kFirstPointShadowUnit + EngineConfig::MAX_POINT_SHADOWS;
+constexpr int kOcclusionUnit = kPointShadowUnit + 1;
 // Custom shaders' texture parameters take the units after those, up to the AO's
 constexpr int kFirstCustomTextureUnit = kOcclusionUnit + 1;
 constexpr int kMaxCustomTextures = kAmbientOcclusionUnit - kFirstCustomTextureUnit;
@@ -663,10 +660,7 @@ void RenderSystem::renderPipeline(SystemManager &systemManager, ComponentManager
       shader.setFloat(kCascadeUniforms[cascade].texel, sunShadow.texels[cascade]);
     }
     shader.setTex("shadowMap", renderer.getDepthMap(), 4, GL_TEXTURE_2D_ARRAY);
-    // Every cube sampler gets its own unit and a cube map, even unused slots (see Renderer::getPointShadowMap)
-    for (int slot = 0; slot < EngineConfig::MAX_POINT_SHADOWS; ++slot)
-      shader.setTex(kPointShadowSamplers[slot], renderer.getPointShadowMap(slot), kFirstPointShadowUnit + slot,
-                    GL_TEXTURE_CUBE_MAP);
+    shader.setTex("pointShadowMaps", renderer.getPointShadowMap(), kPointShadowUnit, GL_TEXTURE_CUBE_MAP_ARRAY);
     shader.setFloat("pointShadowTexel", 2.0f / static_cast<float>(EngineConfig::POINT_SHADOW_SIZE));
     shader.setInt("gammaCorrect", gammaCorrect ? 1 : 0);
     shader.setInt("fogMode", m_environment.fogMode);

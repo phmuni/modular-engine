@@ -44,12 +44,13 @@ private:
   GLuint m_depthMapFBO = 0;
   GLuint m_depthMap = 0;
 
-  // Point light shadows: one depth cube map per slot, created the first time a light uses the slot. Unused slots
-  // read m_emptyCubeMap, since a cube sampler must never share a texture unit with a 2D texture.
+  // Point light shadows: one depth cube map array, a cube per slot (layer = slot * 6 + face), created the first time
+  // a light casts a shadow. Until then the shader reads m_emptyCubeMap, since a cube array sampler must never share
+  // a texture unit with another kind of texture.
   GLuint m_pointShadowFBO = 0;
-  GLuint m_pointShadowMaps[EngineConfig::MAX_POINT_SHADOWS] = {};
+  GLuint m_pointShadowMaps = 0;
   mutable GLuint m_emptyCubeMap = 0;
-  static GLuint createDepthCubeMap(int size);
+  static GLuint createDepthCubeArray(int size, int cubes);
 
   // The window's framebuffer in pixels, which the editor, the game UI and the final pass draw at
   int m_screenWidth = 1280;
@@ -109,8 +110,8 @@ public:
   void endShadowPass();
   // Renders into one face (0-5: +X, -X, +Y, -Y, +Z, -Z) of a point shadow slot; end with endShadowPass()
   void beginPointShadowFace(int slot, int face);
-  // The slot's cube map, or an empty one (everything lit) if the slot was never used
-  GLuint getPointShadowMap(int slot) const;
+  // The cube map array of all the slots (GL_TEXTURE_CUBE_MAP_ARRAY), or an empty one (everything lit) before any use
+  GLuint getPointShadowMap() const;
 
   // Skybox: one screen-covering triangle at the far plane with the bound skybox shader, behind what was drawn
   void drawSkybox() const;
