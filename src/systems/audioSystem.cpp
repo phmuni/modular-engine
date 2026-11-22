@@ -139,15 +139,16 @@ AudioSystem::~AudioSystem() = default;
 
 bool AudioSystem::isAvailable() const { return m_impl->ready; }
 
-void AudioSystem::update(SystemManager &systemManager, bool paused, float timeScale) {
+void AudioSystem::update(SystemManager &systemManager, bool paused, bool editorFrozen, float timeScale) {
   auto &impl = *m_impl;
   if (!impl.ready)
     return;
   ++impl.frame;
 
   // A stopped group stops pulling audio from its sounds, which pauses them where they are
-  const bool musicPaused = paused && m_musicPausesWithGame; // the time scale does not pause music
-  paused = paused || timeScale <= 0.0f;
+  // The editor's freeze stops music too; the game's pause only by option; the time scale never
+  const bool musicPaused = editorFrozen || (paused && m_musicPausesWithGame);
+  paused = paused || editorFrozen || timeScale <= 0.0f;
   if (paused != impl.paused) {
     impl.paused = paused;
     if (paused)

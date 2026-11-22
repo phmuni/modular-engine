@@ -118,9 +118,9 @@ void checkFrozen(Engine &engine, testing::Steps &steps, std::shared_ptr<FrozenPr
 
 TEST_CASE(audio_available) {
   CHECK(audio(engine).isAvailable());
-  CHECK(!engine.musicPausesWithGame()); // music ignores the pause by default
-  engine.setMusicPausesWithGame(true);
-  CHECK(engine.musicPausesWithGame());
+  CHECK(engine.musicPausesWithGame()); // music pauses with the pause menu by default
+  engine.setMusicPausesWithGame(false);
+  CHECK(!engine.musicPausesWithGame());
 }
 
 TEST_CASE(audio_effects_pause_with_toggle) {
@@ -152,7 +152,9 @@ TEST_CASE(audio_effects_pause_when_editing) {
   checkFrozen(engine, steps, probe, true);
 }
 
-TEST_CASE(audio_music_ignores_pause_by_default) {
+// With the option off, music plays through the pause menu
+TEST_CASE(audio_music_plays_through_pause_when_option_off) {
+  engine.setMusicPausesWithGame(false);
   auto watch = std::make_shared<Watch>();
   watch->music = true;
   watch->handle = engine.playMusic(kSound);
@@ -163,11 +165,23 @@ TEST_CASE(audio_music_ignores_pause_by_default) {
   steps.step(0, [game] { CHECK(audio(*game).isBusRunning(AudioSystem::Bus::Music)); });
 }
 
-TEST_CASE(audio_music_ignores_editor_freeze_by_default) {
+// The editor's freeze pauses music even with the option off (only the pause menu follows the option)
+TEST_CASE(audio_music_pauses_with_editor_freeze_option_off) {
+  engine.setMusicPausesWithGame(false);
   auto probe = std::make_shared<FrozenProbe>();
   probe->watch.music = true;
   probe->watch.handle = engine.playMusic(kSound);
-  checkFrozen(engine, steps, probe, false);
+  checkFrozen(engine, steps, probe, true);
+}
+
+TEST_CASE(audio_music_pauses_with_editor_pause_option_off) {
+  engine.setMusicPausesWithGame(false);
+  engine.play();
+  auto probe = std::make_shared<FrozenProbe>();
+  probe->watch.music = true;
+  Engine *game = &engine;
+  steps.step(2, [game, probe] { probe->watch.handle = game->playMusic(kSound); });
+  checkFrozen(engine, steps, probe, true);
 }
 
 TEST_CASE(audio_music_pauses_with_toggle) {
@@ -226,6 +240,7 @@ TEST_CASE(audio_music_started_while_paused) {
 }
 
 TEST_CASE(audio_music_started_while_paused_option_off) {
+  engine.setMusicPausesWithGame(false);
   Engine *game = &engine;
   auto watch = std::make_shared<Watch>();
   watch->music = true;

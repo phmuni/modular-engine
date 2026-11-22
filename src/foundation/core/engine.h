@@ -442,7 +442,8 @@ public:
   bool getState(Toggle toggle);
 
   // Audio (WAV, MP3, FLAC). Effects pause with the game (the pause menu, the editor's freeze) and follow the time
-  // scale; music plays through a pause unless setMusicPausesWithGame is on, and ignores the time scale.
+  // scale. Music pauses with them too (setMusicPausesWithGame(false) keeps it playing through the pause menu) and
+  // ignores the time scale.
   // Decodes a sound in the background, so its first play does not wait for the file
   void preloadSound(std::string_view path);
   // Fire-and-forget effect, heard the same anywhere
@@ -461,7 +462,8 @@ public:
   void setMusicVolume(float volume, uint32_t music = 0);
   // False once music that does not loop has ended
   bool isMusicPlaying(uint32_t music = 0);
-  // Music pauses (where it is) whenever the game is paused, and resumes with it. Off by default.
+  // Whether music pauses (where it is) with the game's pause menu and resumes with it. On by default; off lets music
+  // play through the pause menu. (The editor's freeze pauses music either way.)
   void setMusicPausesWithGame(bool enabled);
   bool musicPausesWithGame() const;
 

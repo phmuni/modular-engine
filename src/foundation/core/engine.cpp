@@ -337,7 +337,7 @@ void Engine::update(bool &isRunning, bool pollInput) {
 
   // After the app had its chance to destroy entities this frame
   m_systemManager.getSystem<ResourceSystem>().collectUnusedMaterials();
-  m_systemManager.getSystem<AudioSystem>().update(m_systemManager, state.isToggled(Toggle::Paused) || isFrozen(),
+  m_systemManager.getSystem<AudioSystem>().update(m_systemManager, state.isToggled(Toggle::Paused), isFrozen(),
                                                   timeSystem.getTimeScale());
   // After the app, so data models it changed this frame are shown this frame
   m_systemManager.getSystem<GameUISystem>().update(state.isToggled(Toggle::UIDebugger),
