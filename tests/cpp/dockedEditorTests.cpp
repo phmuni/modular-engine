@@ -211,6 +211,13 @@ TEST_CASE(docked_editor_reset_layout_rebuilds_the_default) {
 // game plays they are the game's; with Alt held they select and the game does not see them. "input": run alone.
 namespace {
 void mouseEvent(glm::vec2 at, Uint32 type) {
+#ifdef __linux__
+  // ImGui's SDL backend reads the real pointer's place every frame while the window has the focus and no button is down,
+  // over what the pushed events said: on Linux (Xvfb in CI) the window has it, so the real pointer goes there too.
+  // Not on macOS, where it would move the user's own pointer (and the test window, in the background, lacks the focus).
+  if (type == SDL_EVENT_MOUSE_MOTION)
+    SDL_WarpMouseInWindow(SDL_GetWindowFromID(windowId()), at.x, at.y);
+#endif
   SDL_Event event{};
   event.type = type;
   if (type == SDL_EVENT_MOUSE_MOTION) {
