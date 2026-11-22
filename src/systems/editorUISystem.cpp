@@ -1999,15 +1999,15 @@ void EditorUISystem::moveGrabFreely(SystemManager &systemManager, ComponentManag
   nearPoint /= nearPoint.w;
   farPoint /= farPoint.w;
   const glm::vec3 origin(nearPoint), direction = glm::normalize(glm::vec3(farPoint - nearPoint));
-  // The plane's normal: up for a level move, unless the ray runs nearly along it (it would shoot far away)
-  glm::vec3 normal = forward;
-  if (level && std::abs(direction.y) > 0.1f)
-    normal = glm::vec3(0.0f, 1.0f, 0.0f);
+  // The plane's normal: up for a level move, which never changes the height: past that plane's horizon (the ray never
+  // meets it in front) or absurdly far along it, the entity just stays where it was
+  const glm::vec3 normal = level ? glm::vec3(0.0f, 1.0f, 0.0f) : forward;
   const float facing = glm::dot(direction, normal);
-  if (std::abs(facing) < 0.05f)
+  if (std::abs(facing) < 1e-4f)
     return;
   const float along = glm::dot(point - origin, normal) / facing;
-  if (along <= 0.0f)
+  constexpr float kFarthest = 500.0f;
+  if (along <= 0.0f || along > kFarthest)
     return;
   transform.position = origin + direction * along - rotationOf(transform) * local;
   if (snapped) {

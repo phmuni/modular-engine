@@ -221,7 +221,7 @@ private:
   void updateBodyGrab(Engine &engine);
   // Without a surface under the cursor: the grabbed point follows the cursor on the plane facing the camera
   // The grabbed spot onto the cursor's ray, on the plane through it facing the camera, or with `level` the horizontal
-  // one (the camera's plane when the view is nearly edge-on to it); `snapped` puts x and z on the Snap grid
+  // one (it stays put when the ray does not meet that in front); `snapped` puts x and z on the Snap grid
   // `point` is the grabbed spot now (world), `local` the same in the entity's own frame
   void moveGrabFreely(SystemManager &systemManager, ComponentManager &componentManager, Transform &transform,
                       const glm::vec3 &point, const glm::vec3 &local, bool level = false, bool snapped = false);
