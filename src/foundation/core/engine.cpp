@@ -224,7 +224,7 @@ void Engine::update(bool &isRunning, bool pollInput) {
   auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
   {
     const auto &toggles = m_systemManager.getSystem<StateSystem>();
-    cameraSystem.setEditorNavigation(m_playMode == PlayMode::Editing, toggles.isToggled(Toggle::ShowUI));
+    cameraSystem.setEditorNavigation(isFrozen(), toggles.isToggled(Toggle::ShowUI));
     inputSystem.setEditorFlyAllowed(cameraSystem.canNavigate(toggles));
   }
   if (pollInput)
@@ -249,7 +249,7 @@ void Engine::update(bool &isRunning, bool pollInput) {
   m_systemManager.getSystem<ResourceSystem>().update();
 
   auto &timeSystem = m_systemManager.getSystem<TimeSystem>();
-  timeSystem.setPaused(state.isToggled(Toggle::Paused) || m_playMode == PlayMode::Editing);
+  timeSystem.setPaused(state.isToggled(Toggle::Paused) || isFrozen());
   timeSystem.update();
 
   // The camera runs on real time, so it can still fly around a paused scene
@@ -273,7 +273,7 @@ void Engine::update(bool &isRunning, bool pollInput) {
 
   // Prefab files edited while the editor is open: their linked instances follow. A stat per prefab in use, a few
   // times a second, and never in a game without the editor up.
-  if (editorUI.m_renderUI && m_playMode != PlayMode::Testing) {
+  if (editorUI.m_renderUI && !isTesting()) {
     m_prefabPollTime += timeSystem.getUnscaledDeltaTime();
     if (m_prefabPollTime >= kPrefabPollSeconds) {
       m_prefabPollTime = 0.0f;
@@ -288,15 +288,15 @@ void Engine::update(bool &isRunning, bool pollInput) {
   if (m_playMode == PlayMode::Editing)
     m_previewTime += timeSystem.getUnscaledDeltaTime();
 
-  if (m_playMode != PlayMode::Editing) {
+  if (!isFrozen()) {
     m_time.tick(timeSystem.getDeltaTime()); // the game clock and timers, before the app
     m_tween.tick(timeSystem.getDeltaTime());
   }
-  if (m_app && m_playMode != PlayMode::Editing) {
+  if (m_app && !isFrozen()) {
     m_app->update(*this, timeSystem.getDeltaTime());
   }
   // Lua scripts, after the app (frozen while editing, like it)
-  if (m_playMode != PlayMode::Editing)
+  if (!isFrozen())
     m_systemManager.getSystem<ScriptSystem>().update(timeSystem.getDeltaTime());
 
   // Scene switches wait until the app is done with this frame's entities

@@ -168,7 +168,9 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "setLocalTransform": "a C++ editor/hierarchy call; scripts move entities with position, rotation and scale",
     # Editor and tooling
     "getPlayMode": "editor",
-    "edit": "editor",
+    "pause": "editor",
+    "isFrozen": "editor",
+    "isTesting": "editor",
     "resume": "editor",
     "play": "editor",
     "stop": "editor",

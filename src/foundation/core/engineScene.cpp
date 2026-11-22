@@ -182,7 +182,7 @@ void Engine::applyPlayModeRequest() {
   const PlayMode requested = *m_requestedPlayMode;
   m_requestedPlayMode.reset();
 
-  if (requested == PlayMode::Testing && m_playMode != PlayMode::Testing) {
+  if (requested == PlayMode::Testing && !isTesting()) {
     // Play: everything as it is now, to come back to. An edit still open is not recorded: the history is not used
     // while testing, and Stop brings back the scene as it is now.
     m_openCheckpoint.reset();
@@ -195,7 +195,16 @@ void Engine::applyPlayModeRequest() {
     return;
   }
 
-  if (m_playMode == PlayMode::Testing && requested != PlayMode::Testing && m_playSnapshot) {
+  if (isTesting() && m_playSnapshot) {
+    // Pause and resume keep the snapshot; Paused only freezes the test
+    if (requested == PlayMode::Paused) {
+      m_playMode = PlayMode::Paused;
+      return;
+    }
+    if (requested == PlayMode::Running || requested == PlayMode::Testing) {
+      m_playMode = PlayMode::Testing;
+      return;
+    }
     // Stop: every entity and component back as they were at Play
     SceneSnapshot snapshot = std::move(*m_playSnapshot);
     m_playSnapshot.reset();
@@ -213,13 +222,13 @@ void Engine::applyPlayModeRequest() {
     return;
   }
 
-  // Freezing and unfreezing without a snapshot (Editing <-> Running)
-  if (m_playMode != PlayMode::Testing)
-    m_playMode = requested == PlayMode::Testing ? m_playMode : requested;
+  // Freezing and unfreezing without a snapshot (Editing <-> Running): pausing a live game is Editing
+  if (!isTesting() && requested != PlayMode::Testing)
+    m_playMode = requested == PlayMode::Paused ? PlayMode::Editing : requested;
 }
 
 void Engine::beginCheckpoint() {
-  if (m_playMode == PlayMode::Testing || m_openCheckpoint)
+  if (isTesting() || m_openCheckpoint)
     return;
   m_openCheckpoint = std::make_unique<Checkpoint>(Checkpoint{captureScene(), getSceneSerializer().fingerprint()});
   getSceneSerializer().beginFileJournal(); // prefab files the edit writes belong to the step

@@ -134,7 +134,7 @@ void EditorUISystem::handleAssetEvent(Engine &engine, SystemManager &systemManag
 
 bool EditorUISystem::assignAssetToEntity(Engine &engine, ComponentManager &componentManager, Entity entity,
                                          const std::string &asset) {
-  if (engine.getPlayMode() == Engine::PlayMode::Testing)
+  if (engine.isTesting())
     return false;
   switch (AssetBrowser::classify(asset)) {
   case AssetBrowser::Kind::Script:
@@ -159,7 +159,7 @@ bool EditorUISystem::assignAssetToEntity(Engine &engine, ComponentManager &compo
 
 Entity EditorUISystem::placeAsset(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager,
                                   const std::string &asset, const glm::vec3 &point, bool onSurface) {
-  if (engine.getPlayMode() == Engine::PlayMode::Testing)
+  if (engine.isTesting())
     return -1;
   auto &resourceSystem = systemManager.getSystem<ResourceSystem>();
   auto &transformSystem = systemManager.getSystem<TransformSystem>();

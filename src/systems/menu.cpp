@@ -610,7 +610,7 @@ void MenuSystem::update(bool escapePressed) {
     if (!impl.stack.empty()) // Escape is the top menu's alone
       impl.stack.back()->m_impl->requests.push_back({Menu::Impl::Request::Kind::Escape, {}});
     else if (impl.pauseFacade->isEnabled() && impl.pauseMenu->options().escape != MenuEscape::None &&
-             impl.engine.getPlayMode() != Engine::PlayMode::Editing)
+             !impl.engine.isFrozen())
       impl.pauseMenu->open();
   }
   if (impl.stack.empty())

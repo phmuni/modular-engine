@@ -637,9 +637,9 @@ void EditorUISystem::renderSettingsPanel(Engine &engine, EntityManager &entityMa
     toggleCheckbox("Free camera", Toggle::FreeCamera,
                    "Fly the camera yourself in any mode, instead of the game or its CameraRig: hold the right mouse\n"
                    "button in the view and use W A S D, or lock the cursor. Off by default; a game drives its camera.\n"
-                   "While editing (Edit), the right button flies the camera without this.");
-    if (engine.getPlayMode() == Engine::PlayMode::Editing)
-      ImGui::TextDisabled("  Editing: right-drag in the view to fly");
+                   "While frozen (editing or paused), the right button flies the camera without this.");
+    if (engine.isFrozen())
+      ImGui::TextDisabled("  Frozen: right-drag in the view to fly");
     else if (!state.isToggled(Toggle::FreeCamera))
       ImGui::TextDisabled("  The game drives the camera");
     else if (!state.isToggled(Toggle::CursorLock))
@@ -772,8 +772,8 @@ void EditorUISystem::render(Engine &engine, EntityManager &entityManager, System
   if (quiet && ((ImGui::IsKeyPressed(ImGuiKey_Tab, false) && !io.KeyShift) ||
                 (ImGui::IsKeyPressed(ImGuiKey_Space, false) && io.KeyShift)))
     toggleMaximized();
-  followPlayMode(engine.getPlayMode() == Engine::PlayMode::Testing);
-  const bool playing = engine.getPlayMode() != Engine::PlayMode::Editing && !engine.time().isPaused();
+  followPlayMode(engine.isTesting());
+  const bool playing = !engine.isFrozen() && !engine.time().isPaused();
   m_altPicking = playing && io.KeyAlt;
   m_viewForEditor = !playing || io.KeyAlt;
 
@@ -940,7 +940,7 @@ void EditorUISystem::clickInList(Entity entity, const std::vector<Entity> &order
 // The scene is not edited while testing: the snapshot taken at Play brings it back on Stop, and no undo step is kept
 void EditorUISystem::duplicateSelected(Engine &engine, SystemManager &systemManager,
                                        ComponentManager &componentManager) {
-  if (engine.getPlayMode() == Engine::PlayMode::Testing)
+  if (engine.isTesting())
     return;
   const std::vector<Entity> roots = selectionRoots(componentManager);
   if (roots.empty())
@@ -983,7 +983,7 @@ void EditorUISystem::copySelected(SystemManager &systemManager, ComponentManager
 }
 
 void EditorUISystem::pasteClipboard(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
-  if (engine.getPlayMode() == Engine::PlayMode::Testing || !SDL_HasClipboardText())
+  if (engine.isTesting() || !SDL_HasClipboardText())
     return;
   char *clipboard = SDL_GetClipboardText();
   if (!clipboard)
@@ -1009,7 +1009,7 @@ void EditorUISystem::pasteClipboard(Engine &engine, SystemManager &systemManager
 }
 
 void EditorUISystem::deleteSelected(Engine &engine, SystemManager &systemManager, ComponentManager &componentManager) {
-  if (m_selection.empty() || engine.getPlayMode() == Engine::PlayMode::Testing)
+  if (m_selection.empty() || engine.isTesting())
     return;
   const std::vector<Entity> roots = selectionRoots(componentManager); // their descendants go with them
   engine.beginCheckpoint();
@@ -2304,15 +2304,20 @@ void EditorUISystem::renderPlayToolbar(Engine &engine, SystemManager &systemMana
   const ImGuiIO &io = ImGui::GetIO();
   const Engine::PlayMode mode = engine.getPlayMode();
 
-  // Ctrl+P: Play from Editing, Stop while testing, and freeze a running game
+  // Ctrl+P: Play from Editing, Stop while testing, and pause a running game. Ctrl+Shift+P: Pause and Resume a test.
   if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_P, false) && !io.WantTextInput &&
       !systemManager.getSystem<CameraSystem>().isNavigating()) {
-    if (mode == Engine::PlayMode::Editing)
+    if (io.KeyShift) {
+      if (mode == Engine::PlayMode::Testing || mode == Engine::PlayMode::Running)
+        engine.pause();
+      else if (mode == Engine::PlayMode::Paused)
+        engine.resume();
+    } else if (mode == Engine::PlayMode::Editing)
       engine.play();
-    else if (mode == Engine::PlayMode::Testing)
+    else if (mode == Engine::PlayMode::Testing || mode == Engine::PlayMode::Paused)
       engine.stop();
     else
-      engine.edit();
+      engine.pause();
   }
 
   // A small bar at the top right of the view
@@ -2354,32 +2359,45 @@ void EditorUISystem::renderPlayToolbar(Engine &engine, SystemManager &systemMana
     return pressed;
   };
   if (mode == Engine::PlayMode::Running) {
-    if (coloredButton("Edit", blue))
-      engine.edit();
+    if (coloredButton("Pause", blue))
+      engine.pause();
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Freezes the game to edit the scene (Ctrl+P); Play then tests it from there,\n"
-                        "and Stop puts the scene back as it was");
+      ImGui::SetTooltip("Freezes the game to edit the scene (Ctrl+P or Ctrl+Shift+P). Changes made here are kept:\n"
+                        "there is no way back. Pause, then Play, tests the game with a way back (Stop)");
     ImGui::SameLine();
-    ImGui::TextDisabled("Running");
+    ImGui::TextDisabled("Live: changes are kept");
   } else if (mode == Engine::PlayMode::Editing) {
     if (coloredButton("Play", green))
       engine.play();
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Runs the game from the scene as it is now (Ctrl+P); Stop puts everything back");
     ImGui::SameLine();
-    if (ImGui::Button("Resume", ImVec2(ui(70.0f), 0.0f)))
-      engine.resume();
+    ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "Editing");
+  } else if (mode == Engine::PlayMode::Testing) {
+    if (coloredButton("Pause", blue))
+      engine.pause();
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Unfreezes the game and keeps whatever happens (nothing to go back to)");
+      ImGui::SetTooltip("Freezes the test; the camera and the editor keep working (Ctrl+Shift+P)");
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "Editing (frozen)");
-  } else {
     if (coloredButton("Stop", red))
       engine.stop();
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Puts every entity back as it was at Play (Ctrl+P)");
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.45f, 0.9f, 0.5f, 1.0f), "Playing");
+  } else {
+    if (coloredButton("Resume", green))
+      engine.resume();
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Continues the test (Ctrl+Shift+P), edits made while paused included");
+    ImGui::SameLine();
+    if (coloredButton("Stop", red))
+      engine.stop();
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Ends the test and puts every entity back as it was at Play, edits made while paused\n"
+                        "included (Ctrl+P)");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1.0f), "Paused (test)");
   }
   ImGui::End();
 }

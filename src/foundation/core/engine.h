@@ -460,14 +460,20 @@ public:
   // game built); `quitAfter` closes the engine
   void saveSceneAfter(std::string path, float delaySeconds, bool quitAfter = false);
 
-  // Play mode, the editor's Play and Stop. Running is the default: the app updates as usual. Editing freezes the app
-  // and the simulation (time stands still) while the camera and the editor keep working. play() saves every entity
-  // and component (game components too) and runs the app from there; stop() puts them all back, calls
-  // App::onPlayStopped and returns to Editing; edit() freezes without saving anything, resume() unfreezes. Each takes
-  // effect at the start of the next frame.
-  enum class PlayMode { Running, Editing, Testing };
+  // Play mode, the editor's Play, Pause and Stop. Running is the default: the app updates as usual. Editing freezes
+  // the app and the simulation (time stands still) while the camera and the editor keep working. play() saves every
+  // entity and component (game components too) and runs the app from there (Testing); pause() freezes that test
+  // (Paused: like Editing, but the saved scene is kept, so edits made there are thrown away by stop()); resume()
+  // continues it; stop() puts everything back, calls App::onPlayStopped and returns to Editing. Without a test,
+  // pause() freezes a Running game without saving anything (Editing), and resume() unfreezes it. Each takes effect
+  // at the start of the next frame.
+  enum class PlayMode { Running, Editing, Testing, Paused };
   PlayMode getPlayMode() const { return m_playMode; }
-  void edit() { m_requestedPlayMode = PlayMode::Editing; }
+  // The app and the clock stand still: the editor edits (Editing, Paused)
+  bool isFrozen() const { return m_playMode == PlayMode::Editing || m_playMode == PlayMode::Paused; }
+  // A test is under way and owns the scene: it is restored on stop() (Testing, Paused)
+  bool isTesting() const { return m_playMode == PlayMode::Testing || m_playMode == PlayMode::Paused; }
+  void pause() { m_requestedPlayMode = PlayMode::Paused; }
   void resume() { m_requestedPlayMode = PlayMode::Running; }
   void play() { m_requestedPlayMode = PlayMode::Testing; }
   void stop() { m_requestedPlayMode = PlayMode::Editing; }
@@ -493,8 +499,8 @@ public:
   bool isSceneDirty() const { return m_editRevision != m_savedRevision; }
   void undo() { m_historyRequest = HistoryRequest::Undo; }
   void redo() { m_historyRequest = HistoryRequest::Redo; }
-  bool canUndo() const { return m_playMode != PlayMode::Testing && !m_undoStack.empty(); }
-  bool canRedo() const { return m_playMode != PlayMode::Testing && !m_redoStack.empty(); }
+  bool canUndo() const { return !isTesting() && !m_undoStack.empty(); }
+  bool canRedo() const { return !isTesting() && !m_redoStack.empty(); }
 
   // Prefabs: an entity and its children saved to a file (the same format as scenes, with the entity at the origin)
   // and copied into the scene as often as needed. instantiate puts the copy's root at `position`, turned `rotation`
