@@ -1,12 +1,17 @@
 {
   "format": "modular-engine-scene",
-  "version": 1,
+  "version": 2,
   "entities": [
     {
       "name": "Camera",
       "components": {
         "Transform": {},
-        "Camera": { "active": true, "position": [0, 4.5, 9], "pitch": -22, "fov": 60 }
+        "Camera": {
+          "active": true,
+          "position": [0, 4.5, 9],
+          "pitch": -22,
+          "fov": 60
+        }
       }
     },
     {
@@ -17,32 +22,45 @@
           "type": "directional",
           "direction": [-0.5, -1.0, -0.4],
           "color": [1, 0.96, 0.9],
-          "intensity": 1.1,
-          "ambient": 0.25
+          "intensity": 1.1
         }
       }
     },
     {
       "name": "Floor",
       "components": {
-        "Transform": { "position": [0, -0.6, 0], "scale": [30, 0.2, 30] },
+        "Transform": {
+          "position": [0, -0.6, 0],
+          "scale": [30, 0.2, 30]
+        },
         "Model": {
           "path": "../assets/models/box/box.obj",
-          "parts": [{ "part": 0, "color": [0.55, 0.5, 0.42] }]
+          "parts": [
+            {
+              "part": 0,
+              "color": [0.55, 0.5, 0.42]
+            }
+          ]
         }
       }
     },
     {
       "name": "Water",
       "components": {
-        "Transform": { "position": [-1.5, 0.1, 2], "scale": [9, 1, 7] },
+        "Transform": {
+          "position": [-1.5, 0.1, 2],
+          "scale": [9, 1, 7]
+        },
         "Model": {
           "path": "../assets/models/grid/grid.obj",
           "parts": [
             {
               "part": 0,
               "shader": "shaders/examples/water.glsl",
-              "shaderParams": { "waveHeight": 0.15, "waveScale": 2.0 }
+              "shaderParams": {
+                "waveHeight": 0.15,
+                "waveScale": 2.0
+              }
             }
           ]
         }
@@ -51,17 +69,29 @@
     {
       "name": "Hologram",
       "components": {
-        "Transform": { "position": [4.5, 1.2, 0], "scale": [2, 2, 2] },
+        "Transform": {
+          "position": [4.5, 1.2, 0],
+          "scale": [2, 2, 2]
+        },
         "Model": {
           "path": "../assets/models/sphere/sphere.obj",
-          "parts": [{ "part": 0, "shader": "shaders/examples/hologram.glsl" }]
+          "parts": [
+            {
+              "part": 0,
+              "shader": "shaders/examples/hologram.glsl"
+            }
+          ]
         }
       }
     },
     {
       "name": "Dissolve",
       "components": {
-        "Transform": { "position": [-6, 1.0, -1], "scale": [2, 2, 2], "rotation": [0, 30, 0] },
+        "Transform": {
+          "position": [-6, 1.0, -1],
+          "scale": [2, 2, 2],
+          "rotation": [0, 30, 0]
+        },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
@@ -69,7 +99,10 @@
               "part": 0,
               "color": [0.3, 0.55, 0.9],
               "shader": "shaders/examples/dissolve.glsl",
-              "shaderParams": { "dissolve": 0.45, "noiseScale": 3.5 }
+              "shaderParams": {
+                "dissolve": 0.45,
+                "noiseScale": 3.5
+              }
             }
           ]
         }
@@ -78,10 +111,27 @@
     {
       "name": "Plain Sphere",
       "components": {
-        "Transform": { "position": [1.5, 1.0, -2.5], "scale": [2, 2, 2] },
+        "Transform": {
+          "position": [1.5, 1.0, -2.5],
+          "scale": [2, 2, 2]
+        },
         "Model": {
           "path": "../assets/models/sphere/sphere.obj",
-          "parts": [{ "part": 0, "color": [0.9, 0.3, 0.3] }]
+          "parts": [
+            {
+              "part": 0,
+              "color": [0.9, 0.3, 0.3]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Sky",
+      "components": {
+        "Skybox": {
+          "ambientColor": [1.0, 0.96, 0.9],
+          "ambientIntensity": 0.25
         }
       }
     }

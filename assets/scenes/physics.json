@@ -1,6 +1,6 @@
 {
   "format": "modular-engine-scene",
-  "version": 1,
+  "version": 2,
   "entities": [
     {
       "name": "Camera",
@@ -582,6 +582,19 @@
         "RigidBody": {
           "type": "dynamic",
           "shape": "convexHull"
+        }
+      }
+    },
+    {
+      "name": "Sky",
+      "components": {
+        "Skybox": {
+          "ambientColor": [
+            1.0,
+            0.96,
+            0.88
+          ],
+          "ambientIntensity": 0.2
         }
       }
     }

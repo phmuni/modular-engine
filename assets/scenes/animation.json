@@ -1,6 +1,6 @@
 {
   "format": "modular-engine-scene",
-  "version": 1,
+  "version": 2,
   "entities": [
     {
       "name": "Camera",
@@ -59,7 +59,8 @@
           ],
           "intensity": 2.0,
           "castShadows": true,
-          "shadowRange": 20.0
+          "shadowRange": 20.0,
+          "range": 131.14837
         }
       }
     },
@@ -173,6 +174,19 @@
           "clip": "Twist",
           "speed": 1.0,
           "time": 0.0
+        }
+      }
+    },
+    {
+      "name": "Sky",
+      "components": {
+        "Skybox": {
+          "ambientColor": [
+            1.0,
+            0.95,
+            0.88
+          ],
+          "ambientIntensity": 0.2
         }
       }
     }

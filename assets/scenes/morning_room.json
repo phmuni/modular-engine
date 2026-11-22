@@ -3,16 +3,12 @@
     {
       "components": {
         "Light": {
-          "ambient": 0.2,
           "color": [1.0, 1.0, 1.0],
-          "constant": 1.0,
           "cutOff": 0.0,
           "direction": [-0.4, -1.0, -0.6],
           "intensity": 1.0,
-          "linear": 0.09,
           "outerCutOff": 0.0,
           "position": [0.0, 0.0, 0.0],
-          "quadratic": 0.032,
           "type": "directional"
         },
         "Transform": {
@@ -26,16 +22,12 @@
     {
       "components": {
         "Light": {
-          "ambient": 0.2,
           "color": [0.55, 0.6, 0.7],
-          "constant": 1.0,
           "cutOff": 0.0,
           "direction": [0.6, -0.3, 0.7],
           "intensity": 0.5,
-          "linear": 0.09,
           "outerCutOff": 0.0,
           "position": [0.0, 0.0, 0.0],
-          "quadratic": 0.032,
           "type": "directional"
         },
         "Transform": {
@@ -79,8 +71,17 @@
         }
       },
       "name": "Camera"
+    },
+    {
+      "name": "Sky",
+      "components": {
+        "Skybox": {
+          "ambientColor": [0.93915, 0.95798, 1.0],
+          "ambientIntensity": 0.29125
+        }
+      }
     }
   ],
   "format": "modular-engine-scene",
-  "version": 1
+  "version": 2
 }

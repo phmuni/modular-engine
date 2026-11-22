@@ -1,6 +1,6 @@
 {
   "format": "modular-engine-scene",
-  "version": 1,
+  "version": 2,
   "entities": [
     {
       "name": "Camera",
@@ -36,11 +36,9 @@
             0.8
           ],
           "intensity": 3.2,
-          "ambient": 0.08,
-          "linear": 0.05,
-          "quadratic": 0.012,
           "castShadows": true,
-          "shadowRange": 30
+          "shadowRange": 30,
+          "range": 262.29204
         }
       }
     },

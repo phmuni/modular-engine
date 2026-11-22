@@ -1,6 +1,6 @@
 {
   "format": "modular-engine-scene",
-  "version": 1,
+  "version": 2,
   "entities": [
     {
       "name": "Camera",
@@ -8,11 +8,7 @@
         "Transform": {},
         "Camera": {
           "active": true,
-          "position": [
-            -0.5,
-            10.5,
-            22.0
-          ],
+          "position": [-0.5, 10.5, 22.0],
           "pitch": -24.0,
           "fov": 60.0,
           "moveSpeed": 6.0
@@ -25,16 +21,8 @@
         "Transform": {},
         "Light": {
           "type": "directional",
-          "direction": [
-            -0.45,
-            -1.0,
-            -0.35
-          ],
-          "color": [
-            1.0,
-            0.96,
-            0.88
-          ],
+          "direction": [-0.45, -1.0, -0.35],
+          "color": [1.0, 0.96, 0.88],
           "intensity": 1.0,
           "castShadows": true
         }
@@ -44,27 +32,15 @@
       "name": "Floor",
       "components": {
         "Transform": {
-          "position": [
-            0,
-            -0.25,
-            0
-          ],
-          "scale": [
-            40,
-            0.5,
-            26
-          ]
+          "position": [0, -0.25, 0],
+          "scale": [40, 0.5, 26]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.36,
-                0.38,
-                0.42
-              ]
+              "color": [0.36, 0.38, 0.42]
             }
           ]
         },
@@ -77,27 +53,15 @@
       "name": "Hinge Post",
       "components": {
         "Transform": {
-          "position": [
-            -14.0,
-            1.0,
-            -3.0
-          ],
-          "scale": [
-            0.3,
-            2.2,
-            0.3
-          ]
+          "position": [-14.0, 1.0, -3.0],
+          "scale": [0.3, 2.2, 0.3]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.6,
-                0.6,
-                0.65
-              ]
+              "color": [0.6, 0.6, 0.65]
             }
           ]
         },
@@ -110,27 +74,15 @@
       "name": "Spinning Wall",
       "components": {
         "Transform": {
-          "position": [
-            -12.0,
-            1.0,
-            -3.0
-          ],
-          "scale": [
-            4,
-            2,
-            0.3
-          ]
+          "position": [-12.0, 1.0, -3.0],
+          "scale": [4, 2, 0.3]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.25,
-                0.55,
-                0.9
-              ]
+              "color": [0.25, 0.55, 0.9]
             }
           ]
         },
@@ -140,16 +92,8 @@
         },
         "Joint": {
           "type": "hinge",
-          "anchor": [
-            -0.5,
-            0,
-            0
-          ],
-          "axis": [
-            0,
-            1,
-            0
-          ],
+          "anchor": [-0.5, 0, 0],
+          "axis": [0, 1, 0],
           "motor": "velocity",
           "motorSpeed": -50
         }
@@ -159,27 +103,15 @@
       "name": "Pillar",
       "components": {
         "Transform": {
-          "position": [
-            -12.5,
-            1.0,
-            -0.401923788646684
-          ],
-          "scale": [
-            0.6,
-            2,
-            0.6
-          ]
+          "position": [-12.5, 1.0, -0.401923788646684],
+          "scale": [0.6, 2, 0.6]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.85,
-                0.3,
-                0.25
-              ]
+              "color": [0.85, 0.3, 0.25]
             }
           ]
         },
@@ -192,27 +124,15 @@
       "name": "Door Frame",
       "components": {
         "Transform": {
-          "position": [
-            -8.1,
-            1.5,
-            0
-          ],
-          "scale": [
-            0.25,
-            3.2,
-            0.4
-          ]
+          "position": [-8.1, 1.5, 0],
+          "scale": [0.25, 3.2, 0.4]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.6,
-                0.6,
-                0.65
-              ]
+              "color": [0.6, 0.6, 0.65]
             }
           ]
         },
@@ -225,27 +145,15 @@
       "name": "Spring Door",
       "components": {
         "Transform": {
-          "position": [
-            -7.0,
-            1.5,
-            0
-          ],
-          "scale": [
-            2,
-            3,
-            0.15
-          ]
+          "position": [-7.0, 1.5, 0],
+          "scale": [2, 3, 0.15]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.95,
-                0.6,
-                0.2
-              ]
+              "color": [0.95, 0.6, 0.2]
             }
           ]
         },
@@ -255,16 +163,8 @@
         },
         "Joint": {
           "type": "hinge",
-          "anchor": [
-            -0.5,
-            0,
-            0
-          ],
-          "axis": [
-            0,
-            1,
-            0
-          ],
+          "anchor": [-0.5, 0, 0],
+          "axis": [0, 1, 0],
           "motor": "position",
           "motorTarget": 0,
           "springFrequency": 1.2,
@@ -276,27 +176,15 @@
       "name": "Hammer Gantry",
       "components": {
         "Transform": {
-          "position": [
-            -7.0,
-            7.1,
-            4.0
-          ],
-          "scale": [
-            0.4,
-            0.2,
-            0.4
-          ]
+          "position": [-7.0, 7.1, 4.0],
+          "scale": [0.4, 0.2, 0.4]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.6,
-                0.6,
-                0.65
-              ]
+              "color": [0.6, 0.6, 0.65]
             }
           ]
         },
@@ -309,27 +197,15 @@
       "name": "Hammer",
       "components": {
         "Transform": {
-          "position": [
-            -7.0,
-            3.974999999999999,
-            9.239453692895854
-          ],
-          "scale": [
-            1,
-            1,
-            1
-          ]
+          "position": [-7.0, 3.974999999999999, 9.239453692895854],
+          "scale": [1, 1, 1]
         },
         "Model": {
           "path": "../assets/models/sphere/sphere.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.9,
-                0.9,
-                0.95
-              ]
+              "color": [0.9, 0.9, 0.95]
             }
           ]
         },
@@ -340,11 +216,7 @@
         },
         "Joint": {
           "type": "distance",
-          "targetAnchor": [
-            -7.0,
-            7.0,
-            4.0
-          ]
+          "targetAnchor": [-7.0, 7.0, 4.0]
         }
       }
     },
@@ -352,27 +224,15 @@
       "name": "Gantry Post A",
       "components": {
         "Transform": {
-          "position": [
-            0.5,
-            3.5,
-            0
-          ],
-          "scale": [
-            0.3,
-            7,
-            0.3
-          ]
+          "position": [0.5, 3.5, 0],
+          "scale": [0.3, 7, 0.3]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.6,
-                0.6,
-                0.65
-              ]
+              "color": [0.6, 0.6, 0.65]
             }
           ]
         },
@@ -385,27 +245,15 @@
       "name": "Gantry Post B",
       "components": {
         "Transform": {
-          "position": [
-            7.5,
-            3.5,
-            0
-          ],
-          "scale": [
-            0.3,
-            7,
-            0.3
-          ]
+          "position": [7.5, 3.5, 0],
+          "scale": [0.3, 7, 0.3]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.6,
-                0.6,
-                0.65
-              ]
+              "color": [0.6, 0.6, 0.65]
             }
           ]
         },
@@ -418,27 +266,15 @@
       "name": "Gantry Beam",
       "components": {
         "Transform": {
-          "position": [
-            4.0,
-            7.05,
-            0
-          ],
-          "scale": [
-            7.3,
-            0.2,
-            0.3
-          ]
+          "position": [4.0, 7.05, 0],
+          "scale": [7.3, 0.2, 0.3]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.6,
-                0.6,
-                0.65
-              ]
+              "color": [0.6, 0.6, 0.65]
             }
           ]
         },
@@ -451,27 +287,15 @@
       "name": "Pendulum",
       "components": {
         "Transform": {
-          "position": [
-            7.064177772475912,
-            4.428849561253843,
-            0
-          ],
-          "scale": [
-            0.9,
-            0.9,
-            0.9
-          ]
+          "position": [7.064177772475912, 4.428849561253843, 0],
+          "scale": [0.9, 0.9, 0.9]
         },
         "Model": {
           "path": "../assets/models/sphere/sphere.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.3,
-                0.8,
-                0.45
-              ]
+              "color": [0.3, 0.8, 0.45]
             }
           ]
         },
@@ -482,11 +306,7 @@
         },
         "Joint": {
           "type": "distance",
-          "targetAnchor": [
-            4.0,
-            7.0,
-            0
-          ]
+          "targetAnchor": [4.0, 7.0, 0]
         }
       }
     },
@@ -494,27 +314,15 @@
       "name": "Rail A",
       "components": {
         "Transform": {
-          "position": [
-            10.9,
-            3.0,
-            0
-          ],
-          "scale": [
-            0.25,
-            6,
-            0.25
-          ]
+          "position": [10.9, 3.0, 0],
+          "scale": [0.25, 6, 0.25]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.6,
-                0.6,
-                0.65
-              ]
+              "color": [0.6, 0.6, 0.65]
             }
           ]
         },
@@ -527,27 +335,15 @@
       "name": "Rail B",
       "components": {
         "Transform": {
-          "position": [
-            15.1,
-            3.0,
-            0
-          ],
-          "scale": [
-            0.25,
-            6,
-            0.25
-          ]
+          "position": [15.1, 3.0, 0],
+          "scale": [0.25, 6, 0.25]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.6,
-                0.6,
-                0.65
-              ]
+              "color": [0.6, 0.6, 0.65]
             }
           ]
         },
@@ -560,27 +356,15 @@
       "name": "Elevator",
       "components": {
         "Transform": {
-          "position": [
-            13.0,
-            0.4,
-            0
-          ],
-          "scale": [
-            3,
-            0.4,
-            3
-          ]
+          "position": [13.0, 0.4, 0],
+          "scale": [3, 0.4, 3]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.7,
-                0.7,
-                0.2
-              ]
+              "color": [0.7, 0.7, 0.2]
             }
           ]
         },
@@ -590,11 +374,7 @@
         },
         "Joint": {
           "type": "slider",
-          "axis": [
-            0,
-            1,
-            0
-          ],
+          "axis": [0, 1, 0],
           "limits": true,
           "min": 0,
           "max": 4.5,
@@ -608,27 +388,15 @@
       "name": "Elevator Crate",
       "components": {
         "Transform": {
-          "position": [
-            13.0,
-            1.1,
-            0
-          ],
-          "scale": [
-            0.9,
-            0.9,
-            0.9
-          ]
+          "position": [13.0, 1.1, 0],
+          "scale": [0.9, 0.9, 0.9]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.85,
-                0.3,
-                0.25
-              ]
+              "color": [0.85, 0.3, 0.25]
             }
           ]
         },
@@ -642,32 +410,16 @@
       "name": "Wedge",
       "components": {
         "Transform": {
-          "position": [
-            3.5,
-            0.9,
-            8.0
-          ],
-          "scale": [
-            5,
-            0.3,
-            3
-          ],
-          "rotation": [
-            0,
-            0,
-            22
-          ]
+          "position": [3.5, 0.9, 8.0],
+          "scale": [5, 0.3, 3],
+          "rotation": [0, 0, 22]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.5,
-                0.5,
-                0.55
-              ]
+              "color": [0.5, 0.5, 0.55]
             }
           ]
         },
@@ -680,27 +432,15 @@
       "name": "Weld A",
       "components": {
         "Transform": {
-          "position": [
-            2.4,
-            4.0,
-            8.0
-          ],
-          "scale": [
-            1,
-            1,
-            1
-          ]
+          "position": [2.4, 4.0, 8.0],
+          "scale": [1, 1, 1]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.3,
-                0.55,
-                0.9
-              ]
+              "color": [0.3, 0.55, 0.9]
             }
           ]
         },
@@ -714,27 +454,15 @@
       "name": "Weld B",
       "components": {
         "Transform": {
-          "position": [
-            3.9,
-            4.0,
-            8.0
-          ],
-          "scale": [
-            1,
-            1,
-            1
-          ]
+          "position": [3.9, 4.0, 8.0],
+          "scale": [1, 1, 1]
         },
         "Model": {
           "path": "../assets/models/box/box.obj",
           "parts": [
             {
               "part": 0,
-              "color": [
-                0.3,
-                0.8,
-                0.45
-              ]
+              "color": [0.3, 0.8, 0.45]
             }
           ]
         },
@@ -745,6 +473,15 @@
         "Joint": {
           "type": "fixed",
           "target": "Weld A"
+        }
+      }
+    },
+    {
+      "name": "Sky",
+      "components": {
+        "Skybox": {
+          "ambientColor": [1.0, 0.96, 0.88],
+          "ambientIntensity": 0.2
         }
       }
     }

@@ -1,6 +1,6 @@
 {
   "format": "modular-engine-scene",
-  "version": 1,
+  "version": 2,
   "entities": [
     {
       "name": "Camera",
@@ -34,8 +34,7 @@
             0.96,
             0.9
           ],
-          "intensity": 1.1,
-          "ambient": 0.25
+          "intensity": 1.1
         }
       }
     },
@@ -1746,6 +1745,19 @@
               ]
             }
           ]
+        }
+      }
+    },
+    {
+      "name": "Sky",
+      "components": {
+        "Skybox": {
+          "ambientColor": [
+            1.0,
+            0.96,
+            0.9
+          ],
+          "ambientIntensity": 0.25
         }
       }
     }

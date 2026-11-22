@@ -1,6 +1,6 @@
 {
   "format": "modular-engine-scene",
-  "version": 1,
+  "version": 2,
   "entities": [
     {
       "name": "Camera",
@@ -47,11 +47,9 @@
             0.42
           ],
           "intensity": 2.4,
-          "ambient": 0.04,
-          "linear": 0.07,
-          "quadratic": 0.02,
           "castShadows": true,
-          "shadowRange": 30.0
+          "shadowRange": 30.0,
+          "range": 174.84293
         },
         "Model": {
           "path": "../assets/models/sphere/sphere.obj",
@@ -104,11 +102,9 @@
             1.0
           ],
           "intensity": 1.8,
-          "ambient": 0.03,
-          "linear": 0.09,
-          "quadratic": 0.03,
           "castShadows": true,
-          "shadowRange": 30.0
+          "shadowRange": 30.0,
+          "range": 123.33956
         },
         "Model": {
           "path": "../assets/models/sphere/sphere.obj",
