@@ -9,6 +9,7 @@
 #include "components/camera.h"
 #include "components/characterController.h"
 #include "components/hidden.h"
+#include "components/joint.h"
 #include "components/light.h"
 #include "components/model.h"
 #include "components/name.h"
@@ -43,6 +44,55 @@
 #include <vector>
 
 namespace {
+// The table of Entity:setJoint as a Joint: a key left out keeps the component's default; a type or motor that is not
+// one of the names is an error
+Joint luaToJoint(const sol::table &table) {
+  Joint joint;
+  auto get = [&table](const char *key, auto &field) {
+    using T = std::decay_t<decltype(field)>;
+    if (sol::optional<T> value = table[key])
+      field = *value;
+  };
+  if (sol::optional<std::string> type = table["type"]) {
+    if (*type == "hinge")
+      joint.type = JointType::Hinge;
+    else if (*type == "fixed")
+      joint.type = JointType::Fixed;
+    else if (*type == "distance")
+      joint.type = JointType::Distance;
+    else if (*type == "slider")
+      joint.type = JointType::Slider;
+    else
+      throw sol::error("setJoint: type is \"hinge\", \"fixed\", \"distance\" or \"slider\", not \"" + *type + "\"");
+  }
+  if (sol::optional<std::string> motor = table["motor"]) {
+    if (*motor == "off")
+      joint.motor = JointMotor::Off;
+    else if (*motor == "velocity")
+      joint.motor = JointMotor::Velocity;
+    else if (*motor == "position")
+      joint.motor = JointMotor::Position;
+    else
+      throw sol::error("setJoint: motor is \"off\", \"velocity\" or \"position\", not \"" + *motor + "\"");
+  }
+  get("target", joint.target);
+  get("anchor", joint.anchor);
+  get("targetAnchor", joint.targetAnchor);
+  get("axis", joint.axis);
+  get("limits", joint.limits);
+  get("min", joint.min);
+  get("max", joint.max);
+  get("minDistance", joint.minDistance);
+  get("maxDistance", joint.maxDistance);
+  get("motorSpeed", joint.motorSpeed);
+  get("motorTarget", joint.motorTarget);
+  get("maxMotorForce", joint.maxMotorForce);
+  get("springFrequency", joint.springFrequency);
+  get("springDamping", joint.springDamping);
+  get("collideConnected", joint.collideConnected);
+  return joint;
+}
+
 // Custom shader values (Entity:setShaderParam / shaderParam): a number, a vec3, a table of 2 to 4 numbers (vec2, vec3
 // or vec4), or a texture's path
 ShaderValue luaToShaderValue(const sol::object &value) {
@@ -230,6 +280,16 @@ void LuaBindings::bindEntity() {
       "angularImpulse", &GameEntity::angularImpulse,
       "impulseAt", &GameEntity::impulseAt,
       "forceAt", &GameEntity::forceAt,
+
+      // Joints (see components/joint.h)
+      "setJoint", [](GameEntity &e, const sol::table &options) { e.setJoint(luaToJoint(options)); },
+      "removeJoint", &GameEntity::removeJoint,
+      "hasJoint", &GameEntity::hasJoint,
+      "jointAngle", &GameEntity::jointAngle,
+      "jointPosition", &GameEntity::jointPosition,
+      "setJointMotorSpeed", &GameEntity::setJointMotorSpeed,
+      "setJointMotorTarget", &GameEntity::setJointMotorTarget,
+      "stopJointMotor", &GameEntity::stopJointMotor,
 
       // The collision layer, by name (see physics.addLayer); also settable in engine.create
       "layer", sol::property(&GameEntity::layer, &GameEntity::setLayer),

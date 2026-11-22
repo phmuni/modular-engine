@@ -5,6 +5,7 @@
 #include "components/animationStateMachine.h"
 #include "components/collision.h"
 #include "components/hidden.h"
+#include "components/joint.h"
 #include "components/camera.h"
 #include "components/cameraRig.h"
 #include "components/model.h"
@@ -325,6 +326,7 @@ bool Engine::hasComponent(Entity entity, std::string_view component) {
   if (component == "AudioSource") return has<AudioSource>(entity);
   if (component == "Skybox") return has<Skybox>(entity);
   if (component == "ReflectionProbe") return has<ReflectionProbe>(entity);
+  if (component == "Joint") return has<Joint>(entity);
   if (component == "Collision") return has<Collision>(entity);
   if (component == "ParticleEmitter") return has<ParticleEmitter>(entity);
   if (component == "Hidden") return has<Hidden>(entity);

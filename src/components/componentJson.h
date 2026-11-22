@@ -11,6 +11,7 @@
 #include "components/cameraRig.h"
 #include "components/collision.h"
 #include "components/gravityLens.h"
+#include "components/joint.h"
 #include "components/light.h"
 #include "components/particleEmitter.h"
 #include "components/reflectionProbe.h"
@@ -83,6 +84,16 @@ NLOHMANN_JSON_SERIALIZE_ENUM(BodyShape, {{BodyShape::Box, "box"},
                                          {BodyShape::Mesh, "mesh"}})
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(RigidBody, type, shape, size, mass, friction, restitution, linearDamping,
                                                 angularDamping, gravityScale, lockRotation, sensor, layer)
+NLOHMANN_JSON_SERIALIZE_ENUM(JointType, {{JointType::Hinge, "hinge"},
+                                         {JointType::Fixed, "fixed"},
+                                         {JointType::Distance, "distance"},
+                                         {JointType::Slider, "slider"}})
+NLOHMANN_JSON_SERIALIZE_ENUM(JointMotor, {{JointMotor::Off, "off"},
+                                          {JointMotor::Velocity, "velocity"},
+                                          {JointMotor::Position, "position"}})
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Joint, type, target, anchor, targetAnchor, axis, limits, min, max,
+                                                minDistance, maxDistance, motor, motorSpeed, motorTarget,
+                                                maxMotorForce, springFrequency, springDamping, collideConnected)
 // Property overrides by name, as plain JSON values: {"path": "scripts/player.lua", "properties": {"speed": 8}}.
 // A vec3 is an array, so a color reads [1, 0.8, 0.2].
 inline void to_json(nlohmann::json &j, const Script &script) {

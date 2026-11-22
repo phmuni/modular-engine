@@ -33,7 +33,7 @@ const std::vector<std::string> &builtInComponentNames() {
   static const std::vector<std::string> names = {"Model",       "RigidBody",  "CharacterController", "Light",
                                                  "Camera",      "Animator",   "AnimationStateMachine", "Script",
                                                  "Transform",   "AudioSource", "Skybox",             "Collision",
-                                                 "ParticleEmitter", "Hidden", "CameraRig",           "Tags"};
+                                                 "ParticleEmitter", "Hidden", "CameraRig",           "Tags", "Joint"};
   return names;
 }
 

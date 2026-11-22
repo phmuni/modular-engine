@@ -319,6 +319,38 @@ function Entity:impulseAt(impulse, point) end
 ---@param point vec3
 function Entity:forceAt(force, point) end
 
+---Joins its physics body to another entity's body or to the world with a joint (a Jolt constraint), replacing the one it has.
+---Put it on the dynamic body that should move: a wall on a hinge, a door, a platform on a rail, a pendulum. Angles and positions
+---(limits, motor, jointAngle) are measured from the pose the joint was built in. See JointOptions.
+---@param options JointOptions
+function Entity:setJoint(options) end
+
+---Takes its joint off; the body moves freely again.
+function Entity:removeJoint() end
+
+---Whether it has a joint (built or still waiting for its target).
+---@return boolean
+function Entity:hasJoint() end
+
+---The hinge's current angle in degrees from the pose it was built in (-180 to 180, turning right-handed about its axis); 0 without a built hinge.
+---@return number
+function Entity:jointAngle() end
+
+---The slider's current position in units from the pose it was built in; 0 without a built slider.
+---@return number
+function Entity:jointPosition() end
+
+---Makes its joint's motor keep this speed up (degrees per second for a hinge, units per second for a slider), limited by maxMotorForce. Warns without a joint.
+---@param speed number
+function Entity:setJointMotorSpeed(speed) end
+
+---Makes its joint's motor go to this angle (degrees, hinge) or position (units, slider) and hold it, as a spring (see springFrequency). Warns without a joint.
+---@param target number
+function Entity:setJointMotorTarget(target) end
+
+---Switches its joint's motor off: the hinge or slider moves freely (apart from limits).
+function Entity:stopJointMotor() end
+
 ---Sets the velocity its character controller walks with.
 ---@param velocity vec3
 function Entity:move(velocity) end
@@ -411,6 +443,27 @@ function Entity:sound(path, volume) end
 ---@field layer? string Collision layer of its body, character and collision box: "default", "static", "player", "enemy", "projectile", "trigger", or one from physics.addLayer. Defaults to "default"
 ---@field character? CharacterOptions|boolean A walking character (true for the defaults); it is its own physics body, so it replaces `body`. Its position is the capsule's middle
 ---@field components? string[] Game components registered by C++ (Engine::registerComponent), by name, added with their default values: {"Player"}. A project with no C++ has none
+
+---Options for Entity:setJoint. Everything is optional; a key left out keeps its default. Angles are degrees, relative to the pose the
+---joint was built in; a body that stalls a motor (a pillar in the way) stops it instead of being passed through.
+---@class JointOptions
+---@field type? "hinge"|"fixed"|"distance"|"slider" hinge: turns about `axis` (a door, a wheel); slider: moves along `axis` (a drawer, an elevator); fixed: welded in the current pose; distance: keeps two points apart. Defaults to "hinge"; another string is an error
+---@field target? string The Name of the entity it is joined to, which needs a physics body too. Empty (the default): the world. Nothing is built, with one warning, until it exists
+---@field anchor? vec3 The pivot (or the attach point of a distance joint) in the entity's own space, scaled by its scale. Defaults to its origin
+---@field targetAnchor? vec3 Distance only: the other end, in the target's own space (a world point when there is no target)
+---@field axis? vec3 The hinge axis or slider direction, in the entity's own space. Defaults to vec3(0, 1, 0)
+---@field limits? boolean Hinge and slider: stop at `min` and `max`. Defaults to false
+---@field min? number Limit: degrees for a hinge (-180 to 0), units for a slider (at most 0). Defaults to -90
+---@field max? number Limit: degrees for a hinge (0 to 180), units for a slider (at least 0). Defaults to 90
+---@field minDistance? number Distance: the closest the points get. Both distances 0 (the default): the distance they are at when built
+---@field maxDistance? number Distance: the farthest they get (a rod: equal to minDistance; a rope: minDistance 0)
+---@field motor? "off"|"velocity"|"position" Hinge and slider: off lets it move freely, velocity keeps `motorSpeed` up, position goes to `motorTarget` and holds it. Defaults to "off"; another string is an error
+---@field motorSpeed? number Degrees per second (hinge) or units per second (slider) for the velocity motor
+---@field motorTarget? number Degrees or units for the position motor
+---@field maxMotorForce? number The most the motor pushes: N*m for a hinge, N for a slider. Finite (the default is 100000) so a blocked motor stalls instead of exploding; it also caps a position motor's spring, so a heavy body that must hold a pose wants more
+---@field springFrequency? number Hz. A position motor's stiffness (a door that swings back shut: motor "position", motorTarget 0, a low value like 2); for a distance joint it softens the limits into a rope or bungee. 0 (the default): a stiff 10 Hz motor, hard distance limits
+---@field springDamping? number 0 (keeps oscillating) to 1 (settles without overshoot). Defaults to 1
+---@field collideConnected? boolean Whether the two joined bodies collide with each other. Defaults to false
 
 ---Options for a character in engine.create. Everything is optional.
 ---@class CharacterOptions

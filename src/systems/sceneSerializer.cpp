@@ -234,6 +234,7 @@ void SceneSerializer::registerBuiltIns() {
   registerComponent<Skybox>("Skybox");
   registerComponent<ReflectionProbe>("ReflectionProbe");
   registerComponent<RigidBody>("RigidBody");
+  registerComponent<Joint>("Joint");
   registerComponent<CharacterController>("CharacterController");
   registerComponent<Animator>("Animator");
   registerComponent<AnimationStateMachine>("AnimationStateMachine");

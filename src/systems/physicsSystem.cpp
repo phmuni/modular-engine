@@ -3,6 +3,7 @@
 #include "systems/physicsSystem.h"
 
 #include "components/characterController.h"
+#include "components/joint.h"
 #include "components/model.h"
 #include "components/name.h"
 #include "components/rigidBody.h"
@@ -20,6 +21,7 @@
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
@@ -32,6 +34,10 @@
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Constraints/DistanceConstraint.h>
+#include <Jolt/Physics/Constraints/FixedConstraint.h>
+#include <Jolt/Physics/Constraints/HingeConstraint.h>
+#include <Jolt/Physics/Constraints/SliderConstraint.h>
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -128,6 +134,24 @@ public:
     int awakeUpdates = 0; // dormant pairs: updates with a body awake and no contact back
   };
 
+  // Two bodies joined by a Joint with collideConnected off do not collide with each other: Jolt asks here before it
+  // makes a contact (a group filter would do the same, but needs every body built with one and a filter class of its
+  // own, for a rule that touches a few bodies). The pairs change on the main thread between steps, when Jolt's workers
+  // are idle, so reading them needs no lock; most scenes have none, which is a single empty() check per candidate pair.
+  JPH::ValidateResult OnContactValidate(const JPH::Body &a, const JPH::Body &b, JPH::RVec3Arg,
+                                        const JPH::CollideShapeResult &) override {
+    if (!ignored.empty() && ignored.count(entityKey(static_cast<Entity>(a.GetUserData()),
+                                                    static_cast<Entity>(b.GetUserData()))) > 0)
+      return JPH::ValidateResult::RejectAllContactsForThisBodyPair;
+    return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
+  }
+  void ignorePair(Entity a, Entity b) { ++ignored[entityKey(a, b)]; }
+  void allowPair(Entity a, Entity b) {
+    const auto it = ignored.find(entityKey(a, b));
+    if (it != ignored.end() && --it->second <= 0)
+      ignored.erase(it);
+  }
+
   void OnContactAdded(const JPH::Body &a, const JPH::Body &b, const JPH::ContactManifold &manifold,
                       JPH::ContactSettings &) override {
     const JPH::RVec3 point = manifold.GetWorldSpaceContactPointOn1(0);
@@ -214,6 +238,13 @@ private:
     return (static_cast<uint64_t>(first) << 32) | second;
   }
 
+  static uint64_t entityKey(Entity a, Entity b) {
+    const uint32_t first = static_cast<uint32_t>(std::min(a, b));
+    const uint32_t second = static_cast<uint32_t>(std::max(a, b));
+    return (static_cast<uint64_t>(first) << 32) | second;
+  }
+
+  std::unordered_map<uint64_t, int> ignored; // pairs of entities that do not collide, counted per joint
   std::mutex mutex;
   std::vector<PhysicsContact> contacts;
   std::vector<Ended> ended;
@@ -330,6 +361,21 @@ struct PhysicsSystem::Impl {
     return &pending[entity];
   }
 
+  // A joint's constraint, and what it was built from. The record exists for every Joint component, built or not: a
+  // joint waits for its target by name (resolved like a CameraRig's) and for both bodies.
+  struct JointRecord {
+    Joint built;                                 // the component as the constraint was built or last updated from it
+    JPH::Ref<JPH::TwoBodyConstraint> constraint; // null until built
+    Entity connected = -1;                       // the entity whose body is the other end (-1: the world), once built
+    bool pairIgnored = false;                    // collideConnected is off: the pair is in the contact collector
+    Entity resolved = -1;                        // what `target` named when last looked up
+    std::string resolvedName;
+    uint64_t nextLookup = 0; // jointTicks at which a name that was not found is looked up again
+    bool warned = false;     // the reason it is not built was logged
+  };
+  std::unordered_map<Entity, JointRecord> joints;
+  uint64_t jointTicks = 0; // syncs so far, for the lookup retry
+
   struct CharacterRecord {
     JPH::Ref<JPH::CharacterVirtual> character;
     CharacterController settings; // the shape part, to rebuild it
@@ -405,6 +451,9 @@ struct PhysicsSystem::Impl {
 
   void removeAll() {
     JPH::BodyInterface &bodyInterface = system->GetBodyInterface();
+    for (auto &[entity, record] : joints) // before the bodies they hold
+      releaseJoint(entity, record);
+    joints.clear();
     for (auto &[entity, record] : bodies) {
       bodyInterface.RemoveBody(record.id);
       bodyInterface.DestroyBody(record.id);
@@ -592,6 +641,7 @@ struct PhysicsSystem::Impl {
     for (auto it = bodies.begin(); it != bodies.end();) {
       const RigidBody *body = componentManager.tryGet<RigidBody>(it->first);
       if (!body || !componentManager.has<Transform>(it->first) || componentManager.has<CharacterController>(it->first)) {
+        releaseJointsOf(it->first);
         bodyInterface.RemoveBody(it->second.id);
         bodyInterface.DestroyBody(it->second.id);
         it = bodies.erase(it);
@@ -623,6 +673,7 @@ struct PhysicsSystem::Impl {
           if (!motion.angular && !body.lockRotation)
             motion.angular = toGlm(bodyInterface.GetAngularVelocity(it->second.id));
         }
+        releaseJointsOf(entity); // built again after the new body, below
         bodyInterface.RemoveBody(it->second.id);
         bodyInterface.DestroyBody(it->second.id);
         bodies.erase(it);
@@ -645,7 +696,8 @@ struct PhysicsSystem::Impl {
         bodyInterface.MoveKinematic(record.id, position, rotation, stepTime);
         record.written = *transform;
       } else if (*transform != record.written) {
-        // Moved by game code or the editor: the body jumps there
+        // Moved by game code or the editor: the body jumps there, and its joints are built again where it is now
+        releaseJointsOf(entity);
         bodyInterface.SetPositionAndRotation(record.id, position, rotation,
                                              body.type == BodyType::Static ? JPH::EActivation::DontActivate
                                                                            : JPH::EActivation::Activate);
@@ -680,6 +732,299 @@ struct PhysicsSystem::Impl {
         it->second.character->SetPosition(JPH::RVec3(toJolt(transform->position)));
         it->second.written = *transform;
       }
+    });
+
+    syncJoints();
+  }
+
+  // ---- Joints ----
+
+  // Jolt lets a body sleep when it stops, which would leave a motor that is pushing on a stalled body idle until
+  // something woke it: bodies a motor drives never sleep
+  void setSleepAllowed(Entity entity, bool allowed) {
+    const auto it = bodies.find(entity);
+    if (it == bodies.end())
+      return;
+    JPH::BodyLockWrite lock(system->GetBodyLockInterface(), it->second.id);
+    if (lock.Succeeded())
+      lock.GetBody().SetAllowSleeping(allowed);
+  }
+
+  void wakeBody(Entity entity) {
+    const auto it = bodies.find(entity);
+    if (it != bodies.end() && it->second.settings.type != BodyType::Static)
+      system->GetBodyInterface().ActivateBody(it->second.id);
+  }
+
+  // Takes the constraint out of the world (the record stays, to be built again)
+  void releaseJoint(Entity owner, JointRecord &record) {
+    if (record.constraint) {
+      system->RemoveConstraint(record.constraint);
+      record.constraint = nullptr;
+      setSleepAllowed(owner, true);
+      wakeBody(owner);
+      if (record.connected != -1)
+        wakeBody(record.connected);
+    }
+    if (record.pairIgnored && record.connected != -1)
+      contactCollector.allowPair(owner, record.connected);
+    record.pairIgnored = false;
+    record.connected = -1;
+  }
+
+  // Before a body goes away (or is built again, or jumps): the constraints that hold it, as owner or as target
+  void releaseJointsOf(Entity entity) {
+    if (joints.empty())
+      return;
+    for (auto &[owner, record] : joints)
+      if (record.constraint && (owner == entity || record.connected == entity))
+        releaseJoint(owner, record);
+  }
+
+  void warnJointOnce(Entity owner, JointRecord &record, const char *reason) {
+    if (record.warned)
+      return;
+    record.warned = true;
+    const Name *name = componentManager.tryGet<Name>(owner);
+    LOG_W("[Physics] %s%s%s: joint not built yet: %s", name && !name->name.empty() ? "\"" : "Entity ",
+          name && !name->name.empty() ? name->name.c_str() : std::to_string(owner).c_str(),
+          name && !name->name.empty() ? "\"" : "", reason);
+  }
+
+  // The entity a joint's target name names (the lowest entity number with a Transform, like a CameraRig's target);
+  // looked up again when the name changes or the entity is gone, but not every step while it is missing
+  bool findJointTarget(JointRecord &record, const std::string &name) {
+    if (record.resolved != -1 && record.resolvedName == name) {
+      const Name *current = componentManager.tryGet<Name>(record.resolved);
+      if (current && current->name == name && componentManager.has<Transform>(record.resolved))
+        return true;
+    }
+    if (record.resolvedName == name && jointTicks < record.nextLookup)
+      return false;
+    record.nextLookup = jointTicks + 15;
+    record.resolvedName = name;
+    Entity found = -1;
+    componentManager.forEachComponent<Name>([&](Entity entity, Name &candidate) {
+      if (candidate.name == name && (found == -1 || entity < found) && componentManager.has<Transform>(entity))
+        found = entity;
+    });
+    record.resolved = found;
+    return found != -1;
+  }
+
+  // A body's pose as Jolt has it, with the entity's scale: where an anchor in its own space is in the world
+  struct Frame {
+    glm::vec3 position;
+    glm::quat rotation;
+    glm::vec3 scale;
+    glm::vec3 point(const glm::vec3 &local) const { return position + rotation * (local * scale); }
+  };
+  Frame frameOf(const BodyRecord &record) {
+    JPH::RVec3 position;
+    JPH::Quat rotation;
+    system->GetBodyInterface().GetPositionAndRotation(record.id, position, rotation);
+    return {toGlm(JPH::Vec3(position)), toGlm(rotation), record.scale};
+  }
+
+  // Pushes the motor, spring and force limit onto the live constraint, and wakes the bodies when it changes (a sleeping
+  // body would not feel a motor that was just switched on)
+  void applyJointMotor(Entity owner, JointRecord &record, const Joint &joint, bool wake) {
+    const float frequency = joint.springFrequency > 0.0f ? joint.springFrequency : 10.0f; // a position motor needs one
+    const JPH::SpringSettings spring(JPH::ESpringMode::FrequencyAndDamping, frequency, std::max(joint.springDamping, 0.0f));
+    const float force = std::max(joint.maxMotorForce, 0.0f);
+    JPH::EMotorState state = JPH::EMotorState::Off;
+    if (joint.motor == JointMotor::Velocity)
+      state = JPH::EMotorState::Velocity;
+    else if (joint.motor == JointMotor::Position)
+      state = JPH::EMotorState::Position;
+    bool driven = false;
+    switch (joint.type) {
+    case JointType::Hinge: {
+      auto &hinge = static_cast<JPH::HingeConstraint &>(*record.constraint);
+      hinge.GetMotorSettings().mSpringSettings = spring;
+      hinge.GetMotorSettings().SetTorqueLimit(force);
+      hinge.SetTargetAngularVelocity(glm::radians(joint.motorSpeed));
+      hinge.SetTargetAngle(glm::radians(joint.motorTarget));
+      hinge.SetMotorState(state);
+      driven = state != JPH::EMotorState::Off;
+      break;
+    }
+    case JointType::Slider: {
+      auto &slider = static_cast<JPH::SliderConstraint &>(*record.constraint);
+      slider.GetMotorSettings().mSpringSettings = spring;
+      slider.GetMotorSettings().SetForceLimit(force);
+      slider.SetTargetVelocity(joint.motorSpeed);
+      slider.SetTargetPosition(joint.motorTarget);
+      slider.SetMotorState(state);
+      driven = state != JPH::EMotorState::Off;
+      break;
+    }
+    case JointType::Distance: {
+      // The spring softens the limits; 0 keeps them hard
+      auto &distance = static_cast<JPH::DistanceConstraint &>(*record.constraint);
+      distance.SetLimitsSpringSettings(JPH::SpringSettings(JPH::ESpringMode::FrequencyAndDamping,
+                                                           std::max(joint.springFrequency, 0.0f),
+                                                           std::max(joint.springDamping, 0.0f)));
+      break;
+    }
+    case JointType::Fixed:
+      break;
+    }
+    setSleepAllowed(owner, !driven);
+    if (wake) {
+      wakeBody(owner);
+      if (record.connected != -1)
+        wakeBody(record.connected);
+    }
+  }
+
+  // The constraint for a Joint component, if both its bodies exist (a reason is logged once when they do not)
+  void buildJoint(Entity owner, JointRecord &record, const Joint &joint) {
+    const auto ownerBody = bodies.find(owner);
+    if (ownerBody == bodies.end()) {
+      warnJointOnce(owner, record, "the entity has no RigidBody to hold it");
+      return;
+    }
+    Entity other = -1;
+    const BodyRecord *otherBody = nullptr;
+    if (!joint.target.empty()) {
+      if (!findJointTarget(record, joint.target)) {
+        warnJointOnce(owner, record, ("no entity is named \"" + joint.target + "\"").c_str());
+        return;
+      }
+      other = record.resolved;
+      const auto found = bodies.find(other);
+      if (other == owner || found == bodies.end()) {
+        warnJointOnce(owner, record,
+                      other == owner ? "its target is the entity itself"
+                                     : ("its target \"" + joint.target + "\" has no RigidBody").c_str());
+        return;
+      }
+      otherBody = &found->second;
+    }
+
+    // Body 1 is the target (or the world) and body 2 this entity: Jolt measures a hinge's angle and a slider's position
+    // of body 2 relative to body 1, so this way they grow in the direction the axis points (a hinge turns right-handed)
+    const Frame mine = frameOf(ownerBody->second);
+    const glm::vec3 pivot = mine.point(joint.anchor);
+    glm::vec3 axis = mine.rotation * joint.axis;
+    axis = glm::length(axis) > 1e-6f ? glm::normalize(axis) : glm::vec3(0.0f, 1.0f, 0.0f);
+    const JPH::Vec3 axisJolt = toJolt(axis);
+    const JPH::Vec3 normalJolt = axisJolt.GetNormalizedPerpendicular();
+    const JPH::RVec3 pivotJolt(toJolt(pivot));
+
+    JPH::Ref<JPH::TwoBodyConstraintSettings> settings;
+    switch (joint.type) {
+    case JointType::Hinge: {
+      auto *hinge = new JPH::HingeConstraintSettings();
+      hinge->mSpace = JPH::EConstraintSpace::WorldSpace;
+      hinge->mPoint1 = hinge->mPoint2 = pivotJolt;
+      hinge->mHingeAxis1 = hinge->mHingeAxis2 = axisJolt;
+      hinge->mNormalAxis1 = hinge->mNormalAxis2 = normalJolt;
+      if (joint.limits) {
+        hinge->mLimitsMin = std::clamp(glm::radians(joint.min), -JPH::JPH_PI, 0.0f);
+        hinge->mLimitsMax = std::clamp(glm::radians(joint.max), 0.0f, JPH::JPH_PI);
+        if (hinge->mLimitsMax - hinge->mLimitsMin < 1e-4f)
+          hinge->mLimitsMax = hinge->mLimitsMin + 1e-4f; // no turning at all is a Fixed joint, but a range of 0 is a mistake
+      }
+      settings = hinge;
+      break;
+    }
+    case JointType::Slider: {
+      auto *slider = new JPH::SliderConstraintSettings();
+      slider->mSpace = JPH::EConstraintSpace::WorldSpace;
+      slider->mAutoDetectPoint = false;
+      slider->mPoint1 = slider->mPoint2 = pivotJolt;
+      slider->mSliderAxis1 = slider->mSliderAxis2 = axisJolt;
+      slider->mNormalAxis1 = slider->mNormalAxis2 = normalJolt;
+      if (joint.limits) {
+        slider->mLimitsMin = std::min(joint.min, 0.0f);
+        slider->mLimitsMax = std::max(joint.max, 0.0f);
+        if (slider->mLimitsMax - slider->mLimitsMin < 1e-4f)
+          slider->mLimitsMax = slider->mLimitsMin + 1e-4f;
+      }
+      settings = slider;
+      break;
+    }
+    case JointType::Fixed: {
+      auto *fixed = new JPH::FixedConstraintSettings();
+      fixed->mSpace = JPH::EConstraintSpace::WorldSpace;
+      fixed->mAutoDetectPoint = true; // the pose they are in now
+      settings = fixed;
+      break;
+    }
+    case JointType::Distance: {
+      auto *distance = new JPH::DistanceConstraintSettings();
+      distance->mSpace = JPH::EConstraintSpace::WorldSpace;
+      distance->mPoint1 = JPH::RVec3(toJolt(otherBody ? frameOf(*otherBody).point(joint.targetAnchor)
+                                                       : joint.targetAnchor));
+      distance->mPoint2 = pivotJolt;
+      if (joint.minDistance > 0.0f || joint.maxDistance > 0.0f) {
+        distance->mMinDistance = std::max(joint.minDistance, 0.0f);
+        distance->mMaxDistance = std::max(joint.maxDistance, distance->mMinDistance);
+      } // else both stay -1: the distance the points are at now
+      if (joint.springFrequency > 0.0f)
+        distance->mLimitsSpringSettings = JPH::SpringSettings(JPH::ESpringMode::FrequencyAndDamping,
+                                                              joint.springFrequency, std::max(joint.springDamping, 0.0f));
+      settings = distance;
+      break;
+    }
+    }
+
+    JPH::Ref<JPH::TwoBodyConstraint> constraint;
+    if (otherBody) {
+      const JPH::BodyID ids[2] = {otherBody->id, ownerBody->second.id};
+      JPH::BodyLockMultiWrite lock(system->GetBodyLockInterface(), ids, 2);
+      if (!lock.GetBody(0) || !lock.GetBody(1))
+        return;
+      constraint = settings->Create(*lock.GetBody(0), *lock.GetBody(1));
+    } else {
+      JPH::BodyLockWrite lock(system->GetBodyLockInterface(), ownerBody->second.id);
+      if (!lock.Succeeded())
+        return;
+      constraint = settings->Create(JPH::Body::sFixedToWorld, lock.GetBody());
+    }
+    if (!constraint)
+      return;
+    system->AddConstraint(constraint);
+    record.constraint = constraint;
+    record.built = joint;
+    record.connected = other;
+    record.warned = false;
+    if (other != -1 && !joint.collideConnected) {
+      contactCollector.ignorePair(owner, other);
+      record.pairIgnored = true;
+    }
+    applyJointMotor(owner, record, joint, true);
+  }
+
+  void syncJoints() {
+    ++jointTicks;
+    for (auto it = joints.begin(); it != joints.end();) {
+      if (!componentManager.has<Joint>(it->first) || !componentManager.has<Transform>(it->first)) {
+        releaseJoint(it->first, it->second);
+        it = joints.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    componentManager.forEachComponent<Joint>([&](Entity owner, Joint &joint) {
+      if (!componentManager.has<Transform>(owner))
+        return;
+      JointRecord &record = joints[owner];
+      if (record.constraint) {
+        // Built again for what it was built from, or when its target was renamed (the name is what it follows)
+        const Name *targetName = record.connected != -1 ? componentManager.tryGet<Name>(record.connected) : nullptr;
+        if (record.built != joint || (record.connected != -1 && (!targetName || targetName->name != joint.target))) {
+          releaseJoint(owner, record);
+          record.warned = false;
+        } else if (!record.built.sameMotor(joint)) {
+          record.built = joint;
+          applyJointMotor(owner, record, joint, true);
+        }
+      }
+      if (!record.constraint)
+        buildJoint(owner, record, joint);
     });
   }
 
@@ -960,3 +1305,22 @@ const std::vector<PhysicsContact> &PhysicsSystem::getContacts() const { return m
 const std::vector<PhysicsContactEnd> &PhysicsSystem::getContactEnds() const { return m_impl->contactEnds; }
 
 size_t PhysicsSystem::getBodyCount() const { return m_impl->bodies.size(); }
+
+bool PhysicsSystem::isJointBuilt(Entity entity) const {
+  const auto it = m_impl->joints.find(entity);
+  return it != m_impl->joints.end() && it->second.constraint;
+}
+
+float PhysicsSystem::getJointAngle(Entity entity) const {
+  const auto it = m_impl->joints.find(entity);
+  if (it == m_impl->joints.end() || !it->second.constraint || it->second.built.type != JointType::Hinge)
+    return 0.0f;
+  return glm::degrees(static_cast<const JPH::HingeConstraint &>(*it->second.constraint).GetCurrentAngle());
+}
+
+float PhysicsSystem::getJointPosition(Entity entity) const {
+  const auto it = m_impl->joints.find(entity);
+  if (it == m_impl->joints.end() || !it->second.constraint || it->second.built.type != JointType::Slider)
+    return 0.0f;
+  return static_cast<const JPH::SliderConstraint &>(*it->second.constraint).GetCurrentPosition();
+}

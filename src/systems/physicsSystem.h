@@ -5,6 +5,8 @@
 // that game code or the editor moved over to the simulation, steps it in fixed 1/60 s steps, and writes the result
 // back into the Transforms of dynamic bodies and characters. Changing a RigidBody's settings (or the entity's scale)
 // rebuilds its body; changing its layer (or the layer matrix) does not, the live body is moved to the new layer.
+// Joint components become Jolt constraints between two bodies (or a body and the world), built once both bodies exist
+// and built again when the Joint changes or either body is rebuilt or moved by game code or the editor.
 // Which bodies and characters collide follows CollisionLayers. Jolt itself stays inside physicsSystem.cpp.
 
 #include "foundation/core/collisionLayers.h"
@@ -95,6 +97,13 @@ public:
   const std::vector<PhysicsContactEnd> &getContactEnds() const;
 
   size_t getBodyCount() const;
+
+  // Joints (see Joint): whether the entity's constraint exists now (not while its target is missing or has no body),
+  // a hinge's current angle in degrees from the pose it was built in (-180 to 180) and a slider's current position in
+  // units from it. 0 without a built joint of that type.
+  bool isJointBuilt(Entity entity) const;
+  float getJointAngle(Entity entity) const;
+  float getJointPosition(Entity entity) const;
 
 private:
   struct Impl;

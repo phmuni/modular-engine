@@ -7,6 +7,7 @@
 #include "components/rigidBody.h"
 #include "components/script.h"
 #include "components/light.h"
+#include "components/joint.h"
 #include "components/reflectionProbe.h"
 #include "components/skybox.h"
 #include "rendering/ssao.h"

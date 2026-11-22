@@ -330,6 +330,45 @@ void GameEntity::forceAt(const glm::vec3 &force, const glm::vec3 &worldPoint) {
     m_engine->physics().addForceAt(m_id, force, worldPoint);
 }
 
+void GameEntity::setJoint(const Joint &joint) {
+  if (m_engine)
+    m_engine->getComponentManager().addInPlace<Joint>(m_id) = joint;
+}
+
+void GameEntity::removeJoint() {
+  if (m_engine)
+    m_engine->removeComponent<Joint>(m_id);
+}
+
+bool GameEntity::hasJoint() const { return m_engine && m_engine->tryGet<Joint>(m_id) != nullptr; }
+
+float GameEntity::jointAngle() const { return m_engine ? m_engine->physics().getJointAngle(m_id) : 0.0f; }
+
+float GameEntity::jointPosition() const { return m_engine ? m_engine->physics().getJointPosition(m_id) : 0.0f; }
+
+void GameEntity::setJointMotorSpeed(float speed) {
+  if (Joint *joint = m_engine ? m_engine->tryGet<Joint>(m_id) : nullptr) {
+    joint->motor = JointMotor::Velocity;
+    joint->motorSpeed = speed;
+  } else if (m_engine) {
+    LOG_W("[Entity] %s has no Joint to drive (setJoint adds one)", describe().c_str());
+  }
+}
+
+void GameEntity::setJointMotorTarget(float target) {
+  if (Joint *joint = m_engine ? m_engine->tryGet<Joint>(m_id) : nullptr) {
+    joint->motor = JointMotor::Position;
+    joint->motorTarget = target;
+  } else if (m_engine) {
+    LOG_W("[Entity] %s has no Joint to drive (setJoint adds one)", describe().c_str());
+  }
+}
+
+void GameEntity::stopJointMotor() {
+  if (Joint *joint = m_engine ? m_engine->tryGet<Joint>(m_id) : nullptr)
+    joint->motor = JointMotor::Off;
+}
+
 std::string GameEntity::layer() const {
   if (!m_engine)
     return CollisionLayers::kDefaultLayer;

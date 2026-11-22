@@ -7,6 +7,7 @@
 // is gone (valid() says; getters then return defaults and setters do nothing).
 
 #include "components/characterController.h"
+#include "components/joint.h"
 #include "components/rigidBody.h"
 #include "foundation/ecs/entityManager.h"
 #include "rendering/resources/customShader.h"
@@ -49,7 +50,7 @@ public:
   // Whether it has a Script component
   bool hasScript() const;
   // Whether it has the component: an engine one ("Model", "RigidBody", "CharacterController", "Light", "Camera",
-  // "Animator", "AnimationStateMachine", "Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter", "Hidden", "CameraRig", "Tags") or a game
+  // "Animator", "AnimationStateMachine", "Script", "Transform", "AudioSource", "Skybox", "Collision", "ParticleEmitter", "Hidden", "CameraRig", "Tags", "Joint") or a game
   // component registered with Engine::registerComponent, by its name
   bool has(const std::string &component) const;
 
@@ -147,6 +148,20 @@ public:
   // A push at a world point instead of the center: it moves the body and spins it (impulse now, force this frame)
   void impulseAt(const glm::vec3 &impulse, const glm::vec3 &worldPoint);
   void forceAt(const glm::vec3 &force, const glm::vec3 &worldPoint);
+
+  // Joint (see components/joint.h): joins its body to another entity's or the world. setJoint adds the component or
+  // replaces it, removeJoint takes it off. jointAngle (hinge, degrees) and jointPosition (slider, units) are measured
+  // from the pose it was built in, 0 without a built joint of that type. The motor calls switch the component's motor
+  // (and so show in the editor): setJointMotorSpeed keeps a speed up (deg/s, units/s), setJointMotorTarget goes to a
+  // pose (degrees, units) and holds it, stopJointMotor lets it move freely. They warn when there is no joint.
+  void setJoint(const Joint &joint);
+  void removeJoint();
+  bool hasJoint() const;
+  float jointAngle() const;
+  float jointPosition() const;
+  void setJointMotorSpeed(float speed);
+  void setJointMotorTarget(float target);
+  void stopJointMotor();
 
   // The collision layer (see CollisionLayers) of its RigidBody, CharacterController and Collision, whichever it has: what
   // it hits and what hits it. "default" for an entity with none of them. setLayer takes effect at once, also on a body
