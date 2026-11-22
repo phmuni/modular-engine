@@ -53,6 +53,7 @@ CASES = {
     "scene-navigation": ["scene", "../assets/scenes/navigation.json"],  # a character walking a computed path
     "scene-custom-shaders": ["scene", "../assets/scenes/custom_shaders.json"],  # water, hologram and dissolve shaders
     "scene-reflection-probes": ["scene", "../assets/scenes/reflection_probes.json"],  # two baked reflection probes: a room and a corridor
+    "scene-many-lights": ["scene", "../assets/scenes/many_lights.json"],  # 180 colored point lights (clustered), 5 with shadows, metal and rough balls
 }
 
 SCREENSHOT_SECONDS = 2.0     # 120 fixed frames
