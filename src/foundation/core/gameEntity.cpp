@@ -301,6 +301,35 @@ void GameEntity::force(const glm::vec3 &force) {
     m_engine->physics().addForce(m_id, force);
 }
 
+glm::vec3 GameEntity::angularVelocity() const {
+  return m_engine ? glm::degrees(m_engine->physics().getAngularVelocity(m_id)) : glm::vec3(0.0f);
+}
+
+void GameEntity::setAngularVelocity(const glm::vec3 &degreesPerSecond) {
+  if (m_engine)
+    m_engine->physics().setAngularVelocity(m_id, glm::radians(degreesPerSecond));
+}
+
+void GameEntity::torque(const glm::vec3 &torque) {
+  if (m_engine)
+    m_engine->physics().addTorque(m_id, torque);
+}
+
+void GameEntity::angularImpulse(const glm::vec3 &impulse) {
+  if (m_engine)
+    m_engine->physics().addAngularImpulse(m_id, impulse);
+}
+
+void GameEntity::impulseAt(const glm::vec3 &impulse, const glm::vec3 &worldPoint) {
+  if (m_engine)
+    m_engine->physics().addImpulseAt(m_id, impulse, worldPoint);
+}
+
+void GameEntity::forceAt(const glm::vec3 &force, const glm::vec3 &worldPoint) {
+  if (m_engine)
+    m_engine->physics().addForceAt(m_id, force, worldPoint);
+}
+
 std::string GameEntity::layer() const {
   if (!m_engine)
     return CollisionLayers::kDefaultLayer;

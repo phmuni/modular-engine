@@ -225,6 +225,11 @@ void LuaBindings::bindEntity() {
       "velocity", sol::property(&GameEntity::velocity, &GameEntity::setVelocity),
       "impulse", &GameEntity::impulse,
       "force", &GameEntity::force,
+      "angularVelocity", sol::property(&GameEntity::angularVelocity, &GameEntity::setAngularVelocity),
+      "torque", &GameEntity::torque,
+      "angularImpulse", &GameEntity::angularImpulse,
+      "impulseAt", &GameEntity::impulseAt,
+      "forceAt", &GameEntity::forceAt,
 
       // The collision layer, by name (see physics.addLayer); also settable in engine.create
       "layer", sol::property(&GameEntity::layer, &GameEntity::setLayer),

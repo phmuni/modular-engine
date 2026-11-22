@@ -58,6 +58,10 @@ public:
   void setAngularVelocity(Entity entity, const glm::vec3 &velocity);
   void addImpulse(Entity entity, const glm::vec3 &impulse); // kg * units/s, at the center of mass
   void addForce(Entity entity, const glm::vec3 &force);     // for this step
+  void addTorque(Entity entity, const glm::vec3 &torque);   // N * m, for this step
+  void addAngularImpulse(Entity entity, const glm::vec3 &impulse); // N * m * s, at once
+  void addImpulseAt(Entity entity, const glm::vec3 &impulse, const glm::vec3 &worldPoint); // off the center: spins too
+  void addForceAt(Entity entity, const glm::vec3 &force, const glm::vec3 &worldPoint); // for this step, off the center
 
   // The nearest body along a ray; `accept` skips entities it returns false for, and only bodies on the layers in
   // `layerMask` (bit n: layer n, see CollisionLayers::maskOf) are hit. Characters are not hit: see QueryOptions.

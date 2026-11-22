@@ -138,6 +138,15 @@ public:
   void setVelocity(const glm::vec3 &velocity);
   void impulse(const glm::vec3 &impulse);
   void force(const glm::vec3 &force);
+  // Spin, in degrees per second like every rotation here; torque (N * m, this frame) and angularImpulse (N * m * s,
+  // now), in physical units
+  glm::vec3 angularVelocity() const;
+  void setAngularVelocity(const glm::vec3 &degreesPerSecond);
+  void torque(const glm::vec3 &torque);
+  void angularImpulse(const glm::vec3 &impulse);
+  // A push at a world point instead of the center: it moves the body and spins it (impulse now, force this frame)
+  void impulseAt(const glm::vec3 &impulse, const glm::vec3 &worldPoint);
+  void forceAt(const glm::vec3 &force, const glm::vec3 &worldPoint);
 
   // The collision layer (see CollisionLayers) of its RigidBody, CharacterController and Collision, whichever it has: what
   // it hits and what hits it. "default" for an entity with none of them. setLayer takes effect at once, also on a body

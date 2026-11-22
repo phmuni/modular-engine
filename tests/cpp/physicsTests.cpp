@@ -259,3 +259,84 @@ TEST_CASE(physics_contact_end) {
     CHECK_EQ(*began, 2);
   });
 }
+
+// Spin: a sphere of 2 kg and radius 1 (inertia 0.4 * 2 * 1 = 0.8 kg m^2), with no damping, so the spin lasts
+namespace {
+GameEntity spinningSphere(Engine &engine, const char *name, glm::vec3 position) {
+  GameEntity sphere = engine.create(
+      name, Desc("sphere").at(position.x, position.y, position.z).body(BodyType::Dynamic, BodyShape::Sphere, 2.0f));
+  engine.tryGet<RigidBody>(sphere.id())->angularDamping = 0.0f; // set before the body is built: it is built with it
+  return sphere;
+}
+} // namespace
+
+TEST_CASE(physics_angular_velocity_in_degrees) {
+  engine.physics().setGravity(glm::vec3(0));
+  GameEntity top = spinningSphere(engine, "Top", glm::vec3(0, 10, 0));
+  top.setAngularVelocity(glm::vec3(0, 60, 0)); // degrees per second, on the frame it is created
+  CHECK_NEAR(top.angularVelocity(), glm::vec3(0, 60, 0), 0.01f); // reads back before the body exists
+  steps.seconds(0.5f, [top]() {
+    CHECK_NEAR(top.angularVelocity(), glm::vec3(0, 60, 0), 0.5f);
+    CHECK_NEAR(top.rotation().y, 30.0f, 2.0f); // 60 degrees per second for half a second
+    CHECK_NEAR(top.position(), glm::vec3(0, 10, 0), 0.01f);
+  });
+}
+
+TEST_CASE(physics_torque_spins_up) {
+  engine.physics().setGravity(glm::vec3(0));
+  GameEntity wheel = spinningSphere(engine, "Wheel", glm::vec3(0, 10, 0));
+  // 8 N m about z for 30 steps: 8 / 0.8 * (30 / 60) = 5 rad/s. A torque lasts one step, so it is given on each one
+  for (int i = 0; i < 30; ++i)
+    steps.step(1, [wheel]() mutable { wheel.torque(glm::vec3(0, 0, 8)); });
+  steps.step(1, [wheel]() {
+    CHECK_NEAR(wheel.angularVelocity(), glm::vec3(0, 0, 286.479f), 1.0f);
+    CHECK_NEAR(wheel.rotation().x, 0.0f, 0.01f); // no spin about the other axes
+  });
+  // Off now: the speed stays (no damping, no torque)
+  steps.seconds(0.5f, [wheel]() { CHECK_NEAR(wheel.angularVelocity(), glm::vec3(0, 0, 286.479f), 1.0f); });
+}
+
+TEST_CASE(physics_angular_impulse_spins_at_once) {
+  engine.physics().setGravity(glm::vec3(0));
+  GameEntity top = spinningSphere(engine, "Top", glm::vec3(0, 10, 0));
+  top.angularImpulse(glm::vec3(0, 0, 1.6f)); // 1.6 N m s / 0.8 kg m^2 = 2 rad/s, from the frame it is created
+  steps.step(1, [top]() { CHECK_NEAR(top.angularVelocity(), glm::vec3(0, 0, 114.592f), 0.5f); });
+  // On a body that exists: the same again, so 4 rad/s
+  steps.step(1, [top]() mutable { top.angularImpulse(glm::vec3(0, 0, 1.6f)); });
+  steps.step(1, [top]() { CHECK_NEAR(top.angularVelocity(), glm::vec3(0, 0, 229.183f), 0.5f); });
+}
+
+TEST_CASE(physics_push_at_a_point) {
+  engine.physics().setGravity(glm::vec3(0));
+  GameEntity center = spinningSphere(engine, "Center", glm::vec3(0, 10, 0));
+  GameEntity edge = spinningSphere(engine, "Edge", glm::vec3(20, 10, 0));
+  steps.step(1, [center, edge]() mutable {
+    // Through the center: it moves and does not spin
+    center.impulseAt(glm::vec3(0, 0, 4), glm::vec3(0, 10, 0));
+    // A point 1 m to the side: the lever r x J = (1,0,0) x (0,0,4) = (0,-4,0) N m s, so it spins about -y
+    edge.impulseAt(glm::vec3(0, 0, 4), glm::vec3(21, 10, 0));
+  });
+  steps.step(1, [center, edge]() {
+    CHECK_NEAR(center.velocity(), glm::vec3(0, 0, 2), 0.01f); // 4 N s / 2 kg
+    CHECK_NEAR(center.angularVelocity(), glm::vec3(0), 0.01f);
+    CHECK_NEAR(edge.velocity(), glm::vec3(0, 0, 2), 0.01f);
+    CHECK_NEAR(edge.angularVelocity(), glm::vec3(0, -286.479f, 0), 1.0f); // -4 / 0.8 = -5 rad/s
+  });
+}
+
+TEST_CASE(physics_point_pushes_on_creation_frame) {
+  engine.physics().setGravity(glm::vec3(0));
+  GameEntity kicked = spinningSphere(engine, "Kicked", glm::vec3(0, 10, 0));
+  GameEntity pushed = spinningSphere(engine, "Pushed", glm::vec3(20, 10, 0));
+  GameEntity spun = spinningSphere(engine, "Spun", glm::vec3(40, 10, 0));
+  kicked.impulseAt(glm::vec3(0, 0, 4), glm::vec3(1, 10, 0)); // the same as the live case: spins about -y
+  pushed.forceAt(glm::vec3(0, 0, 240), glm::vec3(21, 10, 0)); // 240 N for one step of 1/60 s is 4 N s
+  spun.torque(glm::vec3(0, 0, 96)); // 96 / 0.8 / 60 = 2 rad/s after one step
+  steps.step(1, [kicked, pushed, spun]() {
+    CHECK_NEAR(kicked.velocity(), glm::vec3(0, 0, 2), 0.05f);
+    CHECK_NEAR(kicked.angularVelocity(), glm::vec3(0, -286.479f, 0), 2.0f);
+    CHECK_NEAR(pushed.velocity(), glm::vec3(0, 0, 2), 0.05f);
+    CHECK_NEAR(pushed.angularVelocity(), glm::vec3(0, -286.479f, 0), 2.0f);
+    CHECK_NEAR(spun.angularVelocity(), glm::vec3(0, 0, 114.592f), 1.0f);
+  });
+}

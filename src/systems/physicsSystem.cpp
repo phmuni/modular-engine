@@ -314,7 +314,9 @@ struct PhysicsSystem::Impl {
   // sync builds it. Empty almost always, so it costs nothing per frame.
   struct PendingMotion {
     std::optional<glm::vec3> linear, angular;
-    glm::vec3 impulse{0.0f}, force{0.0f};
+    glm::vec3 impulse{0.0f}, force{0.0f}, torque{0.0f}, angularImpulse{0.0f};
+    // Pushes off the center: (vector, world point), applied in order
+    std::vector<std::pair<glm::vec3, glm::vec3>> impulsesAt, forcesAt;
   };
   std::unordered_map<Entity, PendingMotion> pending;
 
@@ -520,6 +522,12 @@ struct PhysicsSystem::Impl {
           bodyInterface.SetAngularVelocity(id, toJolt(*motion.angular));
         bodyInterface.AddImpulse(id, toJolt(motion.impulse));
         bodyInterface.AddForce(id, toJolt(motion.force));
+        bodyInterface.AddTorque(id, toJolt(motion.torque));
+        bodyInterface.AddAngularImpulse(id, toJolt(motion.angularImpulse));
+        for (const auto &[impulse, point] : motion.impulsesAt)
+          bodyInterface.AddImpulse(id, toJolt(impulse), JPH::RVec3(toJolt(point)));
+        for (const auto &[force, point] : motion.forcesAt)
+          bodyInterface.AddForce(id, toJolt(force), JPH::RVec3(toJolt(point)));
       }
       pending.erase(it);
     }
@@ -801,6 +809,7 @@ void PhysicsSystem::setLinearVelocity(Entity entity, const glm::vec3 &velocity) 
   } else if (auto *pending = m_impl->pendingFor(entity)) {
     pending->linear = velocity;
     pending->impulse = glm::vec3(0.0f); // the velocity replaces what an earlier impulse would have added
+    pending->impulsesAt.clear();
   }
 }
 
@@ -814,8 +823,10 @@ glm::vec3 PhysicsSystem::getAngularVelocity(Entity entity) const {
 void PhysicsSystem::setAngularVelocity(Entity entity, const glm::vec3 &velocity) {
   if (const auto *record = m_impl->dynamicBody(entity))
     m_impl->system->GetBodyInterface().SetAngularVelocity(record->id, toJolt(velocity));
-  else if (auto *pending = m_impl->pendingFor(entity))
+  else if (auto *pending = m_impl->pendingFor(entity)) {
     pending->angular = velocity;
+    pending->angularImpulse = glm::vec3(0.0f); // as for the linear velocity: it replaces an earlier angular impulse
+  }
 }
 
 void PhysicsSystem::addImpulse(Entity entity, const glm::vec3 &impulse) {
@@ -830,6 +841,34 @@ void PhysicsSystem::addForce(Entity entity, const glm::vec3 &force) {
     m_impl->system->GetBodyInterface().AddForce(record->id, toJolt(force));
   else if (auto *pending = m_impl->pendingFor(entity))
     pending->force += force;
+}
+
+void PhysicsSystem::addTorque(Entity entity, const glm::vec3 &torque) {
+  if (const auto *record = m_impl->dynamicBody(entity))
+    m_impl->system->GetBodyInterface().AddTorque(record->id, toJolt(torque));
+  else if (auto *pending = m_impl->pendingFor(entity))
+    pending->torque += torque;
+}
+
+void PhysicsSystem::addAngularImpulse(Entity entity, const glm::vec3 &impulse) {
+  if (const auto *record = m_impl->dynamicBody(entity))
+    m_impl->system->GetBodyInterface().AddAngularImpulse(record->id, toJolt(impulse));
+  else if (auto *pending = m_impl->pendingFor(entity))
+    pending->angularImpulse += impulse;
+}
+
+void PhysicsSystem::addImpulseAt(Entity entity, const glm::vec3 &impulse, const glm::vec3 &worldPoint) {
+  if (const auto *record = m_impl->dynamicBody(entity))
+    m_impl->system->GetBodyInterface().AddImpulse(record->id, toJolt(impulse), JPH::RVec3(toJolt(worldPoint)));
+  else if (auto *pending = m_impl->pendingFor(entity))
+    pending->impulsesAt.emplace_back(impulse, worldPoint);
+}
+
+void PhysicsSystem::addForceAt(Entity entity, const glm::vec3 &force, const glm::vec3 &worldPoint) {
+  if (const auto *record = m_impl->dynamicBody(entity))
+    m_impl->system->GetBodyInterface().AddForce(record->id, toJolt(force), JPH::RVec3(toJolt(worldPoint)));
+  else if (auto *pending = m_impl->pendingFor(entity))
+    pending->forcesAt.emplace_back(force, worldPoint);
 }
 
 std::optional<RayHit> PhysicsSystem::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance,

@@ -153,6 +153,7 @@ function vec3.lerp(a, b, t) end
 ---@field script Entity|nil (read-only) the entity itself when it has a Script component, else nil
 ---@field visible boolean (read-only) false after setVisible(false)
 ---@field velocity vec3 Linear velocity of its physics body
+---@field angularVelocity vec3 Spin of its physics body, in degrees per second around each axis; also works on a body created this frame
 ---@field onGround boolean (read-only) whether its character controller stands on the ground
 ---@field animationState string (read-only) the state its animation state machine is in, "" without one
 ---@field layer string Its collision layer (see physics.addLayer), for its body, character and collision box; "default" without any. Takes effect at once, also on a body that is already simulating; a name that is no layer is a warning and changes nothing
@@ -299,6 +300,24 @@ function Entity:impulse(impulse) end
 ---Adds a force to its physics body.
 ---@param force vec3
 function Entity:force(force) end
+
+---Adds a torque to its physics body for this step only (N*m, about each axis): call it each step to keep spinning it up.
+---@param torque vec3
+function Entity:torque(torque) end
+
+---Adds an angular impulse to its physics body now (N*m*s): an immediate spin.
+---@param impulse vec3
+function Entity:angularImpulse(impulse) end
+
+---Adds an impulse at a world point instead of the center of mass (N*s): the body moves and spins, as an off-center hit does.
+---@param impulse vec3
+---@param point vec3
+function Entity:impulseAt(impulse, point) end
+
+---Adds a force at a world point instead of the center of mass, for this step (N): the body moves and spins.
+---@param force vec3
+---@param point vec3
+function Entity:forceAt(force, point) end
 
 ---Sets the velocity its character controller walks with.
 ---@param velocity vec3
