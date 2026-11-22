@@ -5,18 +5,22 @@
 
 enum class LightType { Directional, Point, Spot };
 
+// Like Unity's, Godot's and Unreal's lights, it is placed and aimed by its entity: `position` and `direction` are LOCAL,
+// relative to the entity's Transform, so turning the entity (or a parent it follows) turns the light. World direction =
+// R * direction and world position = Transform.position + R * position, with R the Transform's rotation
+// (see LightSystem::worldDirection and worldPosition). A spot light on a child entity is a headlight or a torch.
+// Light colors are authored in sRGB; there is no per-light ambient (the fill comes from the sky, see Skybox, and the
+// scene's ambient: Engine::setAmbient).
 struct Light {
   LightType type = LightType::Point;
-  glm::vec3 position{0.0f, 0.0f, 0.0f};
-  glm::vec3 direction{0.0f, -1.0f, 0.0f};
+  glm::vec3 position{0.0f, 0.0f, 0.0f};   // local offset from the entity
+  glm::vec3 direction{0.0f, -1.0f, 0.0f}; // local; directional and spot lights shine along it (default: down)
   glm::vec3 color{1.0f, 1.0f, 1.0f};
   float intensity = 1.0f;
-  float ambient = 0.2f;
-  // Attenuation 1 / (constant + linear d + quadratic d^2) for point and spot lights. A light reaches as far as that
-  // leaves it visible (see lightRange in clusteredLights.h; there is no range field) and fades smoothly to exactly 0 there.
-  float constant = 1.0f;
-  float linear = 0.09f;
-  float quadratic = 0.032f;
+  // Point and spot lights: how far the light reaches, in world units. Its brightness falls off like the inverse square
+  // of the distance (softened near the light: a core 1/25 of the range wide) and is windowed to exactly 0 at `range` (see lightAttenuation in
+  // clusteredLights.h). Directional lights ignore it.
+  float range = 25.0f;
   float cutOff = glm::cos(glm::radians(12.5f));
   float outerCutOff = glm::cos(glm::radians(17.5f));
 
@@ -27,8 +31,9 @@ struct Light {
 
   Light() = default;
 
-  // Named constructors, so a light reads as what it is. Spot angles are in degrees (the half-angles where the light
-  // starts to fade and where it ends); chain withShadows() on point and spot lights for a cube shadow map.
+  // Named constructors, so a light reads as what it is. `direction` is local to the entity (see above). Spot angles are
+  // in degrees (the half-angles where the light starts to fade and where it ends); chain withShadows() on point and
+  // spot lights for a cube shadow map and withRange() to set how far a point or spot light reaches.
   static Light directional(glm::vec3 direction, glm::vec3 color = glm::vec3(1.0f), float intensity = 1.0f) {
     Light light;
     light.type = LightType::Directional;
@@ -52,6 +57,11 @@ struct Light {
     light.intensity = intensity;
     light.cutOff = glm::cos(glm::radians(innerDegrees));
     light.outerCutOff = glm::cos(glm::radians(outerDegrees));
+    return light;
+  }
+  Light withRange(float worldUnits) const {
+    Light light = *this;
+    light.range = worldUnits;
     return light;
   }
   Light withShadows(float range = 25.0f) const {

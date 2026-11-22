@@ -376,10 +376,12 @@ RenderSystem::renderDirectionalShadow(ComponentManager &componentManager, Resour
                                       const glm::mat4 &view, float aspect) {
   DirectionalShadow shadow;
   const Light *sun = nullptr;
+  glm::vec3 sunDirection(0.0f, -1.0f, 0.0f); // in the world: the light's direction turned by its entity
   for (Entity lightEntity : lightSystem.getLights()) {
     const Light &light = componentManager.get<Light>(lightEntity);
     if (light.type == LightType::Directional) {
       sun = &light;
+      sunDirection = LightSystem::worldDirection(light, componentManager.tryGet<Transform>(lightEntity));
       break;
     }
   }
@@ -395,7 +397,7 @@ RenderSystem::renderDirectionalShadow(ComponentManager &componentManager, Resour
   const glm::mat4 cameraToWorld = glm::inverse(view);
   const float tanY = std::tan(glm::radians(camera.fov) * 0.5f);
   const float tanX = tanY * aspect;
-  const glm::vec3 lightDir = glm::normalize(sun->direction);
+  const glm::vec3 lightDir = glm::normalize(sunDirection);
   const glm::vec3 up = std::abs(lightDir.y) > 0.99f ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
 
   Shader &depthShader = resourceSystem.getShader(m_shadowShaderHandle);

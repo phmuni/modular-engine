@@ -61,6 +61,7 @@ public:
         .create("Fill")
         .withLight(Light::directional({0.6f, -0.3f, 0.7f}, {0.55f, 0.6f, 0.7f}, 0.5f))
         .build();
+    engine.setAmbient({0.9392f, 0.958f, 1.0f}, 0.2913f); // the fill the two lights' own ambient used to give
 
     Entity model = engine.entities()
                        .create("Model")

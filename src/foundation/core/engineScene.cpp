@@ -274,6 +274,7 @@ void Engine::applyPendingScene() {
     createCameraEntity("Camera", glm::vec3(0.0f, 3.0f, 8.0f), 0.0f, -15.0f, 60.0f);
     createLightEntity("Sun", glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(-0.4f, -1.0f, -0.3f), glm::vec3(1.0f),
                       LightType::Directional, 1.0f, 0.0f, 0.0f);
+    setAmbient(glm::vec3(1.0f), 0.2f); // the fill a Light's own ambient used to give
     m_entityManager.setCreatingRuntime(true);
     m_systemManager.getSystem<NavigationSystem>().clear();
     clearHistory();

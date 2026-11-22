@@ -77,5 +77,6 @@ void LuaBindings::bindMath() {
 
   lua.new_usertype<Transform>("Transform", sol::no_constructor, "position", &Transform::position, "rotation",
                               &Transform::rotation, "scale", &Transform::scale);
-  lua.new_usertype<Light>("Light", sol::no_constructor, "color", &Light::color, "intensity", &Light::intensity);
+  lua.new_usertype<Light>("Light", sol::no_constructor, "color", &Light::color, "intensity", &Light::intensity,
+                         "range", &Light::range);
 }

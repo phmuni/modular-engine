@@ -267,6 +267,9 @@ private:
   void drawReflectionProbe(Engine &engine, Entity entity, struct ReflectionProbe &probe);
   // A selected joint over the scene: its anchor, axis, limits (an arc for a hinge) and the line to what it holds on to
   void drawJointGizmo(SystemManager &systemManager, ComponentManager &componentManager, Entity entity);
+  // A selected light over the scene: a dot where it is, and for a directional or spot light an arrow along its world
+  // direction (the entity's rotation turns it); a spot light also gets its cone
+  void drawLightGizmo(SystemManager &systemManager, ComponentManager &componentManager, Entity entity);
   // The Joint section of the Properties panel (type, target, anchor, limits, motor, spring)
   void drawJoint(Engine &engine, Entity entity, struct Joint &joint);
   void drawBox(SystemManager &systemManager, ComponentManager &componentManager, Entity entity, unsigned color,

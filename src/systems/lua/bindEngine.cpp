@@ -252,7 +252,7 @@ void LuaBindings::bindEngine() {
     result["density"] = fog.density;
     return result;
   });
-  // Light added to everything lit, on top of each Light's own ambient: engine.setAmbient(vec3(0.5, 0.6, 0.8), 0.3)
+  // Light added to everything lit (lights have no ambient of their own): engine.setAmbient(vec3(0.5, 0.6, 0.8), 0.3)
   // (intensity 1 without one; engine.setAmbient(vec3(1), 0) is off). engine.ambient() returns the color and intensity.
   api.set_function("setAmbient", [this](const glm::vec3 &color, sol::optional<float> intensity) {
     engine.setAmbient(color, intensity.value_or(1.0f));

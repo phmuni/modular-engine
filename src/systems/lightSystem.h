@@ -61,6 +61,9 @@ public:
   int candidateLightCount() const { return m_candidates; }
   int visibleLightCount() const { return static_cast<int>(m_clustered.size()); }
 
-  // A light's position in the world: its offset moved by the entity's Transform, if it has one
+  // A light's position in the world: Transform.position + R * light.position, R the Transform's rotation (the same
+  // Euler order as the model matrix); the local offset as it is without a Transform
   static glm::vec3 worldPosition(const Light &light, const Transform *transform);
+  // A light's direction in the world: R * light.direction (not normalized; the shaders and shadows normalize it)
+  static glm::vec3 worldDirection(const Light &light, const Transform *transform);
 };

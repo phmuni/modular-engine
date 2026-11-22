@@ -13,7 +13,7 @@ public:
   TransformSystem() = default;
   // Lets setParent keep a child in the scene of its parent (see below)
   void setEntityManager(EntityManager &entityManager) { m_entityManager = &entityManager; }
-  glm::mat4 calculateModelMatrix(const Transform &transform);
+  static glm::mat4 calculateModelMatrix(const Transform &transform);
   // The other way: position, rotation (in the same Y, X, Z order) and scale of a matrix. A parent scaled unevenly
   // and rotated can make a child's matrix skewed, which a Transform cannot hold; the closest one comes back.
   static Transform decompose(const glm::mat4 &matrix);

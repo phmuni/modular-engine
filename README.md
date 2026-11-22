@@ -65,7 +65,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Tags**                   | Labels on entities (`addTag`, `engine.findTagged`), saved in scenes and prefabs and edited in the Properties panel |
 | **Tweens & Coroutines**    | Animate position, rotation, scale or color (or a number) with easing curves in C++ and Lua; Lua also has `wait` inside coroutines (`engine.run`, `self:run`), all on game time |
 | **Input System**           | Keyboard, mouse and gamepads (SDL3), named actions and axes with bindings in code or a JSON file, gamepad rumble, text entry, mouse capture for mouse-look |
-| **Lighting System**        | Directional (up to 4), point, and spotlight types with intensity and cutoff controls, gamma-correct by default; clustered forward lighting handles up to 256 visible point/spot lights, each reaching as far as its attenuation lets it be seen (automatic range) |
+| **Lighting System**        | Directional (up to 4), point, and spotlight types with intensity and cutoff controls, gamma-correct by default; clustered forward lighting handles up to 256 visible point/spot lights, each with a `range` (inverse-square-like falloff that is exactly 0 at the range); like Unity, Godot and Unreal a light is placed and aimed by its entity (its direction and offset are local, so a spot on a child entity turns with its parent) and has no ambient of its own |
 | **Transparency & Sorting** | Back-to-front sorting for transparent objects with opacity support             |
 | **Audio**                  | 3D positioned sounds following the camera, one-shots, streamed music and volume buses (miniaudio); effects pause with `F7` |
 | **Game UI**                | Menus and HUD as RmlUi documents (HTML/CSS-like RML/RCSS) with data binding, transitions and animations; `F9` opens its debugger |
@@ -602,11 +602,12 @@ class MyApp : public App {
             .withLight(Light::directional({-0.8f, -1.0f, 0.2f}, {1.0f, 0.0f, 0.0f}, 2.0f))
             .build();
 
-        // A spot from above: direction, color, intensity, and the angles (degrees) where it fades and ends
+        // A spot from above: direction (local to the entity: rotate the entity to aim it), color, intensity, and the
+        // angles (degrees) where it fades and ends; withRange() says how far it reaches
         engine.entities()
             .create("Spotlight")
             .withTransform({0.0f, 10.0f, 0.0f}, glm::vec3(0.0f), glm::vec3(1.0f))
-            .withLight(Light::spot({0.0f, -1.0f, 0.0f}, glm::vec3(1.0f), 3.0f, 15.0f, 25.0f))
+            .withLight(Light::spot({0.0f, -1.0f, 0.0f}, glm::vec3(1.0f), 3.0f, 15.0f, 25.0f).withRange(30.0f))
             .build();
 
         // A point light with a cube shadow map (up to EngineConfig::MAX_POINT_SHADOWS at once) reaching 20 units
@@ -1227,7 +1228,7 @@ fog.enabled = true;                  // blends lit things toward the fog color w
 fog.mode = FogMode::Linear;          // clear up to `start`, solid from `finish`; or Exponential, with `density`
 fog.start = 20.0f; fog.finish = 90.0f;
 engine.setFog(fog);                  // fog.matchSky (the default) uses the sky color, so far things fade into the sky
-engine.setAmbient({0.5f, 0.6f, 0.8f}, 0.3f); // light added to everything lit, on top of each Light's own ambient
+engine.setAmbient({0.5f, 0.6f, 0.8f}, 0.3f); // light added to everything lit (lights have no ambient of their own)
 ```
 
 ```lua
@@ -1243,7 +1244,7 @@ engine.setAmbient(vec3(0.5, 0.6, 0.8), 0.3)
 
 The fog is in the lit shader behind one uniform branch (nothing to pay while it is off), the sky itself is not fogged,
 and particles fade out with distance instead of mixing toward the fog color, as they are drawn after tone mapping.
-Ambient is a scene-wide term next to each light's own `ambient`; 0, the default, adds nothing. The Skybox panel in the
+Ambient is a scene-wide term (lights have none of their own; older scene files are converted when loaded); 0, the default, adds nothing. The Skybox panel in the
 editor edits all of it.
 
 The sky also lights the scene (image-based lighting): objects get diffuse light and reflections from the panorama, so
@@ -1450,7 +1451,7 @@ RCSS has no default style sheet, so give `div` a `display: block`. Lato is loade
 ### Ambient occlusion
 
 Screen-space ambient occlusion (SSAO) is **on by default**: it darkens the *ambient and indirect* light (the Skybox's
-ambient and each Light's `ambient`) where geometry shuts a point in, so objects get contact shadows where they meet the
+ambient and the sky's lighting) where geometry shuts a point in, so objects get contact shadows where they meet the
 floor and creases get dark. Direct lights, emission, unlit materials, transparent surfaces and particles are not
 affected, and with it off the image is exactly what it was.
 

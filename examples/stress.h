@@ -16,13 +16,14 @@ class Stress : public App {
 
   void createWorld(Engine &engine) {
     engine.entities().create("Sun").withLight(Light::directional({-0.5f, -1.0f, -0.3f}, {1.0f, 0.95f, 0.9f})).build();
+    engine.setAmbient({1.0f, 0.95f, 0.9f}, 0.2f); // the fill the sun's own ambient used to give
     for (int i = 0; i < 4; ++i) {
       float angle = glm::radians(90.0f * static_cast<float>(i));
       glm::vec3 color(0.5f + 0.5f * std::cos(angle), 0.5f + 0.5f * std::sin(angle), 1.0f - 0.25f * i);
       engine.entities()
           .create("Point " + std::to_string(i))
           .withTransform({std::cos(angle) * 15.0f, 4.0f, std::sin(angle) * 15.0f})
-          .withLight(Light::point(color, 3.0f))
+          .withLight(Light::point(color, 3.0f).withRange(150.0f))
           .build();
     }
 

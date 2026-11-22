@@ -41,8 +41,8 @@ struct Skybox {
   glm::vec3 color{0.0f};  // the background color: black by default
 
   Fog fog;
-  // Light added to everything lit, from nowhere, on top of each Light's own `ambient`: color times intensity, shown on
-  // the surface's color. 0 (the default) adds nothing.
+  // Light added to everything lit, from nowhere: color times intensity, shown on the surface's color. 0 (the default)
+  // adds nothing. Lights have no ambient of their own; this and the sky's lighting are the scene's fill.
   glm::vec3 ambientColor{1.0f};
   float ambientIntensity = 0.0f;
   // Image-based lighting: the sky itself lights what is in the scene (diffuse light and reflections), from the

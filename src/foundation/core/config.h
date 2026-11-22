@@ -145,9 +145,15 @@ constexpr int MAX_CLUSTERED_LIGHTS = 256; // at most 256: a light's index in a c
 constexpr int CLUSTER_GRID_X = 16;
 constexpr int CLUSTER_GRID_Y = 9;
 constexpr int CLUSTER_GRID_Z = 24;
-// A light reaches as far as its brightness (intensity + ambient, times its color's largest channel) times its
-// attenuation stays above this: below it (1/256, under one 8-bit step) it adds nothing visible. See lightRange().
+// Legacy lightRange(): a light with the old constant/linear/quadratic attenuation reached as far as its brightness
+// (intensity + ambient, times its color's largest channel) times the attenuation stayed above this (1/256, under one
+// 8-bit step). Only the migration of scene format 1 uses it.
 constexpr float LIGHT_RANGE_THRESHOLD = 1.0f / 256.0f;
+// Point and spot lights fall off as 1 / (1 + (d / (range * LIGHT_CORE_FRACTION))^2), windowed to 0 at the range: an
+// inverse square with a soft core 1/25 of the range wide (so the shape scales with `range`; a range of 25 has a core
+// of 1 unit). Chosen so that the point and spot lights of the repo's scenes, converted from the legacy constants, keep
+// their look to within a few percent of brightness. The lit shader has the same 25.
+constexpr float LIGHT_CORE_FRACTION = 1.0f / 25.0f;
 constexpr float LIGHT_MAX_RANGE = 500.0f; // lights without falloff (constant attenuation only) reach this far
 
 // Shaders

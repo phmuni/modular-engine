@@ -96,7 +96,9 @@ public:
     // Shown at its color alone: no lights, shadows or reflections (KHR_materials_unlit)
     EntityBuilder &withUnlit(bool unlit = true);
     // A light, registered with the light system: Light::directional(...), Light::point(...) or Light::spot(...).
-    // Point and spot lights sit at the entity's Transform (add withTransform), plus Light::position as an offset.
+    // The light is placed and aimed by the entity: Light::position and Light::direction are local to its Transform
+    // (add withTransform), so a light on a child entity turns with its parent. Light::withRange(...) sets how far a
+    // point or spot light reaches.
     EntityBuilder &withLight(const Light &light);
     // Plays from the entity's position; see AudioSource for the other settings
     EntityBuilder &withSound(std::string_view path, bool loop = true, float volume = 1.0f) {
@@ -235,7 +237,8 @@ public:
   // start from fog(). With `matchSky` the fog takes the sky color, so distant things fade into the sky.
   void setFog(const Fog &fog);
   Fog fog();
-  // Light added to everything lit: color times intensity, on top of each Light's own ambient (0 adds nothing)
+  // Light added to everything lit, from nowhere: color times intensity (0 adds nothing). Lights have no ambient of
+  // their own; this and the sky's image-based lighting (setEnvironmentIntensity) are the fill.
   void setAmbient(const glm::vec3 &color, float intensity);
   glm::vec3 ambientColor();
   float ambientIntensity();
@@ -434,7 +437,8 @@ public:
   Entity createModelEntity(std::string_view name, std::string_view modelPath, glm::vec3 position, glm::vec3 rotation,
                            glm::vec3 scale, uint32_t shaderHandle = 0);
 
-  // Prefer entities().create(name).withLight(Light::...): cutOff and outerCutOff here are cosines, used by spots only
+  // Prefer entities().create(name).withLight(Light::...): cutOff and outerCutOff here are cosines, used by spots only.
+  // The entity has no rotation, so `direction` is a world direction here (it is local to the entity as for any Light).
   Entity createLightEntity(std::string_view name, glm::vec3 position, glm::vec3 direction, glm::vec3 color,
                            LightType type, float intensity, float cutOff, float outerCutOff);
 

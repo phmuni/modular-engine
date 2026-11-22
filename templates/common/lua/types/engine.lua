@@ -128,10 +128,12 @@ function vec3.lerp(a, b, t) end
 ---@field rotation vec3
 ---@field scale vec3
 
----A light component.
+---A light component. It is placed and aimed by its entity: a spot light on a child entity (a headlight, a torch) turns
+---with its parent.
 ---@class Light
 ---@field color vec3
 ---@field intensity number
+---@field range number How far a point or spot light reaches, in world units: it falls off like the inverse square of the distance and is exactly 0 at the range
 
 -- Entity (`self`, `other`, and what engine.find and friends return) --------------------------------------------------
 
@@ -771,8 +773,8 @@ function engine.setFog(settings) end
 ---@return FogOptions
 function engine.fog() end
 
----Light added to everything lit, from nowhere, on top of each Light's own `ambient`: color times intensity (an intensity of 0 adds
----nothing, which is how scenes start). Kept in the scene file with the sky.
+---Light added to everything lit, from nowhere: color times intensity (an intensity of 0 adds nothing, which is how scenes
+---start). Lights have no ambient of their own; this and the sky's lighting are the fill. Kept in the scene file with the sky.
 ---@param color vec3 0-1 per channel
 ---@param intensity? number Defaults to 1
 function engine.setAmbient(color, intensity) end

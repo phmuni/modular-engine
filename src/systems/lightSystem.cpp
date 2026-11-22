@@ -3,6 +3,7 @@
 #include "systems/lightSystem.h"
 #include "components/light.h"
 #include "components/transform.h"
+#include "systems/transformSystem.h"
 #include "foundation/core/logger.h"
 #include <algorithm>
 
@@ -11,21 +12,22 @@ struct Candidate {
   Entity entity;
   const Light *light;
   glm::vec3 position;
+  glm::vec3 direction; // world
   float range;
   float importance;
   int slot = -1;
 };
 
 float brightnessOf(const Light &light) {
-  return std::max(light.color.x, std::max(light.color.y, light.color.z)) * (light.intensity + light.ambient);
+  return std::max(light.color.x, std::max(light.color.y, light.color.z)) * light.intensity;
 }
 
-GpuLight pack(const Light &light, const glm::vec3 &position, float range, int slot) {
+GpuLight pack(const Light &light, const glm::vec3 &position, const glm::vec3 &direction, float range, int slot) {
   GpuLight gpu;
   gpu.data[0] = glm::vec4(position, range);
   gpu.data[1] = glm::vec4(light.color, light.intensity);
-  gpu.data[2] = glm::vec4(light.direction, light.ambient);
-  gpu.data[3] = glm::vec4(light.constant, light.linear, light.quadratic, static_cast<float>(light.type));
+  gpu.data[2] = glm::vec4(direction, 0.0f);
+  gpu.data[3] = glm::vec4(0.0f, 0.0f, 0.0f, static_cast<float>(light.type));
   gpu.data[4] = glm::vec4(light.cutOff, light.outerCutOff, light.shadowRange, static_cast<float>(slot));
   return gpu;
 }
@@ -55,8 +57,21 @@ void LightSystem::destroyLight(Entity entity) {
 
 const std::vector<Entity> &LightSystem::getLights() const { return m_lights; }
 
+namespace {
+// The Transform's rotation alone (no scale), built as the model matrix builds it
+glm::mat3 rotationOf(const Transform &transform) {
+  Transform rotation;
+  rotation.rotation = transform.rotation;
+  return glm::mat3(TransformSystem::calculateModelMatrix(rotation));
+}
+} // namespace
+
 glm::vec3 LightSystem::worldPosition(const Light &light, const Transform *transform) {
-  return transform ? light.position + transform->position : light.position;
+  return transform ? transform->position + rotationOf(*transform) * light.position : light.position;
+}
+
+glm::vec3 LightSystem::worldDirection(const Light &light, const Transform *transform) {
+  return transform ? rotationOf(*transform) * light.direction : light.direction;
 }
 
 void LightSystem::collectLights(ComponentManager &componentManager, bool shadowsEnabled, int maxCasters,
@@ -75,7 +90,8 @@ void LightSystem::collectLights(ComponentManager &componentManager, bool shadows
       continue;
     if (light->type == LightType::Directional) {
       if (static_cast<int>(m_directional.size()) < EngineConfig::MAX_DIRECTIONAL_LIGHTS)
-        m_directional.push_back(pack(*light, glm::vec3(0.0f), 0.0f, -1));
+        m_directional.push_back(pack(*light, glm::vec3(0.0f),
+                                     worldDirection(*light, componentManager.tryGet<Transform>(entity)), 0.0f, -1));
       else if (!warnedDirectional) {
         warnedDirectional = true;
         LOG_W("[LightSystem] More than %d directional lights; the others are ignored",
@@ -84,14 +100,15 @@ void LightSystem::collectLights(ComponentManager &componentManager, bool shadows
       continue;
     }
     const float brightness = brightnessOf(*light);
-    const float range = lightRange(light->constant, light->linear, light->quadratic, brightness);
-    if (range <= 0.0f)
-      continue; // too dim to see anywhere
-    const glm::vec3 position = worldPosition(*light, componentManager.tryGet<Transform>(entity));
+    const float range = light->range;
+    if (range <= 0.0f || brightness <= 0.0f)
+      continue; // reaches nowhere, or gives no light
+    const Transform *transform = componentManager.tryGet<Transform>(entity);
+    const glm::vec3 position = worldPosition(*light, transform);
     if (!intersectsSphere(frustumPlanes, position, range))
       continue;
     const glm::vec3 toLight = position - viewPos;
-    candidates.push_back({entity, light, position, range, brightness / std::max(glm::dot(toLight, toLight), 1.0f)});
+    candidates.push_back({entity, light, position, worldDirection(*light, transform), range, brightness / std::max(glm::dot(toLight, toLight), 1.0f)});
   }
   m_candidates = static_cast<int>(candidates.size());
 
@@ -164,5 +181,5 @@ void LightSystem::collectLights(ComponentManager &componentManager, bool shadows
 
   m_clustered.reserve(candidates.size());
   for (const Candidate &candidate : candidates)
-    m_clustered.push_back(pack(*candidate.light, candidate.position, candidate.range, candidate.slot));
+    m_clustered.push_back(pack(*candidate.light, candidate.position, candidate.direction, candidate.range, candidate.slot));
 }

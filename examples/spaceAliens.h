@@ -704,6 +704,8 @@ class SpaceAliens : public App {
         .create("Front")
         .withLight(Light::directional({0.0f, -0.35f, -1.0f}, {0.9f, 0.9f, 1.0f}, 0.55f))
         .build();
+    // The fill the three suns' own ambient (0.2 of each color) used to give, now the scene's
+    engine.setAmbient({0.9539f, 0.6873f, 1.0f}, 0.4013f);
     engine.createCameraEntity("Camera", cameraPosition, 0.0f, 0.0f, 60.0f);
 
     createGameManager(engine);

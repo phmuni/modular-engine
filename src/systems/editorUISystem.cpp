@@ -1176,6 +1176,58 @@ void EditorUISystem::drawSelectionBoxes(SystemManager &systemManager, ComponentM
             primary ? 1.8f : 1.2f);
     drawProbeBox(systemManager, componentManager, entity);
     drawJointGizmo(systemManager, componentManager, entity);
+    drawLightGizmo(systemManager, componentManager, entity);
+  }
+}
+
+void EditorUISystem::drawLightGizmo(SystemManager &systemManager, ComponentManager &componentManager, Entity entity) {
+  const auto *light = componentManager.tryGet<Light>(entity);
+  const auto *transform = componentManager.tryGet<Transform>(entity);
+  auto &cameraSystem = systemManager.getSystem<CameraSystem>();
+  const Entity cameraEntity = cameraSystem.getActiveCamera();
+  const Camera *camera = cameraEntity != -1 ? componentManager.tryGet<Camera>(cameraEntity) : nullptr;
+  if (!light || !camera)
+    return;
+  const glm::mat4 toClip = cameraSystem.getProjectionMatrix(*camera) * cameraSystem.getViewMatrix(*camera);
+  ImDrawList *drawList = ImGui::GetBackgroundDrawList();
+  auto line = [&](const glm::vec3 &from, const glm::vec3 &to, unsigned color, float thickness) {
+    const glm::vec4 a = toClip * glm::vec4(from, 1.0f), b = toClip * glm::vec4(to, 1.0f);
+    if (a.w > 0.01f && b.w > 0.01f)
+      drawList->AddLine(fromClip(a), fromClip(b), color, thickness);
+  };
+  const unsigned color = IM_COL32(255, 235, 90, 240);
+  const glm::vec3 origin = LightSystem::worldPosition(*light, transform);
+  const glm::vec4 clip = toClip * glm::vec4(origin, 1.0f);
+  if (clip.w > 0.01f)
+    drawList->AddCircleFilled(fromClip(clip), 5.0f, color);
+  if (light->type == LightType::Point)
+    return;
+  glm::vec3 direction = LightSystem::worldDirection(*light, transform);
+  if (glm::length(direction) < 1e-6f)
+    return;
+  direction = glm::normalize(direction);
+  const float length = light->type == LightType::Spot ? std::clamp(light->range * 0.25f, 1.5f, 6.0f) : 3.0f;
+  const glm::vec3 tip = origin + direction * length;
+  line(origin, tip, color, 2.0f);
+  // The arrow head
+  const glm::vec3 helper = std::abs(direction.y) > 0.9f ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
+  const glm::vec3 side = glm::normalize(glm::cross(direction, helper));
+  const glm::vec3 up = glm::cross(side, direction);
+  for (const glm::vec3 &offset : {side, -side, up, -up})
+    line(tip, tip - direction * 0.3f + offset * 0.12f, color, 2.0f);
+  if (light->type == LightType::Spot) {
+    // The cone where the light ends (outerCutOff is its cosine)
+    const float outerCos = std::clamp(light->outerCutOff, 0.05f, 0.9999f);
+    const float radius = length * std::sqrt(1.0f - outerCos * outerCos) / outerCos;
+    glm::vec3 previous = tip + side * radius;
+    for (int i = 1; i <= 24; ++i) {
+      const float angle = glm::two_pi<float>() * static_cast<float>(i) / 24.0f;
+      const glm::vec3 point = tip + (side * std::cos(angle) + up * std::sin(angle)) * radius;
+      line(previous, point, IM_COL32(255, 235, 90, 150), 1.2f);
+      previous = point;
+    }
+    for (const glm::vec3 &offset : {side, -side, up, -up})
+      line(origin, tip + offset * radius, IM_COL32(255, 235, 90, 150), 1.2f);
   }
 }
 
@@ -3063,11 +3115,15 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         if (ImGui::Combo("Type##light", &type, types, IM_ARRAYSIZE(types))) {
           light.type = static_cast<LightType>(type);
         }
-        ImGui::DragFloat3("Offset##lp", &light.position.x, 0.1f);
-        ImGui::DragFloat3("Direction##ld", &light.direction.x, 0.01f);
+        ImGui::DragFloat3("Local offset##lp", &light.position.x, 0.1f);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Where the light is, relative to the entity (turned by its rotation)");
+        ImGui::DragFloat3("Local direction##ld", &light.direction.x, 0.01f);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Where the light shines, relative to the entity: rotate the entity (or its parent) to aim it. "
+                            "Default (0, -1, 0): straight down.");
         ImGui::ColorEdit3("Color##lc", &light.color.x);
         ImGui::DragFloat("Intensity", &light.intensity, 0.1f, 0.0f, 50.0f);
-        ImGui::DragFloat("Ambient", &light.ambient, 0.01f, 0.0f, 1.0f);
 
         if (light.type == LightType::Spot) {
           ImGui::DragFloat("Cutoff", &light.cutOff, 0.01f, 0.0f, glm::min(light.outerCutOff - 0.01f, 0.98f));
@@ -3079,9 +3135,10 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
             ImGui::SetTooltip("Cube shadow map; up to %d lights at once", EngineConfig::MAX_POINT_SHADOWS);
           if (light.castShadows)
             ImGui::DragFloat("Shadow range", &light.shadowRange, 0.5f, 1.0f, 500.0f);
-          ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.01f, 5.0f);
-          ImGui::DragFloat("Linear", &light.linear, 0.01f, 0.0f, 1.0f);
-          ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
+          ImGui::DragFloat("Range", &light.range, 0.1f, 0.0f, 500.0f);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("How far the light reaches (world units). It falls off like the inverse square of the "
+                              "distance and is exactly 0 at the range.");
         }
       }
     }
@@ -3397,7 +3454,7 @@ void EditorUISystem::renderPropertiesPanel(Engine &engine, SystemManager &system
         ImGui::ColorEdit3("Color##ambient", &sky.ambientColor.x);
         ImGui::DragFloat("Intensity##ambient", &sky.ambientIntensity, 0.01f, 0.0f, 5.0f, "%.2f");
         if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Added to every Light's own ambient; 0 adds nothing");
+          ImGui::SetTooltip("Light added to everything, from nowhere (color times intensity); 0 adds nothing");
       }
     }
   }
@@ -4134,8 +4191,8 @@ void EditorUISystem::renderAddEntityPopup(Engine &engine, SceneSystem &sceneSyst
 
   if (addLight) {
     ImGui::Text("Light");
-    ImGui::InputFloat3("Position##lf", lpos);
-    ImGui::InputFloat3("Direction##lf", ldir);
+    ImGui::InputFloat3("Local offset##lf", lpos);
+    ImGui::InputFloat3("Local direction##lf", ldir);
     ImGui::ColorEdit3("Color##lf", lcolor);
     ImGui::Combo("Type##lf", &ltype, "Directional\0Point\0Spot\0");
     ImGui::DragFloat("Intensity##lf", &lintensity, 0.1f, 0.0f, 50.0f);

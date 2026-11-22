@@ -10,7 +10,7 @@
 //   ClusterGrid       (binding 3)  one uint per cluster: (offset into the index list << 9) | light count
 //   ClusterIndices0.. (bindings 4..) the lights' indices as bytes, 4 to a uint, each cluster's lights one after another;
 //                                  the list continues from one block into the next (up to 8 blocks, sized from the driver)
-// Light ranges are automatic (lightRange) and the attenuation is windowed to reach exactly 0 at the range.
+// A point or spot light has a `range` (Light::range) and its attenuation is windowed to reach exactly 0 there.
 
 #include "foundation/core/config.h"
 #include <glad/glad.h>
@@ -39,19 +39,24 @@ std::string lightingShaderDefines();
 // Points a linked program's light uniform blocks at the buffers' binding points
 void bindLightingBlocks(GLuint program);
 
-// The distance a light reaches: where its brightness (the larger of its color's channels times intensity + ambient)
-// times its attenuation 1 / (constant + linear d + quadratic d^2) falls to EngineConfig::LIGHT_RANGE_THRESHOLD, at most
-// LIGHT_MAX_RANGE. 0 for a light that is below the threshold even at its center.
+// LEGACY (scene format 1): the distance a light with the old attenuation 1 / (constant + linear d + quadratic d^2)
+// reached: where its brightness (the larger of its color's channels times intensity + ambient) times that falls to
+// EngineConfig::LIGHT_RANGE_THRESHOLD, at most LIGHT_MAX_RANGE. 0 for a light that is below the threshold even at its
+// center. Only the migration of old scene files uses it, to turn the three constants into a `range`.
 float lightRange(float constant, float linear, float quadratic, float brightness);
 // The smooth window that takes the attenuation to exactly 0 at the range: (1 - (d/r)^4)^2, 0 from r on (the lit
 // shader does the same). Close to the light it is 1 to within 0.02% (d < r / 10).
 float lightWindow(float distance, float range);
+// The attenuation of a point or spot light at `distance`: inverse-square-like, softened near the light so it is 1 at the
+// light, and windowed to exactly 0 at `range`:  lightWindow(d, range) / (1 + (d / (range * LIGHT_CORE_FRACTION))^2).
+// The lit shader does the same.
+float lightAttenuation(float distance, float range);
 
 // One light as the shader reads it, 5 vec4:
-//   0: position.xyz (world), range
+//   0: position.xyz (world), range (Light::range)
 //   1: color.xyz (as authored), intensity
-//   2: direction.xyz, ambient
-//   3: constant, linear, quadratic, type (0 directional, 1 point, 2 spot)
+//   2: direction.xyz (world), unused
+//   3: unused xyz, type (0 directional, 1 point, 2 spot)
 //   4: cutOff, outerCutOff, shadowFar, shadow slot (-1 for none)
 struct GpuLight {
   glm::vec4 data[5];

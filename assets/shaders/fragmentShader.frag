@@ -17,14 +17,10 @@ struct Material {
 
 struct Light {
     vec3 position;
-    float range;     // point and spot: where the attenuation window reaches 0 (clusteredLights.h, lightRange)
+    float range;     // point and spot: where the attenuation window reaches 0 (Light::range)
     vec3 direction;
     vec3 color;
     float intensity;
-    float ambient;
-    float constant;
-    float linear;
-    float quadratic;
     float cutOff;
     float outerCutOff;
     int type;        // 0 directional, 1 point, 2 spot
@@ -285,8 +281,7 @@ vec2 environmentBrdf(float roughness, float NdotV)
 }
 
 // Ambient light of one color, on a surface: the old diffuse term (albedo * ambient, none for a metal) and that color
-// reflected by the surface's F0, so metals are not black. The scene's `ambient` and each light's `ambient` go through
-// here; the sky's lighting is environmentLight.
+// reflected by the surface's F0, so metals are not black. The scene's `ambient` goes through here; the sky's lighting is environmentLight.
 vec3 ambientLight(vec3 ambientColor, vec3 albedo, float metallic, float roughness, vec3 F0, float NdotV, float occlusion)
 {
     vec3 diffuse = albedo * (1.0 - metallic) * ambientColor;
@@ -420,10 +415,6 @@ Light makeLight(vec4 v0, vec4 v1, vec4 v2, vec4 v3, vec4 v4)
     light.color = v1.xyz;
     light.intensity = v1.w;
     light.direction = v2.xyz;
-    light.ambient = v2.w;
-    light.constant = v3.x;
-    light.linear = v3.y;
-    light.quadratic = v3.z;
     light.type = int(v3.w + 0.5);
     light.cutOff = v4.x;
     light.outerCutOff = v4.y;
@@ -432,9 +423,9 @@ Light makeLight(vec4 v0, vec4 v1, vec4 v2, vec4 v3, vec4 v4)
     return light;
 }
 
-// What one light adds to a surface: the light's ambient and its PBR direct light, shadowed, attenuated (point and spot
-// lights: 1 / (constant + linear d + quadratic d^2) times a window, (1 - (d / range)^4)^2, that is exactly 0 at the
-// range) and cut by the spot cone. `sunShadow` is the shadow of the first directional light's cascades.
+// What one light adds to a surface: its PBR direct light, shadowed, attenuated (point and spot lights:
+// window / (1 + (d / (range / 25))^2) with the window (1 - (d / range)^4)^2 that is exactly 0 at the range, see
+// lightAttenuation in clusteredLights.h) and cut by the spot cone. `sunShadow` is the shadow of the first directional light's cascades.
 vec3 shadeLight(Light light, vec3 normal, vec3 surfaceNormal, vec3 viewDir, vec3 albedo, float metallic, float roughness,
                 vec3 F0, float NdotV, float a2, float occlusion, float sunShadow)
 {
@@ -451,12 +442,11 @@ vec3 shadeLight(Light light, vec3 normal, vec3 surfaceNormal, vec3 viewDir, vec3
         float ratio = dist / light.range;
         float ratio2 = ratio * ratio;
         float window = 1.0 - ratio2 * ratio2;
-        attenuation = window * window / (light.constant + light.linear * dist + light.quadratic * (dist * dist));
+        float core = dist * 25.0 / light.range; // dist / (range * EngineConfig::LIGHT_CORE_FRACTION)
+        attenuation = window * window / (1.0 + core * core);
     }
 
     light.color = toLinear(light.color);
-    vec3 ambient = ambientLight(light.color * light.ambient, albedo, metallic, roughness, F0, NdotV, occlusion);
-
     // The light's color * intensity is the radiance times PI: the Lambert term albedo / PI then gives
     // albedo * color * intensity * NdotL, the brightness the Blinn-Phong shading had, so scenes keep their exposure
     vec3 radiance = light.color * light.intensity * PI;
@@ -477,7 +467,7 @@ vec3 shadeLight(Light light, vec3 normal, vec3 surfaceNormal, vec3 viewDir, vec3
 
     float shadowFactor = (light.type == 0) ? sunShadow : calculatePointShadow(light, surfaceNormal);
 
-    return (ambient + (1.0 - shadowFactor) * direct) * (attenuation * spotFactor);
+    return ((1.0 - shadowFactor) * direct) * (attenuation * spotFactor);
 }
 
 void main()

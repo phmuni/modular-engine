@@ -27,7 +27,9 @@
 
 namespace {
 constexpr const char *kFormat = "modular-engine-scene";
-constexpr int kVersion = 1;
+// 2: a Light's position and direction are local to its entity, it has a `range` (not constant, linear and quadratic) and
+// no `ambient` (a directional light's ambient went into the Skybox's ambient)
+constexpr int kVersion = 2;
 
 constexpr std::pair<TextureSlot, const char *> kTextureSlots[] = {{TextureSlot::Diffuse, "diffuse"},
                                                                   {TextureSlot::Normal, "normal"},
@@ -99,6 +101,112 @@ GLuint textureIn(const Material &material, TextureSlot slot) {
     return material.getOcclusion();
   }
   return 0;
+}
+
+// Scene format 1 -> 2, for the lights of a file. Exact where the old values allow it:
+//  - direction and position were world values (the entity's rotation was ignored); they become local: inverse(R) * old
+//  - range: what lightRange() made of the old constants, brightness (with the old ambient) and color
+//  - a directional light's ambient, color(linear) * ambient, is summed into the scene's ambient (the first Skybox's
+//    ambientColor and ambientIntensity, as the lit shader adds them); with no Skybox one is added as a new entity
+//    (not to a prefab, recognized by its single root)
+//  - a point or spot light's ambient was attenuated like the light itself and cannot be kept: it is dropped
+void migrateLights(nlohmann::json &scene, const std::string &path) {
+  using json = nlohmann::json;
+  json &entities = scene["entities"];
+  const auto vec3Of = [](const json &object, const char *key, const glm::vec3 &fallback) {
+    try {
+      if (object.is_object() && object.contains(key))
+        return object[key].get<glm::vec3>();
+    } catch (const json::exception &) {
+    }
+    return fallback;
+  };
+  const auto numberOf = [](const json &object, const char *key, float fallback) {
+    return object.contains(key) && object[key].is_number() ? object[key].get<float>() : fallback;
+  };
+  constexpr float kGamma = 2.2f; // the lit shader's gamma-corrected lighting (the default): ambient adds in linear
+  glm::vec3 directionalAmbient(0.0f);
+  int lights = 0;
+  std::string droppedNames;
+  int dropped = 0;
+  for (json &entry : entities) {
+    if (!entry.is_object() || !entry.contains("components") || !entry["components"].is_object() ||
+        !entry["components"].contains("Light") || !entry["components"]["Light"].is_object())
+      continue;
+    json &components = entry["components"];
+    json &light = components["Light"];
+    ++lights;
+    const std::string type = light.value("type", "point");
+    const glm::vec3 color = vec3Of(light, "color", glm::vec3(1.0f));
+    const float intensity = numberOf(light, "intensity", 1.0f);
+    const float ambient = numberOf(light, "ambient", 0.2f);
+
+    Transform turned;
+    turned.rotation =
+        vec3Of(components.contains("Transform") ? components["Transform"] : json(), "rotation", glm::vec3(0.0f));
+    if (turned.rotation != glm::vec3(0.0f)) {
+      const glm::mat3 inverse = glm::transpose(glm::mat3(TransformSystem::calculateModelMatrix(turned)));
+      light["direction"] = inverse * vec3Of(light, "direction", glm::vec3(0.0f, -1.0f, 0.0f));
+      if (light.contains("position"))
+        light["position"] = inverse * vec3Of(light, "position", glm::vec3(0.0f));
+    }
+
+    if (type == "directional") {
+      directionalAmbient += glm::pow(color, glm::vec3(kGamma)) * ambient;
+    } else {
+      const float brightness = std::max(color.x, std::max(color.y, color.z)) * (intensity + ambient);
+      light["range"] = lightRange(numberOf(light, "constant", 1.0f), numberOf(light, "linear", 0.09f),
+                                  numberOf(light, "quadratic", 0.032f), brightness);
+      if (ambient > 0.0f) {
+        ++dropped;
+        if (dropped <= 3)
+          droppedNames += (droppedNames.empty() ? "" : ", ") + entry.value("name", std::string("?"));
+      }
+    }
+    for (const char *key : {"ambient", "constant", "linear", "quadratic"})
+      light.erase(key);
+  }
+  if (lights == 0)
+    return;
+
+  std::string ambientNote = "no directional ambient";
+  if (glm::max(directionalAmbient.x, glm::max(directionalAmbient.y, directionalAmbient.z)) > 0.0f) {
+    json *sky = nullptr;
+    int roots = 0;
+    for (json &entry : entities) {
+      if (!entry.is_object() || !entry.contains("components") || !entry["components"].is_object())
+        continue;
+      if (!entry["components"].contains("Parent"))
+        ++roots;
+      if (!sky && entry["components"].contains("Skybox") && entry["components"]["Skybox"].is_object() &&
+          !entry["components"].contains("Hidden"))
+        sky = &entry["components"]["Skybox"];
+    }
+    json created;
+    if (!sky && !(roots == 1 && entities.size() > 1)) {
+      created = {{"name", "Sky"}, {"components", {{"Skybox", json::object()}}}};
+      sky = &created["components"]["Skybox"];
+    }
+    if (sky) {
+      const glm::vec3 total = glm::pow(vec3Of(*sky, "ambientColor", glm::vec3(1.0f)), glm::vec3(kGamma)) *
+                                  std::max(numberOf(*sky, "ambientIntensity", 0.0f), 0.0f) +
+                              directionalAmbient;
+      const float strength = std::max(total.x, std::max(total.y, total.z));
+      (*sky)["ambientColor"] = glm::pow(total / strength, glm::vec3(1.0f / kGamma));
+      (*sky)["ambientIntensity"] = strength;
+      ambientNote = created.is_null() ? "directional ambient added to the Skybox's"
+                                      : "directional ambient moved to a new Sky entity";
+      if (!created.is_null())
+        entities.push_back(std::move(created));
+    } else {
+      ambientNote = "directional ambient dropped (a prefab has no sky to take it)";
+    }
+  }
+  std::string droppedNote;
+  if (dropped)
+    droppedNote = ", ambient of " + std::to_string(dropped) + " point/spot light(s) dropped: " + droppedNames;
+  LOG_I("[Scene] %s: converted %d light(s) from scene format 1 (%s%s)", path.c_str(), lights, ambientNote.c_str(),
+        droppedNote.c_str());
 }
 } // namespace
 
@@ -592,6 +700,10 @@ std::optional<SceneSerializer::json> SceneSerializer::readFile(const std::string
   if (scene.value("version", 0) > kVersion)
     LOG_W("[Scene] %s is from a newer engine (version %d); loading what this one knows", resolved.c_str(),
           scene.value("version", 0));
+  if (scene.value("version", 0) < 2) {
+    migrateLights(scene, resolved);
+    scene["version"] = kVersion;
+  }
   return scene;
 }
 

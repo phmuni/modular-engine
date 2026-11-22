@@ -105,6 +105,13 @@ float lightWindow(float distance, float range) {
   return falloff * falloff;
 }
 
+float lightAttenuation(float distance, float range) {
+  if (range <= 0.0f)
+    return 0.0f;
+  const float ratio = distance / (range * EngineConfig::LIGHT_CORE_FRACTION);
+  return lightWindow(distance, range) / (1.0f + ratio * ratio);
+}
+
 void ClusteredLights::ensureBuffers() {
   if (m_lightBuffer)
     return;
