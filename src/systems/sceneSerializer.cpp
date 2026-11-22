@@ -459,11 +459,14 @@ bool SceneSerializer::writeFile(const std::string &path, json entities, bool wit
   return static_cast<bool>(file);
 }
 
-bool SceneSerializer::save(const std::string &path, bool includeRuntime) const {
+bool SceneSerializer::save(const std::string &path, bool includeRuntime, int scene) const {
   std::vector<Entity> entities;
-  for (Entity entity : m_entityManager.entities())
-    if (includeRuntime || !m_entityManager.isRuntime(entity))
+  for (Entity entity : m_entityManager.entities()) {
+    const bool wanted = scene != -1 ? m_entityManager.sceneOf(entity) == scene
+                                    : includeRuntime || !m_entityManager.isRuntime(entity);
+    if (wanted)
       entities.push_back(entity);
+  }
   std::sort(entities.begin(), entities.end()); // creation order, so saving twice gives the same file
   m_writeOverrides = true; // linked prefab instances record what they changed from their file
   json list = entitiesToJson(entities, -1);
@@ -471,10 +474,24 @@ bool SceneSerializer::save(const std::string &path, bool includeRuntime) const {
   return writeFile(path, std::move(list), true);
 }
 
-std::string SceneSerializer::fingerprint() const {
-  std::vector<Entity> entities(m_entityManager.entities().begin(), m_entityManager.entities().end());
+std::string SceneSerializer::fingerprint(int scene) const {
+  std::vector<Entity> entities;
+  for (Entity entity : m_entityManager.entities())
+    if (scene == -1 || m_entityManager.sceneOf(entity) == scene)
+      entities.push_back(entity);
   std::sort(entities.begin(), entities.end());
-  return entitiesToJson(entities, -1).dump();
+  std::string text = entitiesToJson(entities, -1).dump();
+  if (scene == -1) { // moving an entity to another scene is a change, though what each holds may not differ
+    for (Entity entity : entities)
+      text += ',' + std::to_string(m_entityManager.sceneOf(entity));
+  }
+  return text;
+}
+
+std::string SceneSerializer::sceneKey(const std::string &path) {
+  if (path.empty())
+    return {};
+  return std::filesystem::path(EngineConfig::resolveAsset(path)).lexically_normal().generic_string();
 }
 
 bool SceneSerializer::savePrefab(Entity root, const std::string &path) const {
@@ -624,19 +641,44 @@ std::vector<Entity> SceneSerializer::createEntities(const json &entries) {
   return created;
 }
 
-void SceneSerializer::mergeSceneLayers(const json &scene) {
+void SceneSerializer::mergeSceneLayers(const json &scene, const std::string &key, bool additive) {
   if (!m_layers)
     return;
-  // Back to the base first, so the previous scene's layers do not stay; if code changed them since, that is the base
-  if (m_sceneLayersMerged && m_layers->version() == m_sceneLayersVersion)
-    m_layers->fromJson(m_baseLayers);
-  m_baseLayers = m_layers->toJson();
-  m_sceneLayersMerged = false;
+  // Still as the last merge left them: nothing changed them since (code's changes in between become the base)
+  const bool untouched = m_sceneLayersMerged && m_layers->version() == m_sceneLayersVersion;
+  if (!additive) {
+    // Back to the base first, so the previous scene's layers do not stay
+    if (untouched)
+      m_layers->fromJson(m_baseLayers);
+    m_baseLayers = m_layers->toJson();
+    m_sceneLayersMerged = false;
+    m_sceneLayers.clear();
+  } else if (!untouched) {
+    m_baseLayers = m_layers->toJson();
+    m_sceneLayersMerged = false;
+    m_sceneLayers.clear();
+  }
   const auto layers = scene.find("layers");
   if (layers == scene.end() || !layers->is_object())
     return;
   m_layers->merge(*layers);
+  m_sceneLayers.emplace_back(key, *layers);
   m_sceneLayersMerged = true;
+  m_sceneLayersVersion = m_layers->version();
+}
+
+void SceneSerializer::unmergeSceneLayers(const std::string &key) {
+  const auto found = std::find_if(m_sceneLayers.begin(), m_sceneLayers.end(),
+                                  [&](const auto &entry) { return entry.first == key; });
+  if (found == m_sceneLayers.end())
+    return;
+  m_sceneLayers.erase(found);
+  if (!m_layers || !m_sceneLayersMerged || m_layers->version() != m_sceneLayersVersion)
+    return; // code changed the layers since: they are its now
+  m_layers->fromJson(m_baseLayers);
+  for (const auto &entry : m_sceneLayers)
+    m_layers->merge(entry.second);
+  m_sceneLayersMerged = !m_sceneLayers.empty();
   m_sceneLayersVersion = m_layers->version();
 }
 
@@ -644,11 +686,53 @@ bool SceneSerializer::load(const std::string &path) {
   const std::optional<json> scene = readFile(path);
   if (!scene)
     return false;
-  mergeSceneLayers(*scene);
+  const std::string key = sceneKey(path);
+  mergeSceneLayers(*scene, key, false);
   clear();
+  m_entityManager.closeAllScenes();
+  const int id = m_entityManager.openScene(path, key);
+  m_entityManager.setCreatingInto(id);
   createEntities((*scene)["entities"]);
+  m_entityManager.setCreatingInto(-1);
   syncLoadedInstances();
   LOG_I("[Scene] Loaded %zu entities from %s", (*scene)["entities"].size(), EngineConfig::resolveAsset(path).c_str());
+  return true;
+}
+
+bool SceneSerializer::loadAdditive(const std::string &path) {
+  const std::string key = sceneKey(path);
+  if (m_entityManager.findSceneByKey(key) != -1) {
+    LOG_I("[Scene] %s is already open", EngineConfig::resolveAsset(path).c_str());
+    return false;
+  }
+  const std::optional<json> scene = readFile(path);
+  if (!scene)
+    return false;
+  auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
+  const Entity activeCamera = cameraSystem.getActiveCamera();
+  mergeSceneLayers(*scene, key, true);
+  const int id = m_entityManager.openScene(path, key);
+  m_entityManager.setCreatingInto(id);
+  createEntities((*scene)["entities"]);
+  m_entityManager.setCreatingInto(-1);
+  syncLoadedInstances();
+  if (activeCamera != -1 && m_entityManager.isAlive(activeCamera))
+    cameraSystem.setActiveCamera(activeCamera); // a camera the file marks active does not take the view over
+  LOG_I("[Scene] Added %zu entities from %s", (*scene)["entities"].size(), EngineConfig::resolveAsset(path).c_str());
+  return true;
+}
+
+bool SceneSerializer::unloadScene(int id) {
+  const EntityManager::Scene *scene = m_entityManager.findScene(id);
+  if (!scene)
+    return false;
+  const std::string key = scene->key;
+  auto &sceneSystem = m_systemManager.getSystem<SceneSystem>();
+  for (Entity entity : m_entityManager.entitiesOf(id))
+    if (m_entityManager.isAlive(entity))
+      sceneSystem.destroyEntity(entity); // its children (all in the same scene) go with it
+  m_entityManager.closeScene(id);
+  unmergeSceneLayers(key);
   return true;
 }
 

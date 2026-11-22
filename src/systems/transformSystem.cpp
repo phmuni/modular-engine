@@ -143,6 +143,15 @@ bool TransformSystem::setParent(ComponentManager &componentManager, Entity child
     *existing = link;
   else
     componentManager.addInPlace<Parent>(child) = link;
+  if (m_entityManager) {
+    const int scene = m_entityManager->sceneOf(parent);
+    if (scene != -1 && m_entityManager->sceneOf(child) != -1 && m_entityManager->sceneOf(child) != scene) {
+      m_entityManager->setSceneOf(child, scene);
+      for (Entity descendant : getDescendants(componentManager, child))
+        if (m_entityManager->sceneOf(descendant) != -1)
+          m_entityManager->setSceneOf(descendant, scene);
+    }
+  }
   return true;
 }
 

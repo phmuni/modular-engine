@@ -1,0 +1,10 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "entities": [
+    { "name": "A Camera", "components": { "Transform": {}, "Camera": { "active": true } } },
+    { "name": "A Box", "components": { "Transform": { "position": [1, 0, 0] } } },
+    { "name": "A Parent", "components": { "Transform": { "position": [5, 0, 0] } } },
+    { "name": "A Child", "components": { "Transform": { "position": [5, 1, 0] }, "Parent": { "parent": 2, "local": { "position": [0, 1, 0] } } } }
+  ]
+}

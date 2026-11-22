@@ -541,6 +541,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<ResourceSystem>(m_componentManager);
   m_systemManager.insert<RenderSystem>();
   m_systemManager.insert<TransformSystem>();
+  m_systemManager.getSystem<TransformSystem>().setEntityManager(m_entityManager);
   m_systemManager.insert<CameraSystem>(m_componentManager, m_systemManager.getSystem<InputSystem>());
   m_systemManager.insert<LightSystem>();
   m_systemManager.insert<SceneSystem>(m_entityManager, m_componentManager, m_systemManager);

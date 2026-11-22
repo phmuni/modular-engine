@@ -1,0 +1,10 @@
+{
+  "format": "modular-engine-scene",
+  "version": 1,
+  "layers": { "names": ["zz_additive_layer"] },
+  "entities": [
+    { "name": "B Camera", "components": { "Transform": {}, "Camera": { "active": true } } },
+    { "name": "B Box", "components": { "Transform": { "position": [-1, 0, 0] } } },
+    { "name": "B Wall", "components": { "Transform": { "position": [-5, 0, 0] } } }
+  ]
+}

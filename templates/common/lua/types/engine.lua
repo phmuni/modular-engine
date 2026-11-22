@@ -438,15 +438,46 @@ function engine.create(name, options) end
 ---@param entity Entity|nil
 function engine.destroy(entity) end
 
----Loads a scene file, replacing the current one.
+---Loads a scene file, replacing the current one (every open scene: this file is the only one open afterwards; see
+---engine.loadSceneAdditive to keep them).
 ---@param path string Relative to assets/
 function engine.loadScene(path) end
 
----The scene file last loaded (or saved), "" before one was.
+---The active scene's file (the last one loaded with loadScene, until engine.setActiveScene picks another), "" before one was.
 ---@return string
 function engine.scenePath() end
 
----Whether a loadScene is still waiting for its models (the old scene keeps running until they are ready).
+---Opens one more scene file next to the ones that are open, keeping their entities (several scenes at once, each entity
+---in one of them). Like engine.loadScene it reads the models first (engine.isLoadingScene is true meanwhile) and makes
+---the entities at the end of a frame; asking for a file that is already open does nothing. The active scene and the
+---active camera stay as they are (a camera the file marks active takes the view only if there was none), and the file's
+---collision layers are added to the ones in effect. Entities of different scenes find each other by name
+---(engine.find): a parent or a prefab link never crosses scenes, and parenting an entity under one of another scene
+---moves it (and what is below it) into that scene.
+---@param path string Relative to assets/
+function engine.loadSceneAdditive(path) end
+
+---Removes an open scene: its entities (and their children) are destroyed at the end of the frame, and its collision
+---layers go. The only open scene is never unloaded (engine.loadScene replaces it). If it was the active scene, the first
+---one still open becomes it; if it held the active camera, the first camera of the others takes the view.
+---@param path string The file as it was opened
+---@return boolean ok false when no such scene is open, or it is the only one
+function engine.unloadScene(path) end
+
+---The open scenes' files, in the order they were opened.
+---@return string[]
+function engine.loadedScenes() end
+
+---The active scene: the file engine.scenePath returns.
+---@return string
+function engine.activeScene() end
+
+---Makes an open scene the active one.
+---@param path string The file as it was opened
+---@return boolean ok false when that file is not open
+function engine.setActiveScene(path) end
+
+---Whether a loadScene or loadSceneAdditive is still waiting for its models (the old scenes keep running until they are ready).
 ---@return boolean
 function engine.isLoadingScene() end
 

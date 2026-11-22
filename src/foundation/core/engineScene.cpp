@@ -51,14 +51,123 @@
 #include <filesystem>
 #include <limits>
 
-bool Engine::saveScene(std::string_view path) { return writeScene(path, false); }
+namespace {
+const std::string kNoScene;
+}
+
+const std::string &Engine::getScenePath() const {
+  const EntityManager::Scene *scene = m_entityManager.findScene(m_entityManager.activeScene());
+  return scene ? scene->path : kNoScene;
+}
+
+std::vector<std::string> Engine::loadedScenes() const {
+  std::vector<std::string> paths;
+  for (const EntityManager::Scene &scene : m_entityManager.scenes())
+    paths.push_back(scene.path);
+  return paths;
+}
+
+bool Engine::setActiveScene(std::string_view path) {
+  const int id = m_entityManager.findSceneByKey(SceneSerializer::sceneKey(std::string(path)));
+  if (id == -1)
+    return false;
+  m_entityManager.setActiveScene(id);
+  return true;
+}
+
+bool Engine::isLoadingScene() const {
+  return std::any_of(m_pendingScenes.begin(), m_pendingScenes.end(),
+                     [](const PendingScene &scene) { return scene.kind != PendingScene::Kind::Unload; });
+}
+
+void Engine::markSceneClean(int scene) {
+  m_savedHash[scene] = std::hash<std::string>{}(getSceneSerializer().fingerprint(scene));
+  m_dirtyValid = false;
+}
+
+void Engine::refreshDirty() const {
+  if (m_dirtyValid && m_dirtyRevision == m_editRevision)
+    return;
+  m_dirtyScenes.clear();
+  const SceneSerializer &serializer = m_systemManager.getSystem<SceneSerializer>();
+  static const size_t kEmpty = std::hash<std::string>{}("[]"); // a scene nothing was made in
+  for (const EntityManager::Scene &scene : m_entityManager.scenes()) {
+    const auto saved = m_savedHash.find(scene.id);
+    if (std::hash<std::string>{}(serializer.fingerprint(scene.id)) != (saved == m_savedHash.end() ? kEmpty : saved->second))
+      m_dirtyScenes.insert(scene.id);
+  }
+  m_dirtyValid = true;
+  m_dirtyRevision = m_editRevision;
+}
+
+bool Engine::isSceneDirty() const {
+  refreshDirty();
+  return !m_dirtyScenes.empty();
+}
+
+bool Engine::isSceneDirty(std::string_view path) const {
+  refreshDirty();
+  const int id = m_entityManager.findSceneByKey(SceneSerializer::sceneKey(std::string(path)));
+  return id != -1 && m_dirtyScenes.count(id) > 0;
+}
+
+std::vector<std::string> Engine::dirtyScenes() const {
+  refreshDirty();
+  std::vector<std::string> paths;
+  for (const EntityManager::Scene &scene : m_entityManager.scenes())
+    if (m_dirtyScenes.count(scene.id))
+      paths.push_back(scene.path);
+  return paths;
+}
+
+bool Engine::saveSceneTo(int scene, std::string_view path) {
+  const std::string key = SceneSerializer::sceneKey(std::string(path));
+  const int other = m_entityManager.findSceneByKey(key);
+  if (other != -1 && other != scene) {
+    LOG_E("[Engine] Not saving to %s: it is another open scene's file", std::string(path).c_str());
+    return false;
+  }
+  if (!m_systemManager.getSystem<SceneSerializer>().save(std::string(path), false, scene))
+    return false;
+  m_entityManager.setScenePath(scene, std::string(path), key);
+  markSceneClean(scene);
+  return true;
+}
+
+bool Engine::saveScene(std::string_view path) {
+  int scene = m_entityManager.activeScene();
+  if (scene == -1)
+    scene = m_entityManager.openScene("", "");
+  return saveSceneTo(scene, path);
+}
+
+bool Engine::saveOpenScene(std::string_view path) {
+  const int scene = m_entityManager.findSceneByKey(SceneSerializer::sceneKey(std::string(path)));
+  if (scene == -1) {
+    LOG_W("[Engine] saveOpenScene: %s is not open", std::string(path).c_str());
+    return false;
+  }
+  return saveSceneTo(scene, m_entityManager.findScene(scene)->path);
+}
+
+bool Engine::saveAllScenes() {
+  bool ok = true;
+  const std::vector<EntityManager::Scene> scenes = m_entityManager.scenes();
+  for (const EntityManager::Scene &scene : scenes) {
+    if (scene.path.empty()) {
+      if (!m_entityManager.entitiesOf(scene.id).empty()) {
+        LOG_W("[Engine] saveAllScenes: a scene with no file yet was skipped (saveScene names it)");
+        ok = false;
+      }
+      continue;
+    }
+    ok = saveSceneTo(scene.id, scene.path) && ok;
+  }
+  return ok;
+}
 
 bool Engine::writeScene(std::string_view path, bool includeRuntime) {
-  if (!m_systemManager.getSystem<SceneSerializer>().save(std::string(path), includeRuntime))
-    return false;
-  m_scenePath = path;
-  m_savedRevision = m_editRevision;
-  return true;
+  return m_systemManager.getSystem<SceneSerializer>().save(std::string(path), includeRuntime);
 }
 
 SceneSerializer &Engine::getSceneSerializer() { return m_systemManager.getSystem<SceneSerializer>(); }
@@ -69,25 +178,67 @@ ReflectedComponent &Engine::addReflectedComponent(ReflectedComponent component) 
   return stored;
 }
 
-void Engine::loadScene(std::string_view path) {
-  m_pendingScene = std::string(path);
-  auto &resources = m_systemManager.getSystem<ResourceSystem>();
-  m_pendingSceneModels = m_systemManager.getSystem<SceneSerializer>().modelPaths(*m_pendingScene);
-  for (const std::string &model : m_pendingSceneModels)
-    resources.preloadModel(model); // returns at once for models already loaded or being read
+void Engine::queueScene(PendingScene::Kind kind, std::string_view path) {
+  PendingScene request;
+  request.kind = kind;
+  request.path = std::string(path);
+  if (kind != PendingScene::Kind::Unload) {
+    auto &resources = m_systemManager.getSystem<ResourceSystem>();
+    request.models = m_systemManager.getSystem<SceneSerializer>().modelPaths(request.path);
+    for (const std::string &model : request.models)
+      resources.preloadModel(model); // returns at once for models already loaded or being read
+  }
+  if (kind == PendingScene::Kind::Replace)
+    m_pendingScenes.clear(); // the newer replace wins
+  m_pendingScenes.push_back(std::move(request));
+}
+
+void Engine::loadScene(std::string_view path) { queueScene(PendingScene::Kind::Replace, path); }
+
+void Engine::loadSceneAdditive(std::string_view path) {
+  const std::string key = SceneSerializer::sceneKey(std::string(path));
+  // Whether it will be open once what is already asked for is done (a loadScene before this closes the others)
+  std::vector<std::string> open;
+  for (const EntityManager::Scene &scene : m_entityManager.scenes())
+    open.push_back(scene.key);
+  for (const PendingScene &pending : m_pendingScenes) {
+    const std::string pendingKey = SceneSerializer::sceneKey(pending.path);
+    if (pending.kind == PendingScene::Kind::Replace)
+      open = {pendingKey};
+    else if (pending.kind == PendingScene::Kind::Additive)
+      open.push_back(pendingKey);
+    else
+      open.erase(std::remove(open.begin(), open.end(), pendingKey), open.end());
+  }
+  if (std::find(open.begin(), open.end(), key) != open.end()) {
+    LOG_I("[Engine] loadSceneAdditive: %s is already open", std::string(path).c_str());
+    return;
+  }
+  queueScene(PendingScene::Kind::Additive, path);
+}
+
+bool Engine::unloadScene(std::string_view path) {
+  const int id = m_entityManager.findSceneByKey(SceneSerializer::sceneKey(std::string(path)));
+  if (id == -1 || m_entityManager.scenes().size() <= 1)
+    return false;
+  queueScene(PendingScene::Kind::Unload, path);
+  return true;
 }
 
 float Engine::sceneLoadProgress() {
-  if (!m_pendingScene)
+  if (!isLoadingScene())
     return 1.0f;
-  if (m_pendingSceneModels.empty())
-    return 0.0f; // nothing to wait for: the switch is this frame's
   auto &resources = m_systemManager.getSystem<ResourceSystem>();
-  size_t ready = 0;
-  for (const std::string &model : m_pendingSceneModels)
-    if (!resources.isModelPending(model))
-      ++ready;
-  return static_cast<float>(ready) / static_cast<float>(m_pendingSceneModels.size());
+  size_t total = 0, ready = 0;
+  for (const PendingScene &scene : m_pendingScenes)
+    for (const std::string &model : scene.models) {
+      ++total;
+      if (!resources.isModelPending(model))
+        ++ready;
+    }
+  if (total == 0)
+    return 0.0f; // nothing to wait for: the switch is this frame's
+  return static_cast<float>(ready) / static_cast<float>(total);
 }
 
 void Engine::saveSceneAfter(std::string path, float delaySeconds, bool quitAfter) {
@@ -97,46 +248,82 @@ void Engine::saveSceneAfter(std::string path, float delaySeconds, bool quitAfter
 void Engine::applyPendingScene() {
   if (m_newScenePending) {
     m_newScenePending = false;
-    m_pendingScene.reset(); // the newer request wins
-    m_pendingSceneModels.clear();
+    m_pendingScenes.clear(); // the newer request wins
     m_entityManager.setCreatingRuntime(false); // a scene's own entities, so Save writes them
     m_systemManager.getSystem<SceneSerializer>().clear();
+    m_entityManager.closeAllScenes();
     m_systemManager.getSystem<EditorUISystem>().pruneSelection(m_entityManager);
     // Looks down at the origin from a bit above and behind; the light shines from above, a little slanted
+    // (the first of them opens the untitled scene)
     createCameraEntity("Camera", glm::vec3(0.0f, 3.0f, 8.0f), 0.0f, -15.0f, 60.0f);
     createLightEntity("Sun", glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(-0.4f, -1.0f, -0.3f), glm::vec3(1.0f),
                       LightType::Directional, 1.0f, 0.0f, 0.0f);
     m_entityManager.setCreatingRuntime(true);
-    m_scenePath.clear();
     m_systemManager.getSystem<NavigationSystem>().clear();
     clearHistory();
-    m_savedRevision = m_editRevision;
+    m_savedHash.clear();
+    markSceneClean(m_entityManager.activeScene());
     return;
   }
-  if (!m_pendingScene)
-    return;
-  // Waits while the scene's models are read in the background; ResourceSystem::update uploads each as it finishes.
-  // Deterministic runs switch on the next frame and wait for the reads there, so the frame does not vary.
+  // Waits while the first one's models are read in the background; ResourceSystem::update uploads each as it
+  // finishes. Deterministic runs switch on the next frame and wait for the reads there, so the frame does not vary.
+  // What a callback asks for in this frame waits for the next one.
   auto &resources = m_systemManager.getSystem<ResourceSystem>();
-  for (const std::string &model : m_pendingSceneModels)
-    if (!m_deterministic && resources.isModelPending(model))
-      return;
-  m_pendingSceneModels.clear();
-  std::string path = std::move(*m_pendingScene);
-  m_pendingScene.reset();
-  // What a scene file holds is the scene's, even when the game loads it while it runs
-  m_entityManager.setCreatingRuntime(false);
-  const bool loaded = m_systemManager.getSystem<SceneSerializer>().load(path);
-  m_entityManager.setCreatingRuntime(true);
-  if (!loaded)
-    return;
-  m_scenePath = path;
-  m_systemManager.getSystem<NavigationSystem>().clear(); // the map was of the old level
-  m_camera.applyRememberedFollow();
-  clearHistory();
-  m_savedRevision = m_editRevision;
-  if (m_app)
-    m_app->onSceneLoaded(*this, path);
+  auto &serializer = m_systemManager.getSystem<SceneSerializer>();
+  size_t turns = m_pendingScenes.size();
+  while (turns-- > 0 && !m_pendingScenes.empty()) {
+    for (const std::string &model : m_pendingScenes.front().models)
+      if (!m_deterministic && resources.isModelPending(model))
+        return;
+    PendingScene request = std::move(m_pendingScenes.front());
+    m_pendingScenes.pop_front();
+    const std::string key = SceneSerializer::sceneKey(request.path);
+
+    if (request.kind == PendingScene::Kind::Unload) {
+      const int id = m_entityManager.findSceneByKey(key);
+      if (id == -1 || m_entityManager.scenes().size() <= 1) {
+        LOG_W("[Engine] unloadScene: %s is not open, or is the only scene", request.path.c_str());
+        continue;
+      }
+      serializer.unloadScene(id);
+      m_savedHash.erase(id);
+      m_dirtyValid = false;
+      auto &cameraSystem = m_systemManager.getSystem<CameraSystem>();
+      if (cameraSystem.getActiveCamera() == -1) { // it was in the scene that went: the first camera left takes over
+        Entity first = -1;
+        m_componentManager.forEachComponent<Camera>([&](Entity entity, Camera &) {
+          if (m_entityManager.sceneOf(entity) != -1 && (first == -1 || entity < first))
+            first = entity;
+        });
+        if (first != -1)
+          cameraSystem.setActiveCamera(first);
+      }
+      m_systemManager.getSystem<NavigationSystem>().markDirty();
+      m_systemManager.getSystem<EditorUISystem>().pruneSelection(m_entityManager);
+      clearHistory();
+      continue;
+    }
+
+    // What a scene file holds is the scene's, even when the game loads it while it runs
+    const bool additive = request.kind == PendingScene::Kind::Additive;
+    m_entityManager.setCreatingRuntime(false);
+    const bool loaded = additive ? serializer.loadAdditive(request.path) : serializer.load(request.path);
+    m_entityManager.setCreatingRuntime(true);
+    if (!loaded)
+      continue;
+    const int id = m_entityManager.findSceneByKey(key);
+    if (additive) {
+      m_systemManager.getSystem<NavigationSystem>().markDirty();
+    } else {
+      m_systemManager.getSystem<NavigationSystem>().clear(); // the map was of the old level
+      m_camera.applyRememberedFollow();
+      m_savedHash.clear();
+    }
+    clearHistory();
+    markSceneClean(id);
+    if (m_app)
+      m_app->onSceneLoaded(*this, request.path);
+  }
 }
 
 Engine::SceneSnapshot Engine::captureScene() {
@@ -150,9 +337,10 @@ Engine::SceneSnapshot Engine::captureScene() {
   return snapshot;
 }
 
-void Engine::restoreScene(SceneSnapshot snapshot, bool dropRuntime) {
+void Engine::restoreScene(SceneSnapshot snapshot, bool dropRuntime, bool wholeScenes) {
   m_componentManager.restore(std::move(snapshot.components));
-  m_entityManager.restore(snapshot.entities);
+  m_entityManager.restore(snapshot.entities, wholeScenes);
+  m_dirtyValid = false;
   if (dropRuntime) {
     // What the game had made before Play was in the snapshot (the editor was opened over a running game); it goes
     // now, and the game makes it again when it starts over
@@ -226,7 +414,7 @@ void Engine::applyPlayModeRequest() {
     // Stop: every entity and component back as they were at Play
     SceneSnapshot snapshot = std::move(*m_playSnapshot);
     m_playSnapshot.reset();
-    restoreScene(std::move(snapshot), true);
+    restoreScene(std::move(snapshot), true, true);
     m_systemManager.getSystem<ScriptSystem>().reset();
     m_systemManager.getSystem<MenuSystem>().closeAll();
     m_systemManager.getSystem<LoadingScreen>().stop();

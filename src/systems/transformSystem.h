@@ -3,6 +3,7 @@
 
 #include "components/transform.h"
 #include "foundation/ecs/componentManager.h"
+#include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include <glm/gtc/quaternion.hpp>
 #include <vector>
@@ -10,6 +11,8 @@
 class TransformSystem : public BaseSystem {
 public:
   TransformSystem() = default;
+  // Lets setParent keep a child in the scene of its parent (see below)
+  void setEntityManager(EntityManager &entityManager) { m_entityManager = &entityManager; }
   glm::mat4 calculateModelMatrix(const Transform &transform);
   // The other way: position, rotation (in the same Y, X, Z order) and scale of a matrix. A parent scaled unevenly
   // and rotated can make a child's matrix skewed, which a Transform cannot hold; the closest one comes back.
@@ -24,7 +27,9 @@ public:
   void updateHierarchy(ComponentManager &componentManager);
 
   // Makes `child` follow `parent` (-1: follow nothing), keeping its place in the world. False, with a warning, when
-  // `parent` is the child itself or one of its descendants, or either has no Transform.
+  // `parent` is the child itself or one of its descendants, or either has no Transform. A child belongs to its
+  // parent's scene (additive scenes): parenting under an entity of another scene moves the child and everything
+  // below it there. Entities the game created (not in any scene) stay as they are.
   bool setParent(ComponentManager &componentManager, Entity child, Entity parent);
   // `child` relative to its parent from now on (a child is placed right away, not on the next update)
   void setLocalTransform(ComponentManager &componentManager, Entity child, const Transform &local);
@@ -32,4 +37,7 @@ public:
   std::vector<Entity> getChildren(ComponentManager &componentManager, Entity entity) const;
   // Children, their children and so on, parents before their children
   std::vector<Entity> getDescendants(ComponentManager &componentManager, Entity entity) const;
+
+private:
+  EntityManager *m_entityManager = nullptr;
 };

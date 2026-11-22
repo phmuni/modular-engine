@@ -96,6 +96,14 @@ void LuaBindings::bindEngine() {
   api.set_function("loadScene", [this](const std::string &path) { engine.loadScene(path); });
   // The file last loaded, "" before one was; engine.isLoadingScene() is true while a loadScene waits for its models
   api.set_function("scenePath", [this]() { return engine.getScenePath(); });
+  // Several scenes at once: loadSceneAdditive adds a file to the open ones (waits for its models like loadScene, does
+  // nothing for one already open), unloadScene removes one (false if it is not open or the only one); loadedScenes lists
+  // the files in the order they were opened, activeScene is the one new entities and scenePath mean
+  api.set_function("loadSceneAdditive", [this](const std::string &path) { engine.loadSceneAdditive(path); });
+  api.set_function("unloadScene", [this](const std::string &path) { return engine.unloadScene(path); });
+  api.set_function("loadedScenes", [this]() { return sol::as_table(engine.loadedScenes()); });
+  api.set_function("activeScene", [this]() { return engine.getActiveScene(); });
+  api.set_function("setActiveScene", [this](const std::string &path) { return engine.setActiveScene(path); });
   api.set_function("isLoadingScene", [this]() { return engine.isLoadingScene(); });
   api.set_function("sceneLoadProgress", [this]() { return engine.sceneLoadProgress(); });
   // Reads a model on a worker thread so creating it later does not stall a frame

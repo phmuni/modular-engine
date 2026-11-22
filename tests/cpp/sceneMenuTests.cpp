@@ -27,6 +27,15 @@ struct SavedScene {
   }
 };
 
+// An entity of the scene, as the editor makes them (the game's own are not saved, so changing one is not an unsaved
+// change)
+GameEntity sceneBox(Engine &engine) {
+  engine.getEntityManager().setCreatingRuntime(false);
+  GameEntity box = engine.create("Box", Desc("box"));
+  engine.getEntityManager().setCreatingRuntime(true);
+  return box;
+}
+
 // One edit the history sees, so the scene is dirty
 void makeDirty(Engine &engine, GameEntity &entity) {
   engine.beginCheckpoint();
@@ -68,7 +77,7 @@ TEST_CASE(scene_recent_list) {
 
 TEST_CASE(scene_save_as_writes_under_assets_scenes) {
   auto scene = std::make_shared<SavedScene>();
-  auto box = std::make_shared<GameEntity>(engine.create("Box", Desc("box")));
+  auto box = std::make_shared<GameEntity>(sceneBox(engine));
   auto &editor = editorOf(engine);
   makeDirty(engine, *box);
   CHECK(engine.isSceneDirty());
@@ -98,7 +107,7 @@ TEST_CASE(scene_save_as_writes_under_assets_scenes) {
 
 TEST_CASE(scene_new_scene_has_a_camera_and_no_file) {
   auto scene = std::make_shared<SavedScene>();
-  auto box = std::make_shared<GameEntity>(engine.create("Box", Desc("box")));
+  auto box = std::make_shared<GameEntity>(sceneBox(engine));
   auto &editor = editorOf(engine);
   CHECK(editor.saveSceneAs(engine, scene->name));
   CHECK(!engine.getScenePath().empty());

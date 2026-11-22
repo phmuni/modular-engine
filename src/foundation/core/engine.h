@@ -40,6 +40,8 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -435,22 +437,56 @@ public:
 
   // Scenes (JSON). Saving writes every entity of the scene (not the ones the game created, see isRuntime) with
   // components that have a serializer; see SceneSerializer.
+  //
+  // Several scene files can be open at once (additive scenes, as in Unity). Every entity a scene file made, and every
+  // one the editor makes, belongs to exactly one open scene; the entities the game creates belong to none (they are
+  // not saved). One open scene is the active one: new editor entities (add, duplicate, paste, drop, prefab) go to it,
+  // and getScenePath/saveScene mean it. A child is always in its parent's scene: parenting an entity under one of
+  // another scene moves it (with what is below it) there. Entities of different scenes find each other by name
+  // (findEntity), not by file-local links: a parent or a prefab link never crosses scenes.
+  //
+  // Saves the active scene's entities to `path`, and `path` is its file from then on (Save As); a path that is another
+  // open scene's file is refused. Starts an untitled scene when none is open.
   bool saveScene(std::string_view path);
-  // Replaces all entities with the file's, then calls App::onSceneLoaded. Its models are read on worker threads
-  // first, so the current scene keeps running until they are ready; the switch happens at the end of that frame.
+  // Saves one open scene (by the path it was opened or saved with) to its own file
+  bool saveOpenScene(std::string_view path);
+  // Saves every open scene that has a file; false if one failed or an untitled one (no file) has entities and was
+  // skipped
+  bool saveAllScenes();
+  // Replaces all entities (of every open scene) with the file's, which becomes the only open scene, then calls
+  // App::onSceneLoaded. Its models are read on worker threads first, so the current scene keeps running until they
+  // are ready; the switch happens at the end of that frame. Clears the undo history.
   void loadScene(std::string_view path);
-  // Replaces all entities with a minimal starting scene (a camera and a directional light) that has no file: the
-  // scene path is empty and nothing is unsaved. Takes effect at the end of the frame, like loadScene; the editor's
+  // Opens one more scene next to the ones open, keeping their entities. Like loadScene (models first, entities made
+  // at the end of the frame, isLoadingScene is true meanwhile) and it calls App::onSceneLoaded with this file's path
+  // when done; loadedScenes() then holds it. Loading a file that is already open does nothing (it is logged). The
+  // active scene and the active camera stay as they are: a camera this file marks active only takes the view when
+  // there was none. Its collision layers merge with the ones in effect. Clears the undo history, like loadScene.
+  void loadSceneAdditive(std::string_view path);
+  // Destroys the scene's entities (and their children) and closes it, at the end of the frame. The last open scene
+  // is never unloaded (loadScene replaces it). If it was the active one, the first still open becomes it; if it held
+  // the active camera, the first camera of the open scenes takes over. False if no such scene is open, or it is the
+  // only one. Clears the undo history.
+  bool unloadScene(std::string_view path);
+  // The open scenes' files in the order they were opened (an untitled scene, with no file yet, is ""), and the
+  // active one's. getScenePath is the same as getActiveScene.
+  std::vector<std::string> loadedScenes() const;
+  const std::string &getActiveScene() const { return getScenePath(); }
+  // False if that file is not open
+  bool setActiveScene(std::string_view path);
+  // Replaces all entities (of every open scene) with a minimal starting scene (a camera and a directional light) that
+  // has no file: the scene path is empty and nothing is unsaved. Takes effect at the end of the frame, like loadScene; the editor's
   // File > New Scene. App::onSceneLoaded is not called (there is no file).
   void newScene() { m_newScenePending = true; }
-  // Whether a loadScene is waiting for its models
-  bool isLoadingScene() const { return m_pendingScene.has_value(); }
-  // How far a loadScene is, from 0 to 1: the share of the scene's models that are read (1 when none is loading). The
+  // Whether a loadScene or loadSceneAdditive is waiting for its models (or for its turn: they are done in order)
+  bool isLoadingScene() const;
+  // How far the loading is, from 0 to 1: the share of the pending scenes' models that are read (1 when none is
+  // loading). The
   // scene's own entities are made in the last frame, in one step, and textures upload as they are first drawn:
   // neither is counted.
   float sceneLoadProgress();
-  // The file last loaded or saved, empty before that
-  const std::string &getScenePath() const { return m_scenePath; }
+  // The active scene's file, as it was loaded or saved; empty for a scene with no file yet and before any
+  const std::string &getScenePath() const;
   // Lets scene files hold game components: include "systems/sceneSerializer.h" and call registerComponent<T>(key)
   // on it. Kept out of this header, so files that include the engine do not compile the JSON library.
   SceneSerializer &getSceneSerializer();
@@ -500,7 +536,11 @@ public:
   bool hasOpenCheckpoint() const { return m_openCheckpoint != nullptr; }
   // Whether the editor changed the scene since it was last saved or loaded (what an undo step covers; changes the
   // game makes while running do not count)
-  bool isSceneDirty() const { return m_editRevision != m_savedRevision; }
+  // (any open scene; per scene: the overload, and dirtyScenes). A change undone back to what is saved counts as none.
+  bool isSceneDirty() const;
+  bool isSceneDirty(std::string_view path) const;
+  // The files of the open scenes with unsaved changes (an untitled one is "")
+  std::vector<std::string> dirtyScenes() const;
   void undo() { m_historyRequest = HistoryRequest::Undo; }
   void redo() { m_historyRequest = HistoryRequest::Redo; }
   bool canUndo() const { return !isTesting() && !m_undoStack.empty(); }
@@ -726,8 +766,12 @@ private:
   SceneSnapshot captureScene();
   // Replaces the scene with the snapshot's and refreshes what depends on it (camera, lights, render caches, physics)
   // `dropRuntime`: Stop, which leaves out what the game had created before Play
-  void restoreScene(SceneSnapshot snapshot, bool dropRuntime = false);
+  // `wholeScenes`: Stop, which also brings back which scenes are open and the active one (undo keeps those)
+  void restoreScene(SceneSnapshot snapshot, bool dropRuntime = false, bool wholeScenes = false);
+  // Everything (every scene, with `includeRuntime` the game's entities too) into one file, touching no scene's state
   bool writeScene(std::string_view path, bool includeRuntime);
+  // Writes one open scene to `path` and makes it its file
+  bool saveSceneTo(int scene, std::string_view path);
   // Keeps every material a snapshot (Play's, the history's, the open checkpoint's) refers to alive, and counted as
   // used, so changing one in the scene copies it first
   void refreshPinnedMaterials();
@@ -744,16 +788,30 @@ private:
   std::vector<SceneSnapshot> m_redoStack;
   std::optional<HistoryRequest> m_historyRequest;
   uint64_t m_editRevision = 0; // counts undo steps made, undone and redone
-  uint64_t m_savedRevision = 0;
+  // Unsaved changes per open scene (by id): a hash of what its file would hold when it was loaded or saved; a scene
+  // is dirty when it holds something else now. Looked at again when m_editRevision moved.
+  std::unordered_map<int, size_t> m_savedHash;
+  mutable bool m_dirtyValid = false;
+  mutable uint64_t m_dirtyRevision = 0;
+  mutable std::unordered_set<int> m_dirtyScenes;
+  void markSceneClean(int scene);
+  void refreshDirty() const;
   static constexpr float kPrefabPollSeconds = 0.5f;
   float m_prefabPollTime = 0.0f;
   std::vector<std::function<void(const GameEntity &, const std::string &, const std::string &)>> m_animationListeners;
   float m_previewTime = 0.0f; // seconds in the editor with the game frozen, what custom shaders' `time` shows there
   void applyHistoryRequest();
   void clearHistory();
-  std::optional<std::string> m_pendingScene;
-  std::vector<std::string> m_pendingSceneModels;
-  std::string m_scenePath;
+  // loadScene, loadSceneAdditive and unloadScene asked for, done in order at the end of a frame; a loadScene
+  // drops the ones before it
+  struct PendingScene {
+    enum class Kind { Replace, Additive, Unload };
+    Kind kind = Kind::Replace;
+    std::string path;
+    std::vector<std::string> models;
+  };
+  std::deque<PendingScene> m_pendingScenes;
+  void queueScene(PendingScene::Kind kind, std::string_view path);
   bool m_newScenePending = false;
   std::deque<ReflectedComponent> m_reflectedComponents; // a deque: the builder and the serializer keep references
   ReflectedComponent &addReflectedComponent(ReflectedComponent component);

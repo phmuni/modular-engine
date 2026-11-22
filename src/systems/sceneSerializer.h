@@ -67,12 +67,27 @@ public:
   // from scene to scene. A file without the key leaves the base alone, as old scenes did.
   // Entities the game created while it ran (EntityManager::isRuntime) are left out, unless `includeRuntime`: the game's
   // own picture of what it built (--save-scene) keeps them, the editor's Save Scene does not.
-  bool save(const std::string &path, bool includeRuntime = false) const;
-  // Reads the whole file first; if it cannot be read, the current scene stays
+  // With `scene` (an open scene's id, see EntityManager::scenes) the file holds only that scene's entities; -1 writes
+  // every non-runtime entity (with `includeRuntime`, all of them). The layers are the ones in effect, whatever scene
+  // they came from, so each file carries them all.
+  bool save(const std::string &path, bool includeRuntime = false, int scene = -1) const;
+  // Replaces everything with the file's: every open scene is closed and the file is the only one open (and the
+  // active one). Reads the whole file first; if it cannot be read, the current scene stays.
   bool load(const std::string &path);
+  // Adds the file as one more open scene (not the active one, unless none was open), keeping what is there. False,
+  // with the scene left alone, if the file cannot be read or is already open. Its collision layers merge with the
+  // ones in effect. The active camera stays the one that is active; one the file marks active does not take over,
+  // except when there was none.
+  bool loadAdditive(const std::string &path);
+  // Destroys the scene's entities (and their children) and closes it, taking its collision layers out. False if it
+  // is not open. The active scene moves to the first one still open.
+  bool unloadScene(int scene);
+  // The one name for a scene file however it is spelled ("scenes/a.json", "../assets/scenes/a.json", absolute)
+  static std::string sceneKey(const std::string &path);
 
-  // The scene as compact JSON text (what save() writes, entity numbers aside), to tell whether two moments differ
-  std::string fingerprint() const;
+  // The scene as compact JSON text (what save() writes, entity numbers aside), to tell whether two moments differ.
+  // Of everything and who belongs to which scene, or with `scene` of that scene's entities alone (what its file holds).
+  std::string fingerprint(int scene = -1) const;
 
   // Prefabs: an entity and its descendants in a file of the same format, the root at the origin
   bool savePrefab(Entity root, const std::string &path) const;
@@ -170,7 +185,10 @@ private:
   nlohmann::json m_baseLayers;      // the layers before the last scene merged its own (CollisionLayers::toJson)
   bool m_sceneLayersMerged = false; // the last load merged some, so they are in effect until the layers change
   uint32_t m_sceneLayersVersion = 0;
-  void mergeSceneLayers(const json &scene);
+  std::vector<std::pair<std::string, json>> m_sceneLayers; // what each open scene merged, by scene key
+  // `additive`: on top of the layers in effect (those of the scenes already open), not on the base
+  void mergeSceneLayers(const json &scene, const std::string &key, bool additive);
+  void unmergeSceneLayers(const std::string &key);
   SystemManager &m_systemManager;
   std::vector<Serializer> m_serializers;
   mutable std::unordered_set<std::string> m_warnedKeys;
