@@ -46,3 +46,6 @@ assets/models/*
 
 # Local context for Claude Code (not shared)
 CLAUDE.md
+
+# Left behind if the scene menu tests crash
+/assets/scenes/zz_menu_test_*
