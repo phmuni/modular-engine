@@ -36,7 +36,7 @@
 class PhysicsSystem;
 
 struct NavigationSettings {
-  // The voxel's width on the XZ plane (its height is half of that). Smaller sees thinner walls and narrower gaps and
+  // The voxel's width on the XZ plane (its height is a quarter of that). Smaller sees thinner walls and narrower gaps and
   // costs more time and memory: about 4 times as much for half the size. Keep it at most about `agentRadius`.
   float cellSize = 0.2f;
   float agentRadius = 0.35f;

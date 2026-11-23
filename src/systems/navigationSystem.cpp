@@ -373,16 +373,23 @@ struct NavigationSystem::Impl {
     const float tolerance = voxelHeight * 0.5f;
     const float center[3] = {p.x, p.y - (below - above) * 0.5f, p.z};
     const float half[3] = {snap, (below + above) * 0.5f + tolerance, snap};
-    dtPolyRef polys[64];
-    int count = 0;
-    if (dtStatusFailed(query->queryPolygons(center, half, &filter, polys, &count, 64)))
+    // Every polygon in the box, however many: a wide search (nav.nearest far away) over a fine mesh finds hundreds, and
+    // a fixed-size list would keep the first ones, not the nearest
+    class Collector final : public dtPolyQuery {
+    public:
+      std::vector<dtPolyRef> refs;
+      void process(const dtMeshTile *, dtPoly **, dtPolyRef *found, int foundCount) override {
+        refs.insert(refs.end(), found, found + foundCount);
+      }
+    } collector;
+    if (dtStatusFailed(query->queryPolygons(center, half, &filter, &collector)))
       return false;
     float best = std::numeric_limits<float>::max();
     bool found = false;
-    for (int i = 0; i < count; ++i) {
+    for (const dtPolyRef ref : collector.refs) {
       float closest[3];
       bool over = false;
-      if (dtStatusFailed(query->closestPointOnPoly(polys[i], glm::value_ptr(p), closest, &over)))
+      if (dtStatusFailed(query->closestPointOnPoly(ref, glm::value_ptr(p), closest, &over)))
         continue;
       if (mustBeOver && !over)
         continue;
@@ -393,7 +400,7 @@ struct NavigationSystem::Impl {
       if (cost < best) {
         best = cost;
         found = true;
-        result.ref = polys[i];
+        result.ref = ref;
         result.point = glm::vec3(closest[0], closest[1], closest[2]);
         result.over = over;
       }

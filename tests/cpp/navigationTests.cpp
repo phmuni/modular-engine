@@ -516,3 +516,23 @@ TEST_CASE(navigation_islands) {
   CHECK(!engine.navigation().isWalkable(glm::vec3(10, 3, 10)));
   CHECK(engine.navigation().isWalkable(glm::vec3(-15, 0, 0)));
 }
+
+// A wide search over a mesh of many polygons finds the nearest ground, not the nearest of the first few polygons
+TEST_CASE(navigation_nearest_over_many_polygons) {
+  floor(engine, 60.0f, 30.0f);
+  for (int x = 0; x < 20; ++x)
+    for (int z = 0; z < 8; ++z)
+      engine.create("Post", Desc("box").at(-55.0f + 5.5f * x, 1, -25.0f + 7.0f * z).size(1, 2, 1).body(BodyType::Static));
+  steps.step(1, [&engine]() {
+    NavigationSystem &nav = engine.navigation();
+    CHECK(nav.build({-64, -1, -32}, {64, 4, 32}));
+    const auto east = nav.getNearestWalkable({70, 0, 0}, 100.0f); // the floor's edge is at x = 60
+    CHECK(east.has_value());
+    if (east)
+      CHECK(east->x > 59.0f && std::abs(east->z) < 1.0f);
+    const auto west = nav.getNearestWalkable({-70, 0, 0}, 100.0f);
+    CHECK(west.has_value());
+    if (west)
+      CHECK(west->x < -59.0f && std::abs(west->z) < 1.0f);
+  });
+}

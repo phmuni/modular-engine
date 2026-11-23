@@ -55,10 +55,7 @@ test.run(function()
   test.ok(not nav.walkable(vec3(-8, 2, -8)), "the top of a tall box is not walkable")
   test.ok(nav.walkable(vec3(-8, 0.2, 8)), "a low step is")
   test.ok(nav.walkable(vec3(-5, 0, 0)), "open floor still is")
-  local toTop = nav.path(vec3(-12, 0, -12), vec3(-8, 2, -8))
-  if toTop then
-    test.ok(math.abs(toTop[#toTop].y) < 0.5, "a path to the top ends on the ground, not on it: " .. tostring(toTop[#toTop]))
-  end
+  test.ok(nav.path(vec3(-12, 0, -12), vec3(-8, 2, -8)) == nil, "no path to the top: no ground of the map is near it")
   local overStep = nav.path(vec3(-12, 0, 12), vec3(-4, 0, 12))
   test.ok(overStep ~= nil, "a path over the low step")
 
