@@ -111,6 +111,12 @@ CPMAddPackage(
 if(TARGET Jolt AND NOT MSVC)
   target_compile_options(Jolt PRIVATE "$<$<CONFIG:Debug>:-O2>")
 endif()
+# Jolt's own CMake builds it with /fp:fast under MSVC (not clang-cl); MSVC then turns rotations the wrong way
+# (an angular velocity of +60 degrees/s integrates to -29 degrees in half a second). /fp:precise, the flag Jolt uses
+# for its cross-platform deterministic build, overrides it (the later flag wins).
+if(TARGET Jolt AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  target_compile_options(Jolt PRIVATE /fp:precise)
+endif()
 # Scripting: Lua (compiled below from its sources, which have no CMake build of their own) and sol2, the header-only
 # bridge between C++ and Lua
 CPMAddPackage(
