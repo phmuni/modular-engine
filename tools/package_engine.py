@@ -10,7 +10,7 @@ are) and gathers dist/modular-engine-<platform>/:
     bin/launcher/   the launcher and SDL's library
     bin/runner/     the Lua runner, SDL's library and engine-assets (copied into each Lua project)
     templates/      the project templates
-    README.md, LICENSE
+    README.md, LICENSE, THIRD_PARTY_LICENSES.txt
 
 The launcher finds the engine two folders above bin/launcher/, so the folder works wherever it is put. It has no
 sources: creating a C++ project from it makes one that downloads the engine from GitHub (and needs CMake and a
@@ -59,7 +59,7 @@ def main():
         shutil.copytree(build / "bin" / program, package / "bin" / program, symlinks=True, ignore=RUN_LEFTOVERS)
     # All of templates/, which includes templates/common (what every Lua or mixed project gets)
     shutil.copytree(ENGINE_DIR / "templates", package / "templates", ignore=shutil.ignore_patterns("build", "bin", ".DS_Store"))
-    for name in ("README.md", "LICENSE"):
+    for name in ("README.md", "LICENSE", "THIRD_PARTY_LICENSES.txt"):
         shutil.copy2(ENGINE_DIR / name, package / name)
     print(f"\nPackaged the engine in {package}")
 

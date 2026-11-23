@@ -190,13 +190,13 @@ TEST_CASE(custom_shader_params) {
   e.setShaderParam("tintColor", glm::vec3(1, 0.5f, 0.25f));
   e.setShaderParam("scroll", glm::vec2(3, 4));
   e.setShaderParam("extra", glm::vec4(1, 2, 3, 4));
-  e.setShaderParam("maskTexture", std::string("models/box/diffuse.png"));
+  e.setShaderParam("maskTexture", std::string("textures/bumps_normal.png"));
   CHECK_NEAR(std::get<float>(*e.shaderParam("strength")), 4.0f, 1e-6f);
   CHECK_NEAR(std::get<glm::vec3>(*e.shaderParam("tintColor")), glm::vec3(1, 0.5f, 0.25f), 1e-6f);
   CHECK_NEAR(std::get<glm::vec2>(*e.shaderParam("scroll")), glm::vec2(3, 4), 1e-6f);
   CHECK_NEAR(std::get<glm::vec4>(*e.shaderParam("extra")).w, 4.0f, 1e-6f);
   const auto setTexture = e.shaderParam("maskTexture");
-  CHECK_EQ(std::get<std::string>(*setTexture), std::string("models/box/diffuse.png"));
+  CHECK_EQ(std::get<std::string>(*setTexture), std::string("textures/bumps_normal.png"));
   const Material &material = resourcesOf(engine).getMaterial(materialOf(engine, e, 0));
   CHECK(material.getShaderParams().at("maskTexture").texture != 0);
 

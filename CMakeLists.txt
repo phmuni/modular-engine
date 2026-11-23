@@ -286,6 +286,9 @@ function(modular_engine_add_game target)
         COMMAND ${CMAKE_COMMAND} "-DFROM=${MODULAR_ENGINE_ROOT}/assets/${folder}" "-DTO=${engine_assets}/${folder}"
                 -P "${MODULAR_ENGINE_ROOT}/cmake/copyAssetFolder.cmake")
     endforeach()
+    # The notices of the libraries a game is built with, to ship with it
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MODULAR_ENGINE_ROOT}/THIRD_PARTY_LICENSES.txt" "${engine_assets}")
   endif()
   add_custom_command(TARGET ${target} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "Build completed! Executable: $<TARGET_FILE:${target}>")

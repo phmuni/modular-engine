@@ -1931,6 +1931,10 @@ Check the [Issues](https://github.com/phmuni/modular-engine/issues) and [Project
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
+The libraries it is built with have licenses of their own, quoted in [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt)
+(written and checked by `tools/third_party_licenses.py`). Every game gets a copy in `bin/engine-assets`: keep it in what you
+ship.
+
 Third-party code in the engine's own files: the FSR 1 shaders (`assets/shaders/fsrEasu.frag`, `fsrRcas.frag`) are ports of
 AMD FidelityFX Super Resolution 1.0 (`ffx_fsr1.h`), MIT License, copyright (c) 2021 Advanced Micro Devices, Inc.; the
 license text is in each file's header. `assets/shaders/fxaa.frag` follows Timothy Lottes' FXAA 3.11.
