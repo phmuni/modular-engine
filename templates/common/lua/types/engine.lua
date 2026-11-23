@@ -1190,13 +1190,14 @@ function physics.setGravity(gravity) end
 ---@class NavBuildOptions
 ---@field min? vec3
 ---@field max? vec3
----@field cellSize? number
+---@field cellSize? number Voxel width (default 0.2)
 ---@field agentRadius? number
 ---@field agentHeight? number
 ---@field maxSlope? number Degrees
 ---@field stepHeight? number
+---@field minRegionArea? number Square units; islands of ground smaller than this are left out (default 8)
 
----Path finding over a grid of walkable cells.
+---Path finding over a navigation mesh made from the static and kinematic bodies.
 ---@class nav
 nav = {}
 
@@ -1215,6 +1216,20 @@ function nav.path(from, to) end
 ---@param point vec3
 ---@return boolean
 function nav.walkable(point) end
+
+---Builds again, now, only the tiles of the map that the box touches (after a door opened or a wall fell); returns
+---whether it did (false without a map or outside it).
+---@param min vec3
+---@param max vec3
+---@return boolean
+function nav.rebuild(min, max) end
+
+---The nearest walkable ground to a point within a distance (sideways), or nil. The ground is looked for from a step
+---above the point down to an agent's height below it.
+---@param point vec3
+---@param maxDistance? number Defaults to 1
+---@return vec3|nil
+function nav.nearest(point, maxDistance) end
 
 -- sound --------------------------------------------------------------------------------------------------------------
 

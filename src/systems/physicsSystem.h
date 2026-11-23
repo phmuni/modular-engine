@@ -84,6 +84,12 @@ public:
   // Whether an upright capsule standing on `base` (its lowest point), `height` tall in all and `radius` wide,
   // overlaps a static or kinematic body (dynamic bodies and sensors are not obstacles: they move or do not block)
   bool isCapsuleBlocked(const glm::vec3 &base, float height, float radius) const;
+  // The triangles, in world space, of the static and kinematic bodies that are not sensors (characters' own bodies
+  // left out) in the box between `min` and `max`: three indices into `vertices` per triangle, counter-clockwise seen
+  // from outside the body (an upward face has an upward normal, whatever the body's rotation or the sign of its scale).
+  // Only a coarse cut is made: some triangles lie partly or wholly outside the box. Appended to the vectors.
+  void collectTriangles(const glm::vec3 &min, const glm::vec3 &max, std::vector<glm::vec3> &vertices,
+                        std::vector<int> &indices) const;
   // The box around every static body that is not a sensor; false when there are none
   bool getStaticBounds(glm::vec3 &min, glm::vec3 &max) const;
 

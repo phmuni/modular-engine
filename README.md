@@ -76,7 +76,7 @@ Built on a robust **Entity-Component-System (ECS)** architecture with flexible r
 | **Project Launcher**       | Creates Lua, C++ or C++ + Lua projects, builds, plays and exports them, opens them in VS Code |
 | **Skeletal Animation**     | glTF skins and clips (linear, step, cubic spline), crossfades, rigid parts following their nodes, animated shadows; state machines (JSON: states, blends, parameters, transitions) |
 | **Physics**                | Jolt: static, dynamic and kinematic bodies (box, sphere, capsule, convex hull, mesh), a character controller, impulses, raycasts and contact events, collision layers with a matrix |
-| **Navigation**             | A walkable grid built from the physics world and A* paths around obstacles, smoothed (`engine.navigation().findPath`, `nav.path` in Lua), drawn by the editor's "Show navigation" |
+| **Navigation**             | A tiled navigation mesh (Recast and Detour) built from the physics world: bridges, floors above floors, stairs, ramps and ceilings, paths around obstacles (`engine.navigation().findPath`, `nav.path` in Lua), tiles rebuilt on demand (`rebuild`, `nav.rebuild`), drawn by the editor's "Show navigation" |
 | **Play / Stop**            | Freeze the game, edit, Play from there and Stop back to the saved state, game components included (`Ctrl+P`) |
 | **Hierarchy & Prefabs**    | Parent/child entities (`setParent`, `withParent`) and prefabs (`savePrefab`, `instantiate`, nested prefabs), saved in scenes and edited in the editor |
 | **Linked Prefabs**         | Instances remember their prefab file and follow it when it changes (in the editor or on disk), keeping what they changed themselves; Apply, Revert and Unpack in the Properties panel (undoing an Apply puts the prefab file back too) |
@@ -781,30 +781,46 @@ skip layer lookups entirely while every pair collides.
 
 ### Navigation
 
-`NavigationSystem` finds paths that go around obstacles. `build` makes a grid over the XZ plane from the physics world:
-a ray down each cell (0.5 units by default) finds the ground, and a cell is walkable when its slope is at most
-`maxSlope` and an agent (a capsule of `agentRadius` and `agentHeight`, stepping over ledges up to `stepHeight`) fits
-there without touching a static or kinematic body. Dynamic bodies (crates) are not obstacles, since they move.
-`findPath` runs A* over the cells (8 neighbors, no corner cutting) and removes the points a straight walk makes
-needless. A cell must also be reachable: starting from ground level (within a step of the lowest walkable ground) the
-walkable area grows over neighbors a `stepHeight` apart, so the top of a tall wall or box is not walkable, while a ramp
-or low steps up to a platform keep it. The map has one ground height per cell (the topmost surface inside the bounds, so no bridges or ceilings),
-and it is built when asked: call `build` once the level exists, and `markDirty()` after moving obstacles.
+`NavigationSystem` finds paths that go around obstacles over a navigation mesh made by [Recast and
+Detour](https://github.com/recastnavigation/recastnavigation) (compiled into the engine, never in its headers).
+`build` takes the triangles of the static and kinematic bodies from the physics world (dynamic bodies, sensors and
+characters are not ground and not obstacles: they move or do not block) and voxelizes them, `cellSize` wide (0.2 by
+default, a voxel is a quarter of that high). A surface is walkable when its slope is at most `maxSlope`, an agent (a
+capsule of `agentRadius` and `agentHeight`, stepping over ledges up to `stepHeight`) fits above it, and it is at least
+`agentRadius` from a wall or an edge. The ground is a surface, not a height field: a bridge and the floor under it, two
+floors joined by stairs, a ramp and a ceiling each get their own polygons, and a point's height says which one it is on
+(the ground is looked for from `stepHeight` above the point to `agentHeight` below it, so a character's Transform and
+its feet both work). A ceiling lower than `agentHeight` leaves what is under it unwalkable. What is above the top of the
+bounds (a roof) is not seen.
+
+The map is made of tiles of 64 x 64 voxels (12.8 x 12.8 units by default; a map may hold 2048, so about 580 x 580
+units, and the bounds are rounded out to whole tiles). `rebuild(min, max)` makes again only the tiles a box touches
+(a door opened, a wall fell) and `markDirty()` everything. An island of ground smaller than `minRegionArea` square
+units (8 by default) that nothing leads to is dropped: the top of a tall box or wall has no step up to it. A larger one
+(a floor reached by a lift, a closed room) is walkable ground that no path from outside leads to. `findPath` gives the
+shortest way as points on the ground, wherever the way turns or the ground changes its slope, and nothing when there
+is none (never a part of the way). Cell size is the main cost: a 200 x 200 level with 300 boxes builds in about 140 ms
+at 0.2 (and 30 ms at 0.5); heights are quantized to a voxel (0.05 units at the default), a path on a ramp stays within about 0.15 units of it, and
+one on stairs of 0.25 steps within about a step of their edges. The map is built when asked: call `build` once the level
+exists.
 
 ```cpp
-NavigationSettings settings;                       // cellSize, agentRadius, agentHeight, maxSlope, stepHeight
-engine.navigation().build({-10, -1, -10}, {10, 4, 10}, settings);   // or buildFromScene(settings)
+NavigationSettings settings;   // cellSize, agentRadius, agentHeight, maxSlope, stepHeight, minRegionArea
+engine.navigation().build({-10, -1, -10}, {10, 8, 10}, settings);   // or buildFromScene(settings)
 std::vector<glm::vec3> path = engine.navigation().findPath(from, to);   // on the ground; empty if unreachable
 bool ok = engine.navigation().isWalkable(point);
+engine.navigation().rebuild({4, -1, -2}, {6, 8, 2});   // after a door opened
 ```
 
 ```lua
-nav.build({ cellSize = 0.5, agentRadius = 0.35, agentHeight = 1.8 })   -- over the scene's static bodies
+nav.build({ agentRadius = 0.35, agentHeight = 1.8 })   -- over the scene's static bodies
 local path = nav.path(self.position - vec3(0, 0.9, 0), engine.find("Target").position)
 if path then self:move((path[2] - self.position):normalized() * 4) end
+nav.rebuild(vec3(4, -1, -2), vec3(6, 8, 2))   -- a door opened: only the tiles it touches are made again
+local ground = nav.nearest(self.position, 2)   -- the nearest walkable point within 2 units, or nil
 ```
 
-Settings has "Show navigation", which draws the walkable cells and the last path over the scene.
+Settings has "Show navigation", which draws the walkable polygons and the last path over the scene.
 [`assets/scenes/navigation.json`](assets/scenes/navigation.json) is a small maze where a character with the script
 [`nav_walker.lua`](assets/scripts/nav_walker.lua) walks to a target.
 

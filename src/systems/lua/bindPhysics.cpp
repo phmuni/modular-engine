@@ -105,7 +105,8 @@ void LuaBindings::bindPhysics() {
 
   // navigation
   // nav.build({ min = vec3, max = vec3, cellSize = 0.5, agentRadius = 0.35, agentHeight = 1.8, maxSlope = 45,
-  //             stepHeight = 0.35 }): every field is optional; without min and max the map covers the static bodies
+  //             stepHeight = 0.35, minRegionArea = 8 }): every field is optional; without min and max the map covers
+  //             the static bodies
   sol::table nav = lua.create_named_table("nav");
   nav.set_function("build", [this](sol::optional<sol::table> options) {
     NavigationSettings settings;
@@ -117,6 +118,7 @@ void LuaBindings::bindPhysics() {
       settings.agentHeight = o.get_or("agentHeight", settings.agentHeight);
       settings.maxSlope = o.get_or("maxSlope", settings.maxSlope);
       settings.stepHeight = o.get_or("stepHeight", settings.stepHeight);
+      settings.minRegionArea = o.get_or("minRegionArea", settings.minRegionArea);
       min = vectorField(o, "min");
       max = vectorField(o, "max");
     }
@@ -130,4 +132,15 @@ void LuaBindings::bindPhysics() {
     return sol::make_object(lua, sol::as_table(points));
   });
   nav.set_function("walkable", [this](const glm::vec3 &point) { return engine.navigation().isWalkable(point); });
+  // Builds again only the tiles the box touches (after a door opened or a wall fell); whether it did
+  nav.set_function("rebuild", [this](const glm::vec3 &min, const glm::vec3 &max) {
+    return engine.navigation().rebuild(min, max);
+  });
+  // The nearest walkable ground within maxDistance (1 by default) of the point, or nil
+  nav.set_function("nearest", [this](const glm::vec3 &point, sol::optional<float> maxDistance) -> sol::object {
+    const std::optional<glm::vec3> found = engine.navigation().getNearestWalkable(point, maxDistance.value_or(1.0f));
+    if (!found)
+      return sol::lua_nil;
+    return sol::make_object(lua, *found);
+  });
 }

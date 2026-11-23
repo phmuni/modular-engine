@@ -117,6 +117,13 @@ endif()
 if(TARGET Jolt AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   target_compile_options(Jolt PRIVATE /fp:precise)
 endif()
+# Navigation meshes: Recast (builds one from triangles) and Detour (queries it), compiled below from their sources
+CPMAddPackage(
+  NAME recastnavigation
+  GITHUB_REPOSITORY recastnavigation/recastnavigation
+  GIT_TAG v1.6.0
+  DOWNLOAD_ONLY YES
+)
 # Scripting: Lua (compiled below from its sources, which have no CMake build of their own) and sol2, the header-only
 # bridge between C++ and Lua
 CPMAddPackage(
@@ -180,6 +187,20 @@ if(NOT MSVC)
   target_compile_options(lua_static PRIVATE "$<$<CONFIG:Debug>:-O2>") # scripts run at full speed in Debug too
 endif()
 
+# --- Recast and Detour ---
+# Only the two libraries (not the demo, the tests or the debug utilities); the engine's .cpp files include their headers
+# privately, so no game sees them
+file(GLOB RECAST_SOURCES "${recastnavigation_SOURCE_DIR}/Recast/Source/*.cpp"
+     "${recastnavigation_SOURCE_DIR}/Detour/Source/*.cpp")
+add_library(recast_static STATIC ${RECAST_SOURCES})
+target_include_directories(recast_static SYSTEM PUBLIC "${recastnavigation_SOURCE_DIR}/Recast/Include"
+                           "${recastnavigation_SOURCE_DIR}/Detour/Include")
+if(MSVC)
+  target_compile_options(recast_static PRIVATE /w) # their code, their warnings
+else()
+  target_compile_options(recast_static PRIVATE -w "$<$<CONFIG:Debug>:-O2>") # a map builds at full speed in Debug too
+endif()
+
 # --- Engine library ---
 add_library(modular_engine STATIC ${SOURCE_FILES} ${GLAD_SOURCE} ${IMGUI_SOURCE} ${MINIAUDIO_SOURCE}
             ${RMLUI_BACKEND_SOURCE} ${IMGUIZMO_SOURCE})
@@ -203,6 +224,8 @@ target_link_libraries(modular_engine PUBLIC
     Jolt
     lua_static
 )
+# Not PUBLIC: no engine header includes Recast or Detour, so games need neither the headers nor the flags
+target_link_libraries(modular_engine PRIVATE recast_static)
 if(MSVC)
   target_compile_definitions(modular_engine PUBLIC _CRT_SECURE_NO_WARNINGS)
   # sol2's templates make object files with more sections than MSVC allows by default

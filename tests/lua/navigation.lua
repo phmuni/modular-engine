@@ -61,4 +61,39 @@ test.run(function()
   end
   local overStep = nav.path(vec3(-12, 0, 12), vec3(-4, 0, 12))
   test.ok(overStep ~= nil, "a path over the low step")
+
+  -- nav.nearest: the point itself on the ground, else the nearest ground within the distance, else nil
+  local here = nav.nearest(vec3(-5, 0.2, 0))
+  test.ok(here ~= nil and math.abs(here.x + 5) < 0.01 and math.abs(here.y) < 0.15, "nearest: on the ground already")
+  local beside = nav.nearest(vec3(0, 0, 0)) -- inside the wall
+  test.ok(beside ~= nil and math.abs(beside.x) >= 0.5, "nearest: moved out of the wall: " .. tostring(beside))
+  test.ok(nav.nearest(vec3(0, 0, 0), 0.1) == nil, "nearest: nothing within a tenth of a unit")
+  test.ok(nav.nearest(vec3(100, 0, 100)) == nil, "nearest: off the map")
+
+  -- A bridge: a deck above the floor, reached by a ramp; the point's height says which level it is on
+  engine.create("Deck", { model = "box", position = vec3(-6, 3.35, -10), scale = vec3(6, 0.3, 3), body = "static" })
+  local ramp = engine.create("RampSlab", { model = "box", position = vec3(-10.99, 1.635, -10), scale = vec3(5.5, 0.3, 3), body = "static" })
+  ramp.rotation = vec3(0, 0, 40)
+  wait()
+  test.ok(nav.build({ min = vec3(-14, -1, -14), max = vec3(14, 6, 14), minRegionArea = 0 }), "built with the bridge")
+  local deck = nav.nearest(vec3(-5, 3.9, -10))
+  test.ok(deck ~= nil and math.abs(deck.y - 3.5) < 0.2, "a character on the deck is on the deck: " .. tostring(deck))
+  local under = nav.nearest(vec3(-5, 0.9, -10))
+  test.ok(under ~= nil and math.abs(under.y) < 0.2, "a character under it is on the floor: " .. tostring(under))
+  local up = nav.path(vec3(-14, 0, -10), vec3(-5, 3.5, -10))
+  test.ok(up ~= nil and up[#up].y > 3.2, "a path up to the deck")
+
+  -- nav.rebuild: a wall that goes opens the way; only the tiles it touches are made again
+  engine.create("Fence", { model = "box", position = vec3(10, 1, 4), scale = vec3(0.5, 2, 4), body = "static" })
+  local gate = engine.create("Gate", { model = "box", position = vec3(10, 1, 0), scale = vec3(0.5, 2, 4), body = "static" })
+  wait()
+  test.ok(nav.rebuild(vec3(8, -1, -6), vec3(12, 4, 6)), "rebuild reports it did")
+  test.ok(not nav.walkable(vec3(10, 0, 0)), "the gate is a wall")
+  test.ok(not nav.rebuild(vec3(300, 0, 300), vec3(310, 5, 310)), "rebuild outside the map does nothing")
+  gate:destroy()
+  wait()
+  test.ok(nav.walkable(vec3(-5, 0, 0)), "the rest of the map is as it was")
+  test.ok(nav.rebuild(vec3(8, -1, -2), vec3(12, 4, 2)), "rebuilt after the gate went")
+  test.ok(nav.walkable(vec3(10, 0, 0)), "the gate's place is ground again")
+  test.ok(not nav.walkable(vec3(10, 0, 4)), "the fence still stands")
 end)

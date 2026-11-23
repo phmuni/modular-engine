@@ -1551,23 +1551,16 @@ void EditorUISystem::drawNavigation(Engine &engine, SystemManager &systemManager
   };
 
   ImDrawList *drawList = ImGui::GetBackgroundDrawList();
-  const NavigationSystem::Grid &grid = navigation.getGrid();
-  const float half = navigation.getSettings().cellSize * 0.45f;
-  constexpr float kDrawDistance = 40.0f; // far cells are small and many: leave them out to keep this cheap
-  for (int z = 0; z < grid.depth; ++z)
-    for (int x = 0; x < grid.width; ++x) {
-      if (!navigation.isCellWalkable(x, z))
-        continue;
-      const glm::vec3 center = navigation.getCellCenter(x, z) + glm::vec3(0.0f, 0.02f, 0.0f);
-      if (glm::distance(center, camera->position) > kDrawDistance)
-        continue;
-      ImVec2 corners[4];
-      if (project(center + glm::vec3(-half, 0.0f, -half), corners[0]) &&
-          project(center + glm::vec3(half, 0.0f, -half), corners[1]) &&
-          project(center + glm::vec3(half, 0.0f, half), corners[2]) &&
-          project(center + glm::vec3(-half, 0.0f, half), corners[3]))
-        drawList->AddConvexPolyFilled(corners, 4, IM_COL32(60, 200, 120, 70));
-    }
+  constexpr float kDrawDistance = 40.0f; // far polygons are small and many: leave them out to keep this cheap
+  const glm::vec3 lift(0.0f, 0.03f, 0.0f);
+  navigation.forEachPolygon(camera->position, kDrawDistance, [&](const glm::vec3 *corners, int count) {
+    ImVec2 screen[6];
+    for (int i = 0; i < count; ++i)
+      if (!project(corners[i] + lift, screen[i]))
+        return;
+    drawList->AddConvexPolyFilled(screen, count, IM_COL32(60, 200, 120, 70));
+    drawList->AddPolyline(screen, count, IM_COL32(60, 220, 130, 160), ImDrawFlags_Closed, 1.0f);
+  });
 
   const std::vector<glm::vec3> &path = navigation.getLastPath();
   for (size_t i = 0; i < path.size(); ++i) {

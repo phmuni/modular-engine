@@ -26,6 +26,7 @@
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
+#include <Jolt/Physics/Collision/TransformedShape.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
@@ -514,8 +515,12 @@ struct PhysicsSystem::Impl {
         vertices.push_back(JPH::Float3(vertex.x * scale.x, vertex.y * scale.y, vertex.z * scale.z));
       JPH::IndexedTriangleList triangles;
       const auto &indices = mesh->getCollisionIndices();
+      // A mirroring scale (an odd number of negative axes) turns the triangles inside out: the winding is kept
+      // counter-clockwise seen from outside, which collision does not need but the navigation mesh does
+      const bool mirrored = scale.x * scale.y * scale.z < 0.0f;
       for (size_t i = 0; i + 2 < indices.size(); i += 3)
-        triangles.push_back(JPH::IndexedTriangle(indices[i], indices[i + 1], indices[i + 2]));
+        triangles.push_back(mirrored ? JPH::IndexedTriangle(indices[i], indices[i + 2], indices[i + 1])
+                                     : JPH::IndexedTriangle(indices[i], indices[i + 1], indices[i + 2]));
       result = JPH::MeshShapeSettings(vertices, triangles).Create();
       break;
     }
@@ -1286,6 +1291,41 @@ bool PhysicsSystem::isCapsuleBlocked(const glm::vec3 &base, float height, float 
                                                      JPH::CollideShapeSettings(), JPH::RVec3::sZero(), collector, {}, {},
                                                      filter);
   return collector.HadHit();
+}
+
+void PhysicsSystem::collectTriangles(const glm::vec3 &min, const glm::vec3 &max, std::vector<glm::vec3> &vertices,
+                                     std::vector<int> &indices) const {
+  // The same bodies as isCapsuleBlocked: what stays put and blocks
+  class Filter final : public JPH::BodyFilter {
+  public:
+    explicit Filter(const Impl &impl) : m_impl(impl) {}
+    bool ShouldCollideLocked(const JPH::Body &body) const override {
+      return body.GetMotionType() != JPH::EMotionType::Dynamic && !body.IsSensor() && !m_impl.isCharacter(body);
+    }
+
+  private:
+    const Impl &m_impl;
+  } filter(*m_impl);
+
+  const JPH::AABox box(toJolt(glm::min(min, max)), toJolt(glm::max(min, max)));
+  JPH::AllHitCollisionCollector<JPH::TransformedShapeCollector> collector;
+  m_impl->system->GetNarrowPhaseQuery().CollectTransformedShapes(box, collector, {}, {}, filter);
+
+  // Vertices come relative to the base offset: the box's middle keeps them precise far from the origin
+  const JPH::RVec3 base = box.GetCenter();
+  constexpr int kBatch = 64;
+  JPH::Float3 batch[kBatch * 3];
+  for (const JPH::TransformedShape &shape : collector.mHits) {
+    JPH::Shape::GetTrianglesContext context;
+    shape.GetTrianglesStart(context, box, base);
+    while (const int count = shape.GetTrianglesNext(context, kBatch, batch)) {
+      const int first = static_cast<int>(vertices.size());
+      for (int i = 0; i < count * 3; ++i)
+        vertices.push_back(toGlm(JPH::Vec3(batch[i])) + toGlm(JPH::Vec3(base)));
+      for (int i = 0; i < count * 3; ++i)
+        indices.push_back(first + i);
+    }
+  }
 }
 
 bool PhysicsSystem::getStaticBounds(glm::vec3 &min, glm::vec3 &max) const {
