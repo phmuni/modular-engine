@@ -560,7 +560,7 @@ void Engine::registerSystems() {
   m_systemManager.insert<CollisionSystem>(m_layers);
   m_systemManager.insert<PhysicsSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>(),
                                         m_systemManager.getSystem<TransformSystem>(), m_layers);
-  m_systemManager.insert<NavigationSystem>(m_componentManager, m_systemManager.getSystem<PhysicsSystem>());
+  m_systemManager.insert<NavigationSystem>(m_systemManager.getSystem<PhysicsSystem>());
   m_systemManager.insert<AnimationSystem>(m_componentManager, m_systemManager.getSystem<ResourceSystem>());
   m_systemManager.insert<ScriptSystem>(*this);
   m_systemManager.insert<AudioSystem>(m_componentManager);

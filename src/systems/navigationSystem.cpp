@@ -409,8 +409,8 @@ struct NavigationSystem::Impl {
   }
 };
 
-NavigationSystem::NavigationSystem(ComponentManager &componentManager, PhysicsSystem &physicsSystem)
-    : m_componentManager(componentManager), m_physics(physicsSystem), m_impl(std::make_unique<Impl>(physicsSystem)) {}
+NavigationSystem::NavigationSystem(PhysicsSystem &physicsSystem)
+    : m_physics(physicsSystem), m_impl(std::make_unique<Impl>(physicsSystem)) {}
 
 NavigationSystem::~NavigationSystem() = default;
 

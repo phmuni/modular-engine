@@ -49,7 +49,7 @@ struct NavigationSettings {
 
 class NavigationSystem : public BaseSystem {
 public:
-  NavigationSystem(ComponentManager &componentManager, PhysicsSystem &physicsSystem);
+  explicit NavigationSystem(PhysicsSystem &physicsSystem);
   ~NavigationSystem();
 
   // Builds the map for the box between `min` and `max` from the bodies there are now (the bodies of components just
@@ -96,7 +96,6 @@ public:
 private:
   struct Impl;
 
-  ComponentManager &m_componentManager;
   PhysicsSystem &m_physics;
   std::unique_ptr<Impl> m_impl;
 
