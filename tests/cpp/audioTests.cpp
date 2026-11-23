@@ -67,10 +67,23 @@ struct FrozenProbe {
   std::atomic<int> stage{0}; // 1: first reading taken, 2: second taken and resumed
   uint64_t first = 0, second = 0;
   bool frozen = false, effectsRunning = true, musicRunning = true;
+  int waits = 0;        // 10 ms waits for the freeze
+  bool settled = false; // the frame that froze it has finished
 };
 
+Uint32 SDLCALL readSecondAndResume(void *data, SDL_TimerID, Uint32);
+
+// The pause takes effect at the engine's next frame, which a busy machine can hold back for a while (a CI runner did,
+// over 350 ms): wait for the freeze itself, then let the sound stand (or play) 200 ms more
 Uint32 SDLCALL readFirst(void *data, SDL_TimerID, Uint32) {
   auto *probe = static_cast<FrozenProbe *>(data);
+  if (!probe->game->isFrozen() && ++probe->waits < 300)
+    return 10; // again in 10 ms, up to 3 s
+  if (!probe->settled) {
+    probe->settled = true; // frozen at the start of a frame; the audio stops later in that frame
+    return 50;
+  }
+  SDL_AddTimer(200, readSecondAndResume, probe);
   probe->first = cursor(*probe->game, probe->watch);
   probe->stage = 1;
   return 0;
@@ -96,8 +109,7 @@ void checkFrozen(Engine &engine, testing::Steps &steps, std::shared_ptr<FrozenPr
   steps.until([=] { return cursor(*game, probe->watch) > 0; }, "the sound plays", kFrames);
   steps.step(0, [=] {
     game->pause();
-    SDL_AddTimer(150, readFirst, probe.get());
-    SDL_AddTimer(350, readSecondAndResume, probe.get());
+    SDL_AddTimer(50, readFirst, probe.get()); // and that one schedules the second reading
   });
   steps.until([=] { return probe->stage == 2; }, "the probe resumed the game", kFrames);
   steps.step(0, [=] {

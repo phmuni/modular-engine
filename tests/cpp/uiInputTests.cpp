@@ -129,6 +129,8 @@ TEST_CASE(input_text) {
 
 TEST_CASE(input_mouse) {
   InputSystem &input = engine.input();
+  // The system reports where the real pointer is when the window shows (a Windows runner does): let that frame pass
+  steps.step(2, []() {});
   steps.step(1, [&input]() {
     CHECK_NEAR(input.getMouseDelta(), glm::vec2(0), 1e-6f);
     SDL_Event event{};

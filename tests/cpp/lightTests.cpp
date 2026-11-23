@@ -218,9 +218,12 @@ TEST_CASE(light_sun_shadow_follows_the_entity_rotation) {
     CHECK(!shot->pixels.empty());
     if (shot->pixels.empty())
       return;
-    CHECK(brightness(shot->at(glm::vec3(-4.0f, 0.0f, 0.0f))) > 100.0f);  // lit on the side the light comes from
-    CHECK(brightness(shot->at(glm::vec3(2.5f, 0.0f, 0.0f))) < 5.0f);    // in the pillar's shadow, to +X
-    CHECK(brightness(shot->at(glm::vec3(0.0f, 0.0f, 3.0f))) > 100.0f);   // and not to the side
+    // The shadow falls to +X and not to the side. Measured against the lit floor rather than as black: under Mesa
+    // (Linux and Windows CI) the sun shadow comes out at about half strength (see CLAUDE.md), on macOS it is black.
+    const float lit = brightness(shot->at(glm::vec3(-4.0f, 0.0f, 0.0f)));
+    CHECK(lit > 100.0f);                                                       // lit on the side the light comes from
+    CHECK(brightness(shot->at(glm::vec3(2.5f, 0.0f, 0.0f))) < lit * 0.6f);    // in the pillar's shadow, to +X
+    CHECK(brightness(shot->at(glm::vec3(0.0f, 0.0f, 3.0f))) > lit * 0.9f);    // and not to the side
   });
 }
 
