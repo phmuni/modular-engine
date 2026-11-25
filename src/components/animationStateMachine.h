@@ -22,6 +22,9 @@ struct AnimationStateMachine {
   std::string state;
   float stateTime = 0.0f;
   bool manual = false;
+  // Runtime, not saved: whether the state's clock has moved since it was entered. Its first move counts the clip's very
+  // start as crossed, so an animation event at 0 fires; see AnimationSystem and the README, "Animation events".
+  bool clockMoved = false;
 
   // Runtime, not saved: where each of the file's layers is, in the file's order (matched to the file by name)
   struct LayerState {
@@ -38,6 +41,7 @@ struct AnimationStateMachine {
     float presenceTarget = 0.0f;
     float presenceRate = 0.0f;  // per second
     float effectiveWeight = 0.0f; // the layer's weight times its presence, as of the last frame
+    bool clockMoved = false;      // as for the base's, above
   };
   std::vector<LayerState> layers;
 };

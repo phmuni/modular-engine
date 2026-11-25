@@ -667,3 +667,98 @@ TEST_CASE(knight_example_moves_attacks_and_blocks_input) {
     CHECK_EQ(model().animationState(), std::string("dead"));
   });
 }
+
+// The sword only hurts while the swing's damage window is open (animation events), and only what is within its reach: the
+// training dummy of the example scene flinches once per swing that reaches it, falls after three and gets up again
+TEST_CASE(knight_example_hits_the_training_dummy_once_per_swing_input) {
+  auto key = [](SDL_Scancode scancode, bool down) {
+    SDL_Event event{};
+    event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+    event.key.windowID = testing::ui::windowId();
+    event.key.scancode = scancode;
+    event.key.down = down;
+    SDL_PushEvent(&event);
+  };
+  auto button = [](bool down) {
+    SDL_Event event{};
+    event.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+    event.button.windowID = testing::ui::windowId();
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.down = down;
+    SDL_PushEvent(&event);
+  };
+  auto knight = [&engine]() { return engine.find("Knight Model"); };
+  auto dummy = [&engine]() { return engine.find("Dummy Model"); };
+  // What the dummy's hit layer did, and the windows the knight's sword opened and closed
+  auto flinches = std::make_shared<int>(0);
+  auto windows = std::make_shared<std::string>();
+  engine.onAnimationStateChanged([flinches](const GameEntity &entity, const std::string &, const std::string &to,
+                                            const std::string &layer) {
+    if (entity.name() == "Dummy Model" && layer == "hit" && to == "flinch")
+      ++*flinches;
+  });
+  engine.onAnimationEvent([windows](const GameEntity &entity, const AnimationEvent &event) {
+    if (entity.name() == "Knight Model" && event.name == "damage")
+      *windows += event.phase == AnimationEvent::Phase::Begin ? "b" : "e";
+  });
+  // One swing: press, release, and wait for the layer to be back to nothing
+  auto swing = [&steps, button, knight]() {
+    steps.step(1, [button]() { button(true); });
+    steps.step(2, [button]() { button(false); });
+    steps.until([knight]() { return knight().animationLayerState("upper") == "attack"; }, "the swing", 10);
+    steps.until([knight]() { return knight().animationLayerState("upper") == "none"; }, "the swing to end", 120);
+  };
+
+  engine.loadScene("../assets/scenes/character.json");
+  steps.until([&engine, knight, dummy]() { return !engine.isLoadingScene() && knight().valid() && dummy().valid(); },
+              "the scene to load", 300);
+  steps.step(40, [&engine, dummy]() {
+    const glm::vec3 apart = engine.find("Dummy").position() - engine.find("Knight").position();
+    CHECK(glm::length(apart) > 2.5f); // not touching: a short walk away, in front of the knight (-Z)
+    CHECK(apart.z < -2.5f);
+    CHECK_EQ(dummy().animationState(), std::string("locomotion"));
+    CHECK(engine.find("Dummy").forward().z > 0.9f); // and facing the player, a little off to the side of its way
+  });
+
+  // Out of reach: the window opens and closes in the air, nobody is hit
+  swing();
+  steps.step(5, [flinches, windows]() {
+    CHECK_EQ(*windows, std::string("be"));
+    CHECK_EQ(*flinches, 0);
+  });
+
+  // Walk up to it
+  steps.step(1, [key]() { key(SDL_SCANCODE_W, true); });
+  steps.until([&engine]() { return engine.find("Knight").position().z < -2.0f; }, "the knight to get close", 240,
+              [key]() { key(SDL_SCANCODE_W, false); });
+  steps.step(40, [&engine]() {
+    const float apart = engine.find("Knight").position().z - engine.find("Dummy").position().z;
+    CHECK(apart > 0.8f && apart < 1.8f); // in reach of the sword, not touching
+  });
+
+  // One swing, one hit, though the window is open for several frames and the dummy is inside it all of them
+  swing();
+  steps.step(5, [flinches, windows, dummy]() {
+    CHECK_EQ(*windows, std::string("bebe"));
+    CHECK_EQ(*flinches, 1);
+    CHECK_EQ(dummy().animationState(), std::string("locomotion"));
+  });
+  swing();
+  steps.step(5, [flinches]() { CHECK_EQ(*flinches, 2); });
+  // The third takes it down
+  swing();
+  steps.step(5, [flinches, dummy]() {
+    CHECK_EQ(*flinches, 3);
+    CHECK_EQ(dummy().animationState(), std::string("dead"));
+  });
+  // A dummy that is down takes no hits
+  swing();
+  steps.step(5, [flinches, dummy]() {
+    CHECK_EQ(*flinches, 3);
+    CHECK_EQ(dummy().animationState(), std::string("dead"));
+  });
+  // ...and gets up after its few seconds
+  steps.until([dummy]() { return dummy().animationState() == "locomotion"; }, "the dummy to get up", 400);
+  swing();
+  steps.step(5, [flinches]() { CHECK_EQ(*flinches, 4); });
+}

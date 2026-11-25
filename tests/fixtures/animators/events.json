@@ -1,0 +1,102 @@
+{
+  "default": "plain",
+  "params": {
+    "speed": "float",
+    "w": { "type": "float", "default": 1.0 },
+    "plain": "trigger",
+    "points": "trigger",
+    "once": "trigger",
+    "windowed": "trigger",
+    "blend": "trigger",
+    "back": "trigger",
+    "fast": "trigger",
+    "jump": "trigger",
+    "frozen": "trigger",
+    "ghost": "trigger",
+    "swing": "trigger",
+    "interrupt": "trigger"
+  },
+  "states": [
+    { "name": "plain", "clip": "Twist" },
+    {
+      "name": "points",
+      "clip": "Sway",
+      "events": [{ "name": "zero", "at": 0 }, { "name": "quarter", "at": 0.25 }, { "name": "one", "at": 1 }]
+    },
+    {
+      "name": "once",
+      "clip": "Twist",
+      "loop": false,
+      "events": [
+        { "name": "zero", "at": 0 },
+        { "name": "half", "at": 0.5 },
+        { "name": "one", "at": 1 },
+        { "name": "win", "from": 0.25, "to": 0.75 },
+        { "name": "tail", "from": 0.9, "to": 1 }
+      ]
+    },
+    { "name": "windowed", "clip": "Sway", "events": [{ "name": "w", "from": 0.2, "to": 0.4 }] },
+    {
+      "name": "blendy",
+      "blend": { "param": "speed", "clips": [{ "clip": "Sway", "at": 0 }, { "clip": "Twist", "at": 4 }] },
+      "events": [{ "name": "half", "at": 0.5 }]
+    },
+    {
+      "name": "back",
+      "clip": "Sway",
+      "speed": -1,
+      "events": [{ "name": "zero", "at": 0 }, { "name": "mid", "at": 0.5 }]
+    },
+    { "name": "fast", "clip": "Sway", "speed": 284.4, "events": [{ "name": "mid", "at": 0.5 }] },
+    {
+      "name": "jump",
+      "clip": "Twist",
+      "speed": 30,
+      "loop": false,
+      "events": [{ "name": "j", "from": 0.3, "to": 0.4 }, { "name": "p", "at": 0.35 }]
+    },
+    {
+      "name": "still",
+      "clip": "Sway",
+      "speed": 0,
+      "events": [{ "name": "zero", "at": 0 }, { "name": "one", "at": 1 }]
+    },
+    { "name": "ghost", "clip": "NoSuchClip", "events": [{ "name": "zero", "at": 0 }, { "name": "w", "from": 0, "to": 0.5 }] }
+  ],
+  "transitions": [
+    { "from": "any", "to": "plain", "fade": 1.0, "when": [{ "param": "plain" }] },
+    { "from": "any", "to": "points", "fade": 0.1, "when": [{ "param": "points" }] },
+    { "from": "any", "to": "once", "fade": 0.1, "when": [{ "param": "once" }] },
+    { "from": "any", "to": "windowed", "fade": 0.1, "when": [{ "param": "windowed" }] },
+    { "from": "any", "to": "blendy", "fade": 0.1, "when": [{ "param": "blend" }] },
+    { "from": "any", "to": "back", "fade": 0.1, "when": [{ "param": "back" }] },
+    { "from": "any", "to": "fast", "fade": 0.1, "when": [{ "param": "fast" }] },
+    { "from": "any", "to": "jump", "fade": 0.1, "when": [{ "param": "jump" }] },
+    { "from": "any", "to": "still", "fade": 0.1, "when": [{ "param": "frozen" }] },
+    { "from": "any", "to": "ghost", "fade": 0.1, "when": [{ "param": "ghost" }] }
+  ],
+  "layers": [
+    {
+      "name": "upper",
+      "weight": "w",
+      "states": [
+        { "name": "none" },
+        {
+          "name": "swing",
+          "clip": "Twist",
+          "loop": false,
+          "events": [
+            { "name": "lead", "at": 0 },
+            { "name": "hurt", "from": 0.25, "to": 0.5 },
+            { "name": "tick", "at": 0.75 }
+          ]
+        },
+        { "name": "other", "clip": "Sway" }
+      ],
+      "transitions": [
+        { "from": "none", "to": "swing", "fade": 0.1, "when": [{ "param": "swing" }] },
+        { "from": "swing", "to": "other", "fade": 0.1, "when": [{ "param": "interrupt" }] }
+      ]
+    }
+  ]
+}

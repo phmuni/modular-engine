@@ -324,6 +324,23 @@ void Engine::update(bool &isRunning, bool pollInput) {
     m_systemManager.getSystem<ScriptSystem>().animationStateChanged(change.entity, change.from, change.to,
                                                                     change.layer);
   }
+  // Animation events, after the state changes. What a listener does (a destroyed entity, a machine removed) may make
+  // more events (the windows it closes), which are delivered in the rounds after, a few at most.
+  for (int round = 0; round < 8; ++round) {
+    const std::vector<AnimationSystem::PendingEvent> events = animationSystem.takeEvents();
+    if (events.empty())
+      break;
+    for (const AnimationSystem::PendingEvent &pending : events) {
+      animationSystem.announce(pending);
+      if (!isAlive(pending.entity))
+        continue;
+      for (const auto &listener : m_animationEventListeners)
+        if (isAlive(pending.entity))
+          listener(entity(pending.entity), pending.event);
+      if (isAlive(pending.entity))
+        m_systemManager.getSystem<ScriptSystem>().animationEvent(pending.entity, pending.event);
+    }
+  }
   // The camera rig last of the movement: it trails where the target ended up this frame
   cameraSystem.updateRigs(timeSystem.getDeltaTime(), m_systemManager);
 

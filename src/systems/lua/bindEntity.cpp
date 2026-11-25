@@ -323,6 +323,7 @@ void LuaBindings::bindEntity() {
       "trigger", &GameEntity::trigger,
       "animationState", sol::readonly_property(&GameEntity::animationState),
       "animationLayerState", &GameEntity::animationLayerState,
+      "inAnimationWindow", &GameEntity::inAnimationWindow,
       // The entity's AudioSource: audioPlaying is read-only, the others read and write
       "playAudio", &GameEntity::playAudio,
       "stopAudio", &GameEntity::stopAudio,

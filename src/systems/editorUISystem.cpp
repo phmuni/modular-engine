@@ -2903,7 +2903,19 @@ void drawAnimationStateMachine(Engine &engine, SystemManager &systemManager, Ent
     return;
   }
 
+  // The animation events' windows open in a layer, by name: " [damage, invulnerable]"
+  auto windowsOf = [&](const std::string &layer) {
+    std::string text;
+    for (const std::string &name : animationSystem.openWindows(entity, layer))
+      text += (text.empty() ? " [" : ", ") + name;
+    return text.empty() ? text : text + "]";
+  };
   ImGui::Text("State: %s", engine.getAnimationState(entity).c_str());
+  const std::string baseWindows = windowsOf(AnimationGraph::kBaseLayer);
+  if (!baseWindows.empty()) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", baseWindows.c_str());
+  }
   if (machine.manual) {
     ImGui::SameLine();
     ImGui::TextDisabled("(a clip was played by hand)");
@@ -2915,7 +2927,8 @@ void drawAnimationStateMachine(Engine &engine, SystemManager &systemManager, Ent
     ImGui::SetTooltip("Back to the default state with the parameters at their initial values");
   // The layers on top of it: where each is and how much of it shows now (its weight times its presence)
   for (const AnimationStateMachine::LayerState &layer : machine.layers)
-    ImGui::TextDisabled("  %s: %s (weight %.2f)", layer.name.c_str(), layer.state.c_str(), layer.effectiveWeight);
+    ImGui::TextDisabled("  %s: %s (weight %.2f)%s", layer.name.c_str(), layer.state.c_str(), layer.effectiveWeight,
+                        windowsOf(layer.name).c_str());
 
   for (const auto &[name, param] : graph->params) {
     float &value = machine.params[name];

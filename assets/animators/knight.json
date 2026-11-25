@@ -19,11 +19,17 @@
           { "clip": "Walking_A", "at": 0.68 },
           { "clip": "Running_A", "at": 2.84 }
         ]
-      }
+      },
+      "events": [{ "name": "step", "at": 0.08 }, { "name": "step", "at": 0.58 }]
     },
     { "name": "air", "clip": "Jump_Idle" },
     { "name": "landing", "clip": "Jump_Land", "speed": 1.6, "loop": false },
-    { "name": "dodge", "clip": "Dodge_Forward", "loop": false },
+    {
+      "name": "dodge",
+      "clip": "Dodge_Forward",
+      "loop": false,
+      "events": [{ "name": "invulnerable", "from": 0.05, "to": 0.6 }]
+    },
     { "name": "dead", "clip": "Death_A", "loop": false }
   ],
   "transitions": [
@@ -46,8 +52,18 @@
       "mask": { "spine": 0.5, "chest": 1.0 },
       "states": [
         { "name": "none" },
-        { "name": "attack", "clip": "1H_Melee_Attack_Chop", "loop": false },
-        { "name": "attack2", "clip": "1H_Melee_Attack_Slice_Diagonal", "loop": false },
+        {
+          "name": "attack",
+          "clip": "1H_Melee_Attack_Chop",
+          "loop": false,
+          "events": [{ "name": "damage", "from": 0.5, "to": 0.65 }]
+        },
+        {
+          "name": "attack2",
+          "clip": "1H_Melee_Attack_Slice_Diagonal",
+          "loop": false,
+          "events": [{ "name": "damage", "from": 0.35, "to": 0.5 }]
+        },
         { "name": "block", "clip": "Block", "loop": false },
         { "name": "blocking", "clip": "Blocking" }
       ],

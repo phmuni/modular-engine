@@ -52,6 +52,59 @@ float floatOf(const json &object, const char *key, float fallback) {
 // Where an error belongs, for the messages: "" for the base, ` of layer "upper"` for a layer
 std::string where(const std::string &layer) { return layer.empty() ? std::string() : " of layer \"" + layer + "\""; }
 
+// A state's "events": `{"name": "step", "at": 0.3}` or `{"name": "damage", "from": 0.35, "to": 0.6}`
+bool parseEvents(const json &list, AnimationGraph::State &state, const std::string &layer, std::string &error) {
+  const std::string in = "state \"" + state.name + "\"" + where(layer);
+  if (state.empty) {
+    error = in + " plays nothing, so it has no clip to put \"events\" on";
+    return false;
+  }
+  if (!list.is_array()) {
+    error = "\"events\" of " + in + " must be a list";
+    return false;
+  }
+  for (const json &item : list) {
+    AnimationGraph::Event event;
+    event.name = textOf(item, "name");
+    if (event.name.empty()) {
+      error = "an event of " + in + " has no \"name\"";
+      return false;
+    }
+    const std::string about = "event \"" + event.name + "\" of " + in;
+    const bool hasAt = item.contains("at"), hasFrom = item.contains("from"), hasTo = item.contains("to");
+    if (hasAt && (hasFrom || hasTo)) {
+      error = about + " has both \"at\" and \"from\"/\"to\": a moment or a window, not both";
+      return false;
+    }
+    if (!hasAt && !(hasFrom && hasTo)) {
+      error = about + " needs \"at\" (a moment) or both \"from\" and \"to\" (a window)";
+      return false;
+    }
+    event.window = !hasAt;
+    for (const char *key : {"at", "from", "to"}) {
+      if (!item.contains(key))
+        continue;
+      const json &value = item[key];
+      if (!value.is_number() || value.get<float>() < 0.0f || value.get<float>() > 1.0f) {
+        error = about + ": \"" + key + "\" is a share of the clip, a number from 0 to 1";
+        return false;
+      }
+    }
+    if (event.window) {
+      event.from = item["from"].get<float>();
+      event.to = item["to"].get<float>();
+      if (event.from >= event.to) {
+        error = about + ": \"from\" must be less than \"to\"";
+        return false;
+      }
+    } else {
+      event.at = item["at"].get<float>();
+    }
+    state.events.push_back(std::move(event));
+  }
+  return true;
+}
+
 bool parseStates(const json &list, const std::map<std::string, AnimationGraph::Param> &params,
                  AnimationGraph::StateSet &set, bool allowEmpty, const std::string &layer, std::string &error) {
   for (const json &item : list) {
@@ -105,9 +158,18 @@ bool parseStates(const json &list, const std::map<std::string, AnimationGraph::P
               "\" has neither a \"clip\" nor a \"blend\" (only a layer's state may play nothing)";
       return false;
     }
+    if (item.contains("events") && !parseEvents(item["events"], state, layer, error))
+      return false;
     set.states.push_back(std::move(state));
   }
   return true;
+}
+
+bool anyEvents(const AnimationGraph::StateSet &set) {
+  for (const AnimationGraph::State &state : set.states)
+    if (!state.events.empty())
+      return true;
+  return false;
 }
 
 bool parseTransitions(const json &list, const std::map<std::string, AnimationGraph::Param> &params,
@@ -320,5 +382,8 @@ bool AnimationGraph::parse(const json &data, AnimationGraph &graph, std::string 
       graph.layers.push_back(std::move(layer));
     }
   }
+  graph.hasEvents = anyEvents(graph.base);
+  for (const Layer &layer : graph.layers)
+    graph.hasEvents = graph.hasEvents || anyEvents(layer);
   return true;
 }

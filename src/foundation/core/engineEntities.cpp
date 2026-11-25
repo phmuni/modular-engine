@@ -164,8 +164,10 @@ void Engine::playAnimation(Entity entity, std::string_view clip, float fadeSecon
   const Model *model = tryGet<Model>(entity);
   const MeshAnimation *animation =
       model ? m_systemManager.getSystem<ResourceSystem>().getMesh(model->meshHandle).getAnimation() : nullptr;
-  if (AnimationStateMachine *machine = tryGet<AnimationStateMachine>(entity))
+  if (AnimationStateMachine *machine = tryGet<AnimationStateMachine>(entity)) {
     machine->manual = true; // the machine keeps its state but leaves the Animator alone until it changes state
+    m_systemManager.getSystem<AnimationSystem>().closeWindows(entity, AnimationGraph::kBaseLayer); // no clip of its own
+  }
   if (animation && !clip.empty() && animation->findClip(clip) < 0)
     LOG_W("[Engine] playAnimation: entity %d's model has no clip \"%.*s\"", entity, static_cast<int>(clip.size()),
           clip.data());
@@ -192,6 +194,7 @@ void Engine::setAnimator(Entity entity, std::string_view path) {
   if (!isAlive(entity))
     return;
   if (path.empty()) {
+    m_systemManager.getSystem<AnimationSystem>().closeAllWindows(entity);
     removeComponent<AnimationStateMachine>(entity);
     return;
   }
@@ -249,6 +252,14 @@ std::string Engine::getAnimationState(Entity entity, std::string_view layer) {
 void Engine::onAnimationStateChanged(
     std::function<void(const GameEntity &, const std::string &, const std::string &, const std::string &)> listener) {
   m_animationListeners.push_back(std::move(listener));
+}
+
+void Engine::onAnimationEvent(std::function<void(const GameEntity &, const AnimationEvent &)> listener) {
+  m_animationEventListeners.push_back(std::move(listener));
+}
+
+bool Engine::inAnimationWindow(Entity entity, std::string_view name) {
+  return m_systemManager.getSystem<AnimationSystem>().inWindow(entity, name);
 }
 
 Entity Engine::createCameraEntity(std::string_view name, glm::vec3 position, float yaw, float pitch, float fov,

@@ -9,6 +9,7 @@
 #include "components/script.h"
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
+#include "systems/animationEvent.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -56,6 +57,10 @@ public:
   // Tells the entity's script (onStateChanged) that its animation state machine moved from one state to another, in
   // the layer of that name ("base" for the top-level states)
   void animationStateChanged(Entity entity, const std::string &from, const std::string &to, const std::string &layer);
+
+  // Tells the entity's script (onAnimationEvent(self, name, phase, layer), phase "fire", "begin" or "end") of an
+  // animation event of its state machine
+  void animationEvent(Entity entity, const AnimationEvent &event);
 
   // The Lua state, to give scripts more functions or types from C++ (with sol2)
   sol::state &lua();

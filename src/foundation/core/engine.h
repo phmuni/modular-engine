@@ -20,6 +20,7 @@
 #include "foundation/ecs/entityManager.h"
 #include "foundation/ecs/systemManager.h"
 #include "rendering/graphicsSettings.h"
+#include "systems/animationEvent.h"
 #include "systems/collisionSystem.h"
 #include "systems/gameCamera.h"
 #include "systems/gameTime.h"
@@ -344,6 +345,15 @@ public:
   // states). Lua scripts get onStateChanged(self, old, new, layer).
   void onAnimationStateChanged(
       std::function<void(const GameEntity &, const std::string &, const std::string &, const std::string &)> listener);
+  // Calls `listener` for the animation events of every state machine (see the README, "Animation events"): the entity
+  // and the event, whose phase is Fire for a moment of a clip, and Begin and End for a window of it (the machine
+  // always ends what it began, also when the state is left or the machine goes away). They come after the frame's state
+  // changes, in the order they happened for each machine; a listener may change anything, the entities it was told of
+  // are checked to be alive before each one. Lua scripts get onAnimationEvent(self, name, phase, layer).
+  void onAnimationEvent(std::function<void(const GameEntity &, const AnimationEvent &)> listener);
+  // Whether a window of that name is open on the entity, in any layer: true from the Begin event until the End one (a
+  // listener told of the Begin sees true, one told of the End sees false)
+  bool inAnimationWindow(Entity entity, std::string_view name);
   // Bodies that started touching during the last update, one of them with component A and the other with B (each
   // pair once, A's first), e.g. forEachContact<Player, Coin>
   template <typename A, typename B, typename Fn> void forEachContact(Fn &&fn) {
@@ -853,6 +863,7 @@ private:
   float m_prefabPollTime = 0.0f;
   std::vector<std::function<void(const GameEntity &, const std::string &, const std::string &, const std::string &)>>
       m_animationListeners;
+  std::vector<std::function<void(const GameEntity &, const AnimationEvent &)>> m_animationEventListeners;
   float m_previewTime = 0.0f; // seconds in the editor with the game frozen, what custom shaders' `time` shows there
   void applyHistoryRequest();
   void clearHistory();

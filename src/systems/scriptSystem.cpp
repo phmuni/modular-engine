@@ -381,6 +381,16 @@ struct ScriptSystem::Impl : LuaHost {
       call(it->second, "onStateChanged", engine.entity(entity), from, to, layer);
   }
 
+  // An animation event of the entity's state machine: its script hears of it, like of a state change
+  void animationEvent(Entity entity, const AnimationEvent &event) {
+    auto it = instances.find(entity);
+    if (it == instances.end() || !it->second.started || !engine.isAlive(entity))
+      return;
+    static const char *const phases[] = {"fire", "begin", "end"};
+    call(it->second, "onAnimationEvent", engine.entity(entity), event.name, phases[static_cast<int>(event.phase)],
+         event.layer);
+  }
+
   // --- Coroutines -----------------------------------------------------------------------------------------------
 
   void finishRoutine(const std::shared_ptr<Routine> &routine) {
@@ -509,4 +519,5 @@ void ScriptSystem::animationStateChanged(Entity entity, const std::string &from,
                                          const std::string &layer) {
   m_impl->animationStateChanged(entity, from, to, layer);
 }
+void ScriptSystem::animationEvent(Entity entity, const AnimationEvent &event) { m_impl->animationEvent(entity, event); }
 size_t ScriptSystem::getInstanceCount() const { return m_impl->instances.size(); }

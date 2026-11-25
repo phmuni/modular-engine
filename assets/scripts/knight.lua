@@ -5,6 +5,10 @@
 -- The entity with the CharacterController is the capsule; the model hangs under it as a child, lowered to the capsule's
 -- feet, because the capsule's Transform is its middle. The animation state machine is on that child, so this script
 -- gives it what a CharacterController on the same entity would: `speed` and `grounded`.
+--
+-- The sword only hurts while the swing's `damage` window is open (animation events in animators/knight.json): then
+-- whatever "enemy" is in front of the knight, once per swing, is hit through its own `takeHit`, as the training dummy
+-- (scripts/knight_dummy.lua) has it. The model has no script, so this one asks the model whether the window is open.
 
 properties = {
   walkSpeed = 0.68,   -- units per second: the pace Walking_A covers at the model's scale, so the feet do not slide
@@ -15,6 +19,8 @@ properties = {
   blockSlowdown = 0.5, -- movement while blocking, as a share
   dodgeSpeed = 3.0,   -- units per second along the dodge
   dodgeTime = 0.4,    -- seconds, the length of Dodge_Forward
+  reach = 0.9,        -- how far in front of the knight the sword's hit is centered
+  hitRadius = 0.6,    -- and how far around that it reaches
 }
 
 local START = vec3(0, 0.95, 0)
@@ -24,6 +30,7 @@ function onStart(self)
   self.pace = 0        -- how fast it is walking now
   self.dodging = 0     -- seconds of dodge left
   self.heading = vec3(0)
+  self.struck = {}     -- who this swing has hit already, by entity number
   self.dead = false
   -- The scene browser flies the camera with the same keys: off, so the camera is the knight's
   engine.setToggle("freeCamera", false)
@@ -55,8 +62,26 @@ local function turnToward(self, direction, dt)
   self.rotation = rotation
 end
 
+-- While the damage window is open, hits what is in front of the sword: the "enemy" entities with a `takeHit`
+local function swordHits(self)
+  if not self.model:inAnimationWindow("damage") then
+    if next(self.struck) then
+      self.struck = {} -- the next swing (or the next window of a combo) may hit them again
+    end
+    return
+  end
+  local center = self.position + self.forward * self.reach
+  for _, target in ipairs(physics.overlapSphere(center, self.hitRadius, { characters = true, ignore = self })) do
+    if target:hasTag("enemy") and target.takeHit and not self.struck[target.id] then
+      self.struck[target.id] = true
+      target:takeHit()
+    end
+  end
+end
+
 function onUpdate(self, dt)
   local model = self.model
+  swordHits(self)
   local grounded = self.onGround
   local state = model.animationState
 

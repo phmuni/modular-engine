@@ -8,11 +8,13 @@
 #include <filesystem>
 #include <cstdint>
 #include <glm/glm.hpp>
+#include "systems/animationEvent.h"
 #include "systems/animationGraph.h"
 #include <map>
 #include <memory>
 #include <tuple>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -49,6 +51,24 @@ public:
   };
   std::vector<StateChange> takeStateChanges();
 
+  // The animation events since the last call, oldest first, for the entity that has them. They are collected while the
+  // machines run and delivered afterwards, so a listener may change anything.
+  struct PendingEvent {
+    Entity entity;
+    AnimationEvent event;
+  };
+  std::vector<PendingEvent> takeEvents();
+  // Notes that an event is being delivered, before anyone is told: between a window's Begin and its End,
+  // inWindow is true. The Engine calls it for every event it takes, also those of entities that are gone by then.
+  void announce(const PendingEvent &pending);
+  // Whether a window of that name is open on the entity, in any layer, as far as the events delivered tell
+  bool inWindow(Entity entity, std::string_view name) const;
+  // The names of the windows open in one of the entity's layers ("base" for the top-level states), for the editor
+  std::vector<std::string> openWindows(Entity entity, const std::string &layer) const;
+  // Closes the windows open in a layer (an End each), or in all of them
+  void closeWindows(Entity entity, std::string_view layer);
+  void closeAllWindows(Entity entity);
+
   // Switches the entity's animator to `clip`, fading from what it plays over `fadeSeconds` (none when 0); the time
   // starts over. What it fades out is what is on screen: a blend is faded out whole, the clip keeps its own speed and
   // loop, and switching again in the middle of a fade fades out the pose the fade had reached, so nothing jumps.
@@ -76,18 +96,54 @@ private:
   int m_graphCheck = 0; // frames since the definition files were last looked at
   std::vector<StateChange> m_changes;
 
+  // Animation events. A window that is open is a record here, not in the component, so that one whose machine was
+  // removed (or whose entity was destroyed) is still known and gets its End. It stays until that End is delivered.
+  struct OpenWindow {
+    std::string layer, state, name;
+    int index = 0;           // of the event in the state's list
+    bool announced = false;  // its Begin was delivered
+    bool closing = false;    // its End is queued
+  };
+  // What evaluate needs to tell where a playback's clock crossed events: the state it plays, in which layer, whether
+  // the state's clock has moved before, and whether nothing is to be heard (a layer that shows nothing, a manual play)
+  struct EventSource {
+    const AnimationGraph::State *state = nullptr;
+    const std::string *layer = nullptr;
+    bool *clockMoved = nullptr;
+    bool muted = false;
+  };
+  std::unordered_map<Entity, std::vector<OpenWindow>> m_windows;
+  std::vector<PendingEvent> m_events;
+
+  void queueEvent(Entity entity, const std::string &name, AnimationEvent::Phase phase, const std::string &layer,
+                  const std::string &state);
+  OpenWindow *openWindow(Entity entity, const std::string &layer, int index);
+  void moveEvents(Entity entity, const EventSource &source, bool loop, float before, float after, float travel);
+  void validateWindows(Entity entity, const AnimationStateMachine &machine, const AnimationGraph &graph);
+
   const MeshAnimation *animationOf(Entity entity) const;
   void enterState(Entity entity, AnimationStateMachine &machine, const AnimationGraph &graph, int state,
                   float fadeSeconds);
   void enterLayerState(Entity entity, AnimationStateMachine &machine, const AnimationGraph::Layer &layer, int layerIndex,
                        int state, float fadeSeconds);
-  void runMachine(Entity entity, AnimationStateMachine &machine, float deltaTime);
+  // Runs the machine; returns the index of the base state it is in afterwards (-1 when its file did not load), and
+  // gives the definition it ran with to `held`
+  int runMachine(Entity entity, AnimationStateMachine &machine, float deltaTime,
+                 std::shared_ptr<const AnimationGraph> *held = nullptr);
+  // What update found out about each machine this frame, by entity, so the posing need not look it up again
+  struct Running {
+    Entity entity;
+    std::shared_ptr<const AnimationGraph> graph;
+    int state;
+  };
+  std::vector<Running> m_running; // scratch, ascending by entity
   void reloadChangedGraphs();
 
   // Posing: one playback (the Animator's, or a layer's) advanced by deltaTime and its pose written to `pose` (not when
   // `wanted` is false: only the clocks move). False when its clip is not in the model.
+  // `events`, when given, is where the clock's move is looked at for animation events.
   bool evaluate(Entity entity, int slot, Animator &playback, const MeshAnimation &animation, float deltaTime,
-                bool wanted, std::vector<NodePose> &pose);
+                bool wanted, std::vector<NodePose> &pose, const EventSource *events = nullptr);
   void applyLayers(Entity entity, AnimationStateMachine &machine, const std::shared_ptr<const AnimationGraph> &graph,
                    uint32_t meshHandle, const MeshAnimation &animation, float deltaTime, std::vector<NodePose> &pose);
   // The weight of each node of the skeleton for a layer's mask (empty: every node at 1), worked out once per graph

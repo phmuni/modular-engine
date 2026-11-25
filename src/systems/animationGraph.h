@@ -23,6 +23,14 @@ struct AnimationGraph {
     std::string clip;
     float at = 0.0f; // the parameter value at which this clip plays alone
   };
+  // A moment (`at`) or a window (`from` to `to`) of a state's clip the game hears of, as shares of the clip (0 its start,
+  // 1 its end; for a blend, of the cycle)
+  struct Event {
+    std::string name;
+    bool window = false;
+    float at = 0.0f;
+    float from = 0.0f, to = 0.0f;
+  };
   struct State {
     std::string name;
     std::string clip; // empty with a blend: the blend's clips play
@@ -32,6 +40,7 @@ struct AnimationGraph {
     bool loop = true;
     std::string blendParam;
     std::vector<BlendPoint> blend; // ascending by `at`
+    std::vector<Event> events;
   };
   struct Condition {
     std::string param;
@@ -70,6 +79,7 @@ struct AnimationGraph {
   std::map<std::string, Param> params; // shared by the base and every layer
   StateSet base;                       // the top-level states: the base layer, which is called "base"
   std::vector<Layer> layers;           // in file order, which is the order they are applied in
+  bool hasEvents = false;              // some state, in the base or a layer, has animation events
 
   static constexpr const char *kBaseLayer = "base";
 

@@ -57,6 +57,11 @@ onOverlap = nil
 onReload = nil
 ---@type fun(self: Entity, old: string, new: string, layer: string)
 onStateChanged = nil
+---An animation event of the entity's state machine (see the README, "Animation events"): `phase` is "fire" for a moment
+---of a clip, "begin" and "end" for a window of it; `layer` is "base" for the top-level states. Only the script of the
+---entity that has the machine hears it, like onStateChanged.
+---@type fun(self: Entity, name: string, phase: string, layer: string)
+onAnimationEvent = nil
 
 ---Game script only: a menu (ui.menu, the pause menu too, named "pause") opened.
 ---@type fun(menu: string)
@@ -385,6 +390,13 @@ function Entity:setAnimator(path) end
 ---@param layer string
 ---@return string
 function Entity:animationLayerState(layer) end
+
+---Whether a window of its animation state machine's events with that name is open, in any layer: true from the "begin"
+---event until the "end" one (the onAnimationEvent for a "begin" sees true, the one for an "end" sees false). False
+---without a machine. For a script that is not the machine's to poll, e.g. a parent of the model.
+---@param name string
+---@return boolean
+function Entity:inAnimationWindow(name) end
 
 ---Reflection probe (the "ReflectionProbe" component, made in the editor): captures what is around the entity and writes it to
 ---the probe's file under assets/probes/, setting its bakedPath, so saving the scene keeps it. Returns false when the

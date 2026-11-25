@@ -54,6 +54,8 @@ void blendPoses(std::vector<NodePose> &into, const std::vector<NodePose> &from, 
 // Moves `time` on by `delta` within the clip: around when looping, stopping at an end otherwise
 float advance(float time, float delta, float duration, bool loop, bool &finished) {
   finished = false;
+  if (delta == 0.0f)
+    return time; // standing still (a pause, speed 0) ends nothing, not even at the clip's very start
   time += delta;
   if (duration <= 0.0f)
     return 0.0f;
@@ -77,6 +79,18 @@ float stepClock(float time, float deltaTime, float speed, bool loop, const Anima
   const float mix = std::clamp(weight, 0.0f, 1.0f);
   const float duration = clip.duration + (blendClip->duration - clip.duration) * mix;
   return advance(time, duration > 0.0f ? deltaTime * speed / duration : 0.0f, 1.0f, loop, finished);
+}
+
+// How long one cycle of a clip, or of the blend of two, takes, in seconds
+float cycleLength(const AnimationClip &clip, const AnimationClip *blendClip, float weight) {
+  if (!blendClip)
+    return clip.duration;
+  return clip.duration + (blendClip->duration - clip.duration) * std::clamp(weight, 0.0f, 1.0f);
+}
+
+// Where a playback's clock is in the cycle, 0 to 1 (a blend's `time` already is)
+float cycleShare(float time, const AnimationClip &clip, const AnimationClip *blendClip) {
+  return blendClip ? time : clip.duration > 0.0f ? time / clip.duration : 0.0f;
 }
 
 // The pose of a clip, or of two mixed by `weight` (then `time` is the phase)
@@ -260,13 +274,25 @@ void AnimationSystem::sample(const MeshAnimation &animation, const AnimationClip
 void AnimationSystem::update(float deltaTime) {
   // State machines first, so the clip they pick is the one posed this frame. In a stable order, for repeatable runs.
   reloadChangedGraphs();
+  // Windows whose machine is gone (the component removed, the entity destroyed) are closed
+  for (auto &[entity, records] : m_windows)
+    if (!m_componentManager.tryGet<AnimationStateMachine>(entity))
+      for (OpenWindow &record : records)
+        if (!record.closing) {
+          record.closing = true;
+          queueEvent(entity, record.name, AnimationEvent::Phase::End, record.layer, record.state);
+        }
   std::vector<Entity> machines;
   m_componentManager.forEachComponent<AnimationStateMachine>(
       [&](Entity entity, AnimationStateMachine &) { machines.push_back(entity); });
   std::sort(machines.begin(), machines.end());
+  m_running.clear();
   for (Entity entity : machines)
-    if (AnimationStateMachine *machine = m_componentManager.tryGet<AnimationStateMachine>(entity))
-      runMachine(entity, *machine, deltaTime);
+    if (AnimationStateMachine *machine = m_componentManager.tryGet<AnimationStateMachine>(entity)) {
+      Running running{entity, nullptr, -1};
+      running.state = runMachine(entity, *machine, deltaTime, &running.graph);
+      m_running.push_back(std::move(running));
+    }
 
   // Joints of entities that are gone, or no longer animated, are dropped below, and so are the poses kept for fades
   // nobody used this frame
@@ -284,12 +310,29 @@ void AnimationSystem::update(float deltaTime) {
 
     AnimationStateMachine *machine = m_componentManager.tryGet<AnimationStateMachine>(entity);
     std::shared_ptr<const AnimationGraph> layered;
-    if (machine && !machine->layers.empty())
-      layered = graph(machine->path);
-    const bool hasLayers = layered && !layered->layers.empty();
+    int baseState = -1;
+    if (machine) {
+      auto running = std::lower_bound(m_running.begin(), m_running.end(), entity,
+                                      [](const Running &r, Entity e) { return r.entity < e; });
+      if (running != m_running.end() && running->entity == entity) {
+        layered = running->graph;
+        baseState = running->state;
+      }
+    }
+    const bool hasLayers = layered && !layered->layers.empty() && !machine->layers.empty();
+
+    // What the base's clock is looked at for animation events with: the state it is in. A clip played by hand is not
+    // the state's, so it is silent and its windows are closed.
+    static const std::string baseLayer = AnimationGraph::kBaseLayer;
+    EventSource baseEvents;
+    if (layered && layered->hasEvents && baseState >= 0) {
+      baseEvents = {&layered->base.states[baseState], &baseLayer, &machine->clockMoved, machine->manual};
+      if (machine->manual && !m_windows.empty())
+        closeWindows(entity, baseLayer);
+    }
 
     // The base layer; a clip the model lacks leaves the rest pose, which layers still go over
-    if (!evaluate(entity, 0, animator, *animation, deltaTime, true, pose)) {
+    if (!evaluate(entity, 0, animator, *animation, deltaTime, true, pose, baseEvents.state ? &baseEvents : nullptr)) {
       if (!hasLayers) {
         m_joints[entity] = animation->restJointMatrices;
         return;
@@ -309,7 +352,7 @@ void AnimationSystem::update(float deltaTime) {
 }
 
 bool AnimationSystem::evaluate(Entity entity, int slot, Animator &a, const MeshAnimation &animation, float deltaTime,
-                               bool wanted, std::vector<NodePose> &pose) {
+                               bool wanted, std::vector<NodePose> &pose, const EventSource *events) {
   const AnimationClip *clip = findClip(animation, a.clip);
   if (!clip)
     return false;
@@ -317,9 +360,15 @@ bool AnimationSystem::evaluate(Entity entity, int slot, Animator &a, const MeshA
 
   if (a.playing) {
     bool finished = false;
+    const float before = events ? cycleShare(a.time, *clip, blendClip) : 0.0f;
+    const float length = events ? cycleLength(*clip, blendClip, a.blendWeight) : 0.0f;
     a.time = stepClock(a.time, deltaTime, a.speed, a.loop, *clip, blendClip, a.blendWeight, finished);
     if (finished)
       a.playing = false;
+    // The events are the state's own, looked for where the clock of what is playing now went; what fades out is silent
+    if (events && length > 0.0f)
+      moveEvents(entity, *events, a.loop, before, cycleShare(a.time, *clip, blendClip),
+                 deltaTime * a.speed / length);
   }
   if (wanted)
     sampleClock(animation, *clip, blendClip, a.blendWeight, a.time, pose, m_scratch);
@@ -416,7 +465,17 @@ void AnimationSystem::applyLayers(Entity entity, AnimationStateMachine &machine,
     // A layer that shows nothing is not sampled, but its clocks go on
     const bool wanted = state.effectiveWeight > 0.0f;
     const int slot = static_cast<int>(i) + 1;
-    const bool played = evaluate(entity, slot, state.playback, animation, deltaTime, wanted, m_layerPose);
+    // A layer that shows nothing is silent, and what was open in it closes
+    if (!wanted && !m_windows.empty())
+      closeWindows(entity, layer.name);
+    EventSource events;
+    if (graph->hasEvents) {
+      const int at = layer.findState(state.state);
+      if (at >= 0)
+        events = {&layer.states[at], &layer.name, &state.clockMoved, !wanted};
+    }
+    const bool played = evaluate(entity, slot, state.playback, animation, deltaTime, wanted, m_layerPose,
+                                 events.state ? &events : nullptr);
     if (!played || !wanted)
       continue;
     const std::vector<float> &mask = maskWeights(graph, i, meshHandle, animation);
@@ -571,6 +630,222 @@ std::vector<AnimationSystem::StateChange> AnimationSystem::takeStateChanges() {
   return changes;
 }
 
+std::vector<AnimationSystem::PendingEvent> AnimationSystem::takeEvents() {
+  std::vector<PendingEvent> events;
+  events.swap(m_events);
+  return events;
+}
+
+void AnimationSystem::queueEvent(Entity entity, const std::string &name, AnimationEvent::Phase phase,
+                                 const std::string &layer, const std::string &state) {
+  m_events.push_back({entity, AnimationEvent{name, phase, layer, state}});
+}
+
+AnimationSystem::OpenWindow *AnimationSystem::openWindow(Entity entity, const std::string &layer, int index) {
+  auto records = m_windows.find(entity);
+  if (records == m_windows.end())
+    return nullptr;
+  for (OpenWindow &record : records->second)
+    if (!record.closing && record.index == index && record.layer == layer)
+      return &record;
+  return nullptr;
+}
+
+void AnimationSystem::announce(const PendingEvent &pending) {
+  const AnimationEvent &event = pending.event;
+  if (event.phase == AnimationEvent::Phase::Fire)
+    return;
+  auto records = m_windows.find(pending.entity);
+  if (records == m_windows.end())
+    return;
+  auto &list = records->second;
+  const bool begin = event.phase == AnimationEvent::Phase::Begin;
+  for (auto it = list.begin(); it != list.end(); ++it) {
+    if (it->name != event.name || it->layer != event.layer || it->state != event.state)
+      continue;
+    if (begin && !it->announced) {
+      it->announced = true;
+      return;
+    }
+    if (!begin && it->closing) {
+      list.erase(it);
+      if (list.empty())
+        m_windows.erase(records);
+      return;
+    }
+  }
+}
+
+bool AnimationSystem::inWindow(Entity entity, std::string_view name) const {
+  auto records = m_windows.find(entity);
+  if (records == m_windows.end())
+    return false;
+  for (const OpenWindow &record : records->second)
+    if (record.announced && record.name == name)
+      return true;
+  return false;
+}
+
+std::vector<std::string> AnimationSystem::openWindows(Entity entity, const std::string &layer) const {
+  std::vector<std::string> names;
+  auto records = m_windows.find(entity);
+  if (records != m_windows.end())
+    for (const OpenWindow &record : records->second)
+      if (record.announced && record.layer == layer)
+        names.push_back(record.name);
+  return names;
+}
+
+void AnimationSystem::closeWindows(Entity entity, std::string_view layer) {
+  auto records = m_windows.find(entity);
+  if (records == m_windows.end())
+    return;
+  for (OpenWindow &record : records->second)
+    if (!record.closing && record.layer == layer) {
+      record.closing = true;
+      queueEvent(entity, record.name, AnimationEvent::Phase::End, record.layer, record.state);
+    }
+}
+
+void AnimationSystem::closeAllWindows(Entity entity) {
+  auto records = m_windows.find(entity);
+  if (records == m_windows.end())
+    return;
+  for (OpenWindow &record : records->second)
+    if (!record.closing) {
+      record.closing = true;
+      queueEvent(entity, record.name, AnimationEvent::Phase::End, record.layer, record.state);
+    }
+}
+
+void AnimationSystem::validateWindows(Entity entity, const AnimationStateMachine &machine,
+                                      const AnimationGraph &graph) {
+  auto records = m_windows.find(entity);
+  if (records == m_windows.end())
+    return;
+  for (OpenWindow &record : records->second) {
+    if (record.closing)
+      continue;
+    // The state the layer is in now, and whether the window is still one of its events
+    const AnimationGraph::StateSet *set = &graph.base;
+    const std::string *current = &machine.state;
+    if (record.layer != AnimationGraph::kBaseLayer) {
+      set = nullptr;
+      for (size_t i = 0; i < graph.layers.size() && i < machine.layers.size(); ++i)
+        if (graph.layers[i].name == record.layer && machine.layers[i].name == record.layer) {
+          set = &graph.layers[i];
+          current = &machine.layers[i].state;
+        }
+    }
+    bool valid = false;
+    if (set && *current == record.state) {
+      const int state = set->findState(record.state);
+      if (state >= 0) {
+        const auto &events = set->states[state].events;
+        valid = record.index >= 0 && record.index < static_cast<int>(events.size()) &&
+                events[record.index].window && events[record.index].name == record.name;
+      }
+    }
+    if (!valid) {
+      record.closing = true;
+      queueEvent(entity, record.name, AnimationEvent::Phase::End, record.layer, record.state);
+    }
+  }
+}
+
+// Looks at what the clock of a playback crossed in this frame, from `before` to `after` (shares of the cycle) with
+// `travel` the signed share it was asked to move (more than 1 when a loop goes round more than once), and queues the
+// events in the order they were crossed. A moment is crossed when the clock reaches it, a window opens when the clock
+// reaches its start and closes when it reaches its end (the other way round going backwards); the clip's very start
+// counts as reached by the first move of a state, so a moment at 0 is heard (the end of a clip before it is not).
+void AnimationSystem::moveEvents(Entity entity, const EventSource &source, bool loop, float before, float after,
+                                 float travel) {
+  if (travel == 0.0f)
+    return;
+  const bool first = !*source.clockMoved;
+  float from = loop ? before - std::floor(before) : std::clamp(before, 0.0f, 1.0f);
+  // Where the clock ended in unwrapped terms, kept to the position it was really left at: the next frame starts there
+  float to = after;
+  if (loop)
+    to += std::round(from + travel - after);
+  if (to == from)
+    return;
+  *source.clockMoved = true;
+  if (source.muted)
+    return;
+  const std::vector<AnimationGraph::Event> &events = source.state->events;
+  if (events.empty() && m_windows.empty())
+    return;
+  constexpr float kMostLaps = 256.0f; // a frame of absurd length hears what the last laps would
+  if (std::fabs(to - from) > kMostLaps)
+    from = to - std::copysign(kMostLaps, to - from);
+  const bool forward = to > from;
+  const float low = std::min(from, to), high = std::max(from, to);
+  const std::string &layer = *source.layer;
+
+  struct Moment {
+    float position;
+    int event;
+    AnimationEvent::Phase phase;
+  };
+  std::vector<Moment> moments;
+  auto crossing = [&](float share, int event, AnimationEvent::Phase phase) {
+    const int firstLap = loop ? static_cast<int>(std::floor(low - share)) : 0;
+    const int lastLap = loop ? static_cast<int>(std::ceil(high - share)) : 0;
+    for (int lap = firstLap; lap <= lastLap; ++lap) {
+      const float position = static_cast<float>(lap) + share;
+      const bool reached = forward ? position > from && position <= to : position >= to && position < from;
+      if (reached || (first && share == 0.0f && position == from))
+        moments.push_back({position, event, phase});
+    }
+  };
+  using Phase = AnimationEvent::Phase;
+  for (size_t i = 0; i < events.size(); ++i) {
+    const AnimationGraph::Event &event = events[i];
+    const int index = static_cast<int>(i);
+    if (!event.window) {
+      crossing(event.at, index, Phase::Fire);
+    } else {
+      crossing(event.from, index, forward ? Phase::Begin : Phase::End);
+      crossing(event.to, index, forward ? Phase::End : Phase::Begin);
+    }
+  }
+  std::stable_sort(moments.begin(), moments.end(), [forward](const Moment &a, const Moment &b) {
+    return forward ? a.position < b.position : a.position > b.position;
+  });
+
+  auto open = [&](int index) {
+    auto &list = m_windows[entity];
+    list.push_back({layer, source.state->name, events[index].name, index, false, false});
+    queueEvent(entity, events[index].name, Phase::Begin, layer, source.state->name);
+  };
+  auto close = [&](OpenWindow &record) {
+    record.closing = true;
+    queueEvent(entity, record.name, Phase::End, record.layer, record.state);
+  };
+  for (const Moment &moment : moments) {
+    const AnimationGraph::Event &event = events[moment.event];
+    if (moment.phase == Phase::Fire)
+      queueEvent(entity, event.name, Phase::Fire, layer, source.state->name);
+    else if (OpenWindow *record = openWindow(entity, layer, moment.event); moment.phase == Phase::End && record)
+      close(*record);
+    else if (moment.phase == Phase::Begin && !record)
+      open(moment.event);
+  }
+  // Where the clock stands now decides the rest: inside a window is open, outside is closed (the moments above can
+  // differ by a hair at an edge)
+  for (size_t i = 0; i < events.size(); ++i) {
+    if (!events[i].window)
+      continue;
+    const bool inside = after >= events[i].from && after < events[i].to;
+    OpenWindow *record = openWindow(entity, layer, static_cast<int>(i));
+    if (inside && !record)
+      open(static_cast<int>(i));
+    else if (!inside && record)
+      close(*record);
+  }
+}
+
 void AnimationSystem::startMachine(Entity entity) {
   AnimationStateMachine *machine = m_componentManager.tryGet<AnimationStateMachine>(entity);
   if (machine && machine->state.empty())
@@ -581,6 +856,7 @@ void AnimationSystem::restartMachine(Entity entity) {
   AnimationStateMachine *machine = m_componentManager.tryGet<AnimationStateMachine>(entity);
   if (!machine)
     return;
+  closeAllWindows(entity);
   machine->state.clear();
   machine->params.clear();
   machine->manual = false;
@@ -591,6 +867,7 @@ void AnimationSystem::restartMachine(Entity entity) {
 void AnimationSystem::enterState(Entity entity, AnimationStateMachine &machine, const AnimationGraph &graph, int index,
                                  float fadeSeconds) {
   const AnimationGraph::State &state = graph.base.states[index];
+  closeWindows(entity, AnimationGraph::kBaseLayer);
   Animator *animator = m_componentManager.tryGet<Animator>(entity);
   if (!animator) {
     animator = &m_componentManager.addInPlace<Animator>(entity);
@@ -605,6 +882,7 @@ void AnimationSystem::enterState(Entity entity, AnimationStateMachine &machine, 
   animator->speed = state.speed;
   machine.state = state.name;
   machine.stateTime = 0.0f;
+  machine.clockMoved = false;
   machine.manual = false;
 }
 
@@ -613,8 +891,10 @@ void AnimationSystem::enterLayerState(Entity entity, AnimationStateMachine &mach
                                       float fadeSeconds) {
   AnimationStateMachine::LayerState &runtime = machine.layers[layerIndex];
   const AnimationGraph::State &state = layer.states[index];
+  closeWindows(entity, layer.name);
   runtime.state = state.name;
   runtime.stateTime = 0.0f;
+  runtime.clockMoved = false;
   runtime.presenceTarget = state.empty ? 0.0f : 1.0f;
   runtime.presenceRate = fadeSeconds > 0.0f ? 1.0f / fadeSeconds : 0.0f;
   if (fadeSeconds <= 0.0f)
@@ -634,10 +914,13 @@ void AnimationSystem::enterLayerState(Entity entity, AnimationStateMachine &mach
   runtime.reference = state.reference;
 }
 
-void AnimationSystem::runMachine(Entity entity, AnimationStateMachine &machine, float deltaTime) {
+int AnimationSystem::runMachine(Entity entity, AnimationStateMachine &machine, float deltaTime,
+                                std::shared_ptr<const AnimationGraph> *heldOut) {
   const std::shared_ptr<const AnimationGraph> held = graph(machine.path);
   if (!held)
-    return;
+    return -1;
+  if (heldOut)
+    *heldOut = held;
   const AnimationGraph &graph = *held;
 
   int current = graph.base.findState(machine.state);
@@ -657,6 +940,14 @@ void AnimationSystem::runMachine(Entity entity, AnimationStateMachine &machine, 
   for (size_t i = 0; same && i < graph.layers.size(); ++i)
     same = machine.layers[i].name == graph.layers[i].name;
   if (!same) {
+    // What a layer the file dropped had open is closed
+    if (!m_windows.empty())
+      for (const AnimationStateMachine::LayerState &old : machine.layers) {
+        const bool kept = std::any_of(graph.layers.begin(), graph.layers.end(),
+                                      [&](const AnimationGraph::Layer &layer) { return layer.name == old.name; });
+        if (!kept)
+          closeWindows(entity, old.name);
+      }
     std::vector<AnimationStateMachine::LayerState> running;
     for (const AnimationGraph::Layer &layer : graph.layers) {
       auto known = std::find_if(machine.layers.begin(), machine.layers.end(),
@@ -669,11 +960,16 @@ void AnimationSystem::runMachine(Entity entity, AnimationStateMachine &machine, 
   for (size_t i = 0; i < graph.layers.size(); ++i) {
     const AnimationGraph::Layer &layer = graph.layers[i];
     if (layer.findState(machine.layers[i].state) < 0) {
+      closeWindows(entity, layer.name);
       machine.layers[i] = AnimationStateMachine::LayerState();
       machine.layers[i].name = layer.name;
       enterLayerState(entity, machine, layer, static_cast<int>(i), layer.defaultState, 0.0f);
     }
   }
+
+  // A window the file no longer has (it was edited while the game ran) closes
+  if (!m_windows.empty())
+    validateWindows(entity, machine, graph);
 
   // Parameters fed by the physics body
   if (const CharacterController *character = m_componentManager.tryGet<CharacterController>(entity)) {
@@ -689,7 +985,7 @@ void AnimationSystem::runMachine(Entity entity, AnimationStateMachine &machine, 
     }
   }
   if (deltaTime <= 0.0f)
-    return;
+    return current;
 
   // The base and then each layer look for a transition to take; a trigger is used up only once all of them have, so
   // layers waiting for the same trigger all react to it
@@ -726,10 +1022,10 @@ void AnimationSystem::runMachine(Entity entity, AnimationStateMachine &machine, 
   }
 
   // Drive the Animator with the state, unless a manual play took it over
-  if (machine.manual)
-    return;
-  if (Animator *animator = m_componentManager.tryGet<Animator>(entity))
-    driveState(*animator, graph.base.states[current], machine, graph);
+  if (!machine.manual)
+    if (Animator *animator = m_componentManager.tryGet<Animator>(entity))
+      driveState(*animator, graph.base.states[current], machine, graph);
+  return current;
 }
 
 const std::vector<glm::mat4> *AnimationSystem::getJointMatrices(Entity entity) const {

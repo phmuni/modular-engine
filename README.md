@@ -969,7 +969,60 @@ jump, landing, dodge and death in the base, an `upper` layer for the sword swing
 again) and the shield, and an additive `hit` layer. [`assets/scenes/character.json`](assets/scenes/character.json) puts it
 in a small level with [`assets/scripts/knight.lua`](assets/scripts/knight.lua) (`./bin/engine scene ../assets/scenes/character.json`:
 WASD runs, Shift walks, the mouse turns the camera, Space jumps, the left mouse button attacks, the right
-one blocks, Q dodges, H plays a hit, K lies down).
+one blocks, Q dodges, H plays a hit, K lies down). A training dummy stands a few steps ahead: the sword only hurts
+during the `damage` window of each swing (animation events, below), the dummy flinches once per swing that reaches it,
+falls after three hits and gets up a few seconds later.
+
+### Animation events
+
+A state can name moments and windows of its clip, and the game hears of them: a sword that only hurts during part of a
+swing, invulnerability during a dodge, a footstep. In the state's JSON, base or layer, clip or blend:
+
+```json
+{ "name": "attack", "clip": "1H_Melee_Attack_Chop", "loop": false,
+  "events": [ { "name": "swoosh", "at": 0.3 }, { "name": "damage", "from": 0.35, "to": 0.6 } ] }
+```
+
+- **`at`** is a moment (a *point* event), **`from`** and **`to`** a window (both, `from` less than `to`; not mixed with
+  `at`). All are shares of the clip, 0 its start and 1 its end (the unit of `exitTime`); in a blend, of the cycle. A state
+  with no clip to put them on (a layer's empty state), a share outside 0..1, or a missing name makes the file not load,
+  with the reason in the log.
+- **Measured on the playback clock**, the one that moves the clip (so it follows the state's `speed`, a loop, a blend's
+  mix), not on the seconds in the state. A point fires once each time the clock crosses it: `at: 0` in the first frame
+  the clock moves after the state is entered, `at: 1` when a clip that plays once reaches its end, and in a loop once per
+  lap (`at: 0` and `at: 1` both at each turn, the end of a lap first), several laps in one frame included. Going backwards
+  (negative `speed`) crosses them too. Nothing fires while the clock stands still: paused, `speed` 0, a clip that has
+  ended, `Animator.playing` false.
+- **A window** has a `begin` when the clock enters `[from, to)` and an `end` when it leaves; a frame that jumps over a
+  window gives both, in that order, and a loop opens and closes it every lap (`to: 1` closes it at the end of a clip that
+  plays once). **Every begin gets its end**: when the state is left (by any transition, in its layer), the machine is
+  restarted or removed (`setAnimator`, the component removed), a manual `play` takes the base over, the definition is
+  read again without it, the layer disappears, or the layer's weight times presence is 0 (it shows nothing: it is silent
+  then). Destroying the entity tells nobody and keeps nothing.
+- **Only the state the layer is in** speaks: never a clip that is fading out, a blend's events fire once (not per clip),
+  a clip played by hand is silent on the base, and a state whose clip the model lacks has none.
+- **Order**: in the order crossed within a layer, the base first and then the layers in file order, after the frame's
+  state changes. They are collected while the machines run and delivered after, so a listener may destroy entities, call
+  `setAnimator`, trigger or play; the entity is checked to be alive before each call, and the windows a listener closes
+  are heard in the same frame.
+- A file with no `events` costs nothing, and a state without them a check of its list: no allocation, no string work.
+
+```cpp
+engine.onAnimationEvent([](const GameEntity &e, const AnimationEvent &event) {
+    // event.name, event.phase (Fire, Begin, End), event.layer ("base" for the top-level states), event.state
+    if (event.name == "damage")
+        e.inAnimationWindow("damage");   // true for a Begin, false for an End
+});
+hero.inAnimationWindow("invulnerable");  // true from its begin until its end, in any layer
+```
+
+In Lua the script of the entity that has the machine (the one `onStateChanged` goes to; nothing is passed up to a parent,
+so a script that wants a child's windows asks `child:inAnimationWindow(name)` each frame) gets
+`function onAnimationEvent(self, name, phase, layer)`, with `phase` "fire", "begin" or "end". The editor's inspector shows the
+open windows next to the state and the layers. The knight's machine has a `damage` window on each swing (found by
+measuring where the sword moves fast in front of it), `invulnerable` during the dodge and `step` at the two foot plants
+of the locomotion cycle; [`assets/scripts/knight.lua`](assets/scripts/knight.lua) asks the model whether `damage` is open
+and hits what is in front of the sword.
 
 ### Play and Stop
 

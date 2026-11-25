@@ -61,6 +61,7 @@ ENGINE_ALIASES = {
     "triggerAnimation": "Entity.trigger",
     "getAnimationParam": "Entity.param",
     "getAnimationState": "Entity.animationState",
+    "inAnimationWindow": "Entity.inAnimationWindow",
     "raycast": "physics.raycastBoxes",
     "raycastModels": "physics.raycastModels",
     "pickModel": "pick",
@@ -168,6 +169,7 @@ ENGINE_C_PLUS_PLUS_ONLY = {
     "forEachContact": "template over C++ component types; the onContact callback",
     "forEachContactEnd": "template over C++ component types; the onContactEnd callback",
     "onAnimationStateChanged": "C++ listener; Lua scripts define onStateChanged(self, old, new, layer)",
+    "onAnimationEvent": "C++ listener; Lua scripts define onAnimationEvent(self, name, phase, layer)",
     "findCollisions": "C++ iteration of Collision pairs; entity:isTouching asks about one pair",
     # Raw entity creation: Lua has engine.create, which does the same from a description
     "createEntity": "an empty entity; engine.create",
