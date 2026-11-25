@@ -2,6 +2,7 @@
 // Renderer class for managing OpenGL context, drawing meshes, and handling shadow/particle passes.
 
 #include "foundation/core/config.h"
+#include "rendering/jointBuffer.h"
 #include "rendering/graphicsSettings.h"
 #include "rendering/postProcess.h"
 #include "rendering/viewRect.h"
@@ -13,10 +14,11 @@
 class Mesh;
 struct Submesh;
 
-// Per-instance data for instanced mesh drawing: vertex attributes 3-6 (model) and 7-9 (normal matrix)
+// Per-instance data for instanced mesh drawing: vertex attributes 3-6 (model), 7-9 (normal matrix) and 13 (joints)
 struct InstanceData {
   glm::mat4 model;
   glm::mat3 normal;
+  int jointOffset = -1; // the first of the instance's joints in the JointBuffer, -1 for a model that is not skinned
 };
 
 // Interleaved vertex data for particle GPU upload
@@ -68,6 +70,7 @@ private:
   PostProcess m_postProcess;
 
   GLuint m_instanceVBO = 0;
+  JointBuffer m_jointBuffer;
   GLuint m_skyboxVAO = 0; // empty: the skybox triangle comes from gl_VertexID
   void bindInstanceAttributes(const Mesh &mesh) const;
 
@@ -98,6 +101,9 @@ public:
   void drawMesh(const Mesh &mesh) const;
   void drawSubmesh(const Mesh &mesh, const Submesh &submesh) const;
   void drawIndexRange(const Mesh &mesh, uint32_t indexStart, uint32_t indexCount) const;
+
+  // The joint matrices of this frame's skinned models (see RenderSystem::gatherJoints)
+  JointBuffer &jointBuffer() { return m_jointBuffer; }
 
   // Instanced drawing: upload the instances, then draw them in one call
   void uploadInstances(const InstanceData *data, int count);

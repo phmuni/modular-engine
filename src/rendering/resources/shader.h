@@ -74,7 +74,7 @@ public:
   void setVec4(std::string_view name, glm::vec4 value) const;
   void setMat3(std::string_view name, glm::mat3 value) const;
   void setMat4(std::string_view name, glm::mat4 value) const;
-  // A uniform array of matrices from its first element: setMat4Array("bones", data, count)
+  // A uniform array of matrices from its first element: setMat4Array(name, data, count)
   void setMat4Array(std::string_view name, const glm::mat4 *values, int count) const;
   void setVec3Array(std::string_view name, const glm::vec3 *values, int count) const;
   void setVec4Array(std::string_view name, const glm::vec4 *values, int count) const;

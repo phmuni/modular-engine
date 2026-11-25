@@ -4,6 +4,7 @@
 #include "rendering/resources/shader.h"
 #include "foundation/core/logger.h"
 #include "rendering/clusteredLights.h"
+#include "rendering/jointBuffer.h"
 #include <fstream>
 #include <glm/gtc/type_ptr.hpp>
 #include <sstream>
@@ -137,6 +138,7 @@ GLuint Shader::createShaderProgram(const char *vertexFile, const char *fragmentF
   glDeleteShader(vert);
   glDeleteShader(frag);
   bindLightingBlocks(program); // the light buffers' binding points, for programs that declare them
+  bindJointSampler(program);   // the joint buffer's unit, for the ones that skin
   return program;
 }
 

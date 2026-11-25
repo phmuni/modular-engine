@@ -844,8 +844,11 @@ auto &animator = engine.get<Animator>(hero); // speed, time, loop, playing
 `./bin/engine view model.glb` plays an animated model's first clip and switches clips with `1`-`9`. The Properties
 panel picks a clip and scrubs through it; `Animator` is saved in scenes ([`assets/scenes/animation.json`](assets/scenes/animation.json)).
 [`tools/generateAnimatedTestModel.py`](tools/generateAnimatedTestModel.py) writes the small test model it uses, and
-[`tools/trimGlb.py`](tools/trimGlb.py) cuts a glTF down to some of its clips and nodes (it made the knight, below). Up to
-128 joints per model are animated (`EngineConfig::MAX_JOINTS`); morph targets are not supported.
+[`tools/trimGlb.py`](tools/trimGlb.py) cuts a glTF down to some of its clips and nodes (it made the knight, below). Skinned
+models are drawn instanced like any other mesh: the frame's poses sit in one buffer texture (texture unit 16, three
+texels per joint), so any number of joints per model is animated, limited only by what the driver's
+`GL_MAX_TEXTURE_BUFFER_SIZE` holds for all the models of a frame (at least 21845 joints; a model that does not fit is
+drawn in its rest pose and logged once). Morph targets are not supported.
 
 ### Animation state machines
 
@@ -1338,7 +1341,7 @@ Paths are relative to `assets/` like any asset path. Files shipped with the engi
 - **Caching.** One program is compiled per file and variant (normal, and alpha mask when a cut-out part uses it); every part using the file shares it, with its own parameter values, and parts are grouped by program for drawing.
 - **Editor.** Each part's Material section has a Shader field (type a path, or drop a `.glsl` from the asset browser), a Reset button, and a widget per parameter read from the `uniform` lines (a drag field per float or vector, a color picker for names with "color", a path field and drop target for textures). "Apply to All Submeshes" has one for the whole model. Changes are one undo step each. Scenes and prefabs save the shader and its values with the part, and a linked prefab instance's change of them counts as an override.
 - **Shadows.** Parts with a custom shader are drawn into the shadow maps (the sun's cascades and the point lights' cube maps) through a variant of the depth shaders with your file injected: `vertex()` moves the vertices as in the lit pass, so waves show in the shadow, and `surface()` runs only for its alpha, so a `discard` leaves a hole in it (a dissolve casts a dissolving shadow). A low `alpha` cuts the shadow below 0.5 too, except in files with `#pragma blend`, whose see-through surfaces keep their shadow. In the shadow pass the surface starts with a white albedo and an alpha of 1 (the material's textures are not read), `viewDir` points at the camera and `time` and your parameters are the same. `#pragma noshadow` takes the part out of the shadow maps, which suits water (the example has it); the other parts of a model still cast theirs, and parts without a custom shader cast exactly as before. A file that only the lit shader can compile (it uses something from it, such as `numLights`) keeps working, and its parts cast the shadow of their original geometry, with a warning in the log. A point light's cube map is drawn again every frame while such a part is in its range (the shader's clock moves).
-- **Limits.** Frustum culling uses the original mesh bounds, so a large `vertex()` offset can make a model vanish at the screen's edge. Parts with `#pragma blend` are sorted per entity like other transparent draws, not per triangle. Texture parameters use texture units 10 to 14 (5 per material; unit 15 holds the ambient occlusion); `int` and `bool` uniforms are not parameters (they keep the shader's own value).
+- **Limits.** Frustum culling uses the original mesh bounds, so a large `vertex()` offset can make a model vanish at the screen's edge. Parts with `#pragma blend` are sorted per entity like other transparent draws, not per triangle. Texture parameters use texture units 10 to 14 (5 per material; unit 15 holds the ambient occlusion, and unit 16 the skinning joints in the vertex stage); `int` and `bool` uniforms are not parameters (they keep the shader's own value).
 
 ### Skybox
 

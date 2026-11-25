@@ -18,6 +18,9 @@ void Renderer::init(SDL_Window *window) {
   glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
   glGenBuffers(1, &m_instanceVBO);
   glGenVertexArrays(1, &m_skyboxVAO);
+  m_jointBuffer.init();
+  // The joint offset is an integer attribute: when a mesh's array for it is off, the generic value is one too
+  glVertexAttribI4i(13, -1, 0, 0, 0);
 }
 
 void Renderer::drawSkybox() const {
@@ -89,6 +92,9 @@ void Renderer::bindInstanceAttributes(const Mesh &mesh) const {
                           (void *)(offsetof(InstanceData, normal) + sizeof(glm::vec3) * column));
     glVertexAttribDivisor(location, 1);
   }
+  glEnableVertexAttribArray(13);
+  glVertexAttribIPointer(13, 1, GL_INT, stride, (void *)offsetof(InstanceData, jointOffset));
+  glVertexAttribDivisor(13, 1);
 }
 
 void Renderer::drawMeshInstanced(const Mesh &mesh, int count) const {
@@ -449,6 +455,7 @@ void Renderer::endParticlePass() {
 
 void Renderer::shutdown() {
   m_postProcess.shutdown();
+  m_jointBuffer.shutdown();
   if (m_skyboxVAO) {
     glDeleteVertexArrays(1, &m_skyboxVAO);
     m_skyboxVAO = 0;

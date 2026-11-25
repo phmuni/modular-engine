@@ -8,11 +8,11 @@ layout(location = 2) in vec2 aTex;
 layout(location = 3) in mat4 aInstanceModel;
 layout(location = 7) in mat3 aInstanceNormal;
 layout(location = 10) in vec4 aTangent; // xyz along +u, w the bitangent's sign
-// Skinned models (useSkinning == 1): up to four joints per vertex and their weights
+// Skinned models: up to four joints per vertex and their weights
 layout(location = 11) in vec4 aJoints;
 layout(location = 12) in vec4 aWeights;
-
-const int MAX_JOINTS = 128; // EngineConfig::MAX_JOINTS
+// Where the instance's joints start in the joint buffer, -1 when it is not skinned
+layout(location = 13) in int aJointOffset;
 
 uniform mat4 MVP;
 uniform mat4 model;
@@ -20,8 +20,21 @@ uniform mat3 normalMatrix;
 uniform mat4 view;
 uniform mat4 projection;
 uniform int useInstancing;
-uniform int useSkinning;
-uniform mat4 bones[MAX_JOINTS];
+uniform int jointOffset = -1; // the same for a draw that is not instanced
+
+// Skinning: the joints' matrices come from the joint buffer, three texels (the rows of an affine matrix) per joint
+uniform samplerBuffer jointData;
+
+mat4 skinMatrix(int firstJoint, vec4 joints, vec4 weights) {
+    vec4 r0 = vec4(0.0), r1 = vec4(0.0), r2 = vec4(0.0);
+    for (int i = 0; i < 4; ++i) {
+        int base = (firstJoint + int(joints[i])) * 3;
+        r0 += weights[i] * texelFetch(jointData, base);
+        r1 += weights[i] * texelFetch(jointData, base + 1);
+        r2 += weights[i] * texelFetch(jointData, base + 2);
+    }
+    return transpose(mat4(r0, r1, r2, vec4(0.0, 0.0, 0.0, weights.x + weights.y + weights.z + weights.w)));
+}
 
 out vec3 FragPos;
 out vec3 Normal;
@@ -44,9 +57,9 @@ struct VertexData {
 void main() {
     // Skinning: the vertex moved by its joints' matrices, in the model's space
     mat4 skin = mat4(1.0);
-    if (useSkinning == 1)
-        skin = aWeights.x * bones[int(aJoints.x)] + aWeights.y * bones[int(aJoints.y)] +
-               aWeights.z * bones[int(aJoints.z)] + aWeights.w * bones[int(aJoints.w)];
+    int firstJoint = useInstancing == 1 ? aJointOffset : jointOffset;
+    if (firstJoint >= 0)
+        skin = skinMatrix(firstJoint, aJoints, aWeights);
     vec4 position = skin * vec4(aPos, 1.0);
     vec3 normal = mat3(skin) * aNormal;
     vec3 tangent = mat3(skin) * aTangent.xyz;

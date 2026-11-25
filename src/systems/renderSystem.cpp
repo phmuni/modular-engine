@@ -237,6 +237,7 @@ void RenderSystem::gatherShadowCasters(ComponentManager &componentManager, Resou
                                   glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f)),
                                   mesh.getBoundsRadius() * maxScaleOf(modelMatrix),
                                   mesh.isSkinned() && m_animation ? m_animation->getJointMatrices(entity) : nullptr,
+                                  jointOffsetOf(entity),
                                   {},
                                   {}};
         auto isPlain = [&](uint32_t material) {
@@ -261,7 +262,8 @@ void RenderSystem::gatherShadowCasters(ComponentManager &componentManager, Resou
     m_shadowCasters.push_back({model.meshHandle, modelMatrix,
                                glm::vec3(modelMatrix * glm::vec4(mesh.getBoundsCenter(), 1.0f)),
                                mesh.getBoundsRadius() * maxScaleOf(modelMatrix),
-                               mesh.isSkinned() && m_animation ? m_animation->getJointMatrices(entity) : nullptr});
+                               mesh.isSkinned() && m_animation ? m_animation->getJointMatrices(entity) : nullptr,
+                               jointOffsetOf(entity)});
   });
   // Sorted once, so every pass finds the instances of a mesh next to each other
   std::sort(m_shadowCasters.begin(), m_shadowCasters.end(),
@@ -274,9 +276,9 @@ void RenderSystem::drawShadowCasters(Shader &depthShader, const glm::mat4 &viewP
   depthShader.setMat4("lightSpaceMatrix", viewProjection);
   const bool instanced = depthShader.supportsInstancing();
   depthShader.setInt("useInstancing", instanced ? 1 : 0);
-  depthShader.setInt("useSkinning", 0);
 
-  // Instances of one mesh go out together; the list is sorted by mesh
+  // Instances of one mesh go out together, skinned ones too (each with where its joints start); the list is sorted
+  // by mesh
   uint32_t runMesh = 0;
   m_instanceData.clear();
   auto flush = [&] {
@@ -290,27 +292,16 @@ void RenderSystem::drawShadowCasters(Shader &depthShader, const glm::mat4 &viewP
   for (const ShadowCaster &caster : m_shadowCasters) {
     if (!frustum.intersectsSphere(caster.center, caster.radius))
       continue;
-    if (!instanced || caster.joints) {
-      // Skinned casters carry their own pose: drawn one at a time
-      if (caster.joints) {
-        flush();
-        depthShader.setInt("useInstancing", 0);
-        depthShader.setInt("useSkinning", 1);
-        depthShader.setMat4Array("bones", caster.joints->data(),
-                                 std::min(static_cast<int>(caster.joints->size()), EngineConfig::MAX_JOINTS));
-      }
+    if (!instanced) {
+      depthShader.setInt("jointOffset", caster.jointOffset);
       depthShader.setMat4("model", caster.model);
       m_renderer.drawMesh(resourceSystem.getMesh(caster.meshHandle));
-      if (caster.joints) {
-        depthShader.setInt("useSkinning", 0);
-        depthShader.setInt("useInstancing", instanced ? 1 : 0);
-      }
       continue;
     }
     if (caster.meshHandle != runMesh)
       flush();
     runMesh = caster.meshHandle;
-    m_instanceData.push_back({caster.model, {}});
+    m_instanceData.push_back({caster.model, {}, caster.jointOffset});
   }
   flush();
   if (!m_customShadowCasters.empty())
@@ -324,10 +315,7 @@ void RenderSystem::drawCustomShadowCasters(Shader &depthShader, const glm::mat4 
   auto setPose = [&](Shader &shader, const CustomShadowCaster &caster) {
     shader.setInt("useInstancing", 0);
     shader.setMat4("model", caster.model);
-    shader.setInt("useSkinning", caster.joints ? 1 : 0);
-    if (caster.joints)
-      shader.setMat4Array("bones", caster.joints->data(),
-                          std::min(static_cast<int>(caster.joints->size()), EngineConfig::MAX_JOINTS));
+    shader.setInt("jointOffset", caster.jointOffset);
   };
 
   // The standard depth shader first, for the parts without a shadow shader of their own
@@ -339,7 +327,6 @@ void RenderSystem::drawCustomShadowCasters(Shader &depthShader, const glm::mat4 
     for (const ShadowRange &range : caster.plain)
       m_renderer.drawIndexRange(resourceSystem.getMesh(caster.meshHandle), range.indexStart, range.indexCount);
   }
-  depthShader.setInt("useSkinning", 0);
   depthShader.setInt("useInstancing", instanced ? 1 : 0);
 
   // Then each shadow variant, with the values of the part it draws
@@ -618,6 +605,7 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
   if (cameraEntity == -1 && !capture)
     return;
   m_animation = systemManager.hasSystem<AnimationSystem>() ? &systemManager.getSystem<AnimationSystem>() : nullptr;
+  gatherJoints(componentManager, resourceSystem);
 
   Camera camera;
   glm::mat4 view(1.0f), projection(1.0f);
@@ -744,7 +732,7 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
     shader.setMat4("projection", projection);
     shader.setVec3("viewPos", viewPos);
     shader.setInt("useShadows", sunShadow.active ? 1 : 0);
-    shader.setInt("useSkinning", 0);
+    shader.setInt("jointOffset", -1);
     shader.setInt("cascadeCount", EngineConfig::SHADOW_CASCADES);
     shader.setVec3("viewForward", glm::normalize(camera.front));
     for (int cascade = 0; cascade < EngineConfig::SHADOW_CASCADES; ++cascade) {
@@ -887,11 +875,13 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
     shader.setMat4("model", modelMatrix);
     shader.setMat3("normalMatrix", calculateNormalMatrix(modelMatrix));
     bindMaterial(shader, resourceSystem.getMaterial(materialHandle), opacity);
-    const bool skinned = applySkinning(shader, entity, mesh);
+    const int jointOffset = jointOffsetOf(entity);
+    if (jointOffset >= 0)
+      shader.setInt("jointOffset", jointOffset);
 
     renderer.drawIndexRange(mesh, indexStart, indexCount);
-    if (skinned)
-      shader.setInt("useSkinning", 0);
+    if (jointOffset >= 0)
+      shader.setInt("jointOffset", -1);
   };
 
   // The opaque parts, grouped by shader: once into the depth prepass, once lit
@@ -925,10 +915,9 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
         continue;
       }
 
-      // Opaque draws of the same mesh range with the same material go out as one instanced call; skinned models,
-      // each in its own pose, go one at a time after them
+      // Opaque draws of the same mesh range with the same material go out as one instanced call; skinned models
+      // too, each instance with where its pose starts in the joint buffer
       m_instanceItems.clear();
-      std::vector<Entity> skinnedEntities;
       for (Entity entity : batch) {
         auto *transform = componentManager.tryGet<Transform>(entity);
         auto *model = componentManager.tryGet<Model>(entity);
@@ -936,10 +925,6 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
           continue;
 
         const Mesh &mesh = resourceSystem.getMesh(model->meshHandle);
-        if (mesh.isSkinned()) {
-          skinnedEntities.push_back(entity);
-          continue;
-        }
         glm::mat4 modelMatrix = transformSystem.calculateModelMatrix(*transform);
         if (!isMeshVisible(frustum, mesh, modelMatrix)) {
           if (!depthPass)
@@ -947,7 +932,7 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
           continue;
         }
 
-        const InstanceData instance{modelMatrix, calculateNormalMatrix(modelMatrix)};
+        const InstanceData instance{modelMatrix, calculateNormalMatrix(modelMatrix), jointOffsetOf(entity)};
         const uint32_t probes = selectProbes(mesh, modelMatrix);
         forEachDrawRange(mesh, *model, !anyBlend, includeOpaque,
                          [&](uint32_t start, uint32_t count, uint32_t material) {
@@ -967,13 +952,6 @@ void RenderSystem::drawPipeline(SystemManager &systemManager, ComponentManager &
             renderer.drawIndexRangeInstanced(resourceSystem.getMesh(first.meshHandle), first.indexStart,
                                              first.indexCount, count);
           });
-      for (Entity entity : skinnedEntities) {
-        const Model &model = componentManager.get<Model>(entity);
-        forEachDrawRange(resourceSystem.getMesh(model.meshHandle), model, !anyBlend, includeOpaque,
-                         [&](uint32_t start, uint32_t count, uint32_t material) {
-                           drawRange(shader, entity, start, count, material, 1.0f);
-                         });
-      }
     }
   };
 
@@ -1211,15 +1189,73 @@ void RenderSystem::drawSkybox(ComponentManager &componentManager, ResourceSystem
   m_renderer.drawSkybox();
 }
 
-bool RenderSystem::applySkinning(Shader &shader, Entity entity, const Mesh &mesh) const {
-  if (!mesh.isSkinned() || !m_animation)
-    return false;
-  const std::vector<glm::mat4> *joints = m_animation->getJointMatrices(entity);
-  if (!joints || joints->empty())
-    return false;
-  shader.setInt("useSkinning", 1);
-  shader.setMat4Array("bones", joints->data(), std::min(static_cast<int>(joints->size()), EngineConfig::MAX_JOINTS));
-  return true;
+int RenderSystem::jointOffsetOf(Entity entity) const {
+  if (m_jointOffsets.empty())
+    return -1;
+  const auto found = m_jointOffsets.find(entity);
+  return found == m_jointOffsets.end() ? -1 : found->second;
+}
+
+// Every pose a skinned model is drawn with this frame, as rows of affine matrices in the renderer's joint buffer. Done
+// once before the first pass, so the depth prepass, the lit pass, the shadow cascades and the point shadow faces all
+// read the same data. Entities in the rest pose share the mesh's own matrices, which take one slot; so does anything
+// else that is handed the same pose.
+void RenderSystem::gatherJoints(ComponentManager &componentManager, ResourceSystem &resourceSystem) {
+  m_jointOffsets.clear();
+  m_jointSlots.clear();
+  m_meshJointSlots.clear();
+  m_jointTexels.clear();
+  if (!m_animation)
+    return;
+
+  JointBuffer &buffer = m_renderer.jointBuffer();
+  const int limit = buffer.maxJoints();
+  int used = 0;
+  // The slot of a pose, adding it when it is new and fits; -1 when it does not fit
+  auto place = [&](const std::vector<glm::mat4> *pose, uint32_t meshHandle) {
+    const auto [slot, isNew] = m_jointSlots.try_emplace(pose, -1);
+    if (!isNew)
+      return slot->second;
+    const int count = static_cast<int>(pose->size());
+    if (used + count > limit)
+      return -1;
+    slot->second = used;
+    used += count;
+    for (const glm::mat4 &matrix : *pose)
+      JointBuffer::appendJoint(m_jointTexels, matrix);
+    m_meshJointSlots.try_emplace(meshHandle, slot->second);
+    return slot->second;
+  };
+
+  componentManager.forEachComponent<Model>([&](Entity entity, Model &model) {
+    if (isHidden(componentManager, entity))
+      return;
+    const Mesh &mesh = resourceSystem.getMesh(model.meshHandle);
+    if (!mesh.isSkinned())
+      return;
+    const std::vector<glm::mat4> *pose = m_animation->getJointMatrices(entity);
+    if (!pose || pose->empty())
+      return;
+    int offset = place(pose, model.meshHandle);
+    if (offset < 0) {
+      // The buffer is full: this model is drawn in the mesh's rest pose, or in the pose of another one of its mesh
+      if (!m_jointOverflowWarned) {
+        m_jointOverflowWarned = true;
+        LOG_W("[Render] More than %d joints in one frame do not fit the joint buffer: the models that do not fit are "
+              "drawn in the rest pose (or another model's pose)",
+              limit);
+      }
+      offset = place(&mesh.getAnimation()->restJointMatrices, model.meshHandle);
+      if (offset < 0) {
+        const auto first = m_meshJointSlots.find(model.meshHandle);
+        offset = first == m_meshJointSlots.end() ? -1 : first->second;
+      }
+    }
+    if (offset >= 0)
+      m_jointOffsets[entity] = offset;
+  });
+  if (!m_jointTexels.empty())
+    buffer.upload(m_jointTexels);
 }
 
 Renderer &RenderSystem::getRenderer() { return m_renderer; }

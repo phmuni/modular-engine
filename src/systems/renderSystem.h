@@ -114,7 +114,7 @@ private:
     uint32_t indexCount;
     uint32_t materialHandle;
     uint32_t probes; // the reflection probes that light it (ReflectionProbes::select): draws with others cannot share a call
-    InstanceData instance;
+    InstanceData instance; // with the instance's joints, if it is skinned
   };
 
   // Ambient occlusion state: the depth prepass and AO textures, and what drives them
@@ -187,11 +187,19 @@ private:
     glm::mat4 model;
     glm::vec3 center;
     float radius;
-    const std::vector<glm::mat4> *joints = nullptr; // skinned: its pose this frame, drawn on its own
+    const std::vector<glm::mat4> *joints = nullptr; // skinned: its pose this frame (for the point light signature)
+    int jointOffset = -1;                           // and where it is in the joint buffer
   };
-  // Skinned models: this frame's joint matrices, set on the shader (useSkinning); false for a static mesh
+  // Skinned models: every pose of the frame goes into the joint buffer once (gatherJoints), and each draw says where
+  // its joints start. jointOffsetOf is -1 for an entity that is not skinned or has no pose.
   class AnimationSystem *m_animation = nullptr;
-  bool applySkinning(Shader &shader, Entity entity, const class Mesh &mesh) const;
+  std::unordered_map<Entity, int> m_jointOffsets;
+  std::vector<glm::vec4> m_jointTexels;
+  std::unordered_map<const std::vector<glm::mat4> *, int> m_jointSlots; // a pose already in the buffer, by address
+  std::unordered_map<uint32_t, int> m_meshJointSlots;                   // the first pose placed for each mesh
+  bool m_jointOverflowWarned = false;
+  void gatherJoints(ComponentManager &componentManager, ResourceSystem &resourceSystem);
+  int jointOffsetOf(Entity entity) const;
   std::vector<ShadowCaster> m_shadowCasters;
   // Models with parts whose custom shader reshapes or cuts them (see CustomShader::shadowHandle). Those are drawn by
   // index range: `plain` with the depth shader like any caster, `custom` with the shadow variant of the part's
@@ -208,6 +216,7 @@ private:
     glm::vec3 center;
     float radius;
     const std::vector<glm::mat4> *joints = nullptr;
+    int jointOffset = -1;
     std::vector<ShadowRange> plain;
     std::vector<ShadowRange> custom;
   };

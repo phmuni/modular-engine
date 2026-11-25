@@ -868,9 +868,6 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
     std::vector<glm::mat4> globals;
     animation->restPose = SkeletonPose::rest(animation->skeleton);
     SkeletonPose::jointMatrices(animation->skeleton, animation->restPose, globals, animation->restJointMatrices);
-    if (animation->skeleton.jointNodes.size() > EngineConfig::MAX_JOINTS)
-      LOG_W("[Mesh] %s has %zu joints; only %d are drawn moving", normalized.c_str(),
-            animation->skeleton.jointNodes.size(), EngineConfig::MAX_JOINTS);
     data.animation = std::move(animation);
   }
 
