@@ -190,6 +190,32 @@ TEST_CASE(input_mouse) {
   steps.step(1, [&input]() { CHECK(!input.wasMouseButtonReleased(MouseButton::Left)); }); // released is one frame
 }
 
+// RmlUi's debugger keeps a document of no size at the window's very corner; it must not take the game's clicks there
+TEST_CASE(input_click_in_the_windows_corner_is_the_games) {
+  InputSystem &input = engine.input();
+  steps.step(2, []() {});
+  steps.step(1, []() {
+    SDL_Event motion{};
+    motion.type = SDL_EVENT_MOUSE_MOTION; // to 0, 0
+    motion.motion.windowID = windowId();
+    push(motion);
+    SDL_Event down{};
+    down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    down.button.windowID = windowId();
+    down.button.button = SDL_BUTTON_LEFT;
+    down.button.down = true;
+    push(down);
+  });
+  steps.step(1, [&input]() {
+    CHECK(input.wasMouseButtonPressed(MouseButton::Left));
+    SDL_Event up{};
+    up.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    up.button.windowID = windowId();
+    up.button.button = SDL_BUTTON_LEFT;
+    push(up);
+  });
+}
+
 TEST_CASE(input_key_pressed_and_released_by_name) {
   InputSystem &input = engine.input();
   auto key = [](SDL_Scancode scancode, bool down) {

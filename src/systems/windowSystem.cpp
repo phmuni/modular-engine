@@ -80,10 +80,13 @@ SDL_GLContext WindowSystem::getContext() const { return m_glContext; }
 void WindowSystem::setVSync(bool enabled) {
   if (enabled == m_vsync)
     return;
-  if (SDL_GL_SetSwapInterval(enabled ? 1 : 0))
+  if (SDL_GL_SetSwapInterval(enabled ? 1 : 0)) {
     m_vsync = enabled;
-  else
+    m_vsyncRefused = false;
+  } else if (!m_vsyncRefused) {
+    m_vsyncRefused = true; // asked for again every frame: once is enough to say (a display without it, like xvfb's)
     LOG_W("[Window System] Failed to set vsync: %s", SDL_GetError());
+  }
 }
 
 void WindowSystem::setCursor(bool boolean) { SDL_SetWindowRelativeMouseMode(m_window, boolean); }

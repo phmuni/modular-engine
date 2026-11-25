@@ -84,6 +84,10 @@ GameUISystem::GameUISystem(SDL_Window *window) : m_impl(std::make_unique<Impl>()
   const float displayScale = SDL_GetWindowDisplayScale(window);
   impl.context->SetDensityIndependentPixelRatio(displayScale > 0.0f ? displayScale : SDL_GetWindowPixelDensity(window));
   Rml::Debugger::Initialise(impl.context);
+  // The debugger leaves a document of no size, always shown, at the context's corner: with the pointer exactly there
+  // it would be what is hovered, and every click would count as the UI's
+  if (Rml::ElementDocument *hook = impl.context->GetDocument("rmlui-debug-hook"))
+    hook->SetProperty("pointer-events", "none");
 
   for (const char *font : EngineConfig::UI_FONTS)
     loadFont(font);

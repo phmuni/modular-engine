@@ -12,6 +12,7 @@ private:
   SDL_Window *m_window;
   SDL_GLContext m_glContext;
   bool m_vsync = true;
+  bool m_vsyncRefused = false;
   bool m_cursorVisible = true;
   static inline bool s_highDensity = true;
   static inline bool s_sizeRequested = false;
