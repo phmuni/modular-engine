@@ -43,8 +43,12 @@ glm::vec4 hermite(const glm::vec4 &p0, const glm::vec4 &m0, const glm::vec4 &p1,
 
 glm::quat toQuat(const glm::vec4 &v) { return glm::normalize(glm::quat(v.w, v.x, v.y, v.z)); }
 
-void blendPoses(std::vector<NodePose> &into, const std::vector<NodePose> &from, float weightOfInto) {
+// Mixes into `into` what is `from`, `weightOfInto` of the way to `into`; only the nodes `active` marks (all when null)
+void blendPoses(std::vector<NodePose> &into, const std::vector<NodePose> &from, float weightOfInto,
+                const uint8_t *active = nullptr) {
   for (size_t i = 0; i < into.size() && i < from.size(); ++i) {
+    if (active && !active[i])
+      continue;
     into[i].translation = glm::mix(from[i].translation, into[i].translation, weightOfInto);
     into[i].rotation = glm::slerp(from[i].rotation, into[i].rotation, weightOfInto);
     into[i].scale = glm::mix(from[i].scale, into[i].scale, weightOfInto);
@@ -95,15 +99,31 @@ float cycleShare(float time, const AnimationClip &clip, const AnimationClip *ble
 
 // The pose of a clip, or of two mixed by `weight` (then `time` is the phase)
 void sampleClock(const MeshAnimation &animation, const AnimationClip &clip, const AnimationClip *blendClip,
-                 float weight, float time, std::vector<NodePose> &pose, std::vector<NodePose> &scratch) {
+                 float weight, float time, std::vector<NodePose> &pose, std::vector<NodePose> &scratch,
+                 const uint8_t *active = nullptr) {
   if (!blendClip) {
-    AnimationSystem::sample(animation, clip, time, pose);
+    AnimationSystem::sample(animation, clip, time, pose, active);
     return;
   }
-  AnimationSystem::sample(animation, clip, time * clip.duration, pose);
-  AnimationSystem::sample(animation, *blendClip, time * blendClip->duration, scratch);
-  blendPoses(scratch, pose, std::clamp(weight, 0.0f, 1.0f));
+  AnimationSystem::sample(animation, clip, time * clip.duration, pose, active);
+  AnimationSystem::sample(animation, *blendClip, time * blendClip->duration, scratch, active);
+  blendPoses(scratch, pose, std::clamp(weight, 0.0f, 1.0f), active);
   pose.swap(scratch);
+}
+
+// Writes a clip's constant channels over a pose
+void layConstants(const AnimationClip &clip, std::vector<NodePose> &pose) {
+  for (const ConstantChannel &constant : clip.constants) {
+    if (constant.node < 0 || constant.node >= static_cast<int>(pose.size()))
+      continue;
+    NodePose &node = pose[constant.node];
+    if (constant.path == AnimationChannel::Path::Rotation)
+      node.rotation = glm::quat(constant.value.w, constant.value.x, constant.value.y, constant.value.z);
+    else if (constant.path == AnimationChannel::Path::Translation)
+      node.translation = glm::vec3(constant.value);
+    else
+      node.scale = glm::vec3(constant.value);
+  }
 }
 
 const AnimationClip *findClip(const MeshAnimation &animation, const std::string &name) {
@@ -229,45 +249,90 @@ void movePresence(AnimationStateMachine::LayerState &layer, float deltaTime) {
 } // namespace
 
 void AnimationSystem::sample(const MeshAnimation &animation, const AnimationClip &clip, float time,
-                             std::vector<NodePose> &pose) {
-  pose = SkeletonPose::rest(animation.skeleton);
-  for (const AnimationChannel &channel : clip.channels) {
-    if (channel.node < 0 || channel.node >= static_cast<int>(pose.size()))
-      continue;
-    size_t key = 0;
+                             std::vector<NodePose> &pose, const uint8_t *active) {
+  // The clip's base (the rest pose with its constant channels) is copied over what is there, with no new buffer; the
+  // channels that change are then written over it
+  const size_t index = static_cast<size_t>(&clip - animation.clips.data());
+  if (index < animation.clips.size()) {
+    if (animation.clipBases.size() != animation.clips.size())
+      animation.clipBases.resize(animation.clips.size());
+    std::vector<NodePose> &base = animation.clipBases[index];
+    if (base.size() != animation.skeleton.nodes.size()) {
+      base = animation.restPose.size() == animation.skeleton.nodes.size() ? animation.restPose
+                                                                          : SkeletonPose::rest(animation.skeleton);
+      layConstants(clip, base);
+    }
+    pose = base;
+  } else {
+    pose = SkeletonPose::rest(animation.skeleton);
+    layConstants(clip, pose);
+  }
+  const int nodeCount = static_cast<int>(pose.size());
+  for (const AnimationTrack &track : clip.tracks) {
+    // Where `time` falls is the same for every channel of the track, so it is looked for once, when one is wanted
+    bool located = false;
+    size_t key = 0, next = 0;
     float blend = 0.0f, interval = 0.0f;
-    locate(channel.times, time, key, blend, interval);
-    const size_t next = std::min(key + 1, channel.times.size() - 1);
-
-    glm::vec4 value;
-    glm::quat rotation;
-    const bool isRotation = channel.path == AnimationChannel::Path::Rotation;
-    switch (channel.interpolation) {
-    case AnimationChannel::Interpolation::Step:
-      value = channel.values[key];
-      rotation = toQuat(value);
-      break;
-    case AnimationChannel::Interpolation::Linear:
-      value = glm::mix(channel.values[key], channel.values[next], blend);
-      rotation = glm::slerp(toQuat(channel.values[key]), toQuat(channel.values[next]), blend);
-      break;
-    case AnimationChannel::Interpolation::CubicSpline: {
-      // Three values per key: in-tangent, value, out-tangent; tangents scale with the time between keys
-      const glm::vec4 &p0 = channel.values[key * 3 + 1], &m0 = channel.values[key * 3 + 2];
-      const glm::vec4 &p1 = channel.values[next * 3 + 1], &m1 = channel.values[next * 3];
-      value = key == next ? p0 : hermite(p0, m0 * interval, p1, m1 * interval, blend);
-      rotation = toQuat(value);
-      break;
+    for (size_t c = track.firstChannel; c < track.firstChannel + track.channelCount; ++c) {
+      const AnimationChannel &channel = clip.channels[c];
+      if (channel.node < 0 || channel.node >= nodeCount || (active && !active[channel.node]))
+        continue;
+      if (!located) {
+        locate(track.times, time, key, blend, interval);
+        next = std::min(key + 1, track.times.size() - 1);
+        located = true;
+      }
+      NodePose &node = pose[channel.node];
+      const bool isRotation = channel.path == AnimationChannel::Path::Rotation;
+      glm::vec4 value;
+      switch (channel.interpolation) {
+      case AnimationChannel::Interpolation::Step:
+        value = channel.values[key];
+        if (isRotation) {
+          node.rotation = glm::quat(value.w, value.x, value.y, value.z); // unit since it was added
+          continue;
+        }
+        break;
+      case AnimationChannel::Interpolation::Linear:
+        if (isRotation) {
+          const glm::vec4 &a = channel.values[key];
+          if (blend == 0.0f) {
+            node.rotation = glm::quat(a.w, a.x, a.y, a.z);
+            continue;
+          }
+          const glm::vec4 &b = channel.values[next];
+          const glm::vec3 arc = channel.arcs[key];
+          glm::vec4 r;
+          if (arc.x == 0.0f) {
+            r = glm::normalize(glm::mix(a, b, blend));
+          } else {
+            // sin((1-t)w) / sin(w) = cos(tw) - cot(w) sin(tw): one sine and one cosine of the same angle
+            const float angle = blend * arc.x;
+            const float s = std::sin(angle), c = std::cos(angle);
+            r = a * (c - arc.z * s) + b * (s * arc.y);
+          }
+          node.rotation = glm::quat(r.w, r.x, r.y, r.z);
+          continue;
+        }
+        value = glm::mix(channel.values[key], channel.values[next], blend);
+        break;
+      case AnimationChannel::Interpolation::CubicSpline: {
+        // Three values per key: in-tangent, value, out-tangent; tangents scale with the time between keys
+        const glm::vec4 &p0 = channel.values[key * 3 + 1], &m0 = channel.values[key * 3 + 2];
+        const glm::vec4 &p1 = channel.values[next * 3 + 1], &m1 = channel.values[next * 3];
+        value = key == next ? p0 : hermite(p0, m0 * interval, p1, m1 * interval, blend);
+        if (isRotation) {
+          node.rotation = toQuat(value);
+          continue;
+        }
+        break;
+      }
+      }
+      if (channel.path == AnimationChannel::Path::Translation)
+        node.translation = glm::vec3(value);
+      else
+        node.scale = glm::vec3(value);
     }
-    }
-
-    NodePose &node = pose[channel.node];
-    if (isRotation)
-      node.rotation = rotation;
-    else if (channel.path == AnimationChannel::Path::Translation)
-      node.translation = glm::vec3(value);
-    else
-      node.scale = glm::vec3(value);
   }
 }
 
@@ -352,7 +417,8 @@ void AnimationSystem::update(float deltaTime) {
 }
 
 bool AnimationSystem::evaluate(Entity entity, int slot, Animator &a, const MeshAnimation &animation, float deltaTime,
-                               bool wanted, std::vector<NodePose> &pose, const EventSource *events) {
+                               bool wanted, std::vector<NodePose> &pose, const EventSource *events,
+                               const uint8_t *active) {
   const AnimationClip *clip = findClip(animation, a.clip);
   if (!clip)
     return false;
@@ -371,7 +437,7 @@ bool AnimationSystem::evaluate(Entity entity, int slot, Animator &a, const MeshA
                  deltaTime * a.speed / length);
   }
   if (wanted)
-    sampleClock(animation, *clip, blendClip, a.blendWeight, a.time, pose, m_scratch);
+    sampleClock(animation, *clip, blendClip, a.blendWeight, a.time, pose, m_scratch, active);
 
   // Fading out what it switched from: that keeps playing as it was (its own speed and loop, a blend in whole), or is a
   // frozen pose, and the two are mixed by how far the fade is
@@ -383,7 +449,7 @@ bool AnimationSystem::evaluate(Entity entity, int slot, Animator &a, const MeshA
     if (a.fadeFromFrozen) {
       if (kept != m_snapshots.end() && !kept->second.frozen.empty()) {
         if (wanted)
-          blendPoses(pose, kept->second.frozen, mix);
+          blendPoses(pose, kept->second.frozen, mix, active);
       } else {
         a.fadeElapsed = a.fadeDuration; // the pose is gone (the playback was not looked at): no fade to run
       }
@@ -393,8 +459,8 @@ bool AnimationSystem::evaluate(Entity entity, int slot, Animator &a, const MeshA
       a.fadeFromTime = stepClock(a.fadeFromTime, deltaTime, a.fadeFromSpeed, a.fadeFromLoop, *from, fromBlend,
                                  a.fadeFromBlendWeight, fromFinished);
       if (wanted) {
-        sampleClock(animation, *from, fromBlend, a.fadeFromBlendWeight, a.fadeFromTime, m_fadePose, m_scratch);
-        blendPoses(pose, m_fadePose, mix);
+        sampleClock(animation, *from, fromBlend, a.fadeFromBlendWeight, a.fadeFromTime, m_fadePose, m_scratch, active);
+        blendPoses(pose, m_fadePose, mix, active);
       }
     }
     if (a.fadeElapsed >= a.fadeDuration) {
@@ -414,18 +480,17 @@ bool AnimationSystem::evaluate(Entity entity, int slot, Animator &a, const MeshA
   return true;
 }
 
-const std::vector<float> &AnimationSystem::maskWeights(const std::shared_ptr<const AnimationGraph> &graph,
-                                                       size_t layerIndex, uint32_t meshHandle,
-                                                       const MeshAnimation &animation) {
-  static const std::vector<float> wholeSkeleton;
+const AnimationSystem::Mask *AnimationSystem::maskOf(const std::shared_ptr<const AnimationGraph> &graph,
+                                                     size_t layerIndex, uint32_t meshHandle,
+                                                     const MeshAnimation &animation) {
   const AnimationGraph::Layer &layer = graph->layers[layerIndex];
   if (!layer.masked)
-    return wholeSkeleton;
+    return nullptr;
   const std::vector<SkeletonNode> &nodes = animation.skeleton.nodes;
   const MaskKey key{graph.get(), layerIndex, meshHandle};
   auto cached = m_masks.find(key);
-  if (cached != m_masks.end() && cached->second.weights.size() == nodes.size())
-    return cached->second.weights;
+  if (cached != m_masks.end() && cached->second.mask.weights.size() == nodes.size())
+    return &cached->second.mask;
 
   // The weight a listed node was given; the others take their parent's, since parents come first
   std::vector<float> listed(nodes.size(), -1.0f);
@@ -442,12 +507,25 @@ const std::vector<float> &AnimationSystem::maskWeights(const std::shared_ptr<con
   }
   CachedMask entry;
   entry.graph = graph;
-  entry.weights.assign(nodes.size(), 0.0f);
+  entry.mask.weights.assign(nodes.size(), 0.0f);
   for (int node : animation.skeleton.order) {
     const int parent = nodes[node].parent;
-    entry.weights[node] = listed[node] >= 0.0f ? listed[node] : parent >= 0 ? entry.weights[parent] : 0.0f;
+    entry.mask.weights[node] = listed[node] >= 0.0f ? listed[node] : parent >= 0 ? entry.mask.weights[parent] : 0.0f;
   }
-  return (m_masks[key] = std::move(entry)).weights;
+  entry.mask.active.resize(nodes.size());
+  for (size_t i = 0; i < nodes.size(); ++i)
+    entry.mask.active[i] = entry.mask.weights[i] > 0.0f;
+  return &(m_masks[key] = std::move(entry)).mask;
+}
+
+const std::vector<NodePose> &AnimationSystem::firstFrame(const MeshAnimation &animation, const AnimationClip &clip) {
+  const size_t index = static_cast<size_t>(&clip - animation.clips.data());
+  if (animation.firstFrames.size() != animation.clips.size())
+    animation.firstFrames.resize(animation.clips.size());
+  std::vector<NodePose> &frame = animation.firstFrames[index];
+  if (frame.empty())
+    sample(animation, clip, 0.0f, frame);
+  return frame;
 }
 
 void AnimationSystem::applyLayers(Entity entity, AnimationStateMachine &machine,
@@ -474,15 +552,19 @@ void AnimationSystem::applyLayers(Entity entity, AnimationStateMachine &machine,
       if (at >= 0)
         events = {&layer.states[at], &layer.name, &state.clockMoved, !wanted};
     }
+    const Mask *mask = wanted ? maskOf(graph, i, meshHandle, animation) : nullptr;
+    const uint8_t *active = mask ? mask->active.data() : nullptr;
     const bool played = evaluate(entity, slot, state.playback, animation, deltaTime, wanted, m_layerPose,
-                                 events.state ? &events : nullptr);
+                                 events.state ? &events : nullptr, active);
     if (!played || !wanted)
       continue;
-    const std::vector<float> &mask = maskWeights(graph, i, meshHandle, animation);
+    const size_t count = std::min(pose.size(), m_layerPose.size());
 
     if (!layer.additive) {
-      for (size_t node = 0; node < pose.size() && node < m_layerPose.size(); ++node) {
-        const float w = state.effectiveWeight * (mask.empty() ? 1.0f : mask[node]);
+      for (size_t node = 0; node < count; ++node) {
+        if (active && !active[node])
+          continue;
+        const float w = state.effectiveWeight * (mask ? mask->weights[node] : 1.0f);
         if (w <= 0.0f)
           continue;
         pose[node].translation = glm::mix(pose[node].translation, m_layerPose[node].translation, w);
@@ -496,18 +578,31 @@ void AnimationSystem::applyLayers(Entity entity, AnimationStateMachine &machine,
     // of the state's `reference` clip, or of the clip itself (of both clips of a blend, mixed like the blend).
     const Animator &playback = state.playback;
     const AnimationClip *referenceClip = state.reference.empty() ? nullptr : findClip(animation, state.reference);
-    if (referenceClip)
-      sampleClock(animation, *referenceClip, nullptr, 0.0f, 0.0f, m_referencePose, m_scratch);
-    else if (const AnimationClip *clip = findClip(animation, playback.clip))
-      sampleClock(animation, *clip, playback.blendClip.empty() ? nullptr : findClip(animation, playback.blendClip),
-                  playback.blendWeight, 0.0f, m_referencePose, m_scratch);
-    else
-      continue;
-    for (size_t node = 0; node < pose.size() && node < m_layerPose.size() && node < m_referencePose.size(); ++node) {
-      const float w = state.effectiveWeight * (mask.empty() ? 1.0f : mask[node]);
+    const AnimationClip *first = referenceClip, *second = nullptr;
+    float mixTo = 0.0f;
+    if (!referenceClip) {
+      first = findClip(animation, playback.clip);
+      if (!first)
+        continue;
+      second = playback.blendClip.empty() ? nullptr : findClip(animation, playback.blendClip);
+      mixTo = std::clamp(playback.blendWeight, 0.0f, 1.0f);
+    }
+    const std::vector<NodePose> &firstPose = firstFrame(animation, *first);
+    const std::vector<NodePose> *secondPose = second ? &firstFrame(animation, *second) : nullptr;
+    for (size_t node = 0; node < count && node < firstPose.size(); ++node) {
+      if (active && !active[node])
+        continue;
+      const float w = state.effectiveWeight * (mask ? mask->weights[node] : 1.0f);
       if (w <= 0.0f)
         continue;
-      const NodePose &current = m_layerPose[node], &reference = m_referencePose[node];
+      const NodePose &current = m_layerPose[node];
+      NodePose reference = firstPose[node];
+      if (secondPose && node < secondPose->size()) {
+        const NodePose &to = (*secondPose)[node];
+        reference.translation = glm::mix(reference.translation, to.translation, mixTo);
+        reference.rotation = glm::slerp(reference.rotation, to.rotation, mixTo);
+        reference.scale = glm::mix(reference.scale, to.scale, mixTo);
+      }
       pose[node].translation += w * (current.translation - reference.translation);
       // The change of rotation, in the node's own space, applied after what is below
       const glm::quat change = glm::slerp(glm::quat(1.0f, 0.0f, 0.0f, 0.0f),

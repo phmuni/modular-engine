@@ -75,6 +75,13 @@ struct VertexSkin {
   glm::vec4 weights{0.0f}; // summing to 1
 };
 
+// One node's position, rotation and scale relative to its parent
+struct NodePose {
+  glm::vec3 translation{0.0f};
+  glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+  glm::vec3 scale{1.0f};
+};
+
 struct SkeletonNode {
   std::string name;
   int parent = -1; // index in Skeleton::nodes
@@ -97,14 +104,40 @@ struct AnimationChannel {
   int node = -1;
   Path path = Path::Translation;
   Interpolation interpolation = Interpolation::Linear;
-  std::vector<float> times;
+  int track = 0;                 // index in AnimationClip::tracks: the key times the values belong to
   std::vector<glm::vec4> values; // xyz (rotation: xyzw); CubicSpline: in-tangent, value, out-tangent per key
+  // Linear rotation only, made by AnimationClip::addChannel: the keys are unit quaternions, each taking the short way
+  // from the one before, and per interval this holds the angle between the two, 1/sin and cot of it, so a sample is one
+  // sine and one cosine (angle 0: the keys are so close that a normalized lerp is within 1e-6 of the slerp)
+  std::vector<glm::vec3> arcs;
+};
+
+// The key times that one or more channels of a clip share (the channels of a clip mostly do), so that a sample finds
+// where it falls once for all of them
+struct AnimationTrack {
+  std::vector<float> times; // ascending, not empty
+  size_t firstChannel = 0;  // its channels are AnimationClip::channels[firstChannel, firstChannel + channelCount)
+  size_t channelCount = 0;
+};
+
+// A channel whose value is the same at every key (exporters write one for every bone, moving or not): it is laid over
+// the rest pose once, not found at every sample
+struct ConstantChannel {
+  int node = -1;
+  AnimationChannel::Path path = AnimationChannel::Path::Translation;
+  glm::vec4 value{0.0f}; // as for AnimationChannel::values; a rotation is a unit quaternion
 };
 
 struct AnimationClip {
   std::string name;
   float duration = 0.0f; // seconds
-  std::vector<AnimationChannel> channels;
+  std::vector<AnimationChannel> channels; // those that change, grouped by track
+  std::vector<AnimationTrack> tracks;
+  std::vector<ConstantChannel> constants;
+
+  // Adds a channel with its key times (not empty): to the track of equal times or a new one, with its values prepared,
+  // or, when its value never changes, to `constants`
+  void addChannel(AnimationChannel channel, std::vector<float> times);
 };
 
 // What a skinned or animated mesh keeps for the animation system
@@ -112,6 +145,12 @@ struct MeshAnimation {
   Skeleton skeleton;
   std::vector<AnimationClip> clips;
   std::vector<glm::mat4> restJointMatrices; // the rest pose, for entities without an Animator
+  std::vector<NodePose> restPose;           // every node's rest pose (the loader fills it; sampling copes without)
+  // Each clip posed at time 0, the reference of an additive layer; made on first use, by the main thread alone (the
+  // one that poses), so it lives and dies with the model. Empty until worked out.
+  mutable std::vector<std::vector<NodePose>> firstFrames;
+  // Each clip's starting point for sampling: the rest pose with the clip's constant channels laid over it. The same.
+  mutable std::vector<std::vector<NodePose>> clipBases;
   int findClip(std::string_view name) const {
     for (size_t i = 0; i < clips.size(); ++i)
       if (clips[i].name == name)

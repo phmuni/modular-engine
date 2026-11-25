@@ -648,15 +648,16 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
                                                                  : AnimationChannel::Interpolation::Linear;
         const AccessorView times = makeAccessorView(*gltf, &gltf->accessors[sampler.input]);
         const AccessorView values = makeAccessorView(*gltf, &gltf->accessors[sampler.output]);
+        std::vector<float> keyTimes;
+        keyTimes.reserve(times.count);
         for (size_t k = 0; k < times.count; ++k)
-          channel.times.push_back(times.read<1>(k).x);
+          keyTimes.push_back(times.read<1>(k).x);
         for (size_t k = 0; k < values.count; ++k)
           channel.values.push_back(values.read<4>(k));
         const size_t perKey = channel.interpolation == AnimationChannel::Interpolation::CubicSpline ? 3 : 1;
-        if (channel.times.empty() || channel.values.size() < channel.times.size() * perKey)
+        if (keyTimes.empty() || channel.values.size() < keyTimes.size() * perKey)
           continue;
-        clip.duration = std::max(clip.duration, channel.times.back());
-        clip.channels.push_back(std::move(channel));
+        clip.addChannel(std::move(channel), std::move(keyTimes));
       }
       animation->clips.push_back(std::move(clip));
     }
@@ -865,8 +866,8 @@ bool Mesh::parseGLB(std::string filename, MeshData &data) {
   if (animation) {
     // The rest pose, for bounds, picking and entities without an Animator
     std::vector<glm::mat4> globals;
-    SkeletonPose::jointMatrices(animation->skeleton, SkeletonPose::rest(animation->skeleton), globals,
-                                animation->restJointMatrices);
+    animation->restPose = SkeletonPose::rest(animation->skeleton);
+    SkeletonPose::jointMatrices(animation->skeleton, animation->restPose, globals, animation->restJointMatrices);
     if (animation->skeleton.jointNodes.size() > EngineConfig::MAX_JOINTS)
       LOG_W("[Mesh] %s has %zu joints; only %d are drawn moving", normalized.c_str(),
             animation->skeleton.jointNodes.size(), EngineConfig::MAX_JOINTS);

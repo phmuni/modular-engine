@@ -81,8 +81,11 @@ public:
   // when it has none; null for a static model
   const std::vector<glm::mat4> *getJointMatrices(Entity entity) const;
 
-  // The pose of `clip` at `time` (seconds, wrapped when looping) over the rest pose
-  static void sample(const MeshAnimation &animation, const AnimationClip &clip, float time, std::vector<NodePose> &pose);
+  // The pose of `clip` at `time` (seconds, wrapped when looping) over the rest pose. With `active` (a flag per node),
+  // only the nodes flagged are posed; the others hold the clip's constant channels over the rest pose, not what the clip
+  // does to them.
+  static void sample(const MeshAnimation &animation, const AnimationClip &clip, float time, std::vector<NodePose> &pose,
+                     const uint8_t *active = nullptr);
 
 private:
   ComponentManager &m_componentManager;
@@ -143,13 +146,21 @@ private:
   // `wanted` is false: only the clocks move). False when its clip is not in the model.
   // `events`, when given, is where the clock's move is looked at for animation events.
   bool evaluate(Entity entity, int slot, Animator &playback, const MeshAnimation &animation, float deltaTime,
-                bool wanted, std::vector<NodePose> &pose, const EventSource *events = nullptr);
+                bool wanted, std::vector<NodePose> &pose, const EventSource *events = nullptr,
+                const uint8_t *active = nullptr);
   void applyLayers(Entity entity, AnimationStateMachine &machine, const std::shared_ptr<const AnimationGraph> &graph,
                    uint32_t meshHandle, const MeshAnimation &animation, float deltaTime, std::vector<NodePose> &pose);
-  // The weight of each node of the skeleton for a layer's mask (empty: every node at 1), worked out once per graph
-  // and model
-  const std::vector<float> &maskWeights(const std::shared_ptr<const AnimationGraph> &graph, size_t layer,
-                                        uint32_t meshHandle, const MeshAnimation &animation);
+  // A layer's mask for a model, worked out once per graph and model: the weight of each node of the skeleton, and a
+  // flag per node that says whether it has any, so that the others are not posed
+  struct Mask {
+    std::vector<float> weights;
+    std::vector<uint8_t> active;
+  };
+  // Null for a layer that has no mask (every node at 1)
+  const Mask *maskOf(const std::shared_ptr<const AnimationGraph> &graph, size_t layer, uint32_t meshHandle,
+                     const MeshAnimation &animation);
+  // The pose of the clip at time 0 (kept in the model), what an additive clip is measured from
+  static const std::vector<NodePose> &firstFrame(const MeshAnimation &animation, const AnimationClip &clip);
 
   // The poses a playback keeps while it fades: the last one it showed (what an interrupting fade starts from) and the
   // frozen one it fades out when interrupted. Only while a fade runs; gone with the entity, like the joints.
@@ -171,11 +182,11 @@ private:
   // Holding the graph keeps its address from being reused by another one while an entry points at it
   struct CachedMask {
     std::shared_ptr<const AnimationGraph> graph;
-    std::vector<float> weights;
+    Mask mask;
   };
   std::map<MaskKey, CachedMask> m_masks;
 
   std::unordered_map<Entity, std::vector<glm::mat4>> m_joints;
   std::vector<glm::mat4> m_globals; // scratch
-  std::vector<NodePose> m_scratch, m_fadePose, m_layerPose, m_referencePose; // scratch
+  std::vector<NodePose> m_scratch, m_fadePose, m_layerPose; // scratch
 };
