@@ -2913,6 +2913,9 @@ void drawAnimationStateMachine(Engine &engine, SystemManager &systemManager, Ent
     engine.setAnimator(entity, machine.path);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Back to the default state with the parameters at their initial values");
+  // The layers on top of it: where each is and how much of it shows now (its weight times its presence)
+  for (const AnimationStateMachine::LayerState &layer : machine.layers)
+    ImGui::TextDisabled("  %s: %s (weight %.2f)", layer.name.c_str(), layer.state.c_str(), layer.effectiveWeight);
 
   for (const auto &[name, param] : graph->params) {
     float &value = machine.params[name];

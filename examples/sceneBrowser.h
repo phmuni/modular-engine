@@ -32,7 +32,6 @@ public:
   explicit SceneBrowser(std::string first = {}) : m_first(std::move(first)) {}
 
   void setup(Engine &engine) override {
-    engine.setState(Toggle::FreeCamera, true); // a viewer: the free camera (Settings) is how scenes are looked at
     refresh(engine);
     if (m_first.empty() && !m_scenes.empty())
       m_first = m_scenes.front();
@@ -43,7 +42,10 @@ public:
     engine.loadScene(m_first);
   }
 
-  void onSceneLoaded(Engine &, const std::string &path) override {
+  void onSceneLoaded(Engine &engine, const std::string &path) override {
+    // A viewer: the free camera (Settings) is how scenes are looked at. A scene with a player of its own switches it off
+    // from its script, which starts after this.
+    engine.setState(Toggle::FreeCamera, true);
     std::string relative = EngineConfig::relativePath(EngineConfig::resolvePath(path));
     auto it = std::find(m_scenes.begin(), m_scenes.end(), relative);
     if (it != m_scenes.end())

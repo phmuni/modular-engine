@@ -1,0 +1,12 @@
+{
+  "params": { "attack": "trigger", "w": { "type": "float", "default": 1 } },
+  "states": [{ "name": "walk", "clip": "Walking_A" }],
+  "layers": [
+    {
+      "name": "upper",
+      "weight": "w",
+      "states": [{ "name": "none" }, { "name": "attack", "clip": "1H_Melee_Attack_Chop", "loop": false }],
+      "transitions": [{ "from": "none", "to": "attack", "fade": 0.2, "when": [{ "param": "attack" }] }]
+    }
+  ]
+}

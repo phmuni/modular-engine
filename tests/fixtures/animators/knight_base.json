@@ -1,0 +1,4 @@
+{
+  "params": { "speed": "float" },
+  "states": [{ "name": "walk", "clip": "Walking_A" }]
+}

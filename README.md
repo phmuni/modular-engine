@@ -828,7 +828,9 @@ Settings has "Show navigation", which draws the walkable polygons and the last p
 
 glTF models with skins and animations play their clips: vertices follow up to four joints each, parts without a skin
 follow their own node (a sword in a hand), clips use linear, step or cubic-spline keys, and switching clips crossfades.
-Shadows, sun and point lights alike, follow the pose.
+What fades out is what is on screen: a blend of clips fades out whole, a clip keeps its own speed and loop, and switching
+again in the middle of a fade fades out the pose the first one had reached, so nothing jumps. Shadows, sun and point lights
+alike, follow the pose.
 
 ```cpp
 Entity hero = engine.entities().create("Hero").withModel("../assets/models/hero.glb", {0, 0, 0})
@@ -841,7 +843,8 @@ auto &animator = engine.get<Animator>(hero); // speed, time, loop, playing
 
 `./bin/engine view model.glb` plays an animated model's first clip and switches clips with `1`-`9`. The Properties
 panel picks a clip and scrubs through it; `Animator` is saved in scenes ([`assets/scenes/animation.json`](assets/scenes/animation.json)).
-[`tools/generateAnimatedTestModel.py`](tools/generateAnimatedTestModel.py) writes the small test model it uses. Up to
+[`tools/generateAnimatedTestModel.py`](tools/generateAnimatedTestModel.py) writes the small test model it uses, and
+[`tools/trimGlb.py`](tools/trimGlb.py) cuts a glTF down to some of its clips and nodes (it made the knight, below). Up to
 128 joints per model are animated (`EngineConfig::MAX_JOINTS`); morph targets are not supported.
 
 ### Animation state machines
@@ -894,17 +897,79 @@ hero.setAnimator("animators/character.json");  // adds the machine (and an Anima
 hero.setParam("speed", 3.5f);                  // or a bool: hero.setParam("grounded", true)
 hero.trigger("jump");
 hero.animationState();                         // "move"
-engine.onAnimationStateChanged([](const GameEntity &e, const std::string &from, const std::string &to) { /* ... */ });
+engine.onAnimationStateChanged([](const GameEntity &e, const std::string &from, const std::string &to,
+                                  const std::string &layer) { /* layer: "base", or a layer's name */ });
 ```
 
 In Lua: `hero:setAnimator(path)`, `hero:setParam(name, number|boolean)`, `hero:param(name)`, `hero:trigger(name)`,
-`hero.animationState`, and an entity script's `onStateChanged(self, old, new)` (not called for the default state it starts in).
+`hero.animationState`, and an entity script's `onStateChanged(self, old, new, layer)` (not called for the default state it
+starts in; `layer` is `"base"` for the top-level states).
 
 A manual `hero:play(clip)` (or `engine.playAnimation`) takes the Animator over: the machine keeps running, evaluating
 parameters and transitions, but stops driving the Animator until its next state change, which fades from the clip played
 by hand. `setAnimator(path)` again restarts the machine. The Properties panel shows the machine (drop a file from the Assets
 panel on its `File` field, or on an entity in the viewport), its current state, and a widget per parameter (a drag value, a
-checkbox, a button for a trigger) to drive a character while the game plays.
+checkbox, a button for a trigger) to drive a character while the game plays, and under the state, each layer with its state
+and its weight now (read only).
+
+### Animation layers
+
+A state machine file can have layers that play over the top-level states (the base layer, called `"base"`): swing a sword
+or block with the upper body while the legs go on walking, flinch when hit. Each layer is a machine of its own, with
+states and transitions in the same syntax; the parameters are shared by all of them, and a file without `"layers"` works
+as it always did.
+
+```json
+"layers": [
+  { "name": "upper",
+    "mask": { "spine": 0.5, "chest": 1 },
+    "weight": 1.0,
+    "states": [ { "name": "none" }, { "name": "attack", "clip": "1H_Melee_Attack_Chop", "loop": false } ],
+    "transitions": [
+      { "from": "none",   "to": "attack", "fade": 0.1, "when": [{ "param": "attack" }] },
+      { "from": "attack", "to": "none",   "fade": 0.2 } ] },
+  { "name": "hit", "additive": true, "mask": ["spine"],
+    "states": [ { "name": "none" }, { "name": "flinch", "clip": "Hit_A", "loop": false, "reference": "Idle" } ],
+    "transitions": [ ... ] }
+]
+```
+
+- **`name`**: not empty, not `"base"`, not used twice. Layers apply in file order, each over the result of the ones before.
+- **`mask`**: the nodes (bones) the layer acts on: a list of names (weight 1 each) or `{ "spine": 0.5, "head": 0 }`. A node
+  takes the weight of the nearest node listed above it in the skeleton (itself included), 0 when there is none, so
+  `["spine"]` is the spine and everything under it (chest, arms, head), and a `0` carves a part out. Without a mask the
+  whole skeleton is affected. A name the model lacks is logged once. The weights are worked out once per file and model.
+- **`weight`**: a number from 0 to 1 (1), or the name of a float parameter (clamped to 0..1), to fade a layer by hand.
+- **states**: as in the base, and a state with no `clip` and no `blend` is allowed here (and only here): while the layer is
+  in it, the layer shows nothing. `"default"` names the first state to be in (the first by default).
+- **`additive`**: instead of replacing the pose below, the layer adds what its clip does beyond a reference pose: the
+  rotation change (the reference's inverse times the clip's, applied in the node's own space after what is below), the
+  difference of the positions, and the ratio of the scales, all scaled by weight and mask. The reference is the first frame
+  of the state's clip, or of the clip the state's `"reference"` names; a blend state uses the first frames of its two clips,
+  mixed by the blend, and a state's own reference is used for the whole state, so give a layer's states the same
+  `reference` when they should not shift the pose against each other. A node the clip does not animate adds nothing.
+- Entering a state that plays something: the layer's presence rises from 0 to 1 over the transition's `fade`, showing only
+  the new clip. Entering an empty state: the presence falls to 0 over the fade while the old clip plays on. From one clip
+  to another the poses crossfade. Interrupting a fade starts from the presence it had reached, so nothing jumps. A layer
+  whose weight times presence is 0 is not sampled (its states go on running).
+- **Triggers** are used up after every layer has had its turn in the frame, so two layers waiting for the same trigger
+  both react; within a layer at most one transition fires per frame, as in the base.
+- A manual `play` takes over only the base layer; the other layers go on on top of it. They also apply over the rest pose
+  when the base clip is missing from the model. Restarting the machine puts every layer back in its default state, and a
+  file that changes on disk is matched layer by layer by name (new layers start in their default state).
+
+```cpp
+hero.animationLayerState("upper");   // "attack"; "" for a layer the file has not, "base" is animationState()
+engine.getAnimationState(hero.id(), "upper");
+```
+
+In Lua: `hero:animationLayerState("upper")`. [`assets/animators/knight.json`](assets/animators/knight.json) is the knight's
+machine: a locomotion blend by `speed` (Idle, Walking_A and Running_A at the speeds their feet cover, so they do not slide),
+jump, landing, dodge and death in the base, an `upper` layer for the sword swings (two in a combo if the button is pressed
+again) and the shield, and an additive `hit` layer. [`assets/scenes/character.json`](assets/scenes/character.json) puts it
+in a small level with [`assets/scripts/knight.lua`](assets/scripts/knight.lua) (`./bin/engine scene ../assets/scenes/character.json`:
+WASD runs, Shift walks, the mouse turns the camera, Space jumps, the left mouse button attacks, the right
+one blocks, Q dodges, H plays a hit, K lies down).
 
 ### Play and Stop
 
@@ -1930,6 +1995,9 @@ Check the [Issues](https://github.com/phmuni/modular-engine/issues) and [Project
 ## License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+The knight (`assets/models/knight`, see its [LICENSE.txt](assets/models/knight/LICENSE.txt)) is from KayKit: Adventurers by
+Kay Lousberg (www.kaylousberg.com), CC0.
 
 The libraries it is built with have licenses of their own, quoted in [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt)
 (written and checked by `tools/third_party_licenses.py`). Every game gets a copy in `bin/engine-assets`: keep it in what you

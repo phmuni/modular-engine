@@ -191,6 +191,9 @@ public:
   void trigger(const std::string &name);
   // The state it is in, "" without a machine
   std::string animationState() const;
+  // The state of one of the machine's layers; "" without a machine or for a layer it does not have ("base" is the same as
+  // animationState())
+  std::string animationLayerState(const std::string &layer) const;
   // Its AudioSource (see components/audioSource.h): the sound attached to it, heard from where the entity is as it
   // moves. All of these do nothing without one (add it in the editor, or with the builder's withSound). playAudio
   // starts it over (or continues it after pauseAudio), stopAudio stops and rewinds it. Volume is 1 for normal,

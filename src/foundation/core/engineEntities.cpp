@@ -174,7 +174,8 @@ void Engine::playAnimation(Entity entity, std::string_view clip, float fadeSecon
   animator->playing = true;
   if (same)
     return; // already playing it: keep going rather than restart
-  AnimationSystem::crossfade(*animator, animation, std::string(clip), fadeSeconds, loop);
+  m_systemManager.getSystem<AnimationSystem>().crossfade(entity, *animator, animation, std::string(clip), fadeSeconds,
+                                                         loop);
 }
 
 std::vector<std::string> Engine::getAnimationClips(Entity entity) {
@@ -232,15 +233,21 @@ float Engine::getAnimationParam(Entity entity, std::string_view name) {
   return value != machine->params.end() ? value->second : 0.0f;
 }
 
-std::string Engine::getAnimationState(Entity entity) {
+std::string Engine::getAnimationState(Entity entity, std::string_view layer) {
   if (!tryGet<AnimationStateMachine>(entity))
     return std::string();
   m_systemManager.getSystem<AnimationSystem>().startMachine(entity); // a scene's machine starts with the next frame
-  return tryGet<AnimationStateMachine>(entity)->state;
+  const AnimationStateMachine &machine = *tryGet<AnimationStateMachine>(entity);
+  if (layer.empty() || layer == AnimationGraph::kBaseLayer)
+    return machine.state;
+  for (const AnimationStateMachine::LayerState &running : machine.layers)
+    if (running.name == layer)
+      return running.state;
+  return std::string();
 }
 
 void Engine::onAnimationStateChanged(
-    std::function<void(const GameEntity &, const std::string &, const std::string &)> listener) {
+    std::function<void(const GameEntity &, const std::string &, const std::string &, const std::string &)> listener) {
   m_animationListeners.push_back(std::move(listener));
 }
 

@@ -54,6 +54,7 @@ CASES = {
     "scene-custom-shaders": ["scene", "../assets/scenes/custom_shaders.json"],  # water, hologram and dissolve shaders
     "scene-reflection-probes": ["scene", "../assets/scenes/reflection_probes.json"],  # two baked reflection probes: a room and a corridor
     "scene-joints": ["scene", "../assets/scenes/joints.json"],  # hinge wall stopped by a pillar, spring door, pendulum, elevator, welded pair
+    "scene-character": ["scene", "../assets/scenes/character.json"],  # the knight standing idle in a small level (animation layers, feet on the ground)
     "scene-many-lights":["scene", "../assets/scenes/many_lights.json"],  # 180 colored point lights (clustered), 5 with shadows, metal and rough balls
 }
 

@@ -1,0 +1,17 @@
+{
+  "params": { "go": "trigger" },
+  "states": [{ "name": "walk", "clip": "Walking_A" }],
+  "layers": [
+    {
+      "name": "left",
+      "states": [{ "name": "none" }, { "name": "swing", "clip": "1H_Melee_Attack_Chop", "loop": false }],
+      "transitions": [{ "from": "none", "to": "swing", "when": [{ "param": "go" }] }]
+    },
+    {
+      "name": "right",
+      "mask": ["spine"],
+      "states": [{ "name": "none" }, { "name": "raised", "clip": "Block", "loop": false }],
+      "transitions": [{ "from": "none", "to": "raised", "when": [{ "param": "go" }] }]
+    }
+  ]
+}

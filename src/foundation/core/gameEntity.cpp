@@ -461,6 +461,10 @@ std::string GameEntity::animationState() const {
   return m_engine ? m_engine->getAnimationState(m_id) : std::string();
 }
 
+std::string GameEntity::animationLayerState(const std::string &layer) const {
+  return m_engine ? m_engine->getAnimationState(m_id, layer) : std::string();
+}
+
 void GameEntity::playAudio() {
   AudioSource *source = m_engine ? m_engine->tryGet<AudioSource>(m_id) : nullptr;
   if (!source)

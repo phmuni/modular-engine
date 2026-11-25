@@ -1,0 +1,46 @@
+{
+  "params": {
+    "speed": { "type": "float", "default": 1.5 },
+    "grounded": { "type": "bool", "default": true },
+    "dodge": "trigger",
+    "attack": "trigger",
+    "block": "bool"
+  },
+  "states": [
+    {
+      "name": "locomotion",
+      "blend": {
+        "param": "speed",
+        "clips": [
+          { "clip": "Idle", "at": 0 },
+          { "clip": "Walking_A", "at": 0.68 },
+          { "clip": "Running_A", "at": 2.84 }
+        ]
+      }
+    },
+    { "name": "dodge", "clip": "Dodge_Forward", "loop": false },
+    { "name": "air", "clip": "Jump_Idle" }
+  ],
+  "transitions": [
+    { "from": "locomotion", "to": "dodge", "fade": 0.3, "when": [{ "param": "dodge" }] },
+    { "from": "dodge", "to": "air", "fade": 0.3, "when": [{ "param": "grounded", "op": "false" }] },
+    { "from": "dodge", "to": "locomotion", "fade": 0.3 }
+  ],
+  "layers": [
+    {
+      "name": "upper",
+      "mask": ["spine"],
+      "states": [
+        { "name": "none" },
+        { "name": "attack", "clip": "1H_Melee_Attack_Chop", "loop": false },
+        { "name": "block", "clip": "Blocking" }
+      ],
+      "transitions": [
+        { "from": "none", "to": "attack", "fade": 0.25, "when": [{ "param": "attack" }] },
+        { "from": "attack", "to": "block", "fade": 0.25, "when": [{ "param": "block" }] },
+        { "from": "attack", "to": "none", "fade": 0.25 },
+        { "from": "block", "to": "none", "fade": 0.25, "when": [{ "param": "block", "op": "false" }] }
+      ]
+    }
+  ]
+}

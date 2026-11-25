@@ -1,0 +1,23 @@
+{
+  "params": { "still": "bool", "play": "bool", "against": "bool", "w": { "type": "float", "default": 1 } },
+  "states": [{ "name": "walk", "clip": "Walking_A" }],
+  "layers": [
+    {
+      "name": "add",
+      "additive": true,
+      "weight": "w",
+      "mask": ["spine"],
+      "states": [
+        { "name": "none" },
+        { "name": "still", "clip": "1H_Melee_Attack_Chop", "speed": 0 },
+        { "name": "against", "clip": "1H_Melee_Attack_Chop", "speed": 0, "reference": "Running_A" },
+        { "name": "play", "clip": "1H_Melee_Attack_Chop" }
+      ],
+      "transitions": [
+        { "from": "none", "to": "still", "fade": 0, "when": [{ "param": "still" }] },
+        { "from": "none", "to": "against", "fade": 0, "when": [{ "param": "against" }] },
+        { "from": "still", "to": "play", "fade": 0, "when": [{ "param": "play" }] }
+      ]
+    }
+  ]
+}

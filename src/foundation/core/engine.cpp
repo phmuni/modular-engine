@@ -320,8 +320,9 @@ void Engine::update(bool &isRunning, bool pollInput) {
     if (!isAlive(change.entity))
       continue;
     for (const auto &listener : m_animationListeners)
-      listener(entity(change.entity), change.from, change.to);
-    m_systemManager.getSystem<ScriptSystem>().animationStateChanged(change.entity, change.from, change.to);
+      listener(entity(change.entity), change.from, change.to, change.layer);
+    m_systemManager.getSystem<ScriptSystem>().animationStateChanged(change.entity, change.from, change.to,
+                                                                    change.layer);
   }
   // The camera rig last of the movement: it trails where the target ended up this frame
   cameraSystem.updateRigs(timeSystem.getDeltaTime(), m_systemManager);

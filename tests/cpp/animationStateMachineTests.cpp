@@ -82,16 +82,17 @@ TEST_CASE(animator_blend_state_mixes_two_clips_by_a_parameter) {
 
 TEST_CASE(animator_listener_hears_state_changes) {
   auto changes = std::make_shared<std::vector<std::string>>();
-  engine.onAnimationStateChanged([changes](const GameEntity &, const std::string &from, const std::string &to) {
-    changes->push_back(from + ">" + to);
-  });
+  engine.onAnimationStateChanged(
+      [changes](const GameEntity &, const std::string &from, const std::string &to, const std::string &layer) {
+        changes->push_back(from + ">" + to + "@" + layer);
+      });
   GameEntity entity = engine.create("Tentacle", Desc(kModel));
   entity.setAnimator(kMachine);
   entity.trigger("hit");
   steps.step(4, [changes]() {
     CHECK_EQ(changes->size(), size_t(1));
     if (!changes->empty())
-      CHECK_EQ((*changes)[0], std::string("idle>hurt"));
+      CHECK_EQ((*changes)[0], std::string("idle>hurt@base"));
   });
 }
 

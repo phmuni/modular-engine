@@ -375,10 +375,10 @@ struct ScriptSystem::Impl : LuaHost {
   }
 
   // An animation state machine moved to another state: the entity's script hears of it
-  void animationStateChanged(Entity entity, const std::string &from, const std::string &to) {
+  void animationStateChanged(Entity entity, const std::string &from, const std::string &to, const std::string &layer) {
     auto it = instances.find(entity);
     if (it != instances.end() && it->second.started && engine.isAlive(entity))
-      call(it->second, "onStateChanged", engine.entity(entity), from, to);
+      call(it->second, "onStateChanged", engine.entity(entity), from, to, layer);
   }
 
   // --- Coroutines -----------------------------------------------------------------------------------------------
@@ -505,7 +505,8 @@ void ScriptSystem::menuAction(const std::string &menu, const std::string &name) 
   if (impl.hasGameScript)
     impl.call(impl.gameScript, "onMenuAction", menu, name);
 }
-void ScriptSystem::animationStateChanged(Entity entity, const std::string &from, const std::string &to) {
-  m_impl->animationStateChanged(entity, from, to);
+void ScriptSystem::animationStateChanged(Entity entity, const std::string &from, const std::string &to,
+                                         const std::string &layer) {
+  m_impl->animationStateChanged(entity, from, to, layer);
 }
 size_t ScriptSystem::getInstanceCount() const { return m_impl->instances.size(); }

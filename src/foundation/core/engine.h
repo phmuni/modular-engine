@@ -336,11 +336,14 @@ public:
   void triggerAnimation(Entity entity, std::string_view name);
   // A parameter's value (0 for an unknown one)
   float getAnimationParam(Entity entity, std::string_view name);
-  // The state its machine is in ("" without a machine or with a file that does not load)
-  std::string getAnimationState(Entity entity);
-  // Calls `listener` whenever a state machine moves to another state (not for its first, default state): the entity
-  // and the names of the state it left and the one it entered. Lua scripts get onStateChanged(self, old, new).
-  void onAnimationStateChanged(std::function<void(const GameEntity &, const std::string &, const std::string &)> listener);
+  // The state its machine is in ("" without a machine or with a file that does not load). `layer` names one of the
+  // machine's layers; "" or "base" is the top-level states, and a name the file does not have gives "".
+  std::string getAnimationState(Entity entity, std::string_view layer = std::string_view());
+  // Calls `listener` whenever a state machine moves to another state (not for its first, default state): the entity,
+  // the names of the state it left and the one it entered, and the layer it happened in ("base" for the top-level
+  // states). Lua scripts get onStateChanged(self, old, new, layer).
+  void onAnimationStateChanged(
+      std::function<void(const GameEntity &, const std::string &, const std::string &, const std::string &)> listener);
   // Bodies that started touching during the last update, one of them with component A and the other with B (each
   // pair once, A's first), e.g. forEachContact<Player, Coin>
   template <typename A, typename B, typename Fn> void forEachContact(Fn &&fn) {
@@ -848,7 +851,8 @@ private:
   std::string reflectionProbeFile(Entity entity);
   static constexpr float kPrefabPollSeconds = 0.5f;
   float m_prefabPollTime = 0.0f;
-  std::vector<std::function<void(const GameEntity &, const std::string &, const std::string &)>> m_animationListeners;
+  std::vector<std::function<void(const GameEntity &, const std::string &, const std::string &, const std::string &)>>
+      m_animationListeners;
   float m_previewTime = 0.0f; // seconds in the editor with the game frozen, what custom shaders' `time` shows there
   void applyHistoryRequest();
   void clearHistory();

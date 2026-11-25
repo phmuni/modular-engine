@@ -26,9 +26,10 @@
 ---Entity script: every frame two collision shapes overlap (called on both entities' scripts).
 ---@alias OnOverlap fun(self: Entity, other: Entity)
 
----Entity script: its animation state machine (see Entity:setAnimator) moved from the state `old` to `new`. Not called
----for the default state it starts in.
----@alias OnStateChanged fun(self: Entity, old: string, new: string)
+---Entity script: its animation state machine (see Entity:setAnimator) moved from the state `old` to `new`, in the layer
+---`layer` ("base" for the top-level states, else the name of one of the file's layers). Not called for the default
+---state it starts in.
+---@alias OnStateChanged fun(self: Entity, old: string, new: string, layer: string)
 
 ---Entity script: after its file was saved and loaded again while the game runs (only if the script had started).
 ---@alias OnReload fun(self: Entity)
@@ -54,7 +55,7 @@ onContactEnd = nil
 onOverlap = nil
 ---@type fun(self: Entity)
 onReload = nil
----@type fun(self: Entity, old: string, new: string)
+---@type fun(self: Entity, old: string, new: string, layer: string)
 onStateChanged = nil
 
 ---Game script only: a menu (ui.menu, the pause menu too, named "pause") opened.
@@ -157,7 +158,7 @@ function vec3.lerp(a, b, t) end
 ---@field velocity vec3 Linear velocity of its physics body
 ---@field angularVelocity vec3 Spin of its physics body, in degrees per second around each axis; also works on a body created this frame
 ---@field onGround boolean (read-only) whether its character controller stands on the ground
----@field animationState string (read-only) the state its animation state machine is in, "" without one
+---@field animationState string (read-only) the state its animation state machine is in, "" without one (see Entity:animationLayerState for the layers)
 ---@field layer string Its collision layer (see physics.addLayer), for its body, character and collision box; "default" without any. Takes effect at once, also on a body that is already simulating; a name that is no layer is a warning and changes nothing
 ---@field audioPlaying boolean (read-only) its AudioSource is playing (not paused; false once a sound that does not loop ended)
 ---@field audioVolume number Its AudioSource's volume, 1 is normal (0 without an AudioSource)
@@ -377,6 +378,13 @@ function Entity:clips() end
 ---Entity:play on an entity with a machine takes over until the machine changes state.
 ---@param path string
 function Entity:setAnimator(path) end
+
+---The state one of its animation state machine's layers is in. "base" or "" is the top-level states, the same as
+---`entity.animationState`; "" for a name the file has no layer of, and without a machine. Animation layers play their own
+---states on top of the base, on the bones their mask lets through (see the README, "Animation layers").
+---@param layer string
+---@return string
+function Entity:animationLayerState(layer) end
 
 ---Reflection probe (the "ReflectionProbe" component, made in the editor): captures what is around the entity and writes it to
 ---the probe's file under assets/probes/, setting its bakedPath, so saving the scene keeps it. Returns false when the

@@ -4,8 +4,10 @@
 // systems/animationGraph.h and the README); this component holds which file, the parameter values and where the
 // machine is. The AnimationSystem runs it each frame, before it poses the skeleton.
 
+#include "components/animator.h"
 #include <map>
 #include <string>
+#include <vector>
 
 struct AnimationStateMachine {
   std::string path; // the definition, relative to assets/ ("animators/character.json")
@@ -20,4 +22,22 @@ struct AnimationStateMachine {
   std::string state;
   float stateTime = 0.0f;
   bool manual = false;
+
+  // Runtime, not saved: where each of the file's layers is, in the file's order (matched to the file by name)
+  struct LayerState {
+    std::string name;
+    std::string state;
+    float stateTime = 0.0f;
+    // What the layer plays: the clip, its blend, and the crossfade out of the one before. It stays on the clip it
+    // played while the layer fades out to an empty state.
+    Animator playback;
+    std::string reference; // the clip an additive layer measures its clip against, when its state names one
+    // How much of the layer shows, 0 to 1: it rises while the layer enters a state that plays something and falls
+    // while it enters an empty one, over the transition's fade
+    float presence = 0.0f;
+    float presenceTarget = 0.0f;
+    float presenceRate = 0.0f;  // per second
+    float effectiveWeight = 0.0f; // the layer's weight times its presence, as of the last frame
+  };
+  std::vector<LayerState> layers;
 };

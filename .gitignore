@@ -19,6 +19,7 @@ assets/models/*
 !assets/models/sphere/
 !assets/models/cylinder/
 !assets/models/tentacle/
+!assets/models/knight/
 
 # Temporary files
 *.log
@@ -29,6 +30,7 @@ assets/models/*
 !assets/models/sphere/*.obj
 !assets/models/cylinder/*.obj
 !assets/models/tentacle/*.glb
+!assets/models/knight/*.glb
 
 # IDEs
 .vscode/

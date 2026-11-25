@@ -25,8 +25,8 @@ test.run(function()
   e:setParam("speed", 0)
   wait(0.1)
   test.eq(e.animationState, "idle")
-  test.eq(game.changes[1], "idle>walk", "onStateChanged(old, new)")
-  test.eq(game.changes[2], "walk>idle")
+  test.eq(game.changes[1], "idle>walk@base", "onStateChanged(old, new, layer)")
+  test.eq(game.changes[2], "walk>idle@base")
 
   -- A trigger fires one transition and is used up
   e:trigger("poke")

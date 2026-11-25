@@ -22,4 +22,13 @@ struct Animator {
   float fadeFromTime = 0.0f;
   float fadeElapsed = 0.0f;
   float fadeDuration = 0.0f;
+  // What the fade-out source is besides `fadeFrom`, so it plays on as it was (all of it runtime, not saved): the second
+  // clip and weight when it was a blend (then `fadeFromTime` is a phase, like `time`), its own speed and loop, and
+  // whether it is a frozen pose instead (a fade that was interrupted fades out the pose that was on screen; the
+  // AnimationSystem keeps that pose)
+  std::string fadeFromBlend;
+  float fadeFromBlendWeight = 0.0f;
+  float fadeFromSpeed = 1.0f;
+  bool fadeFromLoop = true;
+  bool fadeFromFrozen = false;
 };
